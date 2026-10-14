@@ -16,6 +16,8 @@ Surfaces:
 | CI | `check.yml` (prototype: lint, types, tests, build) and Helium's `lint.yml` (patch series), on every push and PR |
 | Browser release | `main.yml`, started by hand. Builds on free `windows-2025` runners in chained 5.5-hour jobs (15 to 44 hours), and publishes a GitHub release when `do-release` is true |
 
+Every `gh` command names `-R kausthubh-coder/loka`. With the `upstream` remote present, a bare `gh` can resolve to imputnet/helium-windows and open a PR against Helium.
+
 Stop at the first failure. Never force-push, never skip a check, never edit a test or a check to get through.
 
 ## 1. Ready
@@ -33,9 +35,9 @@ Stop at the first failure. Never force-push, never skip a check, never edit a te
 
 ```
 git push -u origin HEAD
-gh pr create --base main --fill            # or --title/--body; end the body with the attribution line
-gh pr checks --watch --interval 30         # bounded: stop and report if it runs past 20 minutes
-gh pr merge --merge                        # a merge commit keeps Helium's history intact
+gh pr create -R kausthubh-coder/loka --base main --fill            # or --title/--body; end the body with the attribution line
+gh pr checks -R kausthubh-coder/loka --watch --interval 30         # bounded: stop and report if it runs past 20 minutes
+gh pr merge -R kausthubh-coder/loka --merge                        # a merge commit keeps Helium's history intact
 ```
 
 Don't pass `--delete-branch` inside a worktree. Delete the branch in step 5.
@@ -43,12 +45,12 @@ Don't pass `--delete-branch` inside a worktree. Delete the branch in step 5.
 ## 3. Release the browser (only with an explicit go)
 
 ```
-gh workflow run main.yml -f do-release=true
-gh run list --workflow main.yml --limit 1  # note the run id
-gh run watch <run-id> --interval 600       # 15 to 44 hours; check back, don't block a thread on it
+gh workflow run main.yml -R kausthubh-coder/loka -f do-release=true
+gh run list -R kausthubh-coder/loka --workflow main.yml --limit 1  # note the run id
+gh run watch -R kausthubh-coder/loka <run-id> --interval 600       # 15 to 44 hours; check back, don't block a thread on it
 ```
 
-When it finishes, check it read-only: `gh release view --json tagName,assets` shows the new tag and the x64
+When it finishes, check it read-only: `gh release view -R kausthubh-coder/loka --json tagName,assets` shows the new tag and the x64
 installer and zip. The build is unsigned until SignPath is set up, so Windows SmartScreen will warn. Say so in the
 release notes.
 

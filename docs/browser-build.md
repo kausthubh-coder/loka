@@ -33,11 +33,13 @@ and 7-Zip are also needed; the doctor tells you which are missing.
 
 ```
 bun run browser:setup   # git worktree of this repo at C:\src\loka, synced to the current commit
-bun run browser:build   # first time: downloads ~3.7 GB and compiles for hours
+bun run browser:build   # first time: clones Chromium + deps (tens of GB) and compiles for hours
 bun run browser:run     # opens the dev build with a throwaway profile
 ```
 
 - `browser:setup` syncs the build checkout to the current **commit**, so commit before syncing.
+- Helium 0.19.2.1's `build.py` clones Chromium with `helium-chromium/utils/clone.py` (a shallow `git clone` plus
+  `gclient sync`); Helium's CI does the same at this tag. Later Helium versions download prepared tarballs instead.
 - The first build is a component build without PGO (`build.py --dev`): fast to rebuild, slower to run than a
   release. `scripts/loka_build.py first` applies Helium's patches, then `patches/series`, which ends with Loka's.
 - After that, `browser:build` runs an incremental `autoninja -C out\Default chrome`, usually minutes.

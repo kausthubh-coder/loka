@@ -56,7 +56,11 @@ function build() {
 		process.exit(1);
 	}
 	const firstBuild = !existsSync(join(BUILD_DIR, "build", "src", "BUILD.gn"));
-	console.log(firstBuild ? "First build: downloads ~3.7 GB, then compiles for several hours." : "Incremental rebuild.");
+	console.log(
+		firstBuild
+			? "First build: clones Chromium and its dependencies with gclient, then compiles for several hours."
+			: "Incremental rebuild.",
+	);
 	run("python", [join(BUILD_DIR, "scripts", "loka_build.py"), firstBuild ? "first" : "incremental"], {
 		cwd: BUILD_DIR,
 	});

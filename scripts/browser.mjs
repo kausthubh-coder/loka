@@ -55,15 +55,20 @@ function build() {
 		console.error("No build checkout yet. Run: bun run browser:setup");
 		process.exit(1);
 	}
-	const firstBuild = !existsSync(join(BUILD_DIR, "build", "src", "BUILD.gn"));
+	const src = join(BUILD_DIR, "build", "src");
+	// build.ninja appears at `gn gen`, after sources, patches and resources are in place. Without it, the first build
+	// never finished setting up, and it restarts (clone.py resets the tree and reuses gclient's cache).
+	const configured = existsSync(join(src, "out", "Default", "build.ninja"));
+	const partial = !configured && existsSync(join(src, "BUILD.gn"));
 	console.log(
-		firstBuild
-			? "First build: clones Chromium and its dependencies with gclient, then compiles for several hours."
-			: "Incremental rebuild.",
+		configured
+			? "Incremental rebuild."
+			: partial
+				? "Restarting a first build that stopped before gn gen. The tree is reset; gclient's cache is reused."
+				: "First build: clones Chromium and its dependencies with gclient, then compiles for several hours.",
 	);
-	run("python", [join(BUILD_DIR, "scripts", "loka_build.py"), firstBuild ? "first" : "incremental"], {
-		cwd: BUILD_DIR,
-	});
+	const args = configured ? ["incremental"] : partial ? ["first", "--restart"] : ["first"];
+	run("python", [join(BUILD_DIR, "scripts", "loka_build.py"), ...args], { cwd: BUILD_DIR });
 }
 
 function launch() {

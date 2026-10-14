@@ -2,7 +2,7 @@
 """
 Loka's local (developer) build, on top of Helium's build.py.
 
-  python scripts/loka_build.py first [-j N]        unpack Chromium, apply every patch, build chrome
+  python scripts/loka_build.py first [-j N] [--restart]  get Chromium, apply every patch, build chrome
   python scripts/loka_build.py incremental [-j N]  rebuild chrome after editing build/src
 
 Run it from the build checkout (C:\\src\\loka by default), never from OneDrive.
@@ -13,6 +13,7 @@ that prompt by applying the same series a release build applies: Helium core, th
 import argparse
 import builtins
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -35,11 +36,22 @@ def apply_all_patches(_prompt=''):
     return ''
 
 
-def first(jobs):
-    if (SOURCE_TREE / 'BUILD.gn').exists():
-        sys.exit(f'{SOURCE_TREE} already exists. Use "incremental", or delete build\\src (keep build\\download_cache) to start over.')
+def find_7z():
+    """build.py looks 7-Zip up in the registry by default, which installs like scoop's don't write."""
+    for candidate in (shutil.which('7z'), r'C:\Program Files\7-Zip\7z.exe'):
+        if candidate and Path(candidate).exists():
+            return candidate
+    sys.exit('7-Zip not found. Install it (winget install 7zip.7zip) and rerun.')
+
+
+def first(jobs, restart):
+    built = (SOURCE_TREE / 'out' / 'Default' / 'build.ninja').exists()
+    if built or ((SOURCE_TREE / 'BUILD.gn').exists() and not restart):
+        sys.exit(f'{SOURCE_TREE} already exists. Use "incremental", or pass --restart to reset it and start over.')
+    # On rerun, clone.py fetches, `git reset --hard`s and cleans the existing tree, so a first build that failed
+    # part way restarts from pristine sources; gclient's cache in build\src\uc_staging saves redownloading deps.
     builtins.input = apply_all_patches
-    sys.argv = ['build.py', '--dev', '-j', str(jobs)]
+    sys.argv = ['build.py', '--dev', '-j', str(jobs), '--7z-path', find_7z()]
     build.main()
 
 
@@ -55,6 +67,7 @@ def incremental(jobs):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('mode', choices=['first', 'incremental'])
+    parser.add_argument('--restart', action='store_true', help='first: reset a source tree whose first build never reached gn gen')
     # About 2.5 GB of RAM per compile job; 6 fits a 16 GB laptop with room for the linker.
     parser.add_argument('-j', type=int, default=int(os.environ.get('LOKA_JOBS', '6')), dest='jobs')
     args = parser.parse_args()
@@ -62,7 +75,7 @@ def main():
     installer = Path(os.environ.get('ProgramFiles(x86)', r'C:\Program Files (x86)')) / 'Microsoft Visual Studio' / 'Installer'
     os.environ['PATH'] = f"{installer};{os.environ.get('PATH', '')}"
     if args.mode == 'first':
-        first(args.jobs)
+        first(args.jobs, args.restart)
     else:
         incremental(args.jobs)
 

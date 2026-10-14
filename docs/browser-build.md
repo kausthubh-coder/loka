@@ -26,7 +26,8 @@ New-Item -ItemType Directory -Force C:\src | Out-Null
 Add-MpPreference -ExclusionPath C:\src
 ```
 
-Developer Mode (Settings > System > For developers) must be on for symlinks. Python 3.11+, `requests`, `Pillow`
+Developer Mode (Settings > System > For developers) must be on for symlinks. Python 3.11+, `requests`, `Pillow`,
+`clang-format` (`python -m pip install clang-format`)
 and 7-Zip are also needed; the doctor tells you which are missing.
 
 ## 3. Build

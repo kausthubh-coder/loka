@@ -13,6 +13,7 @@ import { createServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
+export const GITHUB_REPO = "kausthubh-coder/loka";
 const PORT_BASE = 5200;
 const PORT_RANGE = 400;
 
@@ -122,6 +123,14 @@ if (import.meta.main) {
 	if (!existsSync(join(root, "helium-chromium", "flags.gn"))) {
 		spawnSync("git", ["submodule", "update", "--init", "--recursive"], { cwd: root, stdio: "inherit" });
 		steps.push("fetched the helium-chromium submodule");
+	}
+
+	// With both `origin` and `upstream` remotes, gh can resolve to imputnet/helium-windows and open PRs there.
+	const ghDefault = spawnSync("gh", ["repo", "set-default", "--view"], { cwd: root, encoding: "utf8" });
+	// No default set exits non-zero; only a missing gh (spawn error) skips this.
+	if (!ghDefault.error && ghDefault.stdout.trim() !== GITHUB_REPO) {
+		const set = spawnSync("gh", ["repo", "set-default", GITHUB_REPO], { cwd: root, stdio: "ignore" });
+		if (set.status === 0) steps.push(`pointed gh at ${GITHUB_REPO}`);
 	}
 
 	const doctor = spawnSync("bun", ["scripts/doctor.mjs"], { cwd: root, stdio: "inherit" });

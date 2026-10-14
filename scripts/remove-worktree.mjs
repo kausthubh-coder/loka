@@ -40,7 +40,7 @@ if (dirty && !force) {
 
 // Processes running from inside the worktree (its dev server is node_modules\.bin\vite.exe there). Matching by path
 // rather than by port also catches servers bound only to ::1, which `netstat -p TCP` doesn't list.
-const query = `Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like '${target}\\*' -or $_.CommandLine -like '*${target}\\*' } | ForEach-Object { "$($_.ProcessId) $($_.Name)" }`;
+const query = `Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and ($_.ExecutablePath -like '${target}\\*' -or $_.CommandLine -like '*${target}\\*') } | ForEach-Object { "$($_.ProcessId) $($_.Name)" }`;
 const ours = new Set([String(process.pid), String(process.ppid)]);
 const found = spawnSync("powershell", ["-NoProfile", "-Command", query], { encoding: "utf8" })
 	.stdout.split(/\r?\n/)

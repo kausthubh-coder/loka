@@ -10,3 +10,6 @@ prototype/dist
 .env*.local
 *.log
 .claude/skills
+
+# verification evidence (kept out of git, survives cleanup)
+.agents/verify-runs

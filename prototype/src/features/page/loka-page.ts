@@ -23,7 +23,7 @@ export class LokaPage extends LitElement {
 		return html`
 			<section class="frame">
 				<header>
-					<span class="fav" style="--fav: ${faviconColor(tab.url)}">${faviconLetter(tab.url)}</span>
+					<span class="fav" aria-hidden="true" style="--fav: ${faviconColor(tab.url)}">${faviconLetter(tab.url)}</span>
 					<div>
 						<h1>${tab.title}</h1>
 						<p class="url">${hostOf(tab.url)}</p>

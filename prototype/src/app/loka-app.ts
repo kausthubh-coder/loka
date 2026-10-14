@@ -61,6 +61,8 @@ export class LokaApp extends LitElement {
 
 	override connectedCallback() {
 		super.connectedCallback();
+		// Save what was loaded, so a first visit stores the seed data and an invalid save gets replaced.
+		localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
 		window.addEventListener("keydown", this.onKey);
 	}
 

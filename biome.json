@@ -2,7 +2,14 @@
 	"$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
 	"vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
 	"files": {
-		"includes": ["prototype/**", "scripts/**", "package.json", "tsconfig.json", "biome.json"]
+		"includes": [
+			"prototype/**",
+			"scripts/**",
+			".agents/skills/*/scripts/**",
+			"package.json",
+			"tsconfig.json",
+			"biome.json"
+		]
 	},
 	"formatter": { "enabled": true, "indentStyle": "tab", "lineWidth": 120 },
 	"linter": {

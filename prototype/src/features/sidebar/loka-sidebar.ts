@@ -214,7 +214,7 @@ export class LokaSidebar extends LitElement {
 	// ---- rendering -----------------------------------------------------------
 
 	private favicon(url: string, size = 16): TemplateResult {
-		return html`<span class="fav" style="--fav: ${faviconColor(url)}; --size: ${size}px">${faviconLetter(url)}</span>`;
+		return html`<span class="fav" aria-hidden="true" style="--fav: ${faviconColor(url)}; --size: ${size}px">${faviconLetter(url)}</span>`;
 	}
 
 	private tabRow(

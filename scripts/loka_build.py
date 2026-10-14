@@ -58,6 +58,9 @@ def main():
     # About 2.5 GB of RAM per compile job; 6 fits a 16 GB laptop with room for the linker.
     parser.add_argument('-j', type=int, default=int(os.environ.get('LOKA_JOBS', '6')), dest='jobs')
     args = parser.parse_args()
+    # vcvars64.bat runs vswhere.exe by bare name, and the Visual Studio installer doesn't add its folder to PATH.
+    installer = Path(os.environ.get('ProgramFiles(x86)', r'C:\Program Files (x86)')) / 'Microsoft Visual Studio' / 'Installer'
+    os.environ['PATH'] = f"{installer};{os.environ.get('PATH', '')}"
     if args.mode == 'first':
         first(args.jobs)
     else:

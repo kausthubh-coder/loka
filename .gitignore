@@ -2,3 +2,11 @@
 /.gcs_entries
 __pycache__
 /resources/generated
+
+# Loka
+node_modules
+prototype/dist
+.env.local
+.env*.local
+*.log
+.claude/skills

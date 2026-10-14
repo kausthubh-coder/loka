@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="color-scheme" content="dark" />
+		<title>Loka prototype</title>
+		<style>
+			/* Registered so the window tint can animate between spaces instead of jumping. */
+			@property --hue {
+				syntax: "<number>";
+				inherits: true;
+				initial-value: 200;
+			}
+			html,
+			body {
+				margin: 0;
+				height: 100%;
+				background: #0b0c10;
+				font: 13px/1.4 system-ui, "Segoe UI", sans-serif;
+				-webkit-font-smoothing: antialiased;
+			}
+		</style>
+		<script type="module" src="/src/main.ts"></script>
+	</head>
+	<body>
+		<loka-app></loka-app>
+	</body>
+</html>

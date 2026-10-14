@@ -1,0 +1,31 @@
+{
+	"name": "loka",
+	"private": true,
+	"type": "module",
+	"license": "GPL-3.0-only",
+	"scripts": {
+		"dev": "vite prototype",
+		"build": "vite build prototype",
+		"preview": "vite preview prototype",
+		"lint": "biome check .",
+		"lint:fix": "biome check --write .",
+		"typecheck": "tsc --noEmit",
+		"test": "bun test prototype scripts",
+		"check": "bun run lint && bun run typecheck && bun run test && bun run build",
+		"setup": "bun scripts/setup.mjs",
+		"doctor": "bun scripts/doctor.mjs",
+		"worktree:remove": "bun scripts/remove-worktree.mjs",
+		"browser:setup": "bun scripts/browser.mjs setup",
+		"browser:build": "bun scripts/browser.mjs build",
+		"browser:run": "bun scripts/browser.mjs run"
+	},
+	"dependencies": {
+		"lit": "^3.3.3"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.15",
+		"@types/bun": "^1.4.3",
+		"typescript": "^7.0.2",
+		"vite": "^8.3.4"
+	}
+}

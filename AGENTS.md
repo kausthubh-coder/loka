@@ -90,6 +90,7 @@ No barrel files. The sidebar model is the spec for the future C++ model, so keep
 
 | Rule | Enforced by |
 |---|---|
+| The UI is native WebUI + C++ patches; extensions are never the delivery mechanism. In `webui/` and `prototype/src/features/`: no `chrome.*` extension APIs, no `chrome-extension://` URLs, no imports from `extension/` or `prototype/src/demo/` | Biome override in `biome.json` (`noRestrictedGlobals`, `noRestrictedImports`, `scripts/lint/no-extension-urls.grit`) |
 | No `any`, no `!` non-null assertions, no unused code | Biome (`biome.json`) |
 | Strict types, checked index access | `tsconfig.json` (`strict`, `noUncheckedIndexedAccess`) |
 | A tab sits in exactly one place; a folder never goes inside itself | `sidebar.test.ts`, `importState` |

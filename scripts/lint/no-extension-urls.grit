@@ -1,0 +1,10 @@
+language js
+
+// The sidebar is a built-in browser page (chrome://loka-sidebar), never an extension page.
+or {
+	JsStringLiteralExpression(),
+	JsTemplateChunkElement()
+} as $text where {
+	$text <: r".*chrome-extension://.*",
+	register_diagnostic(span=$text, message="chrome-extension:// URLs belong to the legacy extension. Loka's UI is native WebUI (chrome://loka-sidebar) plus C++ patches.")
+}

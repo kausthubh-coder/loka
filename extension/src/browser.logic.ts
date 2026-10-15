@@ -1,7 +1,7 @@
 import type { Download } from "../../prototype/src/features/downloads/loka-downloads";
 import type { LiveTabs } from "../../prototype/src/features/sidebar/favicon";
 import type { TabId } from "../../prototype/src/features/sidebar/sidebar.logic";
-import type { LiveMap } from "./live.logic";
+import type { LiveMap } from "../../prototype/src/features/tabs/live.logic";
 
 /** The parts of a browser tab the sidebar draws. */
 export type PageTab = Pick<chrome.tabs.Tab, "id" | "favIconUrl" | "status" | "audible" | "mutedInfo">;

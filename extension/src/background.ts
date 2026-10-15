@@ -18,7 +18,7 @@ import {
 	tabCreated,
 	tabRemoved,
 	tabUpdated,
-} from "./live.logic";
+} from "../../prototype/src/features/tabs/live.logic";
 import { type Groups, readSession, readState, readUi, STATE_KEY, writeSession, writeState } from "./store";
 
 let live: LiveMap = {};

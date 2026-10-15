@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { activeTab, closeTab, switchSpace } from "../../prototype/src/features/sidebar/sidebar.logic";
-import { seedState } from "../../prototype/src/features/sidebar/sidebar.seed";
+import { activeTab, closeTab, switchSpace } from "../sidebar/sidebar.logic";
+import { seedState } from "../sidebar/sidebar.seed";
 import {
 	adoptTabs,
 	type BrowserTab,

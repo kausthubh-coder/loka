@@ -18,7 +18,7 @@ import {
 	tabCreated,
 	tabRemoved,
 	tabUpdated,
-} from "../../extension/src/live.logic";
+} from "../../prototype/src/features/tabs/live.logic";
 import { browser, type NativeTab } from "./bridge";
 import { type Groups, readSession, readState, readUi, writeSession, writeState } from "./store";
 

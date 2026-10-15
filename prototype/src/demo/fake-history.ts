@@ -44,19 +44,44 @@ function seeded(seed: number) {
 	};
 }
 
+// Visits whose address isn't the page: link redirectors (what a click from YouTube, Google or Facebook leaves in
+// history, titled for the interstitial) and pages with no title. Every so often one of these is the next visit.
+const ODD_VISITS: { url: string; title: string }[] = [
+	{
+		url: `https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqbTZ4cWRVZ3RNRk1fRlNnb0p3&q=${encodeURIComponent("https://github.com/kausthubh-coder/loka")}&v=dQw4w9WgXcQ`,
+		title: "YouTube",
+	},
+	{
+		url: `https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=${encodeURIComponent("https://lit.dev/docs/components/overview/")}&ved=2ahUKEwiR4`,
+		title: "Redirect Notice",
+	},
+	{
+		url: `https://l.facebook.com/l.php?u=${encodeURIComponent("https://zen-browser.app/download?fbclid=IwAR0x")}&h=AT0q`,
+		title: "Leaving Facebook",
+	},
+	{ url: "https://canvas.example.edu/courses/281/files/lecture-07.pdf", title: "" },
+];
+
 function makeHistory(now: number): HistoryItem[] {
 	const rand = seeded(42);
 	const items: HistoryItem[] = [];
 	let time = now - 4 * 60_000;
-	// About 40 visits a day for 45 days, bunched into sessions with quiet nights.
+	let site = SITES[0] ?? ["", [""]];
+	// About 40 visits a day for 45 days, bunched into sessions with quiet nights. People stay on a site for a few
+	// pages at a time (a run of videos, a few repos), so the next visit is often on the same site.
 	while (items.length < 1800) {
-		const [base, titles] = SITES[Math.floor(rand() * SITES.length)] ?? SITES[0] ?? ["", [""]];
-		const title = titles[Math.floor(rand() * titles.length)] ?? "";
-		const path = title
-			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, "-")
-			.slice(0, 32);
-		items.push({ url: `${base}/${path}`, title, time });
+		const odd = rand() < 0.04 ? ODD_VISITS[Math.floor(rand() * ODD_VISITS.length)] : undefined;
+		if (odd) items.push({ ...odd, time });
+		else {
+			if (rand() > 0.3) site = SITES[Math.floor(rand() * SITES.length)] ?? site;
+			const [base, titles] = site;
+			const title = titles[Math.floor(rand() * titles.length)] ?? "";
+			const path = title
+				.toLowerCase()
+				.replace(/[^a-z0-9]+/g, "-")
+				.slice(0, 32);
+			items.push({ url: `${base}/${path}`, title, time });
+		}
 		time -= rand() < 0.08 ? 2 * 60 * 60_000 + rand() * 6 * 60 * 60_000 : 30_000 + rand() * 20 * 60_000;
 	}
 	return items;

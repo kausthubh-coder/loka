@@ -404,11 +404,14 @@
    map.AddWebUIConfig(std::make_unique<HistorySidePanelUIConfig>());
    map.AddWebUIConfig(std::make_unique<HistoryClustersSidePanelUIConfig>());
    map.AddWebUIConfig(std::make_unique<InfobarInternalsUIConfig>());
-@@ -492,6 +499,7 @@
+@@ -492,6 +499,10 @@
    map.AddWebUIConfig(std::make_unique<DefaultBrowserModalUIConfig>());
    map.AddWebUIConfig(std::make_unique<ManagedUserProfileNoticeUIConfig>());
    map.AddWebUIConfig(std::make_unique<HeliumOnboardingPageConfig>());
 +  map.AddWebUIConfig(std::make_unique<LokaSidebarUIConfig>());
++  if (LokaSettingsUIConfig::HasPage()) {
++    map.AddWebUIConfig(std::make_unique<LokaSettingsUIConfig>());
++  }
    map.AddWebUIConfig(std::make_unique<ProfileCustomizationUIConfig>());
    map.AddWebUIConfig(std::make_unique<ProfilePickerUIConfig>());
    map.AddWebUIConfig(std::make_unique<SigninErrorUIConfig>());
@@ -759,7 +762,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_HISTORY_UI_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.cc
-@@ -0,0 +1,618 @@
+@@ -0,0 +1,625 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -934,7 +937,14 @@
 +}
 +
 +BrowserWindowInterface* LokaSidebarHandler::GetBrowser() {
-+  return webui::GetBrowserWindowInterface(web_ui()->GetWebContents());
++  content::WebContents* contents = web_ui()->GetWebContents();
++  if (BrowserWindowInterface* browser =
++          webui::GetBrowserWindowInterface(contents)) {
++    return browser;
++  }
++  // Loka's Settings page is a tab, not part of the window's chrome.
++  tabs::TabInterface* tab = tabs::TabInterface::MaybeGetFromContents(contents);
++  return tab ? tab->GetBrowserWindowInterface() : nullptr;
 +}
 +
 +TabStripModel* LokaSidebarHandler::GetTabStrip() {
@@ -1585,7 +1595,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler_features.cc
-@@ -0,0 +1,629 @@
+@@ -0,0 +1,632 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1627,6 +1637,7 @@
 +#include "components/loka_sidebar/resources/grit/loka_sidebar_generated_map.h"
 +#include "chrome/browser/ui/webui/extensions/extension_icon_source.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
 +#include "chrome/common/pref_names.h"
 +#include "components/download/public/common/download_item.h"
 +#include "components/omnibox/browser/autocomplete_classifier.h"
@@ -1773,7 +1784,9 @@
 +void LokaSidebarHandler::StartObservingFeatures() {
 +  Profile* profile = Profile::FromWebUI(web_ui());
 +  if (BrowserWindowInterface* browser = GetBrowser()) {
-+    if (IsCommandBarPage()) {
++    if (web_ui()->GetWebContents()->GetVisibleURL().host() != kLokaSidebarHost) {
++      // Loka's Settings page: it uses the store, not the window's shortcuts.
++    } else if (IsCommandBarPage()) {
 +      CommandBars()[browser] = this;
 +      // The bar was asked for before its page had loaded.
 +      if (std::optional<std::string> command =
@@ -2217,7 +2230,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.cc
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,116 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2226,6 +2239,7 @@
 +
 +#include <memory>
 +#include <string>
++#include <string_view>
 +
 +#include "chrome/browser/profiles/profile.h"
 +#include "chrome/browser/ui/webui/extensions/extension_icon_source.h"
@@ -2289,9 +2303,53 @@
 +}
 +
 +WEB_UI_CONTROLLER_TYPE_IMPL(LokaSidebarUI)
++
++namespace {
++
++const webui::ResourcePath* SettingsPage() {
++  for (const auto& resource : kLokaSidebarGenerated) {
++    if (std::string_view(resource.path) == "settings.html") {
++      return &resource;
++    }
++  }
++  return nullptr;
++}
++
++}  // namespace
++
++LokaSettingsUIConfig::LokaSettingsUIConfig()
++    : DefaultWebUIConfig(content::kChromeUIScheme, kLokaSettingsHost) {}
++
++// static
++bool LokaSettingsUIConfig::HasPage() {
++  return SettingsPage() != nullptr;
++}
++
++LokaSettingsUI::LokaSettingsUI(content::WebUI* web_ui)
++    : content::WebUIController(web_ui) {
++  Profile* profile = Profile::FromWebUI(web_ui);
++  content::WebUIDataSource* source =
++      content::WebUIDataSource::CreateAndAdd(profile, kLokaSettingsHost);
++  webui::SetupWebUIDataSource(source, kLokaSidebarGenerated,
++                              SettingsPage()->id);
++  source->OverrideContentSecurityPolicy(
++      network::mojom::CSPDirectiveName::TrustedTypes,
++      "trusted-types lit-html;");
++  source->OverrideContentSecurityPolicy(
++      network::mojom::CSPDirectiveName::ImgSrc,
++      "img-src chrome://favicon2 chrome://extension-icon data: blob: 'self';");
++  source->OverrideContentSecurityPolicy(
++      network::mojom::CSPDirectiveName::StyleSrc,
++      "style-src 'self' 'unsafe-inline';");
++  web_ui->AddMessageHandler(std::make_unique<LokaSidebarHandler>());
++}
++
++LokaSettingsUI::~LokaSettingsUI() = default;
++
++WEB_UI_CONTROLLER_TYPE_IMPL(LokaSettingsUI)
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h
-@@ -0,0 +1,55 @@
+@@ -0,0 +1,81 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2303,6 +2361,8 @@
 +
 +#include "chrome/browser/ui/webui/top_chrome/top_chrome_web_ui_controller.h"
 +#include "chrome/browser/ui/webui/top_chrome/top_chrome_webui_config.h"
++#include "content/public/browser/web_ui_controller.h"
++#include "content/public/browser/webui_config.h"
 +
 +namespace user_prefs {
 +class PrefRegistrySyncable;
@@ -2325,6 +2385,30 @@
 +    "helium.loka.onboarding_spaces";
 +
 +class LokaSidebarUI;
++class LokaSettingsUI;
++
++// Loka's Settings page at chrome://loka-settings: settings.html from the same
++// resources, answered by the sidebar's handler (store, browser pages).
++inline constexpr char kLokaSettingsHost[] = "loka-settings";
++
++class LokaSettingsUIConfig
++    : public content::DefaultWebUIConfig<LokaSettingsUI> {
++ public:
++  LokaSettingsUIConfig();
++  // Whether the build has the page yet.
++  static bool HasPage();
++};
++
++class LokaSettingsUI : public content::WebUIController {
++ public:
++  explicit LokaSettingsUI(content::WebUI* web_ui);
++  LokaSettingsUI(const LokaSettingsUI&) = delete;
++  LokaSettingsUI& operator=(const LokaSettingsUI&) = delete;
++  ~LokaSettingsUI() override;
++
++ private:
++  WEB_UI_CONTROLLER_TYPE_DECL();
++};
 +
 +class LokaSidebarUIConfig : public DefaultTopChromeWebUIConfig<LokaSidebarUI> {
 + public:

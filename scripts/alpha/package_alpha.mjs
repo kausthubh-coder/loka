@@ -22,9 +22,9 @@ const name = `Loka-${VERSION}-windows-x64`;
 const stage = join(dist, name);
 const app = join(stage, "app");
 
-/** @param {string} cmd @param {string[]} args @param {string} [cwd] */
-function run(cmd, args, cwd = repo) {
-	const result = spawnSync(cmd, args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+/** @param {string} cmd @param {string[]} args @param {string} [cwd] @param {NodeJS.ProcessEnv} [env] */
+function run(cmd, args, cwd = repo, env = process.env) {
+	const result = spawnSync(cmd, args, { cwd, env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
 	if (result.status !== 0) {
 		console.error(`${cmd} ${args.join(" ")} failed (exit ${result.status})\n${result.stderr}`);
 		process.exit(1);
@@ -34,15 +34,26 @@ function run(cmd, args, cwd = repo) {
 
 /**
  * The files chrome.exe needs at run time, relative to the build's output folder, as GN knows them: the DLLs (this is
- * a component build), paks, locales, ICU data and V8 snapshots. Source-tree entries ("../") are test data and
+ * a component build), paks, locales, ICU data and V8 snapshots. Source-tree entries ("../"), test data and
  * debugging files aren't shipped.
  */
 function runtimeFiles() {
 	const gn = join(src, "buildtools", "win", "gn.exe");
-	const listed = run(gn, ["desc", out, "//chrome:chrome", "runtime_deps"], src)
+	// GN runs the build's toolchain scripts, which need what build.py sets: the local Visual Studio, found with
+	// vswhere.exe from the installer's folder.
+	const installer = join(
+		process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)",
+		"Microsoft Visual Studio",
+		"Installer",
+	);
+	const env = { ...process.env, DEPOT_TOOLS_WIN_TOOLCHAIN: "0", PATH: `${installer};${process.env.PATH}` };
+	const listed = run(gn, ["desc", out, "//chrome:chrome", "runtime_deps"], src, env)
 		.split(/\r?\n/)
 		.map((line) => line.trim().replace(/^\.\//, ""))
-		.filter((line) => line && !line.startsWith("../") && !/\.(pdb|lib|exp|ilk|TOC|info)$/i.test(line));
+		.filter((line) => line && !line.startsWith("../") && !/\.(pdb|lib|exp|ilk|TOC|info)$/i.test(line))
+		// Test and debugging data GN lists too: DevTools' sources (the browser loads DevTools from resources.pak),
+		// Python protobufs, and Vulkan's validation layer.
+		.filter((line) => !/^(gen|pyproto)\//.test(line) && !/^VkLayer_khronos_validation\./.test(line));
 	// Also needed beside chrome.exe, though GN doesn't list them: the side-by-side manifest chrome.exe binds to, and
 	// the Start menu tile's files.
 	const extra = readdirSync(out).filter(

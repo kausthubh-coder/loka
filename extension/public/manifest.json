@@ -3,6 +3,7 @@
 	"name": "Loka",
 	"short_name": "Loka",
 	"version": "0.1.0",
+	"key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkvgr+8w/q6DtYSkcJyXg6vfg3zMKqGM25ZPv1Ivt8iDrDEN9cMizeUHtGzKk205I6bC7cveTyYiW3+HHJqpuue8qvdVwBchEyLlvIRdDIGpjoaV6AMWcHXxIGuTeM5DvnsKSVlzkwWwwbNoejqV+Ct8rVkLxu3T1AT38LddoOlvckie1ny25O844V5FtlslYeqQF0V0D6U+j9nAf2Qo7pIBxyZ1u75gFNvpVcWN9X2dImj2r/7waNzimYLxBXEbOGXOyRgdzVwuJ3ENfs5HC07b9KQFerL2J4bBNGIt1cY/aYODN+SlTuJ1jlZ1IIqVvI3hgA/ecNzpJkaKn46WhowIDAQAB",
 	"description": "Spaces, folders inside folders, a command bar and an archive for your tabs. Every space is its own world.",
 	"minimum_chrome_version": "120",
 	"icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },

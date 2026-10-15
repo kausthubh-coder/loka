@@ -11,6 +11,16 @@ test("a full URL is kept as typed", () => {
 	expect(toUrl("http://localhost:5173/")).toBe("http://localhost:5173/");
 });
 
+test("localhost, an IP address or a name with a port opens over http, before the browser has answered", () => {
+	expect(toUrl("localhost:5173/settings")).toBe("http://localhost:5173/settings");
+	expect(toUrl("localhost")).toBe("http://localhost");
+	expect(toUrl("127.0.0.1:9555/qa")).toBe("http://127.0.0.1:9555/qa");
+	expect(toUrl("192.168.1.20")).toBe("http://192.168.1.20");
+	expect(toUrl("nas:8080")).toBe("http://nas:8080");
+	expect(toUrl("example.com?q=1")).toBe("https://example.com?q=1");
+	expect(isSearch(toUrl("version 1.2"))).toBe(true);
+});
+
 test("words become a search", () => {
 	const url = toUrl("arc browser spaces");
 	expect(url).toBe("https://duckduckgo.com/?q=arc%20browser%20spaces");

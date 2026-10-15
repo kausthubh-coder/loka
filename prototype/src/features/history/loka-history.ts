@@ -52,6 +52,10 @@ export class LokaHistory extends LitElement {
 	focusKey: string | null = null;
 	clearMenu = false;
 	confirming: ClearRange | null = null;
+	/** The clear menu or the confirm just opened: focus goes into it on the next render. */
+	private focusInto: "menu" | "confirm" | null = null;
+	/** A layer just closed: focus goes back to the Clear history button. */
+	private focusBack = false;
 	private anchor: string | null = null;
 	private request = 0;
 	private searchTimer = 0;
@@ -124,8 +128,33 @@ export class LokaHistory extends LitElement {
 		const { begin, end } = clearRange(range, Date.now());
 		playCue("clear");
 		this.items = this.items.filter((i) => i.time < begin || i.time > end);
-		this.confirming = null;
+		this.closeConfirm();
 		this.bridge.deleteRange(begin, end);
+	}
+
+	private closeConfirm() {
+		this.confirming = null;
+		this.focusBack = true;
+	}
+
+	/** Keys in the clear menu: Up, Down, Home and End move; Escape and Tab close it and go back to its button. */
+	private onMenuKey(e: KeyboardEvent) {
+		const items = [...this.renderRoot.querySelectorAll<HTMLElement>('.menu [role="menuitem"]')];
+		const at = items.indexOf(this.shadowRoot?.activeElement as HTMLElement);
+		let next: number;
+		if (e.key === "ArrowDown") next = (at + 1) % items.length;
+		else if (e.key === "ArrowUp") next = (at - 1 + items.length) % items.length;
+		else if (e.key === "Home") next = 0;
+		else if (e.key === "End") next = items.length - 1;
+		else if (e.key === "Escape" || e.key === "Tab") {
+			e.preventDefault();
+			e.stopPropagation();
+			this.clearMenu = false;
+			this.focusBack = true;
+			return;
+		} else return;
+		e.preventDefault();
+		items[next]?.focus();
 	}
 
 	private toggle(key: string, shift: boolean) {
@@ -183,9 +212,11 @@ export class LokaHistory extends LitElement {
 			search?.focus();
 			search?.select();
 		} else if (e.key === "Escape") {
-			if (this.confirming) this.confirming = null;
-			else if (this.clearMenu) this.clearMenu = false;
-			else if (this.selected.size) this.selected = new Set();
+			if (this.confirming) this.closeConfirm();
+			else if (this.clearMenu) {
+				this.clearMenu = false;
+				this.focusBack = true;
+			} else if (this.selected.size) this.selected = new Set();
 		} else if ((e.ctrlKey || e.metaKey) && e.key === "a" && !(e.composedPath()[0] instanceof HTMLInputElement)) {
 			e.preventDefault();
 			this.selected = new Set(this.items.map(itemKey));
@@ -195,6 +226,14 @@ export class LokaHistory extends LitElement {
 	protected override updated() {
 		// While rows are picked, every row shows its box, so more can be picked without hunting for it.
 		this.toggleAttribute("picking", this.selected.size > 0);
+		// Focus goes into a layer when it opens, and back to the button that opened it when it closes.
+		if (this.focusInto === "menu") this.renderRoot.querySelector<HTMLElement>('.menu [role="menuitem"]')?.focus();
+		if (this.focusInto === "confirm") this.renderRoot.querySelector<HTMLElement>(".confirm .danger")?.focus();
+		this.focusInto = null;
+		if (this.focusBack) {
+			this.focusBack = false;
+			this.renderRoot.querySelector<HTMLElement>(".clear-wrap > button")?.focus();
+		}
 		// Loads the next page when the end of the list comes into view.
 		const end = this.renderRoot.querySelector(".end");
 		if (!end) return;
@@ -262,8 +301,13 @@ export class LokaHistory extends LitElement {
 
 	private body(): TemplateResult {
 		if (this.loading && this.items.length === 0) {
+			// Shaped like the rows that replace it (time, icon, title, site), so nothing jumps when they arrive.
 			return html`<ul class="skeleton" aria-label="Loading history">
-				${[72, 54, 80, 62, 70, 48, 76, 58].map((w) => html`<li><span style="width: ${w}%"></span></li>`)}
+				<li class="heading"><b style="width: 44px"></b></li>
+				${[62, 44, 70, 52, 58, 40, 66, 48].map(
+					(w) =>
+						html`<li><i></i><b class="time" style="width: 52px"></b><b class="fav"></b><b style="width: ${w}%"></b></li>`,
+				)}
 			</ul>`;
 		}
 		if (this.items.length === 0) {
@@ -282,7 +326,7 @@ export class LokaHistory extends LitElement {
 			days,
 			(day) => day.key,
 			(day) => html`<section class="day" aria-labelledby="day-${day.key}">
-					<h2 id="day-${day.key}">${day.label}</h2>
+					<h2 id="day-${day.key}"><span>${day.label}</span></h2>
 					<ul role="listbox" aria-multiselectable="true" aria-labelledby="day-${day.key}">
 						${repeat(day.items, itemKey, (item) => this.row(item))}
 					</ul>
@@ -293,8 +337,11 @@ export class LokaHistory extends LitElement {
 
 	override render() {
 		const count = this.selected.size;
+		const layer = this.confirming !== null;
 		return html`
-			<header>
+			<header ?inert=${layer}>
+				<div class="glass" aria-hidden="true"></div>
+				<div class="column">
 				${
 					count
 						? html`<div class="bar picking">
@@ -315,19 +362,27 @@ export class LokaHistory extends LitElement {
 										@click=${(e: Event) => {
 											e.stopPropagation();
 											this.clearMenu = !this.clearMenu;
+											if (this.clearMenu) this.focusInto = "menu";
 										}}
 									>
 										Clear history
 									</button>
 									${
 										this.clearMenu
-											? html`<div class="menu" role="menu" @click=${(e: Event) => e.stopPropagation()}>
+											? html`<div
+													class="menu"
+													role="menu"
+													@click=${(e: Event) => e.stopPropagation()}
+													@keydown=${(e: KeyboardEvent) => this.onMenuKey(e)}
+												>
 													${(["hour", "today", "all"] as ClearRange[]).map(
 														(range) => html`<button
 															role="menuitem"
+															tabindex="-1"
 															@click=${() => {
 																this.clearMenu = false;
 																this.confirming = range;
+																this.focusInto = "confirm";
 															}}
 														>
 															${CLEAR_LABELS[range].menu}
@@ -358,19 +413,25 @@ export class LokaHistory extends LitElement {
 					/>
 					<kbd>/</kbd>
 				</label>
+				</div>
 			</header>
-			<main @click=${() => (this.clearMenu = false)}>${this.body()}</main>
+			<main class="column" ?inert=${layer} @click=${() => (this.clearMenu = false)}>${this.body()}</main>
 			${
 				this.confirming
-					? html`<div class="scrim" @click=${() => (this.confirming = null)}></div>
-							<div class="confirm" role="alertdialog" aria-labelledby="confirm-title" aria-describedby="confirm-text">
+					? html`<div class="scrim" @click=${() => this.closeConfirm()}></div>
+							<div
+								class="confirm"
+								role="alertdialog"
+								aria-modal="true"
+								aria-labelledby="confirm-title"
+								aria-describedby="confirm-text"
+							>
 								<h2 id="confirm-title">${CLEAR_LABELS[this.confirming].ask}</h2>
 								<p id="confirm-text">Visits are removed from this computer's history. This can't be undone.</p>
 								<div class="actions">
-									<button class="quiet" @click=${() => (this.confirming = null)}>Cancel</button>
+									<button class="quiet" @click=${() => this.closeConfirm()}>Cancel</button>
 									<button
 										class="danger"
-										autofocus
 										@click=${() => this.confirming && this.clear(this.confirming)}
 									>
 										Clear history
@@ -383,13 +444,19 @@ export class LokaHistory extends LitElement {
 	}
 
 	static override styles = css`
+		/* The page is full width, so the header's glass spans the window; the list and header content keep a
+		   centered column. */
 		:host {
 			display: block;
-			max-width: 780px;
-			margin: 0 auto;
-			padding: 0 24px 48px;
+			padding-bottom: 48px;
 			font: 14px/1.4 system-ui, "Segoe UI", sans-serif;
 			color: var(--loka-ink);
+			--header: 136px;
+		}
+		.column {
+			max-width: 780px;
+			margin: 0 auto;
+			padding: 0 24px;
 		}
 		button {
 			font: inherit;
@@ -409,12 +476,37 @@ export class LokaHistory extends LitElement {
 			stroke-linejoin: round;
 			flex: none;
 		}
+		/* The header sits on the sky. Once the list scrolls under it, it frosts over (tinted glass with a hairline
+		   edge), across the whole window. */
 		header {
 			position: sticky;
 			top: 0;
 			z-index: 3;
+			box-sizing: border-box;
+			height: var(--header);
 			padding: 28px 0 12px;
-			background: linear-gradient(var(--history-bg, transparent) 80%, transparent);
+			container-type: scroll-state;
+		}
+		.glass {
+			position: absolute;
+			inset: 0;
+			z-index: -1;
+			background: color-mix(in srgb, var(--history-bg, transparent) 64%, transparent);
+			backdrop-filter: blur(20px) saturate(1.3);
+			box-shadow: 0 1px 0 var(--loka-line);
+			opacity: 0;
+			pointer-events: none;
+		}
+		@container scroll-state(stuck: top) {
+			.glass {
+				opacity: 1;
+			}
+		}
+		/* Without scroll-state queries, the header is always frosted rather than ever clear over the rows. */
+		@supports not (container-type: scroll-state) {
+			.glass {
+				opacity: 1;
+			}
 		}
 		.bar {
 			display: flex;
@@ -425,7 +517,7 @@ export class LokaHistory extends LitElement {
 		}
 		h1 {
 			margin: 0;
-			font-size: 26px;
+			font-size: 28px;
 			font-weight: 650;
 			letter-spacing: -0.015em;
 		}
@@ -438,6 +530,7 @@ export class LokaHistory extends LitElement {
 		}
 		.quiet,
 		.danger {
+			position: relative;
 			height: 34px;
 			padding: 0 14px;
 			border-radius: 9px;
@@ -452,12 +545,13 @@ export class LokaHistory extends LitElement {
 		}
 		.danger {
 			background: var(--loka-danger);
-			color: #fff;
+			color: var(--loka-on-danger);
 		}
 		.danger:hover {
 			filter: brightness(1.08);
 		}
 		.icon {
+			position: relative;
 			display: grid;
 			place-items: center;
 			width: 34px;
@@ -468,6 +562,22 @@ export class LokaHistory extends LitElement {
 		.icon:hover {
 			background: var(--loka-hover);
 			color: var(--loka-ink);
+		}
+		.quiet:active,
+		.icon:active,
+		.remove:active {
+			background: var(--loka-fill-hover);
+		}
+		.danger:active {
+			filter: brightness(0.94);
+		}
+		/* The header's buttons and each row's small controls take clicks past their edge: 44px targets. */
+		.quiet::after,
+		.danger::after,
+		.icon::after {
+			content: "";
+			position: absolute;
+			inset: -5px 0;
 		}
 		.clear-wrap {
 			position: relative;
@@ -482,12 +592,13 @@ export class LokaHistory extends LitElement {
 			width: 180px;
 			padding: 4px;
 			border-radius: 12px;
-			background: var(--loka-surface);
+			background: color-mix(in srgb, var(--loka-surface) 88%, transparent);
 			box-shadow: var(--loka-surface-edge);
+			backdrop-filter: blur(20px) saturate(1.3);
 			transform-origin: top right;
 		}
 		.menu button {
-			height: 34px;
+			height: 36px;
 			padding: 0 10px;
 			border-radius: 8px;
 			text-align: left;
@@ -496,6 +607,9 @@ export class LokaHistory extends LitElement {
 		.menu button:focus-visible {
 			background: var(--loka-hover);
 			outline: none;
+		}
+		.menu button:active {
+			background: var(--loka-fill-hover);
 		}
 		.search {
 			display: flex;
@@ -529,8 +643,8 @@ export class LokaHistory extends LitElement {
 			display: none;
 		}
 		kbd {
-			font: 11px system-ui, "Segoe UI", sans-serif;
-			padding: 2px 7px;
+			font: 12px system-ui, "Segoe UI", sans-serif;
+			padding: 1px 7px;
 			border-radius: 6px;
 			background: var(--loka-fill-hover);
 			color: var(--loka-ink-2);
@@ -541,15 +655,31 @@ export class LokaHistory extends LitElement {
 			contain-intrinsic-size: auto 600px;
 			margin-top: 8px;
 		}
-		h2 {
+		/* Each day's name stays under the header while its day scrolls. Stuck, it sits on a small glass pill, so
+		   the rows passing under it never run into its letters. */
+		.day h2 {
 			position: sticky;
-			top: 136px;
+			top: var(--header);
 			z-index: 1;
+			width: fit-content;
 			margin: 0;
-			padding: 10px 12px 6px;
+			padding: 6px 2px 4px;
 			font-size: 13px;
 			font-weight: 600;
 			color: var(--loka-ink-2);
+			container-type: scroll-state;
+		}
+		.day h2 span {
+			display: block;
+			padding: 3px 10px;
+			border-radius: 999px;
+		}
+		@container scroll-state(stuck: top) {
+			.day h2 span {
+				background: color-mix(in srgb, var(--history-bg, transparent) 70%, transparent);
+				box-shadow: 0 0 0 1px var(--loka-line);
+				backdrop-filter: blur(16px) saturate(1.3);
+			}
 		}
 		ul {
 			list-style: none;
@@ -575,8 +705,10 @@ export class LokaHistory extends LitElement {
 			background: color-mix(in srgb, var(--loka-accent) 16%, transparent);
 		}
 		.pick {
+			position: relative;
 			display: grid;
 			place-items: center;
+			flex: none;
 			width: 20px;
 			height: 20px;
 			border-radius: 6px;
@@ -588,6 +720,11 @@ export class LokaHistory extends LitElement {
 			width: 14px;
 			height: 14px;
 			stroke-width: 2;
+		}
+		.pick::after {
+			content: "";
+			position: absolute;
+			inset: -12px -8px;
 		}
 		.row:hover .pick,
 		.row:focus-visible .pick,
@@ -637,14 +774,20 @@ export class LokaHistory extends LitElement {
 			font-size: 13px;
 		}
 		.remove {
+			position: relative;
 			display: grid;
 			place-items: center;
 			flex: none;
-			width: 30px;
-			height: 30px;
+			width: 32px;
+			height: 32px;
 			border-radius: 8px;
 			color: var(--loka-ink-2);
 			opacity: 0;
+		}
+		.remove::after {
+			content: "";
+			position: absolute;
+			inset: -6px;
 		}
 		.row:hover .remove,
 		.row:focus-visible .remove {
@@ -654,16 +797,36 @@ export class LokaHistory extends LitElement {
 			background: var(--loka-hover);
 			color: var(--loka-ink);
 		}
+		.skeleton {
+			margin-top: 8px;
+		}
 		.skeleton li {
 			height: 44px;
 			display: flex;
 			align-items: center;
-			padding: 0 12px;
+			gap: 12px;
+			padding: 0 6px 0 8px;
 		}
-		.skeleton span {
+		.skeleton li.heading {
+			height: 32px;
+			padding: 2px 12px 0;
+		}
+		.skeleton i {
+			flex: none;
+			width: 20px;
+		}
+		.skeleton b {
+			flex: none;
 			height: 10px;
 			border-radius: 5px;
 			background: var(--loka-fill-hover);
+		}
+		.skeleton b.time {
+			margin-right: 16px;
+		}
+		.skeleton b.fav {
+			width: 18px;
+			height: 18px;
 		}
 		.empty {
 			display: grid;
@@ -739,9 +902,24 @@ export class LokaHistory extends LitElement {
 				}
 			}
 			.scrim {
-				transition: opacity 150ms ease-out;
+				transition: opacity 150ms cubic-bezier(0.2, 0, 0, 1);
 				@starting-style {
 					opacity: 0;
+				}
+			}
+			.glass,
+			.day h2 span {
+				transition:
+					opacity 150ms cubic-bezier(0.2, 0, 0, 1),
+					background-color 150ms cubic-bezier(0.2, 0, 0, 1);
+			}
+			/* Placeholder rows breathe while the first page is on its way. */
+			.skeleton b {
+				animation: breathe 1.2s ease-in-out infinite alternate;
+			}
+			@keyframes breathe {
+				to {
+					opacity: 0.45;
 				}
 			}
 		}

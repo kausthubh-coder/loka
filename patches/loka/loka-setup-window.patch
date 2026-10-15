@@ -61,12 +61,14 @@
  
  // Utility functions ----------------------------------------------------------
  
-@@ -569,6 +616,12 @@
+@@ -569,6 +616,14 @@
        is_post_crash_launch, promotions_enabled, whats_new_enabled);
    StartupTabs tabs = std::move(result.tabs);
  
 +  // Loka: setup comes first, in its own window; the browser waits for it.
-+  if (tabs.size() == 1 && tabs[0].url == GURL(chrome::kHeliumSetupURL)) {
++  if (std::ranges::any_of(tabs, [](const StartupTab& tab) {
++        return tab.url == GURL(chrome::kHeliumSetupURL);
++      })) {
 +    ShowLokaSetupWindow(profile_);
 +    return;
 +  }

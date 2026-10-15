@@ -64,7 +64,18 @@
  void VerticalTabStripStateController::SetVerticalTabsEnabled(bool enabled) {
 --- a/chrome/browser/ui/views/frame/browser_view.cc
 +++ b/chrome/browser/ui/views/frame/browser_view.cc
-@@ -1704,6 +1704,11 @@
+@@ -445,8 +445,9 @@
+     base::Milliseconds(200);
+ constexpr base::TimeDelta kZenModeCursorExitGracePeriod =
+     base::Milliseconds(3000);
++// Loka: long enough that a quick wobble off the sidebar doesn't snap it shut.
+ constexpr base::TimeDelta kZenModeHoverExitGracePeriod =
+-    base::Milliseconds(150);
++    base::Milliseconds(350);
+ 
+ #if BUILDFLAG(IS_CHROMEOS)
+ // UMA histograms that record animation smoothness for tab loading animation.
+@@ -1704,6 +1705,11 @@
    if (!zen_mode_enabled_) {
      return 1.f;
    }
@@ -76,3 +87,18 @@
    return zen_top_chrome_animation_.GetCurrentValue();
  }
  
+@@ -2006,9 +2012,11 @@
+   const std::optional<gfx::Point> previous_cursor = zen_last_cursor_;
+   zen_last_cursor_ = cursor;
+ 
+-  const bool in_top_trigger = IsPointInZenTopTrigger(cursor);
+-  const bool in_top_chrome = IsPointInZenTopChromeBounds(cursor);
+-  const bool reveal_top = in_top_trigger || in_top_chrome;
++  // Loka: there's no toolbar row to reveal (the sidebar has the address
++  // field), so the top edge never wins over the sidebar's edge.
++  const bool reveal_top = IsZenModeTopChromePinned() &&
++                          (IsPointInZenTopTrigger(cursor) ||
++                           IsPointInZenTopChromeBounds(cursor));
+ 
+   // Top bar takes precedence: don't reveal side chrome when the cursor
+   // is in the top trigger zone or over the revealed top chrome.

@@ -5,6 +5,10 @@ Loka's name and icons in the browser, on top of Helium's branding.
   python scripts/loka_brand.py assets   draw Loka's brand images into resources/loka/ (committed)
   python scripts/loka_brand.py apply    in the build checkout, after `first`: rename to Loka, copy the images,
                                         then rebuild with `loka_build.py incremental`
+  python scripts/loka_brand.py apply --no-names
+                                        BRANDING and images only. The name substitution rewrites thousands of
+                                        source files (a near-full rebuild); the product's strings already say
+                                        Loka through patches/loka/loka-name.patch
 
 Helium's release builds run a name substitution ("Chrome"/"Chromium" -> "Helium") that dev builds skip. `apply` runs
 the same substitution with "Loka", rewrites BRANDING, and copies Loka's images over every place Helium's go, using
@@ -160,22 +164,24 @@ def copy_images():
         replace_resources.copy_resources(filtered, ASSETS, SOURCE_TREE)
 
 
-def apply():
+def apply(names: bool = True):
     if not (SOURCE_TREE / 'BUILD.gn').exists():
         sys.exit(f'No source tree at {SOURCE_TREE}; run loka_build.py first.')
     if not (ASSETS / 'branding' / 'app_icon' / 'raw.png').exists():
         sys.exit('No Loka images yet; run: python scripts/loka_brand.py assets')
     rewrite_branding()
     copy_images()
-    substitute_names()
+    if names:
+        substitute_names()
     print('Loka branding applied. Rebuild: python scripts/loka_build.py incremental')
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('step', choices=['assets', 'apply'])
+    parser.add_argument('--no-names', action='store_true', help='skip the name substitution (see above)')
     args = parser.parse_args()
-    assets() if args.step == 'assets' else apply()
+    assets() if args.step == 'assets' else apply(names=not args.no_names)
 
 
 if __name__ == '__main__':

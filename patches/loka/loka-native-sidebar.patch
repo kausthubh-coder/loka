@@ -136,17 +136,275 @@
    raw_ptr<ShadowFrameView> shadow_frame_ = nullptr;
    int resize_area_width_;
    raw_ptr<views::FlexLayout> flex_layout_ = nullptr;
+--- /dev/null
++++ b/chrome/browser/ui/views/loka/loka_command_bar.cc
+@@ -0,0 +1,168 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#include "chrome/browser/ui/views/loka/loka_command_bar.h"
++
++#include <algorithm>
++#include <map>
++
++#include "base/no_destructor.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#include "chrome/browser/ui/views/frame/browser_view.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
++#include "chrome/browser/ui/webui/webui_embedding_context.h"
++#include "content/public/browser/web_contents.h"
++#include "ui/gfx/geometry/rect.h"
++#include "ui/views/controls/webview/web_contents_set_background_color.h"
++#include "ui/views/controls/webview/webview.h"
++#include "url/gurl.h"
++
++namespace {
++
++// The bar's window: wide enough for long titles, tall enough for nine
++// results. The page draws the bar at the top of it and leaves the rest clear.
++constexpr int kWidth = 680;
++constexpr int kHeight = 520;
++
++std::map<BrowserWindowInterface*, std::unique_ptr<LokaCommandBar>>& Bars() {
++  static base::NoDestructor<
++      std::map<BrowserWindowInterface*, std::unique_ptr<LokaCommandBar>>>
++      bars;
++  return *bars;
++}
++
++}  // namespace
++
++// static
++void LokaCommandBar::Show(BrowserWindowInterface* browser,
++                          const std::string& command) {
++  auto& bar = Bars()[browser];
++  if (!bar) {
++    bar.reset(new LokaCommandBar(browser));
++  }
++  bar->ShowWith(command);
++}
++
++// static
++void LokaCommandBar::Hide(BrowserWindowInterface* browser) {
++  if (auto it = Bars().find(browser); it != Bars().end()) {
++    it->second->HideNow();
++  }
++}
++
++// static
++std::optional<std::string> LokaCommandBar::TakePendingCommand(
++    BrowserWindowInterface* browser) {
++  auto it = Bars().find(browser);
++  if (it == Bars().end()) {
++    return std::nullopt;
++  }
++  return std::exchange(it->second->pending_command_, std::nullopt);
++}
++
++LokaCommandBar::LokaCommandBar(BrowserWindowInterface* browser)
++    : browser_(browser) {
++  BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser);
++  browser_widget_ = browser_view ? browser_view->GetWidget() : nullptr;
++  if (browser_widget_) {
++    browser_widget_observation_.Observe(browser_widget_.get());
++  }
++}
++
++LokaCommandBar::~LokaCommandBar() = default;
++
++void LokaCommandBar::EnsureWidget() {
++  if (widget_ || !browser_widget_) {
++    return;
++  }
++  widget_ = std::make_unique<views::Widget>();
++  views::Widget::InitParams params(
++      views::Widget::InitParams::CLIENT_OWNS_WIDGET,
++      views::Widget::InitParams::TYPE_WINDOW_FRAMELESS);
++  params.opacity = views::Widget::InitParams::WindowOpacity::kTranslucent;
++  params.parent = browser_widget_->GetNativeView();
++  params.context = browser_widget_->GetNativeWindow();
++  params.shadow_type = views::Widget::InitParams::ShadowType::kNone;
++  params.name = "LokaCommandBar";
++  widget_->Init(std::move(params));
++
++  auto web_view = std::make_unique<views::WebView>(browser_->GetProfile());
++  webui::SetBrowserWindowInterface(web_view->GetWebContents(), browser_);
++  views::WebContentsSetBackgroundColor::CreateForWebContentsWithColor(
++      web_view->GetWebContents(), SK_ColorTRANSPARENT);
++  web_view->LoadInitialURL(GURL(std::string(kLokaSidebarURL) + "command.html"));
++  web_view_ = widget_->SetContentsView(std::move(web_view));
++  widget_->SetVisibilityChangedAnimationsEnabled(false);
++  widget_observation_.Observe(widget_.get());
++}
++
++void LokaCommandBar::Place() {
++  if (!widget_ || !browser_widget_) {
++    return;
++  }
++  // Centered over the window, a fifth of the way down, like Arc's.
++  const gfx::Rect window = browser_widget_->GetWindowBoundsInScreen();
++  const int width = std::min(kWidth, window.width() - 32);
++  const int height = std::min(kHeight, window.height() - 32);
++  widget_->SetBounds(gfx::Rect(window.x() + (window.width() - width) / 2,
++                               window.y() + window.height() / 5, width,
++                               height));
++}
++
++void LokaCommandBar::ShowWith(const std::string& command) {
++  EnsureWidget();
++  if (!widget_) {
++    return;
++  }
++  Place();
++  widget_->Show();
++  widget_->Activate();
++  web_view_->RequestFocus();
++  web_view_->GetWebContents()->Focus();
++  // The page may still be loading the first time: it takes the command when
++  // it's ready. Otherwise it hears it now.
++  pending_command_ = command;
++  if (LokaSidebarHandler::DeliverCommandBarCommand(browser_, command)) {
++    pending_command_.reset();
++  }
++}
++
++void LokaCommandBar::HideNow() {
++  if (widget_ && widget_->IsVisible()) {
++    widget_->Hide();
++    if (browser_widget_) {
++      browser_widget_->Activate();
++    }
++  }
++}
++
++void LokaCommandBar::OnWidgetActivationChanged(views::Widget* widget,
++                                               bool active) {
++  // Clicking anywhere else closes it, like a menu.
++  if (widget == widget_.get() && !active) {
++    HideNow();
++  }
++}
++
++void LokaCommandBar::OnWidgetBoundsChanged(views::Widget* widget,
++                                           const gfx::Rect& new_bounds) {
++  if (widget == browser_widget_ && widget_ && widget_->IsVisible()) {
++    Place();
++  }
++}
++
++void LokaCommandBar::OnWidgetDestroying(views::Widget* widget) {
++  if (widget == browser_widget_) {
++    widget_observation_.Reset();
++    browser_widget_observation_.Reset();
++    widget_.reset();
++    browser_widget_ = nullptr;
++    // Deletes this.
++    Bars().erase(browser_);
++  } else if (widget == widget_.get()) {
++    widget_observation_.Reset();
++  }
++}
+--- /dev/null
++++ b/chrome/browser/ui/views/loka/loka_command_bar.h
+@@ -0,0 +1,69 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_LOKA_LOKA_COMMAND_BAR_H_
++#define CHROME_BROWSER_UI_VIEWS_LOKA_LOKA_COMMAND_BAR_H_
++
++#include <memory>
++#include <optional>
++#include <string>
++
++#include "base/memory/raw_ptr.h"
++#include "base/scoped_observation.h"
++#include "ui/views/widget/widget.h"
++#include "ui/views/widget/widget_observer.h"
++
++class BrowserWindowInterface;
++
++namespace views {
++class WebView;
++}
++
++// Loka's command bar (Ctrl+T, Ctrl+L, the sidebar's address field), floating
++// over the middle of the window like Arc's and Zen's. It is the sidebar's page
++// at chrome://loka-sidebar.top-chrome/command.html in a frameless,
++// transparent window above the browser window; the same handler as the
++// sidebar answers it.
++class LokaCommandBar : public views::WidgetObserver {
++ public:
++  // Shows the bar over `browser`'s window and hands it `command`
++  // ("new-tab" or "focus-location").
++  static void Show(BrowserWindowInterface* browser, const std::string& command);
++  // Hides the bar of `browser`'s window, if it's showing.
++  static void Hide(BrowserWindowInterface* browser);
++  // The command waiting for the bar's page of `browser`, taken once: the page
++  // asks for it when it has loaded.
++  static std::optional<std::string> TakePendingCommand(
++      BrowserWindowInterface* browser);
++
++  LokaCommandBar(const LokaCommandBar&) = delete;
++  LokaCommandBar& operator=(const LokaCommandBar&) = delete;
++  ~LokaCommandBar() override;
++
++  // views::WidgetObserver:
++  void OnWidgetActivationChanged(views::Widget* widget, bool active) override;
++  void OnWidgetBoundsChanged(views::Widget* widget,
++                             const gfx::Rect& new_bounds) override;
++  void OnWidgetDestroying(views::Widget* widget) override;
++
++ private:
++  explicit LokaCommandBar(BrowserWindowInterface* browser);
++
++  void EnsureWidget();
++  void Place();
++  void ShowWith(const std::string& command);
++  void HideNow();
++
++  raw_ptr<BrowserWindowInterface> browser_;
++  raw_ptr<views::Widget> browser_widget_;
++  std::unique_ptr<views::Widget> widget_;
++  raw_ptr<views::WebView> web_view_ = nullptr;
++  std::optional<std::string> pending_command_;
++  base::ScopedObservation<views::Widget, views::WidgetObserver>
++      browser_widget_observation_{this};
++  base::ScopedObservation<views::Widget, views::WidgetObserver>
++      widget_observation_{this};
++};
++
++#endif  // CHROME_BROWSER_UI_VIEWS_LOKA_LOKA_COMMAND_BAR_H_
 --- a/chrome/browser/ui/webui/chrome_web_ui_configs.cc
 +++ b/chrome/browser/ui/webui/chrome_web_ui_configs.cc
-@@ -48,6 +48,7 @@
+@@ -48,6 +48,8 @@
  #include "chrome/browser/ui/webui/ntp_tiles_internals_ui.h"
  #include "chrome/browser/ui/webui/omnibox/omnibox_ui.h"
  #include "chrome/browser/ui/webui/onboarding/onboarding_page_ui.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_history_ui.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
  #include "chrome/browser/ui/webui/policy/policy_ui.h"
  #include "chrome/browser/ui/webui/predictors/predictors_ui.h"
  #include "chrome/browser/ui/webui/regional_capabilities_internals/regional_capabilities_internals_ui.h"
-@@ -492,6 +493,7 @@
+@@ -367,7 +369,12 @@
+   map.AddWebUIConfig(std::make_unique<DownloadsUIConfig>());
+   map.AddWebUIConfig(std::make_unique<DrivePickerHostUIConfig>());
+   map.AddWebUIConfig(std::make_unique<FeedbackUIConfig>());
+-  map.AddWebUIConfig(std::make_unique<HistoryUIConfig>());
++  // Loka: Loka's History page replaces Chrome's once the build has it.
++  if (LokaHistoryUIConfig::HasPage()) {
++    map.AddWebUIConfig(std::make_unique<LokaHistoryUIConfig>());
++  } else {
++    map.AddWebUIConfig(std::make_unique<HistoryUIConfig>());
++  }
+   map.AddWebUIConfig(std::make_unique<HistorySidePanelUIConfig>());
+   map.AddWebUIConfig(std::make_unique<HistoryClustersSidePanelUIConfig>());
+   map.AddWebUIConfig(std::make_unique<InfobarInternalsUIConfig>());
+@@ -492,6 +499,7 @@
    map.AddWebUIConfig(std::make_unique<DefaultBrowserModalUIConfig>());
    map.AddWebUIConfig(std::make_unique<ManagedUserProfileNoticeUIConfig>());
    map.AddWebUIConfig(std::make_unique<HeliumOnboardingPageConfig>());
@@ -156,7 +414,7 @@
    map.AddWebUIConfig(std::make_unique<SigninErrorUIConfig>());
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/BUILD.gn
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,57 @@
 +# Copyright 2026 The Loka Authors
 +# You can use, redistribute, and/or modify this source code under
 +# the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -164,10 +422,14 @@
 +source_set("loka_sidebar") {
 +  sources = [
 +    "loka_sidebar_handler.cc",
++    "loka_history_ui.cc",
++    "loka_history_ui.h",
 +    "loka_sidebar_handler.h",
 +    "loka_sidebar_handler_features.cc",
 +    "loka_sidebar_ui.cc",
 +    "loka_sidebar_ui.h",
++    "//chrome/browser/ui/views/loka/loka_command_bar.cc",
++    "//chrome/browser/ui/views/loka/loka_command_bar.h",
 +  ]
 +
 +  public_deps = [
@@ -178,6 +440,9 @@
 +  deps = [
 +    "//base",
 +    "//chrome/browser/autocomplete",
++    "//chrome/browser/history",
++    "//components/history/core/browser",
++    "//components/keyed_service/core",
 +    "//chrome/browser/extensions",
 +    "//chrome/browser/themes",
 +    "//components/download/content/public",
@@ -208,8 +473,293 @@
 +  ]
 +}
 --- /dev/null
++++ b/chrome/browser/ui/webui/loka_sidebar/loka_history_ui.cc
+@@ -0,0 +1,211 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#include "chrome/browser/ui/webui/loka_sidebar/loka_history_ui.h"
++
++#include <algorithm>
++#include <memory>
++#include <set>
++#include <string_view>
++#include <utility>
++#include <vector>
++
++#include "base/functional/bind.h"
++#include "base/strings/utf_string_conversions.h"
++#include "chrome/browser/history/history_service_factory.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#include "chrome/browser/ui/navigator/browser_navigator.h"
++#include "chrome/browser/ui/navigator/browser_navigator_params.h"
++#include "chrome/browser/ui/webui/favicon_source.h"
++#include "components/favicon_base/favicon_url_parser.h"
++#include "components/history/core/browser/history_service.h"
++#include "components/history/core/browser/history_types.h"
++#include "components/keyed_service/core/service_access_type.h"
++#include "components/loka_sidebar/resources/grit/loka_sidebar_generated_map.h"
++#include "components/tabs/public/tab_interface.h"
++#include "content/public/browser/url_data_source.h"
++#include "content/public/browser/web_contents.h"
++#include "content/public/browser/web_ui.h"
++#include "content/public/browser/web_ui_data_source.h"
++#include "content/public/common/url_constants.h"
++#include "services/network/public/mojom/content_security_policy.mojom.h"
++#include "ui/base/page_transition_types.h"
++#include "ui/base/window_open_disposition.h"
++#include "ui/webui/webui_util.h"
++
++namespace {
++
++constexpr char kHistoryHost[] = "history";
++constexpr int kMaxResults = 200;
++
++const webui::ResourcePath* HistoryPage() {
++  for (const auto& resource : kLokaSidebarGenerated) {
++    if (std::string_view(resource.path) == "history.html") {
++      return &resource;
++    }
++  }
++  return nullptr;
++}
++
++history::HistoryService* History(content::WebUI* web_ui) {
++  return HistoryServiceFactory::GetForProfile(
++      Profile::FromWebUI(web_ui), ServiceAccessType::EXPLICIT_ACCESS);
++}
++
++}  // namespace
++
++LokaHistoryUIConfig::LokaHistoryUIConfig()
++    : DefaultWebUIConfig(content::kChromeUIScheme, kHistoryHost) {}
++
++// static
++bool LokaHistoryUIConfig::HasPage() {
++  return HistoryPage() != nullptr;
++}
++
++LokaHistoryUI::LokaHistoryUI(content::WebUI* web_ui)
++    : content::WebUIController(web_ui) {
++  Profile* profile = Profile::FromWebUI(web_ui);
++  content::WebUIDataSource* source =
++      content::WebUIDataSource::CreateAndAdd(profile, kHistoryHost);
++  webui::SetupWebUIDataSource(source, kLokaSidebarGenerated,
++                              HistoryPage()->id);
++  source->OverrideContentSecurityPolicy(
++      network::mojom::CSPDirectiveName::TrustedTypes,
++      "trusted-types lit-html;");
++  source->OverrideContentSecurityPolicy(
++      network::mojom::CSPDirectiveName::ImgSrc,
++      "img-src chrome://favicon2 data: blob: 'self';");
++  source->OverrideContentSecurityPolicy(
++      network::mojom::CSPDirectiveName::StyleSrc,
++      "style-src 'self' 'unsafe-inline';");
++  content::URLDataSource::Add(
++      profile, std::make_unique<FaviconSource>(
++                   profile, chrome::FaviconUrlFormat::kFavicon2));
++  web_ui->AddMessageHandler(std::make_unique<LokaHistoryHandler>());
++}
++
++LokaHistoryUI::~LokaHistoryUI() = default;
++
++WEB_UI_CONTROLLER_TYPE_IMPL(LokaHistoryUI)
++
++LokaHistoryHandler::LokaHistoryHandler() = default;
++LokaHistoryHandler::~LokaHistoryHandler() = default;
++
++void LokaHistoryHandler::RegisterMessages() {
++  web_ui()->RegisterMessageCallback(
++      "queryHistory",
++      base::BindRepeating(&LokaHistoryHandler::HandleQueryHistory,
++                          base::Unretained(this)));
++  web_ui()->RegisterMessageCallback(
++      "deleteUrls", base::BindRepeating(&LokaHistoryHandler::HandleDeleteUrls,
++                                        base::Unretained(this)));
++  web_ui()->RegisterMessageCallback(
++      "deleteRange",
++      base::BindRepeating(&LokaHistoryHandler::HandleDeleteRange,
++                          base::Unretained(this)));
++  web_ui()->RegisterMessageCallback(
++      "openUrl", base::BindRepeating(&LokaHistoryHandler::HandleOpenUrl,
++                                     base::Unretained(this)));
++}
++
++void LokaHistoryHandler::HandleQueryHistory(const base::ListValue& args) {
++  AllowJavascript();
++  history::HistoryService* history = History(web_ui());
++  if (!history || args.size() < 4) {
++    ResolveJavascriptCallback(args[0], base::Value());
++    return;
++  }
++  history::QueryOptions options;
++  options.max_count =
++      std::clamp(args[3].is_int() ? args[3].GetInt() : 100, 1, kMaxResults);
++  options.duplicate_policy = history::QueryOptions::REMOVE_DUPLICATES_PER_DAY;
++  if (args[2].is_double() || args[2].is_int()) {
++    const double before = args[2].GetDouble();
++    if (before > 0) {
++      options.end_time = base::Time::FromMillisecondsSinceUnixEpoch(before);
++    }
++  }
++  const std::u16string text =
++      args[1].is_string() ? base::UTF8ToUTF16(args[1].GetString()) : u"";
++  history->QueryHistory(
++      text, options,
++      base::BindOnce(&LokaHistoryHandler::OnQueryDone,
++                     weak_factory_.GetWeakPtr(), args[0].Clone()),
++      &tracker_);
++}
++
++void LokaHistoryHandler::OnQueryDone(base::Value callback_id,
++                                     history::QueryResults results) {
++  base::ListValue items;
++  for (const history::URLResult& result : results) {
++    base::DictValue item;
++    item.Set("url", result.url().spec());
++    item.Set("title", base::UTF16ToUTF8(result.title()));
++    item.Set("time", result.visit_time().InMillisecondsFSinceUnixEpoch());
++    items.Append(std::move(item));
++  }
++  base::DictValue reply;
++  reply.Set("items", std::move(items));
++  reply.Set("done", results.reached_beginning());
++  ResolveJavascriptCallback(callback_id, reply);
++}
++
++void LokaHistoryHandler::HandleDeleteUrls(const base::ListValue& args) {
++  history::HistoryService* history = History(web_ui());
++  if (!history || args.empty() || !args[0].is_list()) {
++    return;
++  }
++  std::vector<GURL> urls;
++  for (const base::Value& url : args[0].GetList()) {
++    if (url.is_string()) {
++      urls.emplace_back(url.GetString());
++    }
++  }
++  history->DeleteURLs(urls);
++  OnDeleted();
++}
++
++void LokaHistoryHandler::HandleDeleteRange(const base::ListValue& args) {
++  history::HistoryService* history = History(web_ui());
++  if (!history || args.size() < 2) {
++    return;
++  }
++  const base::Time begin =
++      base::Time::FromMillisecondsSinceUnixEpoch(args[0].GetDouble());
++  const base::Time end =
++      base::Time::FromMillisecondsSinceUnixEpoch(args[1].GetDouble());
++  history->ExpireHistoryBetween(
++      std::set<GURL>(), std::nullopt, begin, end, /*user_initiated=*/true,
++      base::BindOnce(&LokaHistoryHandler::OnDeleted,
++                     weak_factory_.GetWeakPtr()),
++      &tracker_);
++}
++
++void LokaHistoryHandler::OnDeleted() {
++  AllowJavascript();
++  FireWebUIListener("history-changed");
++}
++
++void LokaHistoryHandler::HandleOpenUrl(const base::ListValue& args) {
++  if (args.size() < 2 || !args[0].is_string()) {
++    return;
++  }
++  GURL url(args[0].GetString());
++  if (!url.is_valid() || url.SchemeIs("javascript")) {
++    return;
++  }
++  tabs::TabInterface* tab =
++      tabs::TabInterface::MaybeGetFromContents(web_ui()->GetWebContents());
++  BrowserWindowInterface* browser =
++      tab ? tab->GetBrowserWindowInterface() : nullptr;
++  if (!browser) {
++    return;
++  }
++  NavigateParams params(browser, url, ui::PAGE_TRANSITION_AUTO_BOOKMARK);
++  params.disposition = args[1].is_bool() && args[1].GetBool()
++                           ? WindowOpenDisposition::NEW_FOREGROUND_TAB
++                           : WindowOpenDisposition::CURRENT_TAB;
++  Navigate(&params);
++}
+--- /dev/null
++++ b/chrome/browser/ui/webui/loka_sidebar/loka_history_ui.h
+@@ -0,0 +1,68 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_HISTORY_UI_H_
++#define CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_HISTORY_UI_H_
++
++#include "base/memory/weak_ptr.h"
++#include "base/task/cancelable_task_tracker.h"
++#include "base/values.h"
++#include "content/public/browser/web_ui_controller.h"
++#include "content/public/browser/web_ui_message_handler.h"
++#include "content/public/browser/webui_config.h"
++
++namespace history {
++class QueryResults;
++}
++
++class LokaHistoryUI;
++
++// Loka's History page at chrome://history, in place of Chrome's: the page is
++// history.html from the Loka sidebar's resources (webui/history.html).
++class LokaHistoryUIConfig : public content::DefaultWebUIConfig<LokaHistoryUI> {
++ public:
++  LokaHistoryUIConfig();
++  // Whether the build has Loka's History page; Chrome's stays until it does.
++  static bool HasPage();
++};
++
++class LokaHistoryUI : public content::WebUIController {
++ public:
++  explicit LokaHistoryUI(content::WebUI* web_ui);
++  LokaHistoryUI(const LokaHistoryUI&) = delete;
++  LokaHistoryUI& operator=(const LokaHistoryUI&) = delete;
++  ~LokaHistoryUI() override;
++
++ private:
++  WEB_UI_CONTROLLER_TYPE_DECL();
++};
++
++// Page -> browser (chrome.send):
++//   queryHistory(cb, text, beforeMs | 0, maxCount)
++//     -> {items: [{url, title, time}], done}
++//   deleteUrls([url]), deleteRange(beginMs, endMs), openUrl(url, newTab)
++// Browser -> page: "history-changed" after a deletion.
++class LokaHistoryHandler : public content::WebUIMessageHandler {
++ public:
++  LokaHistoryHandler();
++  LokaHistoryHandler(const LokaHistoryHandler&) = delete;
++  LokaHistoryHandler& operator=(const LokaHistoryHandler&) = delete;
++  ~LokaHistoryHandler() override;
++
++  // content::WebUIMessageHandler:
++  void RegisterMessages() override;
++
++ private:
++  void HandleQueryHistory(const base::ListValue& args);
++  void HandleDeleteUrls(const base::ListValue& args);
++  void HandleDeleteRange(const base::ListValue& args);
++  void HandleOpenUrl(const base::ListValue& args);
++  void OnQueryDone(base::Value callback_id, history::QueryResults results);
++  void OnDeleted();
++
++  base::CancelableTaskTracker tracker_;
++  base::WeakPtrFactory<LokaHistoryHandler> weak_factory_{this};
++};
++
++#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_HISTORY_UI_H_
+--- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.cc
-@@ -0,0 +1,616 @@
+@@ -0,0 +1,618 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -339,6 +889,8 @@
 +  add("setSidebarPinned", &LokaSidebarHandler::HandleSetSidebarPinned);
 +  add("getSidebarPinned", &LokaSidebarHandler::HandleGetSidebarPinned);
 +  add("setColorScheme", &LokaSidebarHandler::HandleSetColorScheme);
++  add("openCommandBar", &LokaSidebarHandler::HandleOpenCommandBar);
++  add("closeCommandBar", &LokaSidebarHandler::HandleCloseCommandBar);
 +}
 +
 +void LokaSidebarHandler::OnJavascriptAllowed() {
@@ -828,7 +1380,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h
-@@ -0,0 +1,194 @@
+@@ -0,0 +1,202 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -894,6 +1446,10 @@
 +  // and focuses it. False when that window has no sidebar to take it.
 +  static bool DispatchCommand(BrowserWindowInterface* browser,
 +                              const std::string& command);
++  // Hands `command` to the floating command bar's page of `browser`'s window.
++  // False while that page hasn't loaded yet.
++  static bool DeliverCommandBarCommand(BrowserWindowInterface* browser,
++                                       const std::string& command);
 +
 +  LokaSidebarHandler();
 +  LokaSidebarHandler(const LokaSidebarHandler&) = delete;
@@ -958,6 +1514,10 @@
 +  void HandleSetSidebarPinned(const base::ListValue& args);
 +  void HandleGetSidebarPinned(const base::ListValue& args);
 +  void HandleSetColorScheme(const base::ListValue& args);
++  void HandleOpenCommandBar(const base::ListValue& args);
++  void HandleCloseCommandBar(const base::ListValue& args);
++  // Whether this handler serves the floating command bar, not the sidebar.
++  bool IsCommandBarPage();
 +
 +  BrowserWindowInterface* GetBrowser();
 +  TabStripModel* GetTabStrip();
@@ -1025,7 +1585,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler_features.cc
-@@ -0,0 +1,563 @@
+@@ -0,0 +1,629 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1063,6 +1623,8 @@
 +#include "chrome/browser/ui/views/extensions/extension_popup.h"
 +#include "chrome/browser/ui/views/frame/browser_view.h"
 +#include "chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h"
++#include "chrome/browser/ui/views/loka/loka_command_bar.h"
++#include "components/loka_sidebar/resources/grit/loka_sidebar_generated_map.h"
 +#include "chrome/browser/ui/webui/extensions/extension_icon_source.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h"
 +#include "chrome/common/pref_names.h"
@@ -1095,6 +1657,22 @@
 +      std::map<BrowserWindowInterface*, LokaSidebarHandler*>>
 +      sidebars;
 +  return *sidebars;
++}
++
++// The same for each window's floating command bar page.
++std::map<BrowserWindowInterface*, LokaSidebarHandler*>& CommandBars() {
++  static base::NoDestructor<
++      std::map<BrowserWindowInterface*, LokaSidebarHandler*>>
++      bars;
++  return *bars;
++}
++
++// Whether the build has the command bar's own page; until it does, the
++// sidebar's built-in command bar takes the commands.
++bool HasCommandBarPage() {
++  return std::ranges::any_of(kLokaSidebarGenerated, [](const auto& resource) {
++    return std::string_view(resource.path) == "command.html";
++  });
 +}
 +
 +constexpr size_t kMaxDownloads = 30;
@@ -1148,6 +1726,10 @@
 +// static
 +bool LokaSidebarHandler::DispatchCommand(BrowserWindowInterface* browser,
 +                                         const std::string& command) {
++  if (HasCommandBarPage() && Sidebars().contains(browser)) {
++    LokaCommandBar::Show(browser, command);
++    return true;
++  }
 +  auto it = Sidebars().find(browser);
 +  if (it == Sidebars().end() || !it->second->IsJavascriptAllowed()) {
 +    return false;
@@ -1158,10 +1740,49 @@
 +  return true;
 +}
 +
++// static
++bool LokaSidebarHandler::DeliverCommandBarCommand(
++    BrowserWindowInterface* browser,
++    const std::string& command) {
++  auto it = CommandBars().find(browser);
++  if (it == CommandBars().end() || !it->second->IsJavascriptAllowed()) {
++    return false;
++  }
++  it->second->FireWebUIListener("command", base::Value(command));
++  return true;
++}
++
++bool LokaSidebarHandler::IsCommandBarPage() {
++  return web_ui()->GetWebContents()->GetVisibleURL().path() == "/command.html";
++}
++
++void LokaSidebarHandler::HandleOpenCommandBar(const base::ListValue& args) {
++  BrowserWindowInterface* browser = GetBrowser();
++  if (!browser || args.empty() || !args[0].is_string()) {
++    return;
++  }
++  DispatchCommand(browser, args[0].GetString());
++}
++
++void LokaSidebarHandler::HandleCloseCommandBar(const base::ListValue& args) {
++  if (BrowserWindowInterface* browser = GetBrowser()) {
++    LokaCommandBar::Hide(browser);
++  }
++}
++
 +void LokaSidebarHandler::StartObservingFeatures() {
 +  Profile* profile = Profile::FromWebUI(web_ui());
 +  if (BrowserWindowInterface* browser = GetBrowser()) {
-+    Sidebars()[browser] = this;
++    if (IsCommandBarPage()) {
++      CommandBars()[browser] = this;
++      // The bar was asked for before its page had loaded.
++      if (std::optional<std::string> command =
++              LokaCommandBar::TakePendingCommand(browser)) {
++        FireWebUIListener("command", base::Value(*command));
++      }
++    } else {
++      Sidebars()[browser] = this;
++    }
 +  }
 +  if (auto* model = ToolbarActionsModel::Get(profile);
 +      model && !toolbar_observation_.IsObserving()) {
@@ -1178,8 +1799,10 @@
 +}
 +
 +void LokaSidebarHandler::StopObservingFeatures() {
-+  for (auto it = Sidebars().begin(); it != Sidebars().end();) {
-+    it = it->second == this ? Sidebars().erase(it) : std::next(it);
++  for (auto* map : {&Sidebars(), &CommandBars()}) {
++    for (auto it = map->begin(); it != map->end();) {
++      it = it->second == this ? map->erase(it) : std::next(it);
++    }
 +  }
 +  toolbar_observation_.Reset();
 +  action_observation_.Reset();
@@ -1547,9 +2170,12 @@
 +      continue;
 +    }
 +    base::DictValue data;
-+    data.Set("kind", SuggestionKind(match));
++    const std::string kind = SuggestionKind(match);
++    data.Set("kind", kind);
++    // A search's description is the engine's name; its contents are the words.
 +    const std::u16string& title =
-+        match.description.empty() ? match.contents : match.description;
++        kind == "search" || match.description.empty() ? match.contents
++                                                       : match.description;
 +    data.Set("title", base::UTF16ToUTF8(title));
 +    data.Set("url", match.destination_url.spec());
 +    list.Append(std::move(data));

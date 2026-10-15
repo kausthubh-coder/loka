@@ -2,8 +2,7 @@
 
 Essentials is the icon grid at the top of the sidebar, up to four per row (fewer fill the row, so one is one big
 tile). Every space shares it. A user drags tabs in, reorders them, and removes them back to the open tabs. With none,
-it takes no room: while a tab is dragged a tray of three slots eases open, and a one-time hint row (for new users with
-three or more open tabs, dismissible) says what it's for.
+it takes no room and says nothing: while a tab is dragged, three empty tiles grow into place to drop on.
 
 ## Sub-features
 
@@ -12,8 +11,8 @@ three or more open tabs, dismissible) says what it's for.
 - `essentials-reorder` drags a tile onto another tile's edge.
 - `essentials-remove` uses right-click on a tile > `Remove from Essentials` (moves to the top of the open tabs).
 - `essentials-shared` shows the same tiles in every space, while the active tile is per space.
-- `essentials-empty`: the tray while dragging, the hint and its dismiss (`essentialsHintDismissed` in the window
-  prefs). Rules in `empty-states.logic.ts`.
+- `essentials-empty`: no room and no hint when empty; the slots only while a tab is dragged. Rules in
+  `empty-states.logic.ts`.
 
 ## How to get to it (user POV)
 

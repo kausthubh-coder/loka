@@ -44,7 +44,6 @@ import {
 	readUi,
 	watch,
 	writeState,
-	writeUi,
 } from "./store";
 import { browserTabOf, changeSpaces, linkedTabs, spacesChanged, startSync } from "./sync";
 
@@ -278,6 +277,13 @@ export class LokaPanel extends LitElement {
 		if (tab) browser.setMuted(tab.id, !tab.muted);
 	}
 
+	/** Reloads a loaded tab's page; an unloaded tab loads by being shown. */
+	private reloadTab(tabId: TabId) {
+		const browserId = browserTabOf(tabId);
+		if (browserId !== undefined) browser.reload(browserId);
+		else this.apply((s) => activateTab(s, tabId));
+	}
+
 	private run(action: ActionId) {
 		const state = this.state;
 		if (!state) return;
@@ -399,13 +405,9 @@ export class LokaPanel extends LitElement {
 					.live=${this.live}
 					.browser=${browser}
 					.pinned=${this.pinned}
-					.hintDismissed=${this.ui.essentialsHintDismissed}
 					.demo=${false}
-					@loka-dismiss-hint=${() => {
-						this.ui = { ...this.ui, essentialsHintDismissed: true };
-						void writeUi(this.ui);
-					}}
 					@loka-tab-mute=${(e: CustomEvent<string>) => this.toggleMute(e.detail)}
+					@loka-tab-reload=${(e: CustomEvent<string>) => this.reloadTab(e.detail)}
 				></loka-sidebar>
 				${
 					this.command

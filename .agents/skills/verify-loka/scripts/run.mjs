@@ -320,11 +320,12 @@ const recipes = {
 		assert.deepEqual(o.open, ["Hacker News"], "both left the open tabs");
 		await loka.proof("01-tab-on-tab");
 
-		// Right-click empty sidebar space for a new folder; there is no toolbar button for it.
+		// Right-click the sidebar's background (here the divider's empty line) for a new folder; there is no toolbar
+		// button for it.
 		assert.equal(await loka.sidebar.getByRole("button", { name: "New folder", exact: true }).count(), 0);
-		const empty = await loka.sidebar.locator(".scroll").boundingBox();
-		if (!empty) throw new Error("no sidebar list");
-		await loka.page.mouse.click(empty.x + 120, empty.y + empty.height - 12, { button: "right" });
+		const empty = await loka.sidebar.locator(".divider").boundingBox();
+		if (!empty) throw new Error("no divider");
+		await loka.page.mouse.click(empty.x + 60, empty.y + empty.height / 2, { button: "right" });
 		await loka.menuItem("New folder").click();
 		await loka.page.keyboard.type("Later");
 		await loka.page.keyboard.press("Enter");

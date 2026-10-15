@@ -464,6 +464,7 @@ export class LokaApp extends LitElement {
 					.pinned=${this.pinned}
 					.scheme=${scheme}
 					.historyBridge=${fakeHistory}
+					.browser=${fakeBrowser}
 				></loka-page>
 				${
 					popupExtension && this.popup

@@ -1,4 +1,5 @@
 import { css, html, LitElement } from "lit";
+import type { Browser } from "../../../../webui/src/bridge";
 import type { HistoryBridge } from "../../../../webui/src/history-bridge";
 import type { Update } from "../../app/loka-app";
 import type { UiPrefs } from "../../app/ui-prefs.logic";
@@ -20,6 +21,7 @@ export class LokaPage extends LitElement {
 		pinned: { attribute: false },
 		scheme: { reflect: true },
 		historyBridge: { attribute: false },
+		browser: { attribute: false },
 	};
 
 	declare tab: Tab | null;
@@ -31,6 +33,8 @@ export class LokaPage extends LitElement {
 	declare pinned: boolean;
 	/** Where the stand-in History page (loka://history) gets its visits: the prototype's fake. */
 	declare historyBridge: HistoryBridge;
+	/** The browser the stand-in Settings page talks to: the prototype's fake. */
+	declare browser: Browser;
 	/** Web pages follow the scheme the space asked the browser for, as they would through prefers-color-scheme. */
 	scheme: "light" | "dark" = "light";
 
@@ -44,6 +48,7 @@ export class LokaPage extends LitElement {
 					.ui=${this.ui}
 					.setUi=${this.setUi}
 					.pinned=${this.pinned}
+					.browser=${this.browser}
 				></loka-settings>
 			</section>`;
 		}
@@ -120,7 +125,7 @@ export class LokaPage extends LitElement {
 			overflow-y: auto;
 			--history-bg: hsl(var(--hue) 25% 9%);
 		}
-		:host([scheme="light"]) .frame.history {
+		:host([scheme="light"]) .frame.inside {
 			background: hsl(var(--hue) 50% 96% / 0.9);
 			color: var(--loka-ink);
 			--history-bg: hsl(var(--hue) 50% 96%);

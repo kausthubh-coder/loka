@@ -2,7 +2,8 @@
 // actually did. Each flow drives the real UI (mouse, keyboard, drags, menus over CDP Input) and checks both the
 // sidebar (its rows, its saved spaces) and the browser (its tabs, tab groups, pages).
 //
-//   bun run verify:flows      binary from LOKA_CHROME, else C:\src\loka\build\src\out\Default\chrome.exe
+//   bun run verify:flows      binary from LOKA_CHROME, else the dev build, else the snapshot (testBinary)
+//   bun run verify:flows -- --only tabs   one flow, after first run and the flows it builds on (NEEDS below)
 //
 // One throwaway profile (C:\src\loka\profile-qa-<time>) goes through the flows in order, since each builds on the
 // last; the last one quits and starts the browser again on it. A tiny unpacked extension with a popup and a badge is
@@ -1607,19 +1608,12 @@ async function restart() {
 
 // ---- main ---------------------------------------------------------------------------------------------------------
 
+/** What a flow needs from earlier ones besides first run's spaces: the QA pages that tabs opens. */
+const NEEDS = { "4-states": ["3-tabs"], "5-pinning": ["3-tabs"], "7-panels": ["3-tabs"], "8-settings": ["3-tabs"] };
+
 async function main() {
-	if (!existsSync(chrome)) {
-		console.error(`No browser at ${chrome}. Build it (bun run browser:build) or set LOKA_CHROME.`);
-		process.exit(2);
-	}
-	refuseWhileBuilding(chrome);
-	mkdirSync(evidence, { recursive: true });
-	mkdirSync(profile, { recursive: true });
-	writeExtension();
-	log.stream = createWriteStream(join(evidence, "chrome.log"));
-	const { server, host } = await startPages();
 	/** @type {[string, () => Promise<unknown>][]} */
-	const flows = [
+	const all = [
 		["1-first-run", firstRun],
 		["2-spaces", spaces],
 		["3-tabs", tabs],
@@ -1630,6 +1624,29 @@ async function main() {
 		["8-settings", settings],
 		["9-restart", restart],
 	];
+	// --only <flow> runs that flow after the ones it builds on (first run always; restart needs them all).
+	const onlyAt = process.argv.indexOf("--only");
+	const only = onlyAt > 0 ? (process.argv[onlyAt + 1] ?? "") : "";
+	const wanted = all.map(([n]) => n).find((n) => n === only || n.slice(2) === only);
+	if (onlyAt > 0 && !wanted) {
+		console.error(`--only takes one of: ${all.map(([n]) => n.slice(2)).join(", ")}`);
+		process.exit(1);
+	}
+	const keep =
+		!wanted || wanted === "9-restart"
+			? all.map(([n]) => n)
+			: ["1-first-run", ...(NEEDS[/** @type {keyof typeof NEEDS} */ (wanted)] ?? []), wanted];
+	const flows = all.filter(([n]) => keep.includes(n));
+	if (!existsSync(chrome)) {
+		console.error(`No browser at ${chrome}. Build it (bun run browser:build) or set LOKA_CHROME.`);
+		process.exit(2);
+	}
+	refuseWhileBuilding(chrome);
+	mkdirSync(evidence, { recursive: true });
+	mkdirSync(profile, { recursive: true });
+	writeExtension();
+	log.stream = createWriteStream(join(evidence, "chrome.log"));
+	const { server, host } = await startPages();
 	try {
 		ctx = { browser: await launch(), sidebar: /** @type {Sidebar} */ (/** @type {unknown} */ (null)), host };
 		for (const [name, run] of flows) {

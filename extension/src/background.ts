@@ -181,7 +181,10 @@ chrome.tabs.onUpdated.addListener((browserId, change, t) => {
 	if (!tab) return;
 	void serial("browser", async (s) => {
 		const lokaId = Object.entries(live).find(([, id]) => id === browserId)?.[0];
-		if (lokaId && change.audible) {
+		// Loka's own pages (Settings, the tour) are audible for a moment when they play an interface sound; that
+		// isn't something playing.
+		const ownPage = tab.url.startsWith(chrome.runtime.getURL(""));
+		if (lokaId && change.audible && !ownPage) {
 			// Something started playing: it becomes the sidebar's now-playing card.
 			await writeSession({
 				media: { tabId: lokaId, artist: hostOf(tab.url), playing: true, muted: t.mutedInfo?.muted ?? false },

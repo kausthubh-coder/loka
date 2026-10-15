@@ -84,21 +84,31 @@ export class LokaPanel extends LitElement {
 	private icons = new Map<TabId, string>();
 	private sentScheme: string | null = null;
 
+	/**
+	 * A change saved but not yet drawn, while the crossfade captures the old look (one frame). Later changes build on
+	 * it, never on what's on screen.
+	 */
+	private pending: BrowserState | null = null;
+
 	apply: Update = (change) => {
-		const before = this.state;
+		const before = this.pending ?? this.state;
 		if (!before) return;
 		const next = change(before);
-		const commit = () => {
-			this.state = next;
-			void writeState(next).then(spacesChanged);
-		};
+		void writeState(next).then(spacesChanged);
+		this.followScheme(next);
+		if (this.pending) {
+			this.pending = next;
+			return;
+		}
 		// A space in the other scheme crossfades the whole sidebar rather than snapping every color at once.
 		if (this.schemeOf(next) !== this.schemeOf(before) && !reducedMotion() && document.startViewTransition) {
+			this.pending = next;
 			document.startViewTransition(async () => {
-				commit();
+				this.state = this.pending ?? next;
+				this.pending = null;
 				await this.updateComplete;
 			});
-		} else commit();
+		} else this.state = next;
 	};
 
 	private schemeOf(state: BrowserState, preview = this.preview): Scheme {
@@ -182,16 +192,19 @@ export class LokaPanel extends LitElement {
 			const forward = switchesForward(state, before.activeSpaceId, state.activeSpaceId);
 			skyTurn(this.renderRoot, forward, activeSpace(before).hue, this.schemeOf(before, null));
 		}
-		// The browser and its pages follow the space's own choice; "system" hands it back to the computer.
-		const scheme = activeSpace(state).scheme;
-		if (scheme !== this.sentScheme) {
-			this.sentScheme = scheme;
-			browser.setColorScheme(scheme);
-		}
+		this.followScheme(this.pending ?? state);
 		// Scrollbars and form controls in this page match what it shows.
 		document.documentElement.style.colorScheme = this.schemeOf(state);
 		// Unpinned, the browser floats this page over the window: its rounded corners show what's behind.
 		document.body.style.background = this.pinned ? "" : "transparent";
+	}
+
+	/** The browser and its pages follow the space's own choice; "system" hands it back to the computer. */
+	private followScheme(state: BrowserState) {
+		const scheme = activeSpace(state).scheme;
+		if (scheme === this.sentScheme) return;
+		this.sentScheme = scheme;
+		browser.setColorScheme(scheme);
 	}
 
 	private onKey = (e: KeyboardEvent) => {

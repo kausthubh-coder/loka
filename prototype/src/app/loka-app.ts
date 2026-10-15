@@ -105,21 +105,30 @@ export class LokaApp extends LitElement {
 	private sentScheme: string | null = null;
 	private stops: (() => void)[] = [];
 
+	/**
+	 * A change saved but not yet drawn, while the crossfade captures the old look (one frame). Later changes build on
+	 * it, never on what's on screen.
+	 */
+	private pending: BrowserState | null = null;
+
 	apply: Update = (change) => {
-		const before = this.state;
+		const before = this.pending ?? this.state;
 		const next = change(before);
-		const flips = this.schemeOf(next) !== this.schemeOf(before);
-		const commit = () => {
-			this.state = next;
-			localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-		};
+		localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+		this.followScheme(next);
+		if (this.pending) {
+			this.pending = next;
+			return;
+		}
 		// A space in the other scheme crossfades the whole window rather than snapping every color at once.
-		if (flips && !reducedMotion() && document.startViewTransition) {
+		if (this.schemeOf(next) !== this.schemeOf(before) && !reducedMotion() && document.startViewTransition) {
+			this.pending = next;
 			document.startViewTransition(async () => {
-				commit();
+				this.state = this.pending ?? next;
+				this.pending = null;
 				await this.updateComplete;
 			});
-		} else commit();
+		} else this.state = next;
 	};
 
 	setUi = (change: Partial<UiPrefs>) => {
@@ -364,7 +373,10 @@ export class LokaApp extends LitElement {
 				this.tabs = t;
 			}),
 			onDemoPopup((id, anchor) => {
-				this.popup = this.popup?.id === id ? null : { id, x: anchor.x, y: anchor.y + anchor.height + 6 };
+				// After the click that asked for it has finished bubbling, or the window's click would close it again.
+				window.setTimeout(() => {
+					this.popup = this.popup?.id === id ? null : { id, x: anchor.x, y: anchor.y + anchor.height + 6 };
+				});
 			}),
 		];
 	}
@@ -375,12 +387,15 @@ export class LokaApp extends LitElement {
 			const forward = switchesForward(this.state, before.activeSpaceId, this.state.activeSpaceId);
 			skyTurn(this.renderRoot, forward, activeSpace(before).hue, this.schemeOf(before, null));
 		}
-		// The browser and its pages follow the space's own choice; "system" hands it back to the computer.
-		const scheme = activeSpace(this.state).scheme;
-		if (scheme !== this.sentScheme) {
-			this.sentScheme = scheme;
-			fakeBrowser.setColorScheme(scheme);
-		}
+		this.followScheme(this.pending ?? this.state);
+	}
+
+	/** The browser and its pages follow the space's own choice; "system" hands it back to the computer. */
+	private followScheme(state: BrowserState) {
+		const scheme = activeSpace(state).scheme;
+		if (scheme === this.sentScheme) return;
+		this.sentScheme = scheme;
+		fakeBrowser.setColorScheme(scheme);
 	}
 
 	override disconnectedCallback() {
@@ -536,6 +551,8 @@ export class LokaApp extends LitElement {
 			position: relative;
 			display: grid;
 			grid-template-columns: var(--sidebar) 1fr;
+			/* One row the window's height, so long pages (Settings, History) scroll inside it instead of growing it. */
+			grid-template-rows: minmax(0, 1fr);
 			grid-template-areas: "side page";
 			height: 100%;
 			/* clip, not hidden: nothing (a focus, a scroll into view) can scroll the window itself. */

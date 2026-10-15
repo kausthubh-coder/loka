@@ -93,7 +93,7 @@ export class LokaExtensions extends LitElement {
 					: html`<ul>
 							${(list ?? []).map(
 								(x) => html`<li>
-									<button class="row" title="Open ${x.name}" @click=${(e: Event) => this.run(e, x.id)}>
+									<button class="row" aria-label="Open ${x.name}" @click=${(e: Event) => this.run(e, x.id)}>
 										${extensionIcon(x, 22)}
 										<span class="name">${x.name}</span>
 									</button>

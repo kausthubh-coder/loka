@@ -1,5 +1,5 @@
 // Runs the mapped feature recipes against the running prototype and saves evidence.
-//   node .agents/skills/verify-loka/scripts/run.mjs <folders|spaces|tabs|essentials|export-import|command-bar|space-editor|layout|make-folders|archive|search-and-keys|import|media|sound|onboarding|all>
+//   node .agents/skills/verify-loka/scripts/run.mjs <folders|spaces|tabs|essentials|export-import|command-bar|space-editor|layout|make-folders|archive|search-and-keys|import|media|theme|extensions|history|sound|onboarding|all>
 // Each recipe starts from fresh seed data, drives the UI the way a user does, asserts the saved state,
 // and writes screenshots, ARIA snapshots and outlines to .agents/verify-runs/<time>-<feature>/.
 
@@ -247,8 +247,8 @@ const recipes = {
 		await loka.page.mouse.down();
 		await loka.page.mouse.move(handle.x + handle.width / 2 + 80, 400, { steps: 6 });
 		await loka.page.mouse.up();
-		assert.equal((await loka.ui()).sidebarWidth, 352, "dragging the edge saved the new width");
-		assert.equal(Math.round((await box("loka-sidebar")).width), 352);
+		assert.equal((await loka.ui()).sidebarWidth, 380, "dragging the edge saved the new width");
+		assert.equal(Math.round((await box("loka-sidebar")).width), 380);
 		await loka.proof("01-wider");
 
 		await loka.sidebar.getByRole("button", { name: "More" }).click();
@@ -259,25 +259,37 @@ const recipes = {
 		await loka.proof("02-sidebar-right");
 		await settings.getByRole("radio", { name: "Left" }).click();
 
-		await loka.page.keyboard.press("Control+s");
-		await loka.page.waitForTimeout(300);
-		assert.equal((await loka.ui()).sidebarHidden, true, "Ctrl+S hid the sidebar");
-		assert.ok((await box("loka-sidebar")).x + 352 <= 0, "a hidden sidebar is off screen");
+		// The top row's button hides the sidebar: the browser (here the fake) unpins it and slides it away.
+		await loka.sidebar.getByRole("button", { name: "Hide sidebar" }).click();
+		await loka.page.waitForTimeout(350);
+		assert.deepEqual(await demoCalls(loka, "setSidebarPinned"), [[false]], "the button asked the browser to unpin");
+		assert.ok((await box("loka-sidebar")).x + 380 <= 0, "a hidden sidebar is off screen");
 		await loka.proof("03-hidden");
 		await loka.page.mouse.move(2, 400);
 		await loka.page.mouse.move(4, 420);
 		await loka.page.waitForTimeout(350);
 		assert.ok((await box("loka-sidebar")).x >= 0, "reaching the edge slides it in");
 		await loka.proof("04-peek");
+		// The same button, now "Keep sidebar open", pins it back; Ctrl+S toggles it too.
+		await loka.sidebar.getByRole("button", { name: "Keep sidebar open" }).click();
 		await loka.page.keyboard.press("Control+s");
+		await loka.page.keyboard.press("Control+s");
+		assert.deepEqual(await demoCalls(loka, "setSidebarPinned"), [[false], [true], [false], [true]]);
 
-		// Downloads is a toolbar panel, like Extensions.
+		// Downloads is a panel in the address field, like Extensions.
 		await loka.sidebar.getByRole("button", { name: "Downloads", exact: true }).click();
 		const downloads = loka.sidebar.getByRole("dialog", { name: "Downloads" });
-		await downloads.getByRole("button", { name: "Retry" }).click();
-		assert.equal(await downloads.getByRole("progressbar").count(), 2, "retrying a failed download restarts it");
+		assert.equal(await downloads.getByRole("progressbar").count(), 2, "one running, one paused");
+		await downloads.getByRole("button", { name: "Try again lofi-cover.png" }).click();
+		assert.equal(await downloads.getByRole("progressbar").count(), 3, "trying a failed download again restarts it");
+		await downloads.getByRole("button", { name: /^Pause helium/ }).click();
+		assert.deepEqual(await demoCalls(loka, "downloadAction"), [
+			[3, "retry"],
+			[6, "pause"],
+		]);
 		await loka.proof("05-downloads");
 		await loka.page.keyboard.press("Escape");
+		await loka.page.waitForTimeout(200);
 		assert.equal(await downloads.count(), 0, "Escape closes the panel");
 	},
 
@@ -410,20 +422,107 @@ const recipes = {
 	},
 
 	async media(loka) {
-		// Lo-fi beats plays in Home, so its card shows in Build.
-		const card = loka.sidebar.getByRole("region", { name: "Now playing: Lo-fi beats" });
+		// The Lo-fi beats tab in Home plays (the fake's media session), so its card shows in Build.
+		const card = loka.sidebar.getByRole("region", { name: /^Now playing: / });
 		await card.waitFor();
+		assert.equal(await card.getAttribute("aria-label"), "Now playing: Snowman", "the media session's own title");
 		await loka.proof("01-card");
+		await card.getByRole("button", { name: "Next track" }).click();
+		await loka.sidebar.getByRole("region", { name: "Now playing: Coffee Break" }).waitFor();
 		await card.getByRole("button", { name: "Pause" }).click();
 		await card.getByRole("button", { name: "Play" }).waitFor();
 		await card.getByRole("button", { name: "Mute" }).click();
 		await card.getByRole("button", { name: "Unmute" }).waitFor();
+		assert.deepEqual(await demoCalls(loka, "mediaAction"), [
+			[101, "next"],
+			[101, "pause"],
+		]);
 		await card.getByRole("button", { name: "Go to Lo-fi beats" }).first().click();
 		const o = await loka.outline();
 		assert.deepEqual([o.space, o.activeTab], ["Home", "Lo-fi beats"], "the card took us to the playing tab");
-		assert.equal(await card.count(), 0, "no card while the playing tab is on screen");
+		await card.waitFor({ state: "detached" });
 		await loka.page.keyboard.press("Control+1");
 		await card.waitFor();
+	},
+
+	async theme(loka) {
+		// Build is dark, School light, Home follows the system (the test browser is light).
+		const scheme = () =>
+			loka.page.evaluate(() => {
+				const w = document.querySelector("loka-app")?.shadowRoot?.querySelector(".window");
+				return w?.classList.contains("theme-light") ? "light" : "dark";
+			});
+		assert.equal(await scheme(), "dark");
+		await loka.page.keyboard.press("Control+2");
+		await loka.page.waitForTimeout(800);
+		assert.equal(await scheme(), "light", "School is light");
+		await loka.proof("01-school-light");
+		await loka.page.keyboard.press("Control+3");
+		await loka.page.waitForTimeout(800);
+		assert.equal(await scheme(), "light", "Home follows the system");
+		assert.deepEqual(
+			await demoCalls(loka, "setColorScheme"),
+			[["dark"], ["light"], ["system"]],
+			"the browser was told each time",
+		);
+
+		// The space editor sets it, and it's saved with the space.
+		await loka.sidebar.getByRole("button", { name: "Spaces: Home", exact: true }).click();
+		await loka.menuItem("Edit this space").click();
+		const editor = loka.page.getByRole("dialog", { name: "Edit Home" });
+		await editor.getByRole("radio", { name: "Dark" }).click();
+		await loka.page.waitForTimeout(300);
+		assert.equal(await scheme(), "dark", "the window previews the choice");
+		await loka.proof("02-editor-dark");
+		await editor.getByRole("button", { name: "Save" }).click();
+		const home = (await loka.state()).spaces.find((/** @type {{ id: string }} */ s) => s.id === "s-home");
+		assert.equal(home.scheme, "dark");
+		assert.deepEqual((await demoCalls(loka, "setColorScheme")).at(-1), ["dark"]);
+	},
+
+	async extensions(loka) {
+		// The fake browser has five extensions; uBlock Origin and Bitwarden are pinned into the address field.
+		const ublock = loka.sidebar.getByRole("button", { name: "uBlock Origin", exact: true });
+		await ublock.click();
+		const [id, anchor] = /** @type {[string, { x: number; y: number }]} */ ((await demoCalls(loka, "runExtension"))[0]);
+		const box = await ublock.boundingBox();
+		assert.equal(id, "cjpalhdlnbpafiamejdnhcphjbkeiagm");
+		assert.deepEqual([anchor.x, anchor.y], [box?.x, box?.y], "the popup opens at the button");
+		await loka.page.getByRole("dialog", { name: "uBlock Origin popup" }).waitFor();
+		await loka.proof("01-popup");
+
+		await loka.sidebar.getByRole("button", { name: "Extensions", exact: true }).click();
+		const panel = loka.sidebar.getByRole("dialog", { name: "Extensions" });
+		await panel.getByRole("button", { name: "Pin Dark Reader" }).click();
+		await loka.sidebar.getByRole("button", { name: "Dark Reader", exact: true }).waitFor();
+		assert.deepEqual(await demoCalls(loka, "setExtensionPinned"), [["eimadpbcbfnmbkopoojfekhnkhdbieeh", true]]);
+		await loka.proof("02-pinned-dark-reader");
+	},
+
+	async history(loka) {
+		await loka.page.keyboard.press("Control+h");
+		const history = loka.page.locator("loka-history");
+		await history.getByRole("heading", { name: "Today" }).waitFor();
+		await history.getByRole("searchbox", { name: "Search history" }).fill("lit:");
+		await loka.page.waitForTimeout(400);
+		// textContent, not innerText: days off screen aren't rendered (content-visibility), so their innerText is empty.
+		const titles = await history.getByRole("option").allTextContents();
+		assert.ok(titles.length > 0 && titles.every((t) => t.includes("Lit:")), "the search narrows the list");
+		await loka.proof("01-search");
+		const firstTitle = (await history.getByRole("option").first().locator(".title").textContent()) ?? "";
+		await history.getByRole("checkbox").nth(0).click();
+		await history
+			.getByRole("checkbox")
+			.nth(2)
+			.click({ modifiers: ["Shift"] });
+		await history.getByText("3 selected").waitFor();
+		await history.getByRole("button", { name: "Delete" }).click();
+		await loka.page.waitForTimeout(300);
+		const left = await history.getByRole("option").allTextContents();
+		assert.ok(left.length <= titles.length - 3, "the picked visits are gone (every visit to their pages)");
+		assert.equal(await history.getByText("3 selected").count(), 0, "and nothing is picked any more");
+		assert.ok(firstTitle.length > 0);
+		await loka.proof("02-deleted");
 	},
 
 	async sound(loka) {
@@ -471,6 +570,11 @@ const recipes = {
 		assert.equal(await tones(), 0, "with sound off, nothing plays");
 	},
 };
+
+/** What the sidebar asked the fake browser to do, by message, as argument lists. @param {Loka} loka @param {string} message */
+async function demoCalls(loka, message) {
+	return loka.page.evaluate((m) => window.lokaDemo.calls.filter((c) => c.message === m).map((c) => c.args), message);
+}
 
 /** Waits until the tour's step has finished fading in, so its screenshot isn't blank on a busy machine. @param {Loka} loka */
 async function settled(loka) {

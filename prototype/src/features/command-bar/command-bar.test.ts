@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { NativeSuggestion } from "../../../../webui/src/bridge";
 import { seedState } from "../sidebar/sidebar.seed";
-import { commandResults, isActionId, isSearch, toUrl } from "./command-bar.logic";
+import { commandResults, dotCom, engineName, isActionId, isSearch, toUrl } from "./command-bar.logic";
 
 test("an address without a scheme gets https", () => {
 	expect(toUrl("lit.dev/playground")).toBe("https://lit.dev/playground");
@@ -22,7 +22,7 @@ const lines = (query: string) =>
 	commandResults(seedState(), query).map((r) => `${r.kind}:${r.label}${r.kind === "tab" ? ` (${r.detail})` : ""}`);
 
 test("typing a word offers the search first, then matching tabs from any space", () => {
-	expect(lines("canvas")).toEqual(['go:Search for "canvas"', "tab:Canvas: CSC 281 (School)"]);
+	expect(lines("canvas")).toEqual(["go:canvas", "tab:Canvas: CSC 281 (School)"]);
 });
 
 test("a site name finds tabs by their address too", () => {
@@ -30,7 +30,7 @@ test("a site name finds tabs by their address too", () => {
 });
 
 test("commands are found by their words, not only their label", () => {
-	expect(lines("preferences")).toEqual(['go:Search for "preferences"', "action:Settings"]);
+	expect(lines("preferences")).toEqual(["go:preferences", "action:Settings"]);
 });
 
 test("an empty bar lists this space's open tabs and every command, with nothing to search", () => {
@@ -66,13 +66,30 @@ const withBrowser = (query: string, suggestionsFor: string, links = {}) =>
 		(r) => `${r.group}|${r.kind}:${r.label}`,
 	);
 
-test("once the browser answers, its first suggestion is what was typed and its others follow the tabs", () => {
+test("once the browser answers, its first suggestion is what was typed; the rest go into tabs, history, bookmarks", () => {
 	expect(withBrowser("git rebase", "git rebase", { "t-helium": 41 })).toEqual([
 		"|go:git rebase",
-		"Suggestions|go:Git - git-rebase Documentation",
-		"Suggestions|go:Pro Git book",
-		"Suggestions|tab:imputnet/helium-windows",
-		"Suggestions|browser-tab:Gitea",
+		"Tabs|tab:imputnet/helium-windows",
+		"Tabs|browser-tab:Gitea",
+		"History|go:Git - git-rebase Documentation",
+		"Bookmarks|go:Pro Git book",
+	]);
+});
+
+test("the first row says what Enter does: search with the user's engine, or go to the address", () => {
+	const first = (suggestion: NativeSuggestion, query: string) =>
+		commandResults(seedState(), query, { suggestions: [suggestion], suggestionsFor: query })[0];
+	const search = first({ kind: "search", title: "lit", url: "https://www.google.com/search?q=lit" }, "lit");
+	expect([search?.label, search?.detail]).toEqual(["lit", "Search with Google"]);
+	const url = first({ kind: "url", title: "", url: "https://lit.dev/docs/" }, "lit.dev/docs");
+	expect(url?.label).toBe("Go to lit.dev/docs");
+});
+
+test("Ctrl+Enter on one word goes to its .com", () => {
+	expect([dotCom("Wikipedia"), dotCom("two words"), dotCom("lit.dev")]).toEqual([
+		"https://www.wikipedia.com/",
+		null,
+		null,
 	]);
 });
 
@@ -83,14 +100,14 @@ test("a browser tab Loka already lists isn't suggested twice", () => {
 
 test("suggestions for earlier words stay while typing, but only the ones that still match, under Loka's own guess", () => {
 	const lines = withBrowser("git-scm.com", "git");
-	expect(lines[0]).toBe("|go:Open git-scm.com");
-	expect(lines).toContain("Suggestions|go:Git - git-rebase Documentation");
-	expect(lines).not.toContain("Suggestions|go:git rebase");
-	expect(lines).not.toContain("Suggestions|browser-tab:Gitea");
+	expect(lines[0]).toBe("|go:Go to git-scm.com");
+	expect(lines).toContain("History|go:Git - git-rebase Documentation");
+	expect(lines).not.toContain("History|go:git rebase");
+	expect(lines).not.toContain("Tabs|browser-tab:Gitea");
 });
 
 test("suggestions for other words are dropped", () => {
-	expect(withBrowser("canvas", "git").filter((l) => l.startsWith("Suggestions"))).toEqual([]);
+	expect(withBrowser("canvas", "git").filter((l) => /^(History|Bookmarks)/.test(l))).toEqual([]);
 });
 
 test("Loka's own search remembers the words, so the browser can search with the user's engine", () => {
@@ -123,4 +140,12 @@ test("a suggestion for a page already listed as a tab isn't shown again, trailin
 	];
 	const results = commandResults(seedState(), "zen", { suggestions, suggestionsFor: "zen" });
 	expect(results.filter((r) => r.label === "Zen Browser").map((r) => r.kind)).toEqual(["tab"]);
+});
+
+test("a search address names its engine when it's a known one", () => {
+	expect([
+		engineName("https://duckduckgo.com/?q=a"),
+		engineName("https://search.brave.com/search?q=a"),
+		engineName("https://search.example/?q=a"),
+	]).toEqual(["DuckDuckGo", "Brave Search", "search.example"]);
 });

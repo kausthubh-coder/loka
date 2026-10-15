@@ -35,7 +35,7 @@ export type ActionId =
 	| "archive"
 	| "onboarding";
 
-export type ResultGroup = "" | "Tabs" | "Suggestions" | "Spaces" | "Commands";
+export type ResultGroup = "" | "Tabs" | "History" | "Bookmarks" | "Spaces" | "Commands";
 
 /**
  * One row of the bar. `go` opens an address; its `search` is the words when it's a search Loka made up itself (the
@@ -92,11 +92,46 @@ export interface ResultContext {
 	pinned?: boolean;
 }
 
-function fromSuggestion(s: NativeSuggestion, group: ResultGroup): CommandResult {
-	const icon =
-		s.kind === "search" ? "search" : s.kind === "history" ? "history" : s.kind === "bookmark" ? "bookmark" : "globe";
-	const label = s.title || (s.kind === "url" ? `Open ${hostOf(s.url)}` : s.url);
-	return { kind: "go", url: s.url, icon, label, detail: s.kind === "search" ? "Search" : hostOf(s.url), group };
+const ENGINES: [RegExp, string][] = [
+	[/(^|\.)duckduckgo\./, "DuckDuckGo"],
+	[/(^|\.)google\./, "Google"],
+	[/(^|\.)bing\./, "Bing"],
+	[/^search\.brave\./, "Brave Search"],
+	[/(^|\.)startpage\./, "Startpage"],
+	[/(^|\.)kagi\./, "Kagi"],
+	[/(^|\.)ecosia\./, "Ecosia"],
+];
+
+/** The search engine a search address belongs to, by name when it's a known one, else its site. */
+export function engineName(url: string): string {
+	const host = hostOf(url);
+	return ENGINES.find(([pattern]) => pattern.test(host))?.[1] ?? host;
+}
+
+/** An address as the bar shows it: no scheme, no trailing slash. */
+function shortUrl(url: string): string {
+	return url.replace(/^https?:\/\//, "").replace(/\/$/, "");
+}
+
+/** Ctrl+Enter on a single word goes to its .com, the way browsers have always done it. */
+export function dotCom(query: string): string | null {
+	const word = query.trim();
+	return /^[a-z0-9-]+$/i.test(word) ? `https://www.${word.toLowerCase()}.com/` : null;
+}
+
+/** The first row: what Enter does with what was typed, said the way Zen says it. */
+function typedRow(s: NativeSuggestion, query: string): CommandResult {
+	if (s.kind === "search") {
+		return {
+			kind: "go",
+			url: s.url,
+			icon: "search",
+			label: s.title || query,
+			detail: `Search with ${engineName(s.url)}`,
+			group: "",
+		};
+	}
+	return { kind: "go", url: s.url, icon: "globe", label: `Go to ${shortUrl(s.url)}`, detail: "", group: "" };
 }
 
 const SUGGESTION_LIMIT = 6;
@@ -128,9 +163,10 @@ export function commandResults(state: BrowserState, query: string, context: Resu
 	if (q) {
 		const first = native[0];
 		if (fresh && first && (first.kind === "url" || first.kind === "search")) {
-			results.push(fromSuggestion(first, ""));
+			results.push(typedRow(first, query.trim()));
 			native = native.slice(1);
 		} else {
+			// Before the browser answers: Loka's own guess. A search goes to the user's engine, whichever it is.
 			const url = toUrl(query);
 			results.push(
 				isSearch(url)
@@ -139,11 +175,11 @@ export function commandResults(state: BrowserState, query: string, context: Resu
 							url,
 							icon: "search",
 							search: query.trim(),
-							label: `Search for "${query.trim()}"`,
-							detail: "Search",
+							label: query.trim(),
+							detail: "Search the web",
 							group: "",
 						}
-					: { kind: "go", url, icon: "globe", label: `Open ${hostOf(url)}`, detail: url, group: "" },
+					: { kind: "go", url, icon: "globe", label: `Go to ${shortUrl(url)}`, detail: "", group: "" },
 			);
 		}
 	}
@@ -173,6 +209,9 @@ export function commandResults(state: BrowserState, query: string, context: Resu
 	const listedTabs = new Set(results.flatMap((r) => (r.kind === "tab" ? [r.tabId] : [])));
 	const lokaTabOf = (browserId: number) =>
 		Object.entries(context.links ?? {}).find(([id, linked]) => linked === browserId && state.tabs[id])?.[0];
+	// The browser's other suggestions, sorted into their sections: open tabs join the tabs, then history, then
+	// bookmarks. A search suggestion (other words) counts as history: it's what was searched before.
+	const sections: Record<"Tabs" | "History" | "Bookmarks", CommandResult[]> = { Tabs: [], History: [], Bookmarks: [] };
 	let suggested = 0;
 	for (const s of native) {
 		if (suggested >= SUGGESTION_LIMIT || listed.has(same(s.url))) continue;
@@ -182,24 +221,43 @@ export function commandResults(state: BrowserState, query: string, context: Resu
 			if (lokaId) {
 				const spaceId = spaceOf(state, lokaId);
 				const detail = state.spaces.find((x) => x.id === spaceId)?.name ?? "";
-				results.push({ kind: "tab", tabId: lokaId, spaceId, label: s.title, detail, group: "Suggestions" });
+				sections.Tabs.push({ kind: "tab", tabId: lokaId, spaceId, label: s.title, detail, group: "Tabs" });
 				listedTabs.add(lokaId);
 			} else {
-				results.push({
+				sections.Tabs.push({
 					kind: "browser-tab",
 					tabId: s.tabId,
 					url: s.url,
 					label: s.title,
-					detail: "Open tab",
-					group: "Suggestions",
+					detail: "Switch to tab",
+					group: "Tabs",
 				});
 			}
+		} else if (s.kind === "bookmark") {
+			sections.Bookmarks.push({
+				kind: "go",
+				url: s.url,
+				icon: "bookmark",
+				label: s.title || shortUrl(s.url),
+				detail: hostOf(s.url),
+				group: "Bookmarks",
+			});
 		} else {
-			results.push(fromSuggestion(s, "Suggestions"));
+			const icon = s.kind === "search" ? "search" : "history";
+			const detail = s.kind === "search" ? `Search with ${engineName(s.url)}` : hostOf(s.url);
+			sections.History.push({
+				kind: "go",
+				url: s.url,
+				icon,
+				label: s.title || shortUrl(s.url),
+				detail,
+				group: "History",
+			});
 		}
 		listed.add(same(s.url));
 		suggested++;
 	}
+	results.push(...sections.Tabs, ...sections.History, ...sections.Bookmarks);
 
 	if (q) {
 		for (const [i, space] of state.spaces.entries()) {

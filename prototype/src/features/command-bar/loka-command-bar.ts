@@ -5,7 +5,7 @@ import { faviconBackground, faviconInner, hostOf, type LiveTabs } from "../sideb
 import { planet } from "../sidebar/planet";
 import type { BrowserState, TabId } from "../sidebar/sidebar.logic";
 import { playCue } from "../sound/sound";
-import { type CommandMode, type CommandResult, commandResults } from "./command-bar.logic";
+import { type CommandMode, type CommandResult, commandResults, dotCom } from "./command-bar.logic";
 
 /**
  * The command bar: open an address or search, jump to any tab in any space, switch space, or run a command. Results
@@ -87,17 +87,20 @@ export class LokaCommandBar extends LitElement {
 		this.dispatchEvent(new CustomEvent("loka-close", { bubbles: true, composed: true }));
 	}
 
+	/** Up, Down and Tab move through the results; Enter picks; Ctrl+Enter takes one word to its .com; Esc closes. */
 	private onKey(e: KeyboardEvent, results: CommandResult[]) {
 		if (e.key === "Escape") {
 			e.stopPropagation();
 			void this.close();
-		} else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+		} else if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Tab") {
 			e.preventDefault();
-			const step = e.key === "ArrowDown" ? 1 : -1;
+			const step = e.key === "ArrowUp" || (e.key === "Tab" && e.shiftKey) ? -1 : 1;
 			this.selected = (this.selected + step + results.length) % Math.max(results.length, 1);
 		} else if (e.key === "Enter") {
 			e.preventDefault();
-			this.pick(results[this.selected]);
+			const com = (e.ctrlKey || e.metaKey) && dotCom(this.query);
+			if (com) this.pick({ kind: "go", url: com, icon: "globe", label: com, detail: "", group: "" });
+			else this.pick(results[this.selected]);
 		}
 	}
 
@@ -153,7 +156,7 @@ export class LokaCommandBar extends LitElement {
 		});
 		if (untouched) {
 			const url = this.initialQuery;
-			results.unshift({ kind: "go", url, icon: "globe", label: `Open ${hostOf(url)}`, detail: url, group: "" });
+			results.unshift({ kind: "go", url, icon: "globe", label: `Go to ${hostOf(url)}`, detail: url, group: "" });
 		}
 		const selected = Math.min(this.selected, results.length - 1);
 		let lastGroup = "";
@@ -161,7 +164,7 @@ export class LokaCommandBar extends LitElement {
 			<div class="scrim" @click=${() => void this.close()}></div>
 			<div class="panel" role="dialog" aria-label="Command bar">
 				<div class="input">
-					<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3 3" /></svg>
+					<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5.5" /><path d="m13 13 3.5 3.5" /></svg>
 					<input
 						placeholder=${this.mode === "focus-location" ? "Go to an address or search" : "Search, enter an address, or find a tab"}
 						aria-label="Search or enter address"
@@ -199,9 +202,9 @@ export class LokaCommandBar extends LitElement {
 								<span class="icon" aria-hidden="true">${this.icon(r)}</span>
 								<span class="label">${r.label}</span>
 								<span class="detail">
-									${space ? html`${planet(space.planet, space.hue, 14)}` : nothing}${r.kind === "go" && r.group ? hostOf(r.url) : r.detail}
+									${space ? html`${planet(space.planet, space.hue, 14)}` : nothing}${r.detail}
 								</span>
-								${i === selected ? html`<kbd>Enter</kbd>` : nothing}
+								${i === selected ? html`<kbd aria-hidden="true">↵</kbd>` : nothing}
 							</div>`;
 					})}
 				</div>
@@ -210,6 +213,8 @@ export class LokaCommandBar extends LitElement {
 	}
 
 	static override styles = css`
+		/* Zen's palette: one tall rounded field on a softly tinted, frosted panel, the results under it in the same
+		   panel, and a deep, soft shadow instead of a dark scrim. */
 		:host {
 			position: absolute;
 			inset: 0;
@@ -217,7 +222,7 @@ export class LokaCommandBar extends LitElement {
 			display: grid;
 			justify-items: center;
 			align-content: start;
-			padding-top: 14vh;
+			padding-top: 18vh;
 			font: 14px/1.4 system-ui, "Segoe UI", sans-serif;
 			color: var(--loka-ink);
 		}
@@ -225,36 +230,40 @@ export class LokaCommandBar extends LitElement {
 		   room for its shadow, and the list fills what's left of its height. */
 		:host([layout="page"]) {
 			position: fixed;
-			padding-top: 14px;
-		}
-		:host([layout="page"]) .scrim {
-			background: transparent;
+			padding-top: 16px;
 		}
 		.scrim {
 			position: absolute;
 			inset: 0;
-			background: var(--loka-scrim);
+			background: color-mix(in srgb, var(--loka-scrim) 45%, transparent);
+		}
+		:host([layout="page"]) .scrim {
+			background: transparent;
 		}
 		.panel {
 			position: relative;
-			width: min(640px, calc(100% - 24px));
-			border-radius: 16px;
-			background: var(--loka-dialog);
-			box-shadow: var(--loka-dialog-edge);
+			box-sizing: border-box;
+			width: min(680px, calc(100% - 24px));
+			padding: 8px;
+			border-radius: 20px;
+			/* The space's hue as a faint tint over the dialog surface, frosted where there's something behind it. */
+			background: color-mix(in srgb, var(--loka-dialog) 88%, hsl(var(--hue) 70% 55% / 0.6));
+			backdrop-filter: blur(24px) saturate(1.3);
+			box-shadow:
+				0 0 0 1px var(--loka-line),
+				0 24px 64px -12px rgb(0 0 0 / 0.45),
+				0 8px 20px -8px rgb(0 0 0 / 0.25);
 			overflow: hidden;
 		}
 		:host([layout="page"]) .panel {
 			width: calc(100% - 40px);
 			box-shadow:
 				0 0 0 1px var(--loka-line),
-				0 10px 28px rgb(0 0 0 / 0.32);
-		}
-		:host([layout="page"]) .results {
-			max-height: calc(100vh - 56px - 48px);
+				0 12px 28px rgb(0 0 0 / 0.3);
 		}
 		svg {
-			width: 16px;
-			height: 16px;
+			width: 18px;
+			height: 18px;
 			fill: none;
 			stroke: currentColor;
 			stroke-width: 1.5;
@@ -266,10 +275,15 @@ export class LokaCommandBar extends LitElement {
 			display: flex;
 			align-items: center;
 			gap: 12px;
-			height: 56px;
-			padding: 0 14px 0 18px;
+			height: 54px;
+			padding: 0 12px 0 16px;
+			border-radius: 14px;
+			background: var(--loka-fill);
+			/* A soft inner glow in the space's color. */
+			box-shadow:
+				inset 0 0 0 1px color-mix(in srgb, var(--loka-accent) 35%, transparent),
+				inset 0 0 18px color-mix(in srgb, var(--loka-accent) 12%, transparent);
 			color: var(--loka-ink-2);
-			border-bottom: 1px solid var(--loka-line);
 		}
 		input {
 			flex: 1;
@@ -297,24 +311,37 @@ export class LokaCommandBar extends LitElement {
 			border-radius: 6px;
 			background: var(--loka-fill-hover);
 		}
+		kbd {
+			font-size: 12px;
+			padding: 1px 6px;
+		}
 		.results {
 			max-height: min(52vh, 460px);
 			overflow-y: auto;
-			padding: 6px;
+			padding: 4px 0 0;
 			overscroll-behavior: contain;
+			scrollbar-width: thin;
+		}
+		:host([layout="page"]) .results {
+			max-height: calc(100vh - 54px - 16px - 52px);
+		}
+		.results:empty {
+			display: none;
 		}
 		.group {
-			margin: 10px 12px 4px;
-			font-size: 12px;
+			margin: 10px 12px 3px;
+			font-size: 11.5px;
+			font-weight: 600;
+			letter-spacing: 0.02em;
 			color: var(--loka-ink-3);
 		}
 		.result {
 			display: flex;
 			align-items: center;
 			gap: 12px;
-			height: 42px;
-			padding: 0 10px 0 12px;
-			border-radius: 10px;
+			height: 44px;
+			padding: 0 10px 0 14px;
+			border-radius: 12px;
 		}
 		.result.on {
 			background: var(--loka-selected);
@@ -326,6 +353,9 @@ export class LokaCommandBar extends LitElement {
 			width: 22px;
 			flex: none;
 			color: var(--loka-ink-2);
+		}
+		.result.on .icon {
+			color: var(--loka-accent-ink);
 		}
 		.fav {
 			display: grid;
@@ -345,12 +375,13 @@ export class LokaCommandBar extends LitElement {
 			overflow: hidden;
 			white-space: nowrap;
 			text-overflow: ellipsis;
+			font-size: 14.5px;
 		}
 		.detail {
 			display: flex;
 			align-items: center;
 			gap: 6px;
-			max-width: 40%;
+			max-width: 42%;
 			overflow: hidden;
 			white-space: nowrap;
 			text-overflow: ellipsis;
@@ -364,19 +395,19 @@ export class LokaCommandBar extends LitElement {
 		}
 		@media (prefers-reduced-motion: no-preference) {
 			.scrim {
-				transition: opacity 160ms ease-out;
+				transition: opacity 140ms ease-out;
 				@starting-style {
 					opacity: 0;
 				}
 			}
-			/* Opens from just above, close to full size, so it reads from the first frame. */
+			/* A quick scale and fade, from close to full size, so it reads from the first frame. */
 			.panel {
 				transition:
-					opacity 160ms cubic-bezier(0.2, 0, 0, 1),
-					transform 220ms cubic-bezier(0.2, 0, 0, 1);
+					opacity 140ms cubic-bezier(0.2, 0, 0, 1),
+					transform 140ms cubic-bezier(0.2, 0, 0, 1);
 				@starting-style {
 					opacity: 0;
-					transform: translateY(-6px) scale(0.98);
+					transform: scale(0.97);
 				}
 			}
 		}

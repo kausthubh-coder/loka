@@ -572,6 +572,8 @@ export class LokaSidebar extends LitElement {
 			const home = tile ? grid : scroll;
 			const box = home.getBoundingClientRect();
 			el.classList.add("leaving");
+			el.inert = true;
+			el.setAttribute("aria-hidden", "true");
 			el.removeAttribute("data-key");
 			el.removeAttribute("role");
 			Object.assign(el.style, {
@@ -601,7 +603,10 @@ export class LokaSidebar extends LitElement {
 		const still = reducedMotion();
 		const side = before.forward ? 1 : -1;
 		const sink = (el: HTMLElement, distance: number, drift: number, duration: number) => {
+			// Gone as far as anyone using it can tell: it can't be clicked, focused or read out while it sets.
 			el.classList.add("leaving");
+			el.inert = true;
+			el.setAttribute("aria-hidden", "true");
 			horizon.prepend(el);
 			const to = still ? { opacity: 0 } : { opacity: 0, transform: `translate(${drift}px, ${distance}px)` };
 			void el

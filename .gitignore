@@ -14,3 +14,7 @@ extension/dist
 
 # verification evidence (kept out of git, survives cleanup)
 .agents/verify-runs
+
+# loka_brand.py builds these from resources/loka/branding
+resources/loka/generated
+resources/loka/*.txt

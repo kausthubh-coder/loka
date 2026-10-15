@@ -1,0 +1,145 @@
+<template>
+  <div id="root" data-composition-id="07-helium" data-width="1920" data-height="1080" data-start="0" data-duration="4.9">
+    <style>
+      @font-face { font-family: "Segoe UI Variable Display"; src: local("Segoe UI Variable Display"), local("Segoe UI"); font-weight: 300 800; }
+      @font-face { font-family: "Segoe UI Variable Text"; src: local("Segoe UI Variable Text"), local("Segoe UI"); font-weight: 300 800; }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+
+      #root .clip { position: absolute; }
+
+      #f07-helium-sky {
+        inset: 0;
+        background:
+          radial-gradient(60% 50% at 6% 0%, hsl(200 58% 34% / .45), transparent 70%),
+          radial-gradient(38% 34% at 26% 58%, hsl(240 45% 32% / .18), transparent 70%),
+          radial-gradient(55% 55% at 100% 100%, hsl(165 42% 26% / .28), transparent 70%),
+          linear-gradient(165deg, hsl(200 32% 8%), hsl(200 38% 4%));
+      }
+
+      #f07-helium-stars {
+        left: -24px;
+        top: -24px;
+        width: 1968px;
+        height: 1128px;
+        object-fit: cover;
+        display: block;
+      }
+
+      #f07-helium-moon {
+        top: 84px;
+        right: 150px;
+        width: 280px;
+        height: 280px;
+        display: block;
+      }
+
+      #f07-helium-title {
+        left: 160px;
+        top: 176px;
+        margin: 0;
+        font-family: "Segoe UI Variable Display", "Segoe UI", sans-serif;
+        font-size: 84px;
+        font-weight: 650;
+        line-height: 1.04;
+        letter-spacing: -0.03em;
+        color: #ececf1;
+        white-space: nowrap;
+      }
+
+      #f07-helium-grid {
+        left: 160px;
+        top: 490px;
+        width: 1400px;
+        display: grid;
+        grid-template-columns: 680px 680px;
+        column-gap: 40px;
+        row-gap: 56px;
+      }
+
+      .h07-helium-item {
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+        font-size: 34px;
+        font-weight: 600;
+        line-height: 1.2;
+        color: #ececf1;
+        white-space: nowrap;
+      }
+
+      .h07-helium-dot {
+        flex: none;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #7fd0f5;
+      }
+    </style>
+
+    <!-- Sky ground (full duration, lowest track) -->
+    <div id="f07-helium-sky" class="clip" data-start="0" data-duration="4.9" data-track-index="0"></div>
+    <img id="f07-helium-stars" class="clip" src="assets/stars.svg" alt="" data-start="0" data-duration="4.9" data-track-index="1" />
+
+    <!-- Small moon, upper right, still -->
+    <img id="f07-helium-moon" class="clip" src="assets/planet-moon.svg" alt="" data-start="0" data-duration="4.9" data-track-index="2" />
+
+    <!-- Title -->
+    <h1 id="f07-helium-title" class="clip" data-start="0" data-duration="4.9" data-track-index="3">Private and fast,<br />because it's Helium</h1>
+
+    <!-- 2x2 list -->
+    <div id="f07-helium-grid" class="clip" data-start="0" data-duration="4.9" data-track-index="4">
+      <div class="h07-helium-item"><span class="h07-helium-dot"></span><span>uBlock Origin built in</span></div>
+      <div class="h07-helium-item"><span class="h07-helium-dot"></span><span>No Google services</span></div>
+      <div class="h07-helium-item"><span class="h07-helium-dot"></span><span>Chrome extensions work</span></div>
+      <div class="h07-helium-item"><span class="h07-helium-dot"></span><span>Open source, GPL-3.0</span></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var scope = document.querySelector('[data-composition-id="07-helium"]') || document;
+        var q = function (sel) { return scope.querySelector(sel); };
+        var qa = function (sel) { return Array.prototype.slice.call(scope.querySelectorAll(sel)); };
+
+        var stars = q('#f07-helium-stars');
+        var title = q('#f07-helium-title');
+        var items = qa('.h07-helium-item');
+        var dots = qa('.h07-helium-dot');
+
+        var tl = gsap.timeline({ paused: true });
+
+        // Scene 1 (0.0-0.4s): sky + moon already in place. Stars drift a few px under the whole shot.
+        tl.fromTo(stars, { x: 0, y: 0 }, { x: -10, y: -4, duration: 4.5, ease: "none" }, 0);
+
+        // Scene 2 (0.4-1.4s): the one restrained move, title slides up a few px with a crossfade.
+        tl.fromTo(title,
+          { y: 22, opacity: 0 },
+          { y: 0, opacity: 1, duration: 1.0, ease: "power3.out" },
+          0.4);
+
+        // Scene 3 (1.4-2.4s): four lines arrive as one quick stagger, 2x2 grid in reading order.
+        tl.fromTo(items,
+          { y: 16, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.6, ease: "power3.out", stagger: 0.12 },
+          1.4);
+        tl.fromTo(dots,
+          { scale: 0.4 },
+          { scale: 1, duration: 0.5, ease: "power3.out", stagger: 0.12 },
+          1.45);
+
+        // Scene 4 (2.4-4.5s): still hold to the end of the frame.
+        tl.set({}, {}, 4.5);
+
+        window.__timelines["07-helium"] = tl;
+      })();
+    </script>
+  </div>
+</template>

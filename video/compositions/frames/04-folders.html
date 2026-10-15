@@ -1,0 +1,147 @@
+<template id="f04-folders-template">
+  <style>
+    @font-face { font-family: "Segoe UI Variable Display"; src: local("Segoe UI Variable Display"), local("Segoe UI"); font-weight: 300 800; }
+    @font-face { font-family: "Segoe UI Variable Text"; src: local("Segoe UI Variable Text"), local("Segoe UI"); font-weight: 300 800; }
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      color: #ececf1;
+      font-family: "Segoe UI Variable Text";
+    }
+
+    /* sky component, H = 200 (Build) */
+    #root #f04-folders-sky {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background:
+        radial-gradient(60% 50% at 6% 0%, hsl(200 58% 34% / .45), transparent 70%),
+        radial-gradient(38% 34% at 26% 58%, hsl(240 45% 32% / .18), transparent 70%),
+        radial-gradient(55% 55% at 100% 100%, hsl(165 42% 26% / .28), transparent 70%),
+        linear-gradient(165deg, hsl(200 32% 8%), hsl(200 38% 4%));
+    }
+    #root #f04-folders-stars {
+      position: absolute;
+      left: -12px;
+      top: 0;
+      width: 1944px;
+      height: 1080px;
+      object-fit: cover;
+      display: block;
+    }
+
+    #root #f04-folders-stage {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    /* The window is authored at the screenshot's native 2560x1600 and placed by GSAP
+       (x, y, scale from origin 0 0). Final scale 0.40625 -> 1040x650 at (440, 230).
+       Radius / shadow are in native units so they land on frame.md's window values at the lock:
+       18px / 0.40625 = 44px, 40px 120px -> 98px 295px, 1px ring -> 2.5px. */
+    #root #f04-folders-win {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 2560px;
+      height: 1600px;
+      border-radius: 44px;
+      overflow: hidden;
+      transform-origin: 0 0;
+      box-shadow: 0 98px 295px rgba(0, 0, 0, .6), 0 0 0 2.5px rgba(196, 222, 240, .16);
+    }
+    #root #f04-folders-shot {
+      display: block;
+      width: 2560px;
+      height: 1600px;
+    }
+
+    #root #f04-folders-head {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 78px;
+      margin: 0;
+      text-align: center;
+      font-family: "Segoe UI Variable Display";
+      font-size: 60px;
+      font-weight: 650;
+      line-height: 1.08;
+      letter-spacing: -0.025em;
+      color: #ececf1;
+      white-space: nowrap;
+    }
+    #root [data-f04-word] {
+      display: inline-block;
+      margin: 0 0.12em;
+    }
+  </style>
+
+  <div id="root" data-composition-id="04-folders" data-width="1920" data-height="1080" data-duration="5">
+    <div id="f04-folders-sky" class="clip" data-start="0" data-duration="5" data-track-index="0">
+      <img id="f04-folders-stars" src="assets/stars.svg" alt="" />
+    </div>
+
+    <div id="f04-folders-stage" class="clip" data-start="0" data-duration="5" data-track-index="1">
+      <div id="f04-folders-win">
+        <img id="f04-folders-shot" src="assets/build.png" alt="" />
+      </div>
+      <h2 id="f04-folders-head"><span data-f04-word>Folders</span><span data-f04-word>inside</span><span data-f04-word>folders</span></h2>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (function () {
+      var ID = "04-folders";
+      window.__timelines = window.__timelines || {};
+
+      var win = document.getElementById("f04-folders-win");
+      var stars = document.getElementById("f04-folders-stars");
+      var words = document.querySelectorAll("[data-f04-word]");
+
+      // Camera states, in frame px. k = frame px per screenshot px.
+      // Folder tree region in the screenshot: x 20-530, y 310-670 (center 272, 490).
+      // Open: k 1.4 (tree ~500px tall, left of center, window edge just off-frame).
+      var OPEN = { x: -10, y: -166, scale: 1.4 };
+      // Gentle pre-reveal drift during the hold (about 3% outward).
+      var DRIFT = { x: -6, y: -146.4, scale: 1.36 };
+      // Lock: full window 1040x650, top-left (440, 230), bottom edge 880.
+      var LOCK = { x: 440, y: 230, scale: 0.40625 };
+
+      var tl = gsap.timeline({ paused: true });
+
+      // Sky: stars drift a few px across the whole shot.
+      tl.fromTo(stars, { x: 0 }, { x: -6, duration: 4.5, ease: "none" }, 0);
+
+      // Scene 1 (0.0-1.2): tight on the folder tree, quiet drift.
+      tl.fromTo(win,
+        { x: OPEN.x, y: OPEN.y, scale: OPEN.scale, transformOrigin: "0 0", force3D: false },
+        { x: DRIFT.x, y: DRIFT.y, scale: DRIFT.scale, duration: 1.2, ease: "sine.inOut", force3D: false },
+        0);
+
+      // Scene 2 (1.2-3.0): one continuous decelerating zoom-out to the full window; frame locks.
+      // Translate and scale share one tween, so one ease.
+      tl.fromTo(win,
+        { x: DRIFT.x, y: DRIFT.y, scale: DRIFT.scale, transformOrigin: "0 0", force3D: false },
+        { x: LOCK.x, y: LOCK.y, scale: LOCK.scale, duration: 1.8, ease: "expo.out", force3D: false, immediateRender: false },
+        1.2);
+
+      // Scene 3 (3.0-4.5): headline settles above the window, then holds.
+      tl.fromTo(words,
+        { opacity: 0, y: 26, filter: "blur(8px)" },
+        { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.7, ease: "power3.out", stagger: 0.09 },
+        3.0);
+
+      // Pad to full duration (no motion).
+      tl.set({}, {}, 4.5);
+
+      window.__timelines[ID] = tl;
+    })();
+  </script>
+</template>

@@ -1,0 +1,360 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Segoe UI Variable Display";
+      src: local("Segoe UI Variable Display"), local("Segoe UI");
+      font-weight: 300 800;
+    }
+    @font-face {
+      font-family: "Segoe UI Variable Text";
+      src: local("Segoe UI Variable Text"), local("Segoe UI");
+      font-weight: 300 800;
+    }
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      color: #ececf1;
+    }
+
+    /* ---- sky: one complete layer per space hue, stacked Build < School < Home ---- */
+    .f03-spaces-sky {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1920px;
+      height: 1080px;
+    }
+    #f03-spaces-sky-build {
+      z-index: 0;
+      opacity: 1;
+      background:
+        radial-gradient(60% 50% at 6% 0%, hsl(200 58% 34% / .45), transparent 70%),
+        radial-gradient(38% 34% at 26% 58%, hsl(240 45% 32% / .18), transparent 70%),
+        radial-gradient(55% 55% at 100% 100%, hsl(165 42% 26% / .28), transparent 70%),
+        linear-gradient(165deg, hsl(200 32% 8%), hsl(200 38% 4%));
+    }
+    #f03-spaces-sky-school {
+      z-index: 1;
+      opacity: 0;
+      background:
+        radial-gradient(60% 50% at 6% 0%, hsl(30 58% 34% / .45), transparent 70%),
+        radial-gradient(38% 34% at 26% 58%, hsl(70 45% 32% / .18), transparent 70%),
+        radial-gradient(55% 55% at 100% 100%, hsl(355 42% 26% / .28), transparent 70%),
+        linear-gradient(165deg, hsl(30 32% 8%), hsl(30 38% 4%));
+    }
+    #f03-spaces-sky-home {
+      z-index: 2;
+      opacity: 0;
+      background:
+        radial-gradient(60% 50% at 6% 0%, hsl(150 58% 34% / .45), transparent 70%),
+        radial-gradient(38% 34% at 26% 58%, hsl(190 45% 32% / .18), transparent 70%),
+        radial-gradient(55% 55% at 100% 100%, hsl(115 42% 26% / .28), transparent 70%),
+        linear-gradient(165deg, hsl(150 32% 8%), hsl(150 38% 4%));
+    }
+
+    #f03-spaces-stars {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1920px;
+      height: 1080px;
+      z-index: 3;
+    }
+    #f03-spaces-stars img {
+      display: block;
+      width: 1920px;
+      height: 1080px;
+      object-fit: cover;
+    }
+
+    /* ---- the pinned window (handoff_in: x=400 y=190 1120x700, never moves) ---- */
+    #f03-spaces-window {
+      position: absolute;
+      left: 400px;
+      top: 190px;
+      width: 1120px;
+      height: 700px;
+      z-index: 4;
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 40px 120px rgba(0, 0, 0, .6), 0 0 0 1px rgba(196, 222, 240, .16);
+      background: #06090d;
+    }
+    .f03-spaces-shot {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1120px;
+      height: 700px;
+      display: block;
+    }
+    #f03-spaces-shot-build { z-index: 0; opacity: 1; }
+    #f03-spaces-shot-school { z-index: 1; opacity: 0; }
+    #f03-spaces-shot-home { z-index: 2; opacity: 0; }
+
+    /* ---- copy layer: label slot + payoff line, above the window (y < 190) ---- */
+    #f03-spaces-copy {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1920px;
+      height: 190px;
+      z-index: 5;
+    }
+    #f03-spaces-label {
+      position: absolute;
+      left: 0;
+      top: 64px;
+      width: 1920px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .f03-spaces-cap {
+      box-sizing: border-box;
+      height: 52px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 16px;
+      border: 1.5px solid rgba(255, 255, 255, .28);
+      border-bottom-width: 4px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .06);
+      font-family: "Segoe UI Variable Text", sans-serif;
+      font-size: 28px;
+      font-weight: 600;
+      line-height: 1;
+      color: #ececf1;
+      transform-origin: 50% 50%;
+      white-space: nowrap;
+    }
+    #f03-spaces-cap-digit {
+      width: 52px;
+      padding: 0;
+      margin-left: 10px;
+    }
+    #f03-spaces-name-slot {
+      position: relative;
+      width: 180px;
+      height: 52px;
+      margin-left: 24px;
+    }
+    .f03-spaces-name {
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      white-space: nowrap;
+      font-family: "Segoe UI Variable Text", sans-serif;
+      font-size: 34px;
+      font-weight: 600;
+      line-height: 1.2;
+      color: #ececf1;
+    }
+    .f03-spaces-name img {
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+      display: block;
+    }
+    #f03-spaces-name-school,
+    #f03-spaces-name-home {
+      opacity: 0;
+    }
+
+    #f03-spaces-payoff {
+      position: absolute;
+      left: 0;
+      top: 57px;
+      width: 1920px;
+      text-align: center;
+      white-space: nowrap;
+      font-family: "Segoe UI Variable Display", sans-serif;
+      font-size: 60px;
+      font-weight: 650;
+      line-height: 1.08;
+      letter-spacing: -0.025em;
+      color: #ececf1;
+    }
+    .f03-spaces-word {
+      display: inline-block;
+      opacity: 0;
+    }
+  </style>
+
+  <div id="root" data-composition-id="03-spaces" data-width="1920" data-height="1080" data-duration="8.6">
+    <!-- sky ground: three full skins, crossfaded in step with the screenshots -->
+    <div id="f03-spaces-sky-build" class="clip f03-spaces-sky" data-start="0" data-duration="8.6" data-track-index="0"></div>
+    <div id="f03-spaces-sky-school" class="clip f03-spaces-sky" data-start="0" data-duration="8.6" data-track-index="1"></div>
+    <div id="f03-spaces-sky-home" class="clip f03-spaces-sky" data-start="0" data-duration="8.6" data-track-index="2"></div>
+
+    <div id="f03-spaces-stars" class="clip" data-start="0" data-duration="8.6" data-track-index="3">
+      <img src="assets/stars.svg" alt="" />
+    </div>
+
+    <!-- the anchor: the same window, pinned; only the image inside it changes -->
+    <div id="f03-spaces-window" class="clip" data-start="0" data-duration="8.6" data-track-index="4">
+      <img id="f03-spaces-shot-build" class="f03-spaces-shot" src="assets/build.png" width="1120" height="700" alt="" />
+      <img id="f03-spaces-shot-school" class="f03-spaces-shot" src="assets/school.png" width="1120" height="700" alt="" />
+      <img id="f03-spaces-shot-home" class="f03-spaces-shot" src="assets/home.png" width="1120" height="700" alt="" />
+    </div>
+
+    <div id="f03-spaces-copy" class="clip" data-start="0" data-duration="8.6" data-track-index="5">
+      <div id="f03-spaces-label">
+        <div id="f03-spaces-cap-ctrl" class="f03-spaces-cap">Ctrl</div>
+        <div id="f03-spaces-cap-digit" class="f03-spaces-cap"><span id="f03-spaces-digit">1</span></div>
+        <div id="f03-spaces-name-slot">
+          <div id="f03-spaces-name-build" class="f03-spaces-name">
+            <img src="assets/planet-build.svg" alt="" /><span>Build</span>
+          </div>
+          <div id="f03-spaces-name-school" class="f03-spaces-name">
+            <img src="assets/planet-school.svg" alt="" /><span>School</span>
+          </div>
+          <div id="f03-spaces-name-home" class="f03-spaces-name">
+            <img src="assets/planet-home.svg" alt="" /><span>Home</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="f03-spaces-payoff">
+        <span class="f03-spaces-word">Each</span>
+        <span class="f03-spaces-word">space,</span>
+        <span class="f03-spaces-word">its</span>
+        <span class="f03-spaces-word">own</span>
+        <span class="f03-spaces-word">world</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (function () {
+      const $ = (id) => document.getElementById(id);
+      const DURATION = 8;
+
+      const skyBuild = $("f03-spaces-sky-build");
+      const skySchool = $("f03-spaces-sky-school");
+      const skyHome = $("f03-spaces-sky-home");
+      const shotBuild = $("f03-spaces-shot-build");
+      const shotSchool = $("f03-spaces-shot-school");
+      const shotHome = $("f03-spaces-shot-home");
+      const label = $("f03-spaces-label");
+      const capCtrl = $("f03-spaces-cap-ctrl");
+      const capDigit = $("f03-spaces-cap-digit");
+      const digitEl = $("f03-spaces-digit");
+      const nameBuild = $("f03-spaces-name-build");
+      const nameSchool = $("f03-spaces-name-school");
+      const nameHome = $("f03-spaces-name-home");
+      const words = Array.prototype.slice.call(
+        document.querySelectorAll('#f03-spaces-payoff .f03-spaces-word')
+      );
+
+      const tl = gsap.timeline({ paused: true });
+
+      // ---- opening state (handoff_in: window on the Build sky, still) ----
+      tl.set([skyBuild, shotBuild], { opacity: 1 }, 0);
+      tl.set([skySchool, skyHome, shotSchool, shotHome], { opacity: 0 }, 0);
+      tl.set([nameSchool, nameHome], { opacity: 0 }, 0);
+      tl.set(words, { x: 230, opacity: 0 }, 0);
+
+      // ---- discrete-text-sequence: the digit on the key cap ----
+      const SEQUENCE = [
+        { t: 0.0, text: "1" },
+        { t: 1.0, text: "2" },
+        { t: 3.4, text: "3" },
+      ];
+      function textAt(time) {
+        for (let i = SEQUENCE.length - 1; i >= 0; i--) {
+          if (time >= SEQUENCE[i].t) return SEQUENCE[i].text;
+        }
+        return SEQUENCE[0].text;
+      }
+      const driver = { t: 0 };
+      tl.to(
+        driver,
+        {
+          t: DURATION,
+          duration: DURATION,
+          ease: "none",
+          onUpdate: () => {
+            const s = textAt(driver.t);
+            if (digitEl.textContent !== s) digitEl.textContent = s;
+          },
+        },
+        0
+      );
+
+      // ---- Scene 1 (0.0-0.8): label slot fades up above the pinned window ----
+      tl.fromTo(
+        label,
+        { y: 16, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.55, ease: "power3.out" },
+        0.1
+      );
+
+      // ---- one space switch: key press + sky/screenshot morph + label swap ----
+      const MORPH_DUR = 1.2;
+      function switchSpace(at, skyOut, skyIn, shotOut, shotIn, nameOut, nameIn) {
+        // press-release-spring: Ctrl held a beat early, digit pressed on the switch
+        tl.to(capCtrl, { scale: 0.96, y: 2, duration: 0.1, ease: "power1.in" }, at - 0.08);
+        tl.to(capDigit, { scale: 0.9, y: 3, duration: 0.12, ease: "power1.in" }, at);
+        tl.to(capDigit, { scale: 1, y: 0, duration: 0.4, ease: "power3.out" }, at + 0.12);
+        tl.to(capCtrl, { scale: 1, y: 0, duration: 0.35, ease: "power3.out" }, at + 0.14);
+
+        // theme-crossfade-morph: incoming skin fades up on top while the outgoing
+        // holds underneath and drops out late, so coverage never dips mid-blend.
+        const m = at + 0.05;
+        tl.fromTo(skyIn, { opacity: 0 }, { opacity: 1, duration: MORPH_DUR, ease: "power3.out", immediateRender: false }, m);
+        tl.to(skyOut, { opacity: 0, duration: MORPH_DUR, ease: "expo.in" }, m);
+        tl.fromTo(shotIn, { opacity: 0 }, { opacity: 1, duration: MORPH_DUR, ease: "power3.out", immediateRender: false }, m);
+        tl.to(shotOut, { opacity: 0, duration: MORPH_DUR, ease: "expo.in" }, m);
+
+        // label swap: hard cut out, the new space name settles in on the press
+        tl.set(nameOut, { opacity: 0 }, m);
+        tl.fromTo(
+          nameIn,
+          { y: 10, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.4, ease: "power3.out", immediateRender: false },
+          m
+        );
+      }
+
+      // ---- Scene 2 (0.8-3.2): Ctrl 2, Build -> School (H 200 -> 30) ----
+      switchSpace(1.0, skyBuild, skySchool, shotBuild, shotSchool, nameBuild, nameSchool);
+
+      // ---- Scene 3 (3.2-5.6): Ctrl 3, School -> Home (H 30 -> 150) ----
+      switchSpace(3.4, skySchool, skyHome, shotSchool, shotHome, nameSchool, nameHome);
+
+      // ---- Scene 4 (5.6-8.0): label gives way to the payoff line (waterfall cut) ----
+      const CUT = 6.04;
+      tl.to(label, { x: -230, duration: 0.34, ease: "power4.in" }, CUT - 0.34);
+      tl.to(label, { opacity: 0, duration: 0.3, ease: "power1.in" }, CUT - 0.32);
+
+      let offset = 0;
+      let gap = 0.05;
+      words.forEach((w) => {
+        tl.fromTo(
+          w,
+          { x: 230, opacity: 0.35 },
+          { x: 0, opacity: 1, duration: 0.3, ease: "power4.out", immediateRender: false },
+          CUT + offset
+        );
+        offset += gap;
+        gap *= 0.84;
+      });
+      // window and green sky hold still to the end (no exit: the root transition owns it)
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["03-spaces"] = tl;
+    })();
+  </script>
+</template>

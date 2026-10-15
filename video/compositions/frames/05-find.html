@@ -1,0 +1,194 @@
+<template>
+  <div id="root" data-composition-id="05-find" data-width="1920" data-height="1080" data-start="0" data-duration="6">
+    <style>
+      @font-face { font-family: "Segoe UI Variable Display"; src: local("Segoe UI Variable Display"), local("Segoe UI"); font-weight: 300 800; }
+      @font-face { font-family: "Segoe UI Variable Text"; src: local("Segoe UI Variable Text"), local("Segoe UI"); font-weight: 300 800; }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+
+      #f05-find-sky {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(60% 50% at 6% 0%, hsl(200 58% 34% / .45), transparent 70%),
+          radial-gradient(38% 34% at 26% 58%, hsl(240 45% 32% / .18), transparent 70%),
+          radial-gradient(55% 55% at 100% 100%, hsl(165 42% 26% / .28), transparent 70%),
+          linear-gradient(165deg, hsl(200 32% 8%), hsl(200 38% 4%));
+        overflow: hidden;
+      }
+      #f05-find-stars {
+        position: absolute;
+        left: -16px;
+        top: -10px;
+        width: 1952px;
+        height: 1100px;
+        object-fit: cover;
+        display: block;
+      }
+
+      #f05-find-stage {
+        position: absolute;
+        inset: 0;
+        transform-origin: 50% 42%;
+      }
+
+      #f05-find-headline {
+        position: absolute;
+        left: 0;
+        top: 156px;
+        width: 1920px;
+        margin: 0;
+        text-align: center;
+        font-family: "Segoe UI Variable Display";
+        font-size: 60px;
+        font-weight: 650;
+        line-height: 1.08;
+        letter-spacing: -0.025em;
+        color: #ececf1;
+        white-space: nowrap;
+      }
+      .f05-find-word {
+        display: inline-block;
+        margin: 0 0.12em;
+      }
+
+      .f05-find-crop {
+        position: absolute;
+        top: 300px;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 24px 64px rgba(0, 0, 0, .55), 0 0 0 1px rgba(196, 222, 240, 0.16);
+        transform-origin: 50% 50%;
+        will-change: transform;
+      }
+      .f05-find-crop img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+      #f05-find-cmd { left: 200px; width: 960px; }
+      #f05-find-search { left: 1280px; width: 440px; }
+
+      .f05-find-keys {
+        position: absolute;
+        top: 632px;
+        display: flex;
+        justify-content: center;
+        gap: 14px;
+      }
+      #f05-find-cmd-keys { left: 200px; width: 960px; }
+      #f05-find-search-keys { left: 1280px; width: 440px; }
+
+      .f05-find-key {
+        min-width: 72px;
+        box-sizing: border-box;
+        padding: 12px 20px 10px;
+        border: 1.5px solid rgba(255, 255, 255, .28);
+        border-bottom-width: 4px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, .05);
+        font-family: "Segoe UI Variable Text";
+        font-size: 28px;
+        font-weight: 600;
+        line-height: 1;
+        color: #ececf1;
+        text-align: center;
+      }
+    </style>
+
+    <!-- Sky ground (H = 200, Build) with the star field -->
+    <div id="f05-find-sky" class="clip" data-start="0" data-duration="6" data-track-index="0">
+      <img id="f05-find-stars" src="assets/stars.svg" alt="">
+    </div>
+
+    <!-- Content stage: headline + two crops + key caps -->
+    <div id="f05-find-stage" class="clip" data-start="0" data-duration="6" data-track-index="1">
+      <h2 id="f05-find-headline">
+        <span class="f05-find-word">Find</span><span class="f05-find-word">any</span><span class="f05-find-word">tab,</span><span class="f05-find-word">in</span><span class="f05-find-word">any</span><span class="f05-find-word">space</span>
+      </h2>
+
+      <div id="f05-find-cmd" class="f05-find-crop">
+        <img src="assets/command-bar.png" alt="">
+      </div>
+      <div id="f05-find-cmd-keys" class="f05-find-keys">
+        <div class="f05-find-key f05-find-cmd-key">Ctrl</div>
+        <div class="f05-find-key f05-find-cmd-key">K</div>
+      </div>
+
+      <div id="f05-find-search" class="f05-find-crop">
+        <img src="assets/search.png" alt="">
+      </div>
+      <div id="f05-find-search-keys" class="f05-find-keys">
+        <div class="f05-find-key f05-find-search-key">Ctrl</div>
+        <div class="f05-find-key f05-find-search-key">Shift</div>
+        <div class="f05-find-key f05-find-search-key">F</div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        var root = document.querySelector('[data-composition-id="05-find"]');
+        var q = function (sel) { return root.querySelector(sel); };
+        var qa = function (sel) { return Array.prototype.slice.call(root.querySelectorAll(sel)); };
+
+        var stars = q('#f05-find-stars');
+        var stage = q('#f05-find-stage');
+        var words = qa('.f05-find-word');
+        var cmd = q('#f05-find-cmd');
+        var search = q('#f05-find-search');
+        var cmdKeys = qa('.f05-find-cmd-key');
+        var searchKeys = qa('.f05-find-search-key');
+
+        var tl = gsap.timeline({ paused: true });
+
+        // Ground: stars drift a few px; slow camera push-in under the whole shot.
+        tl.fromTo(stars, { x: 0, y: 0 }, { x: -10, y: -4, duration: 5.5, ease: "none" }, 0);
+        tl.fromTo(stage, { scale: 1 }, { scale: 1.022, duration: 5.5, ease: "sine.inOut" }, 0);
+
+        // Scene 1 (0.0-1.0s): headline reveals per word.
+        words.forEach(function (w, i) {
+          tl.fromTo(w,
+            { opacity: 0, y: 26 },
+            { opacity: 1, y: 0, duration: 0.55, ease: "power3.out" },
+            0.12 + i * 0.07);
+        });
+
+        // Scene 2 (1.0-2.6s): command bar crop pops into the left 60% (smooth settle).
+        tl.fromTo(cmd,
+          { scale: 0.35, opacity: 0, y: 32 },
+          { scale: 1, opacity: 1, y: 0, duration: 0.7, ease: "power3.out" },
+          1.0);
+        cmdKeys.forEach(function (k, i) {
+          tl.fromTo(k,
+            { opacity: 0, y: 12 },
+            { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" },
+            1.55 + i * 0.08);
+        });
+
+        // Scene 3 (2.6-4.0s): search crop pops into the right side, tops aligned.
+        tl.fromTo(search,
+          { scale: 0.35, opacity: 0, y: 32 },
+          { scale: 1, opacity: 1, y: 0, duration: 0.7, ease: "power3.out" },
+          2.6);
+        searchKeys.forEach(function (k, i) {
+          tl.fromTo(k,
+            { opacity: 0, y: 12 },
+            { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" },
+            3.15 + i * 0.08);
+        });
+
+        // Scene 4 (4.0-5.5s): hold both; the push-in carries the rest. No exit.
+        tl.set({}, {}, 5.5);
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["05-find"] = tl;
+      })();
+    </script>
+  </div>
+</template>

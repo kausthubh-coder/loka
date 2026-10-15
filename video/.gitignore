@@ -1,0 +1,8 @@
+# Rebuilt by scripts/prepare-assets.mjs and the workflow's stage-assets step
+capture/assets/
+assets/
+# Render output and tool state
+renders/
+snapshots/
+.hyperframes/frame-packets/
+node_modules/

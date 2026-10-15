@@ -1,0 +1,11 @@
+{
+  "provider": "auto",
+  "speed": "1.0",
+  "lines": [],
+  "bgm": {
+    "mode": "retrieve",
+    "query": "calm ambient night underscore, soft synth pads, slow, no drums",
+    "blob": "loka is a calm, Arc-style browser for Windows where every space is its own world",
+    "arc": "Demo Loop (hook → product intro → demo cycles → trust → CTA)"
+  }
+}

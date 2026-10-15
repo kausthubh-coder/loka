@@ -1,0 +1,17 @@
+loka
+
+A calm, Arc-style browser for Windows.
+
+loka keeps your tabs in a sidebar of spaces, with folders inside folders. Each space is its own world, with its own color. It's open source and built on Helium, so it stays private and fast, and Chrome extensions still work.
+
+Every space is its own world. A space keeps its own pinned tabs, folders and open tabs, and paints the window its color. Work stays in Build, coursework in School, music in Home. The space you're in rises as a planet at the bottom of the sidebar, with its neighbours on either side. Click one, swipe with two fingers, or press Ctrl+1 to Ctrl+9.
+
+Folders inside folders. Pin a tab and file it. Folders hold folders, as deep as you need.
+
+Find any tab with Ctrl+K. Search the whole sidebar with Ctrl+Shift+F. Old tabs put themselves away (the archive). Music from any space (media controls).
+
+Bring your browser along: import bookmarks from Chrome and Edge, and spaces, folders and pinned tabs from Arc.
+
+Private and fast, because it's Helium: uBlock Origin built in. No Google services. Chrome extensions work. Open source, GPL-3.0.
+
+Free. Windows first; macOS and Linux later. Join the waitlist.

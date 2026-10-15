@@ -41,6 +41,7 @@ import {
 	toggleFolder,
 	ungroupFolder,
 } from "./sidebar.logic";
+import { SWIPE_GAP, SWIPE_IDLE, type SwipeState, swipeWheel } from "./swipe.logic";
 
 type DropMode = "before" | "after" | "into";
 interface Drop {
@@ -89,7 +90,6 @@ export class LokaSidebar extends LitElement {
 		drop: { state: true },
 		menu: { state: true },
 		renamingId: { state: true },
-		swipe: { state: true },
 		panel: { state: true },
 		extensions: { state: true },
 		downloads: { state: true },
@@ -108,8 +108,6 @@ export class LokaSidebar extends LitElement {
 	drop: Drop | null = null;
 	menu: { x: number; y: number; items: MenuItem[] } | null = null;
 	renamingId: string | null = null;
-	/** Sideways swipe distance so far, in wheel pixels (negative is towards the previous space). */
-	swipe = 0;
 	/** The popover open under the address field, if any. */
 	panel: Panel | null = null;
 	/** The installed extensions and the downloads, as the browser last said. Null until it has answered. */
@@ -488,34 +486,44 @@ export class LokaSidebar extends LitElement {
 		];
 	}
 
-	private lastSwipe = 0;
+	/** The sideways swipe in progress (swipe.logic.ts). */
+	private gesture: SwipeState = SWIPE_IDLE;
 	private settleTimer = 0;
 
 	/**
-	 * A sideways two-finger swipe anywhere on the sidebar drags the space's list with the fingers. Past the threshold
-	 * it turns to the next or previous space; let go before that and it springs back.
+	 * A sideways two-finger swipe anywhere on the sidebar drags the space's list with the fingers. Far enough and it
+	 * turns to the next or previous space, one space per swipe however hard; let go before that and it springs back.
 	 */
 	private onWheel = {
 		passive: false,
 		handleEvent: (e: WheelEvent) => {
-			if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+			// Lines and pages (a mouse's tilt wheel on some setups) count as about 16 px a line, like a scroll would.
+			const unit = e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? 1 : 16;
+			const step = swipeWheel(this.gesture, { dx: e.deltaX * unit, dy: e.deltaY * unit, time: e.timeStamp });
+			this.gesture = step.state;
+			if (!step.claimed) return;
 			e.preventDefault();
-			// One swipe sends dozens of wheel events; after a switch, ignore the rest of that gesture.
-			if (e.timeStamp - this.lastSwipe < 450) return;
-			const target = this.neighbourAt(this.swipe + e.deltaX > 0 ? 1 : -1) ?? this.neighbourAt(1);
-			this.swipe = target ? Math.max(-90, Math.min(90, this.swipe + e.deltaX)) : 0;
 			window.clearTimeout(this.settleTimer);
-			if (Math.abs(this.swipe) >= 60 && target) {
-				this.swipe = 0;
-				this.lastSwipe = e.timeStamp;
-				this.switchTo(target.id);
-				return;
-			}
-			this.settleTimer = window.setTimeout(() => {
-				this.swipe = 0;
-			}, 140);
+			// A pause springs the list back; whether the next event starts a new swipe is the gesture's to say.
+			this.settleTimer = window.setTimeout(() => this.showSwipe(0), SWIPE_GAP);
+			const target = step.turn ? (this.neighbourAt(step.turn) ?? this.neighbourAt(1)) : null;
+			// With one space there is nowhere to go: the list stays put rather than following the fingers.
+			this.showSwipe(this.neighbourAt(1) ? step.offset : 0);
+			if (target) this.switchTo(target.id);
 		},
 	};
+
+	/**
+	 * Draws the list and the planet following the fingers. Straight onto the page's style, not through a render: a
+	 * swipe sends an event a frame, and re-rendering the whole sidebar for each would be most of that frame.
+	 */
+	private showSwipe(offset: number) {
+		const aside = this.renderRoot.querySelector("aside");
+		if (!aside) return;
+		aside.style.setProperty("--swipe", String(offset));
+		aside.style.setProperty("--swipe-size", String(Math.abs(offset)));
+		aside.classList.toggle("swiping", offset !== 0);
+	}
 
 	/** Which way the list slides in after a switch: from the right when moving forward, as if turning a page. */
 	private slideFrom: "left" | "right" | null = null;
@@ -1128,8 +1136,7 @@ export class LokaSidebar extends LitElement {
 				${keyed(
 					space.id,
 					html`<div
-				class="scroll ${this.slideFrom ? `from-${this.slideFrom}` : ""} ${this.swipe ? "swiping" : ""}"
-				style="translate: ${-this.swipe * 0.5}px 0; opacity: ${1 - Math.abs(this.swipe) / 180}"
+				class="scroll ${this.slideFrom ? `from-${this.slideFrom}` : ""}"
 				@contextmenu=${(e: MouseEvent) => this.openMenu(e, this.emptyMenu())}
 			>
 					<button
@@ -1224,7 +1231,6 @@ export class LokaSidebar extends LitElement {
 						space.id,
 						html`<button
 								class="world"
-								style="translate: ${-this.swipe * 0.6}px 0"
 								aria-label="Spaces: ${space.name}"
 								title="All spaces"
 								@click=${(e: MouseEvent) => this.openMenu(e, this.spacesMenu())}
@@ -1690,12 +1696,16 @@ export class LokaSidebar extends LitElement {
 		/* The list fades at an edge only while there's more to scroll past it (a scroll-driven mask). */
 		.scroll {
 			position: relative;
+			/* A sideways swipe drags the list with the fingers (--swipe, set while swiping). */
+			translate: calc(var(--swipe, 0) * -0.5px) 0;
+			opacity: calc(1 - var(--swipe-size, 0) / 180);
 			flex: 1;
 			min-height: 0;
 			overflow-y: auto;
 			margin: 0 -4px;
 			padding: 0 4px;
-			scrollbar-width: thin;
+			/* No scrollbar: the edge fades say there's more, and wheel, trackpad and keys still scroll it. */
+			scrollbar-width: none;
 			--fade-top: 0px;
 			--fade-bottom: 0px;
 			mask-image: linear-gradient(
@@ -1999,6 +2009,7 @@ export class LokaSidebar extends LitElement {
 		.world {
 			position: absolute;
 			z-index: 1;
+			translate: calc(var(--swipe, 0) * -0.6px) 0;
 			left: 50%;
 			top: 56px;
 			width: 400px;
@@ -2225,7 +2236,7 @@ export class LokaSidebar extends LitElement {
 				animation-name: fade-top, fade-bottom, in-left;
 			}
 			/* Springs back when a swipe stops short; follows the fingers exactly while swiping. */
-			.scroll:not(.swiping),
+			aside:not(.swiping) .scroll,
 			.world {
 				transition:
 					translate 220ms cubic-bezier(0.2, 0, 0, 1),

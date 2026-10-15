@@ -346,6 +346,17 @@
  </message>
  <message name="IDS_HELIUM_ONBOARDING_PASSWORD_IMPORT_GUIDE" desc="Link label linking to a password manager import guide. Short title for a guide.">
    Import
+@@ -201,8 +326,8 @@
+ <message name="IDS_HELIUM_ONBOARDING_PASSWORD_INSTALLED" desc="Status label shown when a password manager extension is installed.">
+   Installed
+ </message>
+-<message name="IDS_HELIUM_ONBOARDING_PASSWORD_ERROR" desc="Prefix label shown before a password manager install error.">
+-  Error:
++<message name="IDS_HELIUM_ONBOARDING_PASSWORD_ERROR" desc="Shown under a password manager when installing its extension from the Chrome Web Store failed.">
++  Couldn't install it from the Web Store. Check your connection, then try again.
+ </message>
+ 
+ <message name="IDS_HELIUM_ONBOARDING_PASSWORD_MANAGERS_PROTON_PASS" desc="Onboarding description of Proton Pass as a password manager option.">
 @@ -212,7 +337,7 @@
    Secure and the most popular open-source password manager. Offers data storage in Europe or US. Free with an optional paid plan. Can be self-hosted.
  </message>
@@ -458,7 +469,7 @@
          window.setTimeout(() => {
              if ($currentPage !== leavingPage) {
                  mountedPages.delete(leavingPage);
-@@ -50,30 +63,33 @@
+@@ -50,35 +63,33 @@
          }, OUT_ANIMATION_DURATION);
      });
  
@@ -502,6 +513,11 @@
 +            {/if}
          </div>
 -    {/if}
+-
+-    <!-- Keep navigation mounted on Finish so it can animate out. -->
+-    {#if $currentPage !== "Welcome"}
+-        <PageNavigation />
+-    {/if}
 +        <div>
 +            <StepDots />
 +        </div>
@@ -510,9 +526,22 @@
 +        </div>
 +    </header>
  
-     <!-- Keep navigation mounted on Finish so it can animate out. -->
-     {#if $currentPage !== "Welcome"}
-@@ -95,44 +111,48 @@
+     {#each flow as page (page)}
+         {#if mountedPages.has(page)}
+@@ -86,6 +97,12 @@
+             <Component />
+         {/if}
+     {/each}
++
++    <!-- After the pages, so Tab reaches a page's own controls before Back and Next (it's fixed to the bottom, so
++         this doesn't move it). Kept mounted on Finish so it can animate out. -->
++    {#if $currentPage !== "Welcome"}
++        <PageNavigation />
++    {/if}
+ </main>
+ 
+ <style>
+@@ -95,44 +112,48 @@
          justify-content: center;
          width: 100vw;
          min-height: 100vh;
@@ -587,7 +616,7 @@
  </style>
 --- a/components/helium_onboarding/src/app.css
 +++ b/components/helium_onboarding/src/app.css
-@@ -1,31 +1,195 @@
+@@ -1,31 +1,235 @@
 +/* Loka's look over Helium's components (@imput/helium-prism): the night sky, one hue per space, the system face.
 +   Every color takes --hue, which the page sets to the space being shown (lib/spaces.ts skyHue).
 +   Values follow the site's direction note (site/.critly/direction.md). */
@@ -611,6 +640,23 @@
 +    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 +    --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 +
++    /* Type: one job per size. Display sizes (h1, h2) are fluid and set below. */
++    --text-caption: 13px;
++    --text-small: 15px;
++    --text-body: 17px;
++    --text-lead: 19px;
++
++    /* Space: 4, 8, 12, 16, 24, 32, 48. */
++    --space-1: 4px;
++    --space-2: 8px;
++    --space-3: 12px;
++    --space-4: 16px;
++    --space-6: 24px;
++    --space-8: 32px;
++    --space-12: 48px;
++
++    /* Three curves. --ease for color and things already on screen, --ease-out for anything the user starts,
++       --ease-in only for what is leaving. */
 +    --ease: cubic-bezier(0.2, 0, 0, 1);
 +    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 +    --ease-in: cubic-bezier(0.4, 0, 1, 1);
@@ -618,7 +664,7 @@
 +    /* Roles, mapped onto prism's names so its components follow. */
 +    --primary: #ececf1;
 +    --secondary: #a7a8b4;
-+    --tertiary: #8c8e9b;
++    --tertiary: #9c9eab;
 +    /* prism draws text on its accent with --white: here that's the accent's dark ink. */
 +    --white: hsl(var(--hue) 50% 10%);
 +
@@ -629,6 +675,9 @@
 +    --bg-surface: hsl(var(--hue) 38% 4%);
 +    --bg-gradient-start: var(--bg-surface);
 +    --background: var(--bg-surface);
++
++    /* Errors. Some space colors sit near it, so errors also carry an icon. */
++    --danger: hsl(4 90% 74%);
 +
 +    --helium-elevated: hsl(var(--hue) 40% 85%);
 +    --ring: hsl(var(--hue) 40% 80% / 0.14);
@@ -696,11 +745,12 @@
 +
 +h4 {
 +    font-weight: 600;
-+    font-size: 17px;
++    font-size: var(--text-body);
 +    color: var(--primary);
 +}
 +
 +p, a, li {
++    font-size: var(--text-body);
 +    line-height: 1.45;
 +    text-wrap: pretty;
 +}
@@ -710,7 +760,7 @@
 +#app button,
 +#app .button {
 +    --size: 44px;
-+    font-size: 16px;
++    font-size: var(--text-body);
 +    font-weight: 500;
 +    transition:
 +        background-color 120ms var(--ease),
@@ -727,7 +777,7 @@
 +/* prism's cards: Button card, CardLink and Toggle (which is "toggle-button card", without .button). */
 +#app .card {
 +    border-radius: 12px;
-+    padding: 16px 18px;
++    padding: var(--space-4);
 +    box-shadow: inset 0 0 0 1px var(--ring);
 +    background-color: hsl(var(--hue) 30% 80% / 0.05);
 +}
@@ -735,7 +785,15 @@
 +/* Descriptions inside cards read as body text, not as part of the button label. */
 +#app .card p {
 +    font-weight: 400;
-+    font-size: 15px;
++    font-size: var(--text-small);
++}
++
++/* prism's toggles, checkboxes and card text fade on its own 'ease'; give them the page's curve. */
++#app .toggle-button .toggle,
++#app .checkbox-control,
++#app .button > *,
++#app .button > * > p {
++    transition-timing-function: var(--ease);
 +}
 +
 +@media (hover: hover) {
@@ -788,11 +846,22 @@
 +    box-shadow: inset 0 0 0 1.5px hsl(var(--hue) 40% 85% / 0.3);
 +}
 +
++/* prism hides the real checkbox with position: absolute. Without a positioned label its box belonged to the whole
++   page, so focusing it from the keyboard scrolled the page itself (header and all) instead of the list. */
++#app label.checkbox {
++    position: relative;
++}
++
++/* The same ring as every other control. */
++#app input:focus-visible + .checkbox-control {
++    outline-color: var(--helium-blue);
++}
++
 +/* ---- pages ---- */
  
  .onboarding-page {
      display: flex;
-@@ -37,51 +201,60 @@
+@@ -37,51 +241,102 @@
      height: 100%;
      left: 0;
      position: absolute;
@@ -828,15 +897,36 @@
 -    animation: page-out 0.2s;
 -    animation-fill-mode: forwards;
 +    animation: page-out 180ms var(--ease-in) forwards;
++}
++
++/* Pages that can scroll start at the same place, so the heading doesn't move between steps. */
++.onboarding-page:has(> .scrollable-page) {
++    justify-content: flex-start;
++}
++
++/* The two fades grow only when there is more to scroll past that edge. */
++@property --fade-top {
++    syntax: "<length>";
++    inherits: false;
++    initial-value: 0px;
++}
++
++@property --fade-bottom {
++    syntax: "<length>";
++    inherits: false;
++    initial-value: 0px;
  }
  
  .scrollable-page {
      width: 100%;
--    max-width: 600px;
++    /* Keeps card descriptions near 75 characters a line. */
+     max-width: 600px;
 -    overflow-x: scroll;
 -    overflow-y: visible;
 -    /* accommodation for outline */
-+    max-width: 640px;
++    /* The scroller stops above the fixed navigation (its 44px buttons, 24px off the bottom, and 12px of air), so
++       nothing scrolls under Back and Next, and Tab scrolls a control into view instead of leaving it behind them. */
++    margin-bottom: 80px;
 +    overflow-x: hidden;
 +    overflow-y: auto;
 +    /* room for focus rings */
@@ -845,17 +935,38 @@
 -    /* accommodation for navigation buttons */
 -    padding-bottom: 96px;
 -    mask-image: var(--page-scroll-gradient-mask);
-+    /* room for the navigation buttons */
-+    padding-bottom: 112px;
-+    mask-image: linear-gradient(to bottom, #000 calc(100% - 64px), transparent);
++    padding-bottom: var(--space-8);
++    /* Tab scrolls the focused control clear of the fades. */
++    scroll-padding-block: var(--space-8);
++    mask-image: linear-gradient(
++        to bottom,
++        transparent,
++        #000 var(--fade-top),
++        #000 calc(100% - var(--fade-bottom)),
++        transparent
++    );
++    animation: fade-top linear both, fade-bottom linear both;
++    animation-timeline: scroll(self);
++    animation-range: 0 40px, calc(100% - 40px) 100%;
++}
++
++@keyframes fade-top {
++    from { --fade-top: 0px; }
++    to { --fade-top: 32px; }
++}
++
++@keyframes fade-bottom {
++    from { --fade-bottom: 48px; }
++    to { --fade-bottom: 0px; }
  }
  
  .page-content {
      display: flex;
      flex-direction: column;
-     gap: var(--gap-3);
+-    gap: var(--gap-3);
 -    margin-top: 24px;
-+    margin-top: 28px;
++    gap: var(--space-3);
++    margin-top: var(--space-6);
      align-items: center;
  }
  
@@ -872,7 +983,7 @@
      }
  }
  
-@@ -93,29 +266,23 @@
+@@ -93,29 +348,28 @@
      to {
          opacity: 0;
          visibility: hidden;
@@ -918,6 +1029,22 @@
 +        transform: none;
 +    }
 +}
++
++#app .tooltip-content {
++    font-size: var(--text-caption);
++    line-height: 1.4;
++}
+--- a/components/helium_onboarding/src/components/HeliumPartner.svelte
++++ b/components/helium_onboarding/src/components/HeliumPartner.svelte
+@@ -29,7 +29,7 @@
+         display: flex;
+         align-items: center;
+         gap: 4px;
+-        font-size: 13.5px;
++        font-size: var(--text-caption);
+         font-weight: 500;
+         width: fit-content;
+         line-height: 0;
 --- /dev/null
 +++ b/components/helium_onboarding/src/components/LokaMark.svelte
 @@ -0,0 +1,106 @@
@@ -1029,17 +1156,26 @@
 +</style>
 --- a/components/helium_onboarding/src/components/PageHeader.svelte
 +++ b/components/helium_onboarding/src/components/PageHeader.svelte
-@@ -48,7 +48,8 @@
+@@ -47,8 +47,9 @@
+         }
  
          & p {
-             font-size: 18px;
+-            font-size: 18px;
 -            max-width: 450px;
++            font-size: var(--text-lead);
 +            max-width: 32em;
 +            color: var(--secondary);
              text-wrap: pretty;
          }
  
-@@ -62,6 +63,8 @@
+@@ -56,12 +57,14 @@
+             display: flex;
+             align-items: center;
+             flex-wrap: wrap;
+-            gap: 10px;
++            gap: var(--space-3);
+ 
+             & .header-icon {
                  display: flex;
                  height: 32px;
                  width: 32px;
@@ -1081,7 +1217,22 @@
          case "HeliumServices":
              // if the user pressed "next" on the HeliumServices page,
              // then we mark consent (having seen the page) as true
-@@ -66,17 +80,18 @@
+@@ -59,24 +73,33 @@
+         }
+     };
+ 
++    // While Next is saving, both buttons stay focusable (disabling the focused one would drop focus to the page)
++    // and ignore presses; Next shows a spinner and says it's busy.
++    const back = () => {
++        if (working) return;
++        previousPage();
++    };
++
+     const next = () => {
++        if (working) return;
+         working = true;
+         doNext()
+             .catch(() => {})
              .finally(() => {
                  working = false;
                  nextPage();
@@ -1093,16 +1244,16 @@
  <div class="glass-children">
      <div id="setup-buttons" class="action-buttons" class:visible>
 -        <Button disabled={working} onclick={previousPage}>
-+        <Button disabled={working} onclick={previousPage} data-sound="back">
++        <Button aria-disabled={working} onclick={back} data-sound={working ? "none" : "back"}>
              <IconArrowLeft />
              {s.button.back}
          </Button>
 -        <Button disabled={working} primary onclick={next}>
-+        <Button disabled={working} primary onclick={next} data-sound="none">
++        <Button aria-disabled={working} aria-busy={working} primary onclick={next} data-sound="none">
              {#if working}
                  <Spinner size={18} />
              {:else}
-@@ -105,9 +120,12 @@
+@@ -105,9 +128,17 @@
  
          &.visible {
              visibility: visible;
@@ -1115,10 +1266,15 @@
 +        & > :global(.button) {
 +            min-width: 112px;
 +            justify-content: center;
++        }
++
++        & > :global(.button[aria-disabled="true"]) {
++            opacity: 0.7;
++            cursor: progress;
          }
      }
  
-@@ -122,13 +140,16 @@
+@@ -122,13 +153,16 @@
  
      @keyframes slide-in {
          from {
@@ -1141,21 +1297,84 @@
  </style>
 --- a/components/helium_onboarding/src/components/PasswordManagerOption.svelte
 +++ b/components/helium_onboarding/src/components/PasswordManagerOption.svelte
-@@ -104,8 +104,9 @@
+@@ -45,11 +45,10 @@
+     }
+ 
+     const install = async () => {
+-        // Install function is expected to never be called when
+-        // either of these states is true, but we handle it
+-        // here just in case.
+-        if (installed || working || error) return;
+-
++        // Ignore presses while it's already installed or installing. After an error the button offers to try again.
++        if (installed || working) return;
++
++        error = 0;
+         working = true;
+ 
+         await installExtension(info.extensionId)
+@@ -104,26 +103,34 @@
                  )}
              </div>
          </div>
-+        <!-- A tinted button, not a solid one: six of them share the screen with Next. -->
++        <!-- A tinted button, not a solid one: six of them share the screen with Next. It stays focusable while
++             installing (aria-busy) so focus doesn't fall to the page. -->
          <Button
 -            primary={!installed && !error}
-+            class={["install", { ready: !installed && !error }]}
-             disabled={installed || !!error || working}
+-            disabled={installed || !!error || working}
++            class={["install", { ready: !installed }]}
++            disabled={installed}
++            aria-busy={working}
              onclick={install}
          >
-@@ -141,6 +142,18 @@
-         background-color: var(--helium-elevated-5);
-     }
+             {#if installed}
+                 {s.password.installed}
+-            {:else if error}
+-                {s.password.error} {error}
+             {:else}
+                 {#if working}
+                     <Spinner size={18} />
+                 {:else}
+                     <IconDownload />
+                 {/if}
+-                {s.password.install}
++                {error ? "Try again" : s.password.install}
+             {/if}
+         </Button>
+     </div>
+-    <p>{info.description}</p>
++    <div class="pm-desc">
++        <p>{info.description}</p>
++        <!-- Always there, so the message is announced when it appears; empty, it takes no space. -->
++        <p class="install-error" aria-live="polite">{#if error}<svg viewBox="0 0 24 24" aria-hidden="true">
++                <circle cx="12" cy="12" r="9" />
++                <path d="M12 7.5v5.5m0 3.4v.1" />
++            </svg>{s.password.error}{/if}</p>
++    </div>
+ </div>
  
+ <style>
+@@ -134,11 +141,29 @@
+         width: 100%;
+         min-width: 0;
+         max-width: 480px;
+-        padding: 16px;
+-        gap: 16px;
+-        border-radius: 16px;
++        padding: var(--space-4);
++        gap: var(--space-4);
++        /* The same surface as every other card: a tinted fill and a 1px ring. */
++        border-radius: 12px;
+         align-self: stretch;
+-        background-color: var(--helium-elevated-5);
++        background-color: hsl(var(--hue) 30% 80% / 0.05);
++        box-shadow: inset 0 0 0 1px var(--ring);
++
++        & .pm-desc p {
++            font-size: var(--text-small);
++        }
++    }
++
 +    :global(#app .button.install.ready) {
 +        color: var(--helium-blue);
 +        background-color: hsl(var(--hue) 70% 60% / 0.12);
@@ -1166,11 +1385,53 @@
 +        :global(#app .button.install.ready:hover) {
 +            background-color: hsl(var(--hue) 70% 60% / 0.2);
 +        }
+     }
+ 
+     .pm-top {
+@@ -165,10 +190,42 @@
+         row-gap: var(--gap-1);
+     }
+ 
++    /* The links are 22px tall; a 34px target each, without reaching the next one 12px over. */
+     .info-links :global(.info-link) {
++        position: relative;
+         color: var(--secondary);
+-        font-size: 15px;
++        font-size: var(--text-small);
+         text-decoration-thickness: 1px;
++        outline-offset: 1px;
 +    }
 +
-     .pm-top {
-         display: flex;
-         gap: var(--gap-3);
++    .info-links :global(.info-link)::after {
++        content: "";
++        position: absolute;
++        inset: -6px -5px;
++    }
++
++    .install-error {
++        display: flex;
++        align-items: flex-start;
++        gap: 6px;
++        margin-top: var(--space-2);
++        color: var(--danger);
++
++        &:empty {
++            margin-top: 0;
++        }
++
++        & svg {
++            flex: none;
++            width: 18px;
++            height: 18px;
++            margin-top: 2px;
++            fill: none;
++            stroke: currentColor;
++            stroke-width: 2;
++            stroke-linecap: round;
++        }
+     }
+ 
+     .pm-icon-container {
 --- /dev/null
 +++ b/components/helium_onboarding/src/components/Planet.svelte
 @@ -0,0 +1,176 @@
@@ -1352,6 +1613,17 @@
 +</style>
 --- a/components/helium_onboarding/src/components/ProfileImportOption.svelte
 +++ b/components/helium_onboarding/src/components/ProfileImportOption.svelte
+@@ -52,8 +52,8 @@
+ <style>
+     :global(label.checkbox.profile-option) {
+         width: 100%;
+-        gap: 16px;
+-        padding: 12px 18px;
++        gap: var(--space-4);
++        padding: var(--space-3) var(--space-4);
+         border-radius: 14px;
+         background-color: var(--helium-elevated-7);
+     }
 @@ -73,7 +73,8 @@
      }
  
@@ -1362,6 +1634,21 @@
      }
  
      .text {
+@@ -81,10 +82,13 @@
+         flex-direction: column;
+         gap: 2px;
+         text-align: left;
++
++        & p {
++            font-size: var(--text-small);
++        }
+     }
+ 
+     h4 {
+         color: var(--primary);
+-        font-size: 17px;
+     }
+ </style>
 --- /dev/null
 +++ b/components/helium_onboarding/src/components/Sky.svelte
 @@ -0,0 +1,357 @@
@@ -1724,7 +2011,7 @@
 +</style>
 --- /dev/null
 +++ b/components/helium_onboarding/src/components/SoundToggle.svelte
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,68 @@
 +<script lang="ts">
 +    import { s } from "../lib/strings";
 +    import { muted, play } from "../lib/sound";
@@ -1762,8 +2049,10 @@
 +        --size: 44px;
 +        color: var(--secondary);
 +
-+        &:hover {
-+            color: var(--primary);
++        @media (hover: hover) {
++            &:hover {
++                color: var(--primary);
++            }
 +        }
 +    }
 +
@@ -2440,7 +2729,7 @@
 +            {#each grouped.featured as [browser, profiles] (browser)}
 +                <section class="featured" aria-labelledby="import-{browser}">
 +                    <div class="featured-head">
-+                        {@render browserIcon(browser, 40)}
++                        {@render browserIcon(browser, 36)}
 +                        <div class="featured-text">
 +                            <h3 id="import-{browser}">{featuredText[browser].title()}</h3>
 +                            <p>{featuredText[browser].desc()}</p>
@@ -2476,7 +2765,7 @@
                          <ProfileImportOption {profile} />
                      {/each}
                  </div>
-@@ -80,35 +125,88 @@
+@@ -80,35 +125,93 @@
  </div>
  
  <style>
@@ -2491,9 +2780,9 @@
 +    .featured {
 +        display: flex;
 +        flex-direction: column;
-+        gap: 16px;
++        gap: var(--space-4);
 +        width: 100%;
-+        padding: 20px;
++        padding: var(--space-4);
 +        border-radius: 16px;
 +        text-align: left;
 +        background:
@@ -2511,11 +2800,12 @@
 +        }
 +    }
 +
-+    /* 40px icon + 22px gap puts the title on the same edge as the profile names below it (18 + 28 + 16). */
++    /* 36px icon + 24px gap puts the title on the same edge as the profile names below it: the row's 16px
++       padding, the 28px checkbox and its 16px gap. */
 +    .featured-head {
 +        display: flex;
 +        align-items: flex-start;
-+        gap: 22px;
++        gap: var(--space-6);
 +    }
 +
 +    .featured-text {
@@ -2524,25 +2814,28 @@
 +        gap: 4px;
 +
 +        & h3 {
-+            font-size: 20px;
++            font-size: var(--text-lead);
 +            letter-spacing: -0.01em;
 +        }
 +
 +        & p {
-+            font-size: 15px;
++            font-size: var(--text-small);
 +            color: var(--secondary);
 +        }
 +    }
 +
++    /* The heading, each browser's icon and the checkboxes share one edge, and each browser's name sits on the
++       same edge as its profile names: 16px in, then the 28px icon or checkbox and a 16px gap. */
 +    .others-title {
 +        align-self: flex-start;
-+        margin-top: 20px;
-+        font-size: 15px;
++        margin-top: var(--space-6);
++        padding-inline-start: var(--space-4);
++        font-size: var(--text-small);
 +        font-weight: 600;
-+        letter-spacing: 0.01em;
 +        color: var(--secondary);
 +    }
 +
++    /* Twice as far from the rows above as from its own rows, so each name reads as the head of what follows. */
      .browser-header {
          display: flex;
          width: 100%;
@@ -2561,8 +2854,9 @@
 -                height: 28px;
 -            }
 -        }
-+        gap: 10px;
-+        margin-top: 8px;
++        gap: var(--space-4);
++        margin-top: var(--space-3);
++        padding-inline-start: var(--space-4);
  
          & > h4 {
              line-height: 1;
@@ -2612,7 +2906,7 @@
  </script>
  
  <div
-@@ -22,66 +26,165 @@
+@@ -22,66 +26,194 @@
      class="onboarding-page"
      class:visible
  >
@@ -2673,30 +2967,79 @@
  <style>
      #finish-page {
 -        --page-in-delay: 0.15s;
-+        --page-in-delay: 0ms;
-+        padding-bottom: 18vh;
-     }
- 
+-    }
+-
 -    #finish-top,
 -    #finish-text,
 -    #finish-logo-text {
++        --page-in-delay: 0ms;
++        /* Above the horizon's rim, as on Welcome. */
++        padding-bottom: calc(25vh + var(--space-6));
++    }
++
++    @media (max-height: 760px) {
++        .worlds {
++            margin-bottom: var(--space-6);
++
++            & li :global(svg.planet) {
++                width: 72px;
++                height: 72px;
++            }
++
++            & li:first-child :global(svg.planet) {
++                width: 88px;
++                height: 88px;
++            }
++        }
++
++        .mark {
++            margin-bottom: var(--space-6);
++
++            & :global(svg) {
++                width: 72px;
++                height: 72px;
++            }
++        }
++
++        .action-buttons {
++            margin-top: var(--space-6);
++        }
++    }
++
 +    .finish {
          display: flex;
          flex-direction: column;
+-    }
+-
+-    #finish-page-container {
+-        max-width: 500px;
+-    }
+-
+-    #finish-top,
+-    #finish-logo-text {
+-        height: 100%;
+-        gap: 32px;
 +        align-items: center;
 +        width: 100%;
 +        max-width: 640px;
 +        padding-inline: 24px;
-     }
- 
--    #finish-page-container {
--        max-width: 500px;
++    }
++
 +    .worlds {
 +        display: flex;
 +        align-items: flex-end;
-+        justify-content: center;
+         justify-content: center;
+-        align-items: center;
+-    }
+-
+-    #finish-logo-text,
+-    #finish-text {
+-        gap: 16px
+-    }
+-
+-    #finish-logo {
 +        gap: clamp(24px, 4vw, 56px);
-+        margin: 0 0 36px;
++        margin: 0 0 var(--space-8);
 +        padding: 0;
 +        list-style: none;
 +
@@ -2704,58 +3047,49 @@
 +            display: flex;
 +            flex-direction: column;
 +            align-items: center;
-+            gap: 12px;
++            gap: var(--space-3);
 +        }
-     }
- 
--    #finish-top,
--    #finish-logo-text {
--        height: 100%;
--        gap: 32px;
--        justify-content: center;
--        align-items: center;
++    }
++
 +    .name {
 +        max-width: 140px;
 +        overflow: hidden;
 +        text-overflow: ellipsis;
 +        white-space: nowrap;
-+        font-size: 15px;
++        font-size: var(--text-small);
 +        font-weight: 600;
 +        color: var(--secondary);
-     }
- 
--    #finish-logo-text,
--    #finish-text {
--        gap: 16px
++    }
++
 +    .bob {
 +        display: block;
-     }
- 
--    #finish-logo {
++    }
++
 +    .mark {
          display: flex;
 -        align-items: center;
-+        margin-bottom: 28px;
-+        filter: drop-shadow(0 0 32px hsl(var(--hue) 85% 60% / 0.35));
-     }
- 
+-    }
+-
 -    #finish-text p {
 -        font-size: 20px;
++        margin-bottom: var(--space-8);
++        filter: drop-shadow(0 0 32px hsl(var(--hue) 85% 60% / 0.35));
++    }
++
 +    .lead {
-+        margin-top: 16px;
++        margin-top: var(--space-4);
 +        max-width: 32em;
-+        font-size: 19px;
++        font-size: var(--text-lead);
 +        color: var(--secondary);
 +    }
 +
 +    .action-buttons {
-+        margin-top: 36px;
-+        gap: 12px;
++        margin-top: var(--space-8);
++        gap: var(--space-3);
 +
 +        & > :global(.button) {
 +            min-height: 48px;
-+            padding-inline: 22px;
-+            font-size: 17px;
++            padding-inline: var(--space-6);
 +        }
 +    }
 +
@@ -2817,9 +3151,23 @@
 +        }
      }
  </style>
+--- a/components/helium_onboarding/src/pages/HeliumServices.svelte
++++ b/components/helium_onboarding/src/pages/HeliumServices.svelte
+@@ -86,6 +86,11 @@
+         --page-in-delay: 0.1s;
+     }
+ 
++    /* As wide as the toggles above it, so the link card shares their edges. */
++    .instance-link {
++        width: 100%;
++    }
++
+     .toggle-separator {
+         height: 2px;
+         width: calc(100% - 48px);
 --- /dev/null
 +++ b/components/helium_onboarding/src/pages/Spaces.svelte
-@@ -0,0 +1,1114 @@
+@@ -0,0 +1,1247 @@
 +<script lang="ts">
 +    import { tick } from "svelte";
 +    import { Button } from "@imput/helium-prism";
@@ -2952,7 +3300,7 @@
 +        if (!to.width || !from.width) return;
 +
 +        if ($reducedMotion) {
-+            el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: "ease-out" });
++            el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: "cubic-bezier(0.23, 1, 0.32, 1)" });
 +            return;
 +        }
 +
@@ -3208,6 +3556,7 @@
 +                            style:--world-hue={world.hue}
 +                            aria-label={substituteLocalizedString(s.spaces.edit, { name: world.name })}
 +                            aria-pressed={editing === world.id}
++                            title={world.name}
 +                            data-sound="none"
 +                            onclick={() => edit(world.id)}
 +                        >
@@ -3227,10 +3576,18 @@
 +            <h2>{s.spaces.title}</h2>
 +            <p class="subtitle">{s.spaces.subtitle}</p>
 +
-+            {#if full}
-+                <p class="full-note">{s.spaces.full}</p>
-+            {:else}
-+                <form class="forge" onsubmit={submit}>
++            <!-- The form keeps its space when the system is full, under the note, so nothing on the page moves. -->
++            <div class="panel-body">
++                {#if full}
++                    <p class="full-note">{s.spaces.full}</p>
++                {/if}
++                <form
++                    class="forge"
++                    class:held={full}
++                    inert={full}
++                    aria-hidden={full ? "true" : undefined}
++                    onsubmit={submit}
++                >
 +                    <label class="field" class:shaking>
 +                        <span class="label">{s.spaces.nameLabel}</span>
 +                        <input
@@ -3247,11 +3604,19 @@
 +                            spellcheck="false"
 +                            enterkeyhint="done"
 +                            aria-describedby="spaces-hint"
++                            aria-invalid={hint ? "true" : undefined}
 +                        />
 +                    </label>
 +
-+                    {#if suggestions.length && editing === null}
-+                        <div class="chips" role="group" aria-label={s.spaces.suggestionsLabel}>
++                    <!-- Hidden but still taking its row while editing, so the form below doesn't jump up. -->
++                    {#if suggestions.length}
++                        <div
++                            class="chips"
++                            class:held={editing !== null}
++                            inert={editing !== null}
++                            role="group"
++                            aria-label={s.spaces.suggestionsLabel}
++                        >
 +                            {#each suggestions as name (name)}
 +                                <button
 +                                    type="button"
@@ -3325,9 +3690,18 @@
 +                            </Button>
 +                        {/if}
 +                    </div>
-+                    <p class="hint" id="spaces-hint" aria-live="polite">{hint}</p>
++                    <!-- The icon says "problem" even when the space's own color is close to the error color. -->
++                    <p class="hint" id="spaces-hint" aria-live="polite">
++                        {#if hint}
++                            <svg viewBox="0 0 24 24" aria-hidden="true">
++                                <circle cx="12" cy="12" r="9" />
++                                <path d="M12 7.5v5.5m0 3.4v.1" />
++                            </svg>
++                            {hint}
++                        {/if}
++                    </p>
 +                </form>
-+            {/if}
++            </div>
 +            <p class="sr-only" aria-live="polite">{announcement}</p>
 +        </div>
 +    </div>
@@ -3393,7 +3767,7 @@
 +        left: 0;
 +        right: 0;
 +        bottom: 0;
-+        font-size: 14px;
++        font-size: var(--text-small);
 +        color: var(--tertiary);
 +    }
 +
@@ -3494,7 +3868,7 @@
 +        overflow: hidden;
 +        text-overflow: ellipsis;
 +        white-space: nowrap;
-+        font-size: 14px;
++        font-size: var(--text-small);
 +        font-weight: 600;
 +        color: var(--secondary);
 +        line-height: 18px;
@@ -3527,44 +3901,58 @@
 +
 +    /* ---- the panel ---- */
 +
++    /* Pinned to the top of the row, so the heading stays put when the form changes (editing drops the
++       suggestions, a full system swaps the form for a note). */
 +    .panel {
 +        display: flex;
 +        flex-direction: column;
 +        align-items: flex-start;
++        align-self: start;
 +        text-align: left;
 +        min-width: 0;
 +    }
 +
 +    .subtitle {
-+        margin-top: 12px;
-+        font-size: 17px;
++        margin-top: var(--space-3);
++        font-size: var(--text-body);
 +        color: var(--secondary);
 +    }
 +
++    .panel-body {
++        display: grid;
++        width: 100%;
++        margin-top: var(--space-6);
++
++        & > * {
++            grid-area: 1 / 1;
++        }
++    }
++
++    .held {
++        visibility: hidden;
++    }
++
 +    .full-note {
-+        margin-top: 28px;
-+        padding: 16px 18px;
++        align-self: start;
++        padding: var(--space-4);
 +        border-radius: 12px;
-+        background: hsl(var(--hue) 30% 80% / 0.06);
++        background: hsl(var(--hue) 30% 80% / 0.05);
 +        box-shadow: inset 0 0 0 1px var(--ring);
 +        color: var(--primary);
-+        font-size: 16px;
 +    }
 +
 +    .forge {
 +        display: flex;
 +        flex-direction: column;
-+        gap: 18px;
++        gap: var(--space-4);
 +        width: 100%;
-+        margin-top: 28px;
 +    }
 +
 +    .label {
 +        display: block;
-+        margin-bottom: 8px;
-+        font-size: 13px;
++        margin-bottom: var(--space-2);
++        font-size: var(--text-caption);
 +        font-weight: 600;
-+        letter-spacing: 0.02em;
 +        color: var(--secondary);
 +    }
 +
@@ -3577,23 +3965,28 @@
 +        background: hsl(var(--hue) 24% 10% / 0.92);
 +        box-shadow: inset 0 0 0 1px var(--ring);
 +        color: var(--primary);
-+        font: 600 20px / 1 var(--font-display);
++        font: 600 var(--text-lead) / 1 var(--font-display);
 +        letter-spacing: -0.01em;
 +        outline: none;
 +        user-select: text;
 +        transition: box-shadow 120ms var(--ease), background-color 120ms var(--ease);
 +
-+        &:hover {
-+            background: hsl(var(--hue) 24% 13% / 0.92);
++        @media (hover: hover) {
++            &:hover {
++                background: hsl(var(--hue) 24% 13% / 0.92);
++            }
 +        }
 +
++        /* An outline, not a shadow, so Windows contrast themes still draw it. */
 +        &:focus-visible {
-+            box-shadow: inset 0 0 0 2px var(--helium-blue);
++            outline: 2px solid var(--helium-blue);
++            outline-offset: -2px;
 +        }
-+    }
 +
-+    .field.shaking input {
-+        animation: shake 320ms var(--ease);
++        &[aria-invalid="true"] {
++            outline: 2px solid var(--danger);
++            outline-offset: -2px;
++        }
 +    }
 +
 +    .chips {
@@ -3607,7 +4000,7 @@
 +        min-height: 36px;
 +        padding: 0 14px;
 +        border-radius: 999px;
-+        font-size: 14px;
++        font-size: var(--text-small);
 +        color: var(--secondary);
 +        position: relative;
 +
@@ -3618,8 +4011,10 @@
 +            inset: -4px 0;
 +        }
 +
-+        &:hover {
-+            color: var(--primary);
++        @media (hover: hover) {
++            &:hover {
++                color: var(--primary);
++            }
 +        }
 +    }
 +
@@ -3635,11 +4030,13 @@
 +        height: 60px;
 +        padding: 0;
 +        justify-content: center;
-+        border-radius: 14px;
++        border-radius: 12px;
 +        background-color: hsl(var(--hue) 22% 10% / 0.9);
 +
-+        &:hover {
-+            background-color: hsl(var(--hue) 22% 14% / 0.9);
++        @media (hover: hover) {
++            &:hover {
++                background-color: hsl(var(--hue) 22% 14% / 0.9);
++            }
 +        }
 +
 +        &[aria-checked="true"] {
@@ -3670,8 +4067,10 @@
 +            transition: scale 160ms var(--ease-out), box-shadow 160ms var(--ease);
 +        }
 +
-+        &:hover::before {
-+            scale: 1.08;
++        @media (hover: hover) {
++            &:hover::before {
++                scale: 1.08;
++            }
 +        }
 +
 +        &[aria-checked="true"]::before {
@@ -3683,13 +4082,12 @@
 +
 +    .forge-actions {
 +        display: flex;
-+        gap: 10px;
-+        margin-top: 6px;
++        gap: var(--space-3);
++        margin-top: var(--space-2);
 +
 +        & > :global(.button) {
 +            min-height: 48px;
-+            padding-inline: 22px;
-+            font-size: 17px;
++            padding-inline: var(--space-6);
 +        }
 +    }
 +
@@ -3703,10 +4101,23 @@
 +    }
 +
 +    .hint {
-+        min-height: 20px;
-+        margin-top: -8px;
-+        font-size: 14px;
-+        color: hsl(20 90% 75%);
++        display: flex;
++        align-items: center;
++        gap: 6px;
++        min-height: 22px;
++        margin-top: calc(-1 * var(--space-2));
++        font-size: var(--text-small);
++        color: var(--danger);
++
++        & svg {
++            flex: none;
++            width: 18px;
++            height: 18px;
++            fill: none;
++            stroke: currentColor;
++            stroke-width: 2;
++            stroke-linecap: round;
++        }
 +    }
 +
 +    .sr-only {
@@ -3766,11 +4177,21 @@
 +        .forming.removing {
 +            animation: remove 240ms var(--ease-in) both;
 +        }
++
++        /* An empty name: the field shakes once. With reduced motion the red ring and the message say it alone. */
++        .field.shaking input {
++            animation: shake 320ms var(--ease);
++        }
 +    }
 +
 +    @media (prefers-reduced-motion: reduce) {
 +        .forming {
 +            animation: fade-in 300ms var(--ease) both;
++        }
++
++        /* Create still lights the planet up, without the scale or the ring of light. */
++        .forming.igniting .bob {
++            animation: glow 120ms var(--ease-out) both;
 +        }
 +
 +        .forming.removing {
@@ -3850,6 +4271,12 @@
 +        }
 +    }
 +
++    @keyframes glow {
++        to {
++            filter: brightness(1.5);
++        }
++    }
++
 +    @keyframes shock {
 +        from {
 +            opacity: 1;
@@ -3894,9 +4321,63 @@
 +        75% { translate: -3px 0; }
 +    }
 +
++    /* Wide enough for the heading on one line and all eight colors in one row. */
 +    @media (max-width: 1100px) {
 +        .spaces-layout {
-+            grid-template-columns: minmax(0, 1fr) 340px;
++            grid-template-columns: minmax(0, 1fr) 380px;
++        }
++
++        .hues {
++            gap: 2px;
++        }
++    }
++
++    /* Short windows: smaller planet tiles and tighter gaps, so Create stays above the navigation. */
++    @media (max-height: 760px) {
++        #spaces-page {
++            padding-bottom: 96px;
++        }
++
++        .panel-body {
++            margin-top: var(--space-4);
++        }
++
++        .forge {
++            gap: var(--space-3);
++        }
++
++        .chips {
++            margin-top: -4px;
++        }
++
++        .label {
++            margin-bottom: 6px;
++        }
++
++        .field input {
++            height: 48px;
++        }
++
++        :global(#app) .kind {
++            width: 48px;
++            height: 48px;
++
++            & :global(svg.planet) {
++                width: 32px;
++                height: 32px;
++            }
++        }
++
++        .forge-actions {
++            margin-top: var(--space-1);
++
++            & > :global(.button) {
++                min-height: 44px;
++            }
++        }
++
++        .hint {
++            margin-top: calc(-1 * var(--space-1));
 +        }
 +    }
 +
@@ -3964,7 +4445,7 @@
  
      const useDefaults = async () => {
          acceptLatestSchema();
-@@ -27,316 +28,268 @@
+@@ -27,316 +28,293 @@
  
      const visible = $derived($currentPage === "Welcome");
  
@@ -4132,8 +4613,31 @@
 -    #welcome-text,
 -    #welcome-logo-text {
 +        --page-in-delay: 0ms;
-+        /* The horizon's rim sits about here; keep the column above it. */
-+        padding-bottom: 18vh;
++        /* The horizon's rim sits at 75% of the window's height (Sky.svelte, .horizon.high). Center the column in the
++           sky above it, with 24px of air, so the legal lines never sit on the rim. */
++        padding-bottom: calc(25vh + var(--space-6));
++    }
++
++    /* Short windows: a smaller mark and tighter gaps, so the column still fits above the rim, and twice the air
++       there, since the rim's glow reaches up into the legal lines. */
++    @media (max-height: 760px) {
++        #welcome-page {
++            padding-bottom: calc(25vh + var(--space-12));
++        }
++
++        .mark {
++            margin-bottom: var(--space-6);
++
++            & :global(svg) {
++                width: 72px;
++                height: 72px;
++            }
++        }
++
++        .action-buttons,
++        .legal {
++            margin-top: var(--space-6);
++        }
 +    }
 +
 +    .welcome {
@@ -4181,29 +4685,29 @@
 -    }
 -
 -    #welcome-footer {
-+        margin-bottom: 28px;
++        margin-bottom: var(--space-8);
 +        filter: drop-shadow(0 0 32px hsl(var(--hue) 85% 60% / 0.35));
 +    }
 +
 +    .lead {
-+        margin-top: 18px;
++        margin-top: var(--space-4);
 +        max-width: 34em;
-+        font-size: 19px;
++        font-size: var(--text-lead);
 +        color: var(--secondary);
 +    }
 +
 +    .action-buttons {
-+        margin-top: 36px;
-+        gap: 12px;
++        margin-top: var(--space-8);
++        gap: var(--space-3);
 +
 +        & > :global(.button) {
 +            min-height: 48px;
-+            padding-inline: 22px;
-+            font-size: 17px;
++            padding-inline: var(--space-6);
 +        }
 +
++        /* The arrow sits a little in from the edge, so the label reads as centered. */
 +        & > :global(.button.primary) {
-+            padding-inline: 24px 20px;
++            padding-inline: var(--space-6) 20px;
 +        }
 +    }
 +
@@ -4217,12 +4721,14 @@
 -        }
 -
 -        :global(a) {
-+        gap: 4px;
-+        margin-top: 40px;
-+        max-width: 44em;
++        align-items: center;
++        gap: var(--space-1);
++        margin-top: var(--space-8);
 +
 +        & p {
-+            font-size: 13.5px;
++            /* About 75 characters a line. */
++            max-width: 38em;
++            font-size: var(--text-caption);
 +            color: var(--tertiary);
 +        }
 +

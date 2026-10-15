@@ -1644,7 +1644,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler_features.cc
-@@ -0,0 +1,652 @@
+@@ -0,0 +1,660 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1910,7 +1910,15 @@
 +      tab_strip ? tab_strip->GetActiveWebContents() : nullptr;
 +  const int tab_id =
 +      active ? extensions::ExtensionTabUtil::GetTabId(active) : -1;
++  // Pinned ones first, in the order the user pinned them, then the rest.
++  std::vector<ToolbarActionsModel::ActionId> ordered(
++      model->pinned_action_ids().begin(), model->pinned_action_ids().end());
 +  for (const auto& id : model->action_ids()) {
++    if (!model->IsActionPinned(id)) {
++      ordered.push_back(id);
++    }
++  }
++  for (const auto& id : ordered) {
 +    const extensions::Extension* extension =
 +        registry->enabled_extensions().GetByID(id);
 +    if (!extension) {

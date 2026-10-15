@@ -15,5 +15,9 @@ export function faviconUrl(pageUrl: string): string {
 	url.searchParams.set("scaleFactor", `${window.devicePixelRatio}x`);
 	url.searchParams.set("pageUrl", pageUrl);
 	url.searchParams.set("allowGoogleServerFallback", "0");
+	// Another page on the same site lends its icon; and a page the cache doesn't know gets nothing, not the default
+	// globe (a white dot on a dark sky), so its tile can show the site's letter instead.
+	url.searchParams.set("fallbackToHost", "1");
+	url.searchParams.set("forceEmptyDefaultFavicon", "1");
 	return url.toString();
 }

@@ -531,7 +531,8 @@ async function main() {
 		// window, which CDP input (it skips this step) can't see.
 		/** @type {{ w: number, h: number, dpr: number }} */
 		const size = await evaluate(sidebar, "({ w: innerWidth, h: innerHeight, dpr: devicePixelRatio })");
-		const points = [0.12, 0.25, 0.38, 0.5, 0.62, 0.74].map(
+		// Down to the bottom row: the planets of the space switcher sit in the last few pixels.
+		const points = [0.12, 0.25, 0.38, 0.5, 0.62, 0.74, 0.86, 0.97].map(
 			(f) => `${Math.round((size.w / 2) * size.dpr)},${Math.round(size.h * f * size.dpr)}`,
 		);
 		const hits = spawnSync(

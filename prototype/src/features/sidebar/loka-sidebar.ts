@@ -296,27 +296,22 @@ export class LokaSidebar extends LitElement {
 	 * Escape and Tab close the menu and go back to what opened it.
 	 */
 	private menuKey(e: KeyboardEvent) {
-		const inSub = (e.target as HTMLElement).closest(".menu.sub") !== null;
-		const list = this.renderRoot.querySelector<HTMLElement>(inSub ? ".menu.sub" : ".menu:not(.sub)");
-		const items = [...(list?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
-		const at = items.indexOf(this.shadowRoot?.activeElement as HTMLElement);
+		const items = [...this.renderRoot.querySelectorAll<HTMLElement>('.menu [role="menuitem"]')];
+		const current = this.shadowRoot?.activeElement as HTMLElement | null;
+		const at = current ? items.indexOf(current) : -1;
+		const nested = current?.classList.contains("nested") ?? false;
 		let next: number;
 		if (e.key === "ArrowDown") next = (at + 1) % items.length;
 		else if (e.key === "ArrowUp") next = (at - 1 + items.length) % items.length;
 		else if (e.key === "Home") next = 0;
 		else if (e.key === "End") next = items.length - 1;
-		else if (e.key === "ArrowRight" && !inSub && this.menu?.items[at]?.items) {
+		else if (e.key === "ArrowRight" && current?.getAttribute("aria-haspopup") === "menu") {
 			e.preventDefault();
-			void this.openSubmenu(at, true);
+			void this.openSubmenu(Number(current.dataset.index), true);
 			return;
-		} else if ((e.key === "ArrowLeft" || e.key === "Escape") && inSub) {
+		} else if (e.key === "ArrowLeft" && (nested || current?.getAttribute("aria-expanded") === "true")) {
 			e.preventDefault();
-			e.stopPropagation();
-			const parent = this.submenu;
-			this.submenu = null;
-			if (parent !== null) {
-				this.renderRoot.querySelectorAll<HTMLElement>('.menu:not(.sub) [role="menuitem"]')[parent]?.focus();
-			}
+			void this.openSubmenu(null, true);
 			return;
 		} else if (e.key === "Escape" || e.key === "Tab") {
 			e.preventDefault();
@@ -329,12 +324,17 @@ export class LokaSidebar extends LitElement {
 		items[next]?.focus();
 	}
 
-	/** Opens item `index`'s submenu; from the keyboard, focus goes to its first item. */
-	private async openSubmenu(index: number, focus: boolean) {
+	/**
+	 * Opens item `index`'s submenu inside the menu, under it (the sidebar is too narrow for one beside it), or closes
+	 * it with null. From the keyboard, focus goes to its first item, or back to the item that opened it.
+	 */
+	private async openSubmenu(index: number | null, focus: boolean) {
+		const parent = this.submenu;
 		this.submenu = index;
 		if (!focus) return;
 		await this.updateComplete;
-		this.renderRoot.querySelector<HTMLElement>('.menu.sub [role="menuitem"]')?.focus();
+		const selector = index === null ? `.menu [data-index="${parent}"]` : ".menu .nested";
+		this.renderRoot.querySelector<HTMLElement>(selector)?.focus();
 	}
 
 	/** Asks the window to act on the page a tab shows; the sidebar has no page of its own. */
@@ -1341,74 +1341,62 @@ export class LokaSidebar extends LitElement {
 
 	/** Where a menu of `items` fits on screen, nearest to (x, y): kept inside the sidebar and above its bottom. */
 	private menuPlace(x: number, y: number, items: MenuItem[]): { left: number; top: number } {
-		const height = 8 + 34 * items.length + 9 * items.filter((i) => i.divider).length;
+		const open = this.submenu === null ? [] : (items[this.submenu]?.items ?? []);
+		const height = 8 + 34 * (items.length + open.length) + 9 * items.filter((i) => i.divider).length;
 		return {
 			left: Math.max(4, Math.min(x, this.getBoundingClientRect().right - 204)),
 			top: Math.max(4, Math.min(y, window.innerHeight - 8 - height)),
 		};
 	}
 
-	private menuItems(items: MenuItem[], sub: boolean): TemplateResult[] {
-		return items.map(
-			(item, i) => html`${item.divider ? html`<hr role="separator" />` : nothing}<button
-					class="${item.danger ? "danger" : ""} ${!sub && this.submenu === i ? "open" : ""}"
-					role="menuitem"
-					tabindex="-1"
-					aria-haspopup=${item.items ? "menu" : nothing}
-					aria-expanded=${item.items ? this.submenu === i : nothing}
-					@mouseenter=${() => {
-						if (!sub) this.submenu = item.items ? i : null;
-					}}
-					@click=${(e: Event) => {
-						e.stopPropagation();
-						if (item.items) {
-							void this.openSubmenu(i, true);
-							return;
-						}
-						this.closeMenu();
-						this.refocus = true;
-						item.run?.();
-					}}
-				>
-					<span>${item.label}</span>${item.hint ? html`<kbd>${item.hint}</kbd>` : nothing}${
-						item.items
-							? html`<svg class="more" viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg>`
-							: nothing
+	private menuItem(item: MenuItem, index: number, nested: boolean): TemplateResult {
+		const opens = item.items !== undefined;
+		return html`${item.divider ? html`<hr role="separator" />` : nothing}<button
+				class="${item.danger ? "danger" : ""} ${nested ? "nested" : ""} ${opens && this.submenu === index ? "open" : ""}"
+				role="menuitem"
+				tabindex="-1"
+				data-index=${index}
+				aria-haspopup=${opens ? "menu" : nothing}
+				aria-expanded=${opens ? this.submenu === index : nothing}
+				@click=${(e: Event) => {
+					e.stopPropagation();
+					if (opens) {
+						void this.openSubmenu(this.submenu === index ? null : index, true);
+						return;
 					}
-				</button>`,
-		);
+					this.closeMenu();
+					this.refocus = true;
+					item.run?.();
+				}}
+			>
+				<span>${item.label}</span>${item.hint ? html`<kbd>${item.hint}</kbd>` : nothing}${
+					opens
+						? html`<svg class="more" viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg>`
+						: nothing
+				}
+			</button>`;
 	}
 
-	/** The open menu, and beside it the submenu one of its items opened. */
+	/** The open menu; an item with a submenu opens it in place, its items indented under it. */
 	private menuView(menu: { x: number; y: number; items: MenuItem[] }): TemplateResult {
 		const at = this.menuPlace(menu.x, menu.y, menu.items);
-		const parent = this.submenu === null ? undefined : menu.items[this.submenu];
-		let sub: TemplateResult | typeof nothing = nothing;
-		if (parent?.items && this.submenu !== null) {
-			const above = menu.items.slice(0, this.submenu);
-			const rowTop = at.top + 4 + 34 * above.length + 9 * above.filter((i) => i.divider).length;
-			// To the right of the menu when it fits, else to its left; the sidebar is narrow, so it overlaps a little.
-			const right = at.left + 196 + 192 <= window.innerWidth;
-			const place = this.menuPlace(right ? at.left + 188 : at.left - 188, rowTop - 4, parent.items);
-			sub = html`<div
-				class="menu sub"
-				role="menu"
-				aria-label=${parent.label}
-				style="left: ${right ? at.left + 188 : Math.max(4, at.left - 188)}px; top: ${place.top}px"
-				@keydown=${(e: KeyboardEvent) => this.menuKey(e)}
-			>
-				${this.menuItems(parent.items, true)}
-			</div>`;
-		}
 		return html`<div
-				class="menu"
-				role="menu"
-				style="left: ${at.left}px; top: ${at.top}px"
-				@keydown=${(e: KeyboardEvent) => this.menuKey(e)}
-			>
-				${this.menuItems(menu.items, false)}
-			</div>
-			${sub}`;
+			class="menu"
+			role="menu"
+			style="left: ${at.left}px; top: ${at.top}px"
+			@keydown=${(e: KeyboardEvent) => this.menuKey(e)}
+		>
+			${menu.items.map(
+				(item, i) =>
+					html`${this.menuItem(item, i, false)}${
+						this.submenu === i && item.items
+							? html`<div role="group" aria-label=${item.label}>
+									${item.items.map((child) => this.menuItem(child, i, true))}
+								</div>`
+							: nothing
+					}`,
+			)}
+		</div>`;
 	}
 
 	private panelButton(panel: Panel, label: string, icon: TemplateResult): TemplateResult {
@@ -2245,8 +2233,15 @@ export class LokaSidebar extends LitElement {
 			height: 14px;
 			color: var(--loka-ink-3);
 		}
-		.menu.sub {
-			z-index: 11;
+		.menu [role="group"] {
+			display: flex;
+			flex-direction: column;
+		}
+		.menu button.nested {
+			padding-left: 24px;
+		}
+		.menu .open .more {
+			rotate: 90deg;
 		}
 		.menu kbd {
 			font: 12px system-ui, "Segoe UI", sans-serif;

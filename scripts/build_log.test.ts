@@ -26,7 +26,7 @@ print("MID-RUN", status["phase"], status["last_error"], flush=True)
 sys.exit(3)
 `;
 
-const DRIVER = String.raw`
+const DRIVER = `
 import sys
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])

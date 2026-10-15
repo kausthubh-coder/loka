@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { activeTab, closeTab, switchSpace } from "../../prototype/src/features/sidebar/sidebar.logic";
+import {
+	activateTab,
+	activeTab,
+	closeTab,
+	switchSpace,
+	updateSpace,
+} from "../../prototype/src/features/sidebar/sidebar.logic";
 import { seedState } from "../../prototype/src/features/sidebar/sidebar.seed";
 import {
 	adoptTabs,
@@ -111,8 +117,8 @@ describe("Loka tells the browser what to do", () => {
 		);
 		const ops = planReconcile(picked, live0, browser, {});
 		expect(ops.filter((o) => o.op !== "group")).toEqual([
-			{ op: "remove", browserId: 61 },
 			{ op: "create", tabId: "t-lit", url: "https://lit.dev/docs" },
+			{ op: "remove", browserId: 61 },
 		]);
 	});
 
@@ -175,6 +181,31 @@ describe("Loka tells the browser what to do", () => {
 		expect(planReconcile(state, live, browser, {}).filter((o) => o.op === "group")).toEqual([
 			{ op: "group", key: "s-build@1", browserIds: [91], title: "Build", color: "blue" },
 			{ op: "group", key: "s-build@2", browserIds: [92], title: "Build", color: "blue" },
+		]);
+	});
+
+	test("renaming or recoloring a space retitles its tab group; a group already matching needs nothing", () => {
+		const browser = [tab(61, "https://github.com/imputnet/helium-windows", { active: true, groupId: 5 })];
+		const [state, live] = adoptTabs(seedState(NOW), browser, NOW);
+		const groups = { "s-build@1": { id: 5, collapsed: false, title: "Build", color: "blue" as const } };
+		expect(planReconcile(state, live, browser, groups)).toEqual([]);
+		const renamed = updateSpace(state, "s-build", { name: "Make", hue: 30, planet: "ringed" });
+		expect(planReconcile(renamed, live, browser, groups)).toEqual([
+			{ op: "look", key: "s-build@1", groupId: 5, title: "Make", color: "orange" },
+		]);
+	});
+
+	test("closing the shown tab shows the next one before the browser closes it, so it never picks its own", () => {
+		const browser = [
+			tab(51, "https://news.ycombinator.com", { active: true }),
+			tab(52, "https://browsercompany.substack.com"),
+		];
+		const [adopted, live] = adoptTabs(seedState(NOW), browser, NOW);
+		const shown = activateTab(adopted, "t-hn");
+		const ops = planReconcile(closeTab(shown, "t-hn"), live, browser, {}).filter((o) => o.op !== "group");
+		expect(ops).toEqual([
+			{ op: "activate", browserId: 52 },
+			{ op: "remove", browserId: 51 },
 		]);
 	});
 

@@ -177,12 +177,22 @@ export type Op =
 	| { op: "activate"; browserId: number }
 	| { op: "remove"; browserId: number }
 	| { op: "group"; key: string; browserIds: number[]; title: string; color: GroupColor }
+	| { op: "look"; key: string; groupId: number; title: string; color: GroupColor }
 	| { op: "ungroup"; browserIds: number[] }
 	| { op: "collapse"; groupId: number; collapsed: boolean };
 
+/** A space's tab group in one window, as the sync last set it. Title and color are unknown for older records. */
+export interface GroupRecord {
+	id: number;
+	collapsed: boolean;
+	title?: string;
+	color?: GroupColor;
+}
+
 /**
- * What the browser must do so its tabs match Loka: close tabs Loka no longer has, load and show the tab the current
- * space is showing, keep each space's live tabs in a tab group named after it (Essentials in none), and fold away
+ * What the browser must do so its tabs match Loka: load and show the tab the current space is showing, then close
+ * tabs Loka no longer has (in that order, so closing the shown tab never leaves the browser to pick another space's
+ * tab), keep each space's live tabs in a tab group named and colored after it (Essentials in none), and fold away
  * the groups of the other spaces. Running it again on its own result plans nothing.
  * `groups` is the tab group each space already has in each window, by `groupKey`, and whether it's folded (a tab
  * group can't span windows, so a space open in two windows has a group in each). `switched` says the user
@@ -193,13 +203,14 @@ export function planReconcile(
 	state: BrowserState,
 	live: LiveMap,
 	tabs: BrowserTab[],
-	groups: Record<string, { id: number; collapsed: boolean }>,
+	groups: Record<string, GroupRecord>,
 	switched = false,
 ): Op[] {
 	const ops: Op[] = [];
 	const byId = new Map(tabs.map((t) => [t.id, t]));
+	const removes: Op[] = [];
 	for (const [id, browserId] of Object.entries(live)) {
-		if (!state.tabs[id] && byId.has(browserId)) ops.push({ op: "remove", browserId });
+		if (!state.tabs[id] && byId.has(browserId)) removes.push({ op: "remove", browserId });
 	}
 	const space = activeSpace(state);
 	const shown = space.activeTabId;
@@ -214,6 +225,7 @@ export function planReconcile(
 			.find((id) => id !== undefined && byId.has(id));
 		ops.push(first === undefined ? { op: "new-tab" } : { op: "activate", browserId: first });
 	}
+	ops.push(...removes);
 	const ungroup: number[] = [];
 	for (const s of state.spaces) {
 		const byWindow = new Map<number, number[]>();
@@ -224,9 +236,15 @@ export function planReconcile(
 		}
 		for (const [windowId, members] of byWindow) {
 			const key = groupKey(s.id, windowId);
-			const group = groups[key]?.id;
+			const record = groups[key];
+			const group = record?.id;
+			const look = { title: s.name, color: groupColor(s.hue) };
 			const strays = members.filter((browserId) => group === undefined || byId.get(browserId)?.groupId !== group);
-			if (strays.length) ops.push({ op: "group", key, browserIds: strays, title: s.name, color: groupColor(s.hue) });
+			if (strays.length) ops.push({ op: "group", key, browserIds: strays, ...look });
+			else if (record?.title !== undefined && (record.title !== look.title || record.color !== look.color)) {
+				// The space was renamed or recolored since its group was made.
+				ops.push({ op: "look", key, groupId: record.id, ...look });
+			}
 		}
 	}
 	for (const [id, browserId] of Object.entries(live)) {

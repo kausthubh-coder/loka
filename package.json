@@ -18,6 +18,7 @@
 		"doctor": "bun scripts/doctor.mjs",
 		"worktree:remove": "bun scripts/remove-worktree.mjs",
 		"browser:setup": "bun scripts/browser.mjs setup",
+		"patches:check": "python scripts/patches_check.py",
 		"browser:build": "bun scripts/browser.mjs build",
 		"browser:run": "bun scripts/browser.mjs run",
 		"browser:package": "node scripts/alpha/package_alpha.mjs"

@@ -105,5 +105,7 @@ When I correct you for the same thing twice, add the rule here and make somethin
   `C:\src\loka\profile-dev`.
 - Releases and CI release builds (`main.yml`, `do-release`) need my explicit go.
 - Stop only processes you started, by the PID you captured. Never kill by name.
-- No secrets in code, logs, screenshots or commits. Signing keys live only in GitHub secrets.
+- No secrets in code, logs, screenshots or commits. Release signing keys live only in GitHub secrets. The legacy
+  extension's private key is `C:\src\loka\keys\loka-extension.pem`, ignored by git (`/keys/`); never read, copy or
+  move it. Its public half is the `key` in `extension/public/manifest.json`.
 - Git: open a PR and wait for CI and my review. Merge Helium releases, never rebase `main`.

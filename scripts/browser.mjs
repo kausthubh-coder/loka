@@ -34,6 +34,18 @@ function setup() {
 		);
 		process.exit(1);
 	}
+	// C++ edited in build\src but never exported lives only there; moving the checkout to a commit whose patches
+	// don't have it is how it gets lost. Same check as `bun run patches:check`.
+	if (existsSync(join(BUILD_DIR, "build", "src"))) {
+		const check = spawnSync("python", [join(repo, "scripts", "patches_check.py")], {
+			stdio: "inherit",
+			env: { ...process.env, LOKA_BUILD_DIR: BUILD_DIR },
+		});
+		if (check.status !== 0) {
+			console.error(`\nNot syncing ${BUILD_DIR}: export the edits above into patches/loka and commit them first.`);
+			process.exit(1);
+		}
+	}
 	const commit = output("git", ["rev-parse", "HEAD"]);
 	if (!existsSync(BUILD_DIR)) {
 		mkdirSync(resolve(BUILD_DIR, ".."), { recursive: true });

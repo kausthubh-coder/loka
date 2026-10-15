@@ -33,9 +33,9 @@ import { playCue, setSoundPrefs } from "../../prototype/src/features/sound/sound
 import "../../prototype/src/features/spaces/loka-space-editor";
 import type { LookPreview } from "../../prototype/src/features/spaces/loka-space-editor";
 import { type BrowserCommand, browser, type CommandPick, type NativeMedia, type NativeTab } from "./bridge";
+import { faviconUrl } from "./favicon-url";
 import { applyOnboarding, onboardingSpaces } from "./onboarding.logic";
 import {
-	faviconUrl,
 	markOnboardingApplied,
 	onLinksChanged,
 	pendingOnboarding,
@@ -202,6 +202,9 @@ export class LokaPanel extends LitElement {
 		} else if (e.shiftKey && e.key.toLowerCase() === "f") {
 			e.preventDefault();
 			this.sidebar()?.openPanel("search");
+		} else if (e.key === "h") {
+			e.preventDefault();
+			this.run("history");
 		} else if (e.key === "k" || e.key === "l") {
 			e.preventDefault();
 			browser.openCommandBar(e.key === "k" ? "new-tab" : "focus-location");
@@ -277,7 +280,9 @@ export class LokaPanel extends LitElement {
 			this.pinned = !this.pinned;
 			browser.setSidebarPinned(this.pinned);
 		} else if (action === "settings") {
-			browser.openPage("chrome://settings/");
+			browser.openPage("chrome://loka-settings/");
+		} else if (action === "history") {
+			browser.openPage("chrome://history/");
 		} else if (action === "onboarding") {
 			browser.openPage("chrome://setup/");
 		} else if (action === "downloads" || action === "extensions" || action === "archive") {
@@ -414,7 +419,8 @@ export class LokaPanel extends LitElement {
 				position: relative;
 				height: 100%;
 				isolation: isolate;
-				overflow: hidden;
+				/* clip, not hidden: nothing (a focus, a scroll into view) can scroll the window itself. */
+				overflow: clip;
 				display: flex;
 				flex-direction: column;
 			}

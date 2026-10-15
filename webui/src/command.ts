@@ -16,7 +16,8 @@ import { setFaviconSource } from "../../prototype/src/features/sidebar/favicon";
 import { activeSpace, type BrowserState } from "../../prototype/src/features/sidebar/sidebar.logic";
 import { playCue, setSoundPrefs } from "../../prototype/src/features/sound/sound";
 import { type BrowserCommand, browser, type CommandPick, type NativeTab } from "./bridge";
-import { faviconUrl, readState, readUi, watch } from "./store";
+import { faviconUrl } from "./favicon-url";
+import { readState, readUi, watch } from "./store";
 
 setFaviconSource(faviconUrl);
 

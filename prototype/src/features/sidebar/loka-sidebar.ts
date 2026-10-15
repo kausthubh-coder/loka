@@ -630,6 +630,7 @@ export class LokaSidebar extends LitElement {
 			{ label: "New space", run: () => this.action("new-space") },
 			{ label: "Search the sidebar", run: () => this.openPanel("search") },
 			{ label: `Archived tabs (${this.state.archive.length})`, run: () => this.openPanel("archive") },
+			{ label: "History", run: () => this.action("history") },
 			{ label: "Settings", run: () => this.action("settings") },
 			{ label: "Show the welcome tour", run: () => this.action("onboarding") },
 			{ label: "Export spaces (JSON)", run: () => this.exportFile() },

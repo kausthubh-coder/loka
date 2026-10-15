@@ -7,6 +7,7 @@ import "../features/onboarding/loka-onboarding";
 import type { BrowserCommand, CommandPick, NativeMedia, NativeTab } from "../../../webui/src/bridge";
 import { DEMO_EXTENSIONS, DEMO_LINKS } from "../demo/demo-data";
 import { fakeBrowser, onDemoPopup, pressBrowserShortcut } from "../demo/fake-browser";
+import { fakeHistory } from "../demo/fake-history";
 import { type ActionId, isActionId } from "../features/command-bar/command-bar.logic";
 import type { MediaAction, NowPlaying } from "../features/media/loka-media-card";
 import { nowPlaying } from "../features/media/media.logic";
@@ -148,6 +149,8 @@ export class LokaApp extends LitElement {
 			fakeBrowser.setSidebarPinned(!this.pinned);
 		} else if (action === "settings") {
 			this.apply((s) => focusOrOpen(s, "loka://settings", "Settings"));
+		} else if (action === "history") {
+			this.apply((s) => focusOrOpen(s, "loka://history", "History"));
 		} else if (action === "downloads" || action === "extensions" || action === "archive") {
 			this.showPanel(action);
 		} else if (action === "search-sidebar") {
@@ -277,9 +280,9 @@ export class LokaApp extends LitElement {
 			fakeBrowser.openCommandBar("new-tab");
 			return;
 		}
-		if (e.key === "s") {
+		if (e.key === "s" || e.key === "h") {
 			e.preventDefault();
-			this.run("toggle-sidebar");
+			this.run(e.key === "s" ? "toggle-sidebar" : "history");
 			return;
 		}
 		if (e.key === "e") {
@@ -322,6 +325,12 @@ export class LokaApp extends LitElement {
 
 	private onVisibility = () => this.requestUpdate();
 
+	/** A page opened from the stand-in History page, as the browser would open it. */
+	private onHistoryOpen = (e: Event) => {
+		const { url, newTab } = (e as CustomEvent<{ url: string; newTab: boolean }>).detail;
+		this.runPick({ kind: "open", url, newTab });
+	};
+
 	override connectedCallback() {
 		super.connectedCallback();
 		// Save what was loaded, so a first visit stores the seed data and an invalid save gets replaced.
@@ -329,6 +338,7 @@ export class LokaApp extends LitElement {
 		window.addEventListener("keydown", this.onKey);
 		darkSystem.addEventListener("change", this.onSystemScheme);
 		document.addEventListener("visibilitychange", this.onVisibility);
+		window.addEventListener("loka-demo-open", this.onHistoryOpen);
 		this.archiveNow();
 		this.archiveTimer = window.setInterval(this.archiveNow, 60_000);
 		void fakeBrowser.sidebarPinned().then((pinned) => {
@@ -377,6 +387,7 @@ export class LokaApp extends LitElement {
 		window.removeEventListener("keydown", this.onKey);
 		darkSystem.removeEventListener("change", this.onSystemScheme);
 		document.removeEventListener("visibilitychange", this.onVisibility);
+		window.removeEventListener("loka-demo-open", this.onHistoryOpen);
 		window.clearInterval(this.archiveTimer);
 		for (const stop of this.stops) stop();
 		super.disconnectedCallback();
@@ -452,6 +463,7 @@ export class LokaApp extends LitElement {
 					.setUi=${this.setUi}
 					.pinned=${this.pinned}
 					.scheme=${scheme}
+					.historyBridge=${fakeHistory}
 				></loka-page>
 				${
 					popupExtension && this.popup
@@ -525,7 +537,8 @@ export class LokaApp extends LitElement {
 			grid-template-columns: var(--sidebar) 1fr;
 			grid-template-areas: "side page";
 			height: 100%;
-			overflow: hidden;
+			/* clip, not hidden: nothing (a focus, a scroll into view) can scroll the window itself. */
+			overflow: clip;
 			isolation: isolate;
 		}
 		.window.right {

@@ -28,6 +28,7 @@ export type ActionId =
 	| "new-folder"
 	| "toggle-sidebar"
 	| "settings"
+	| "history"
 	| "downloads"
 	| "extensions"
 	| "search-sidebar"
@@ -65,6 +66,7 @@ const ACTIONS: { action: ActionId; label: string; detail: string; words: string 
 		words: "toggle collapse show pin unpin",
 	},
 	{ action: "settings", label: "Settings", detail: "Loka's settings", words: "preferences options" },
+	{ action: "history", label: "History", detail: "Ctrl+H", words: "visited past pages recent" },
 	{ action: "downloads", label: "Downloads", detail: "Recent files", words: "files" },
 	{ action: "extensions", label: "Extensions", detail: "Run, pin or manage them", words: "addons plugins" },
 	{ action: "search-sidebar", label: "Search the sidebar", detail: "Ctrl+Shift+F", words: "find tabs everywhere" },

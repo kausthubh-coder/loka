@@ -118,13 +118,3 @@ browser.onStoreChanged((next) => {
 		} else notify({ ui: parseUiPrefs(value), foreign: true });
 	}
 });
-
-/** An unloaded page's icon, from the browser's favicon cache. A loaded tab's own icon comes with its tab data. */
-export function faviconUrl(pageUrl: string): string {
-	const url = new URL("chrome://favicon2/");
-	url.searchParams.set("size", "32");
-	url.searchParams.set("scaleFactor", `${window.devicePixelRatio}x`);
-	url.searchParams.set("pageUrl", pageUrl);
-	url.searchParams.set("allowGoogleServerFallback", "0");
-	return url.toString();
-}

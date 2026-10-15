@@ -279,26 +279,46 @@ export class LokaCommandBar extends LitElement {
 		:host([layout="page"]) .scrim {
 			background: transparent;
 		}
+		/* Frosted glass: the dialog surface, tinted by the space's hue, at about three quarters so what's behind shows
+		   through blurred and a little more saturated. The edge is a hairline inside the panel, light on dark and dark
+		   on light (--loka-line is both). The blur radius is never animated: it's costly on every frame. */
 		.panel {
 			position: relative;
 			box-sizing: border-box;
 			width: min(680px, calc(100% - 24px));
 			padding: 8px;
 			border-radius: 20px;
-			/* The space's hue as a faint tint over the dialog surface, frosted where there's something behind it. */
-			background: color-mix(in srgb, var(--loka-dialog) 88%, hsl(var(--hue) 70% 55% / 0.6));
-			backdrop-filter: blur(24px) saturate(1.3);
+			background: color-mix(
+				in srgb,
+				color-mix(in srgb, var(--loka-dialog) 90%, hsl(var(--hue) 70% 55%)) 76%,
+				transparent
+			);
+			backdrop-filter: blur(24px) saturate(1.6);
 			box-shadow:
-				0 0 0 1px var(--loka-line),
-				0 24px 64px -12px rgb(0 0 0 / 0.45),
-				0 8px 20px -8px rgb(0 0 0 / 0.25);
+				inset 0 0 0 1px var(--loka-line),
+				0 20px 56px -16px rgb(0 0 0 / 0.4),
+				0 6px 16px -8px rgb(0 0 0 / 0.2);
 			overflow: hidden;
 		}
+		/* The browser's floating window has nothing behind the page to blur (the web page under it is another
+		   window), so glass there would only let text show through sharp. It's near solid instead. */
 		:host([layout="page"]) .panel {
 			width: calc(100% - 40px);
+			background: color-mix(in srgb, var(--loka-dialog) 94%, hsl(var(--hue) 70% 55%));
 			box-shadow:
-				0 0 0 1px var(--loka-line),
+				inset 0 0 0 1px var(--loka-line),
 				0 12px 28px rgb(0 0 0 / 0.3);
+		}
+		@supports not (backdrop-filter: blur(1px)) {
+			.panel {
+				background: color-mix(in srgb, var(--loka-dialog) 94%, hsl(var(--hue) 70% 55%));
+			}
+		}
+		@media (prefers-reduced-transparency: reduce) {
+			.panel {
+				background: color-mix(in srgb, var(--loka-dialog) 94%, hsl(var(--hue) 70% 55%));
+				backdrop-filter: none;
+			}
 		}
 		svg {
 			width: 18px;
@@ -352,6 +372,7 @@ export class LokaCommandBar extends LitElement {
 		}
 		/* Every row keeps the Enter key's room, shown only on the selected one, so moving never shifts the details. */
 		.mode {
+			font-size: 13px;
 			color: var(--loka-ink);
 		}
 		kbd {
@@ -409,8 +430,8 @@ export class LokaCommandBar extends LitElement {
 			display: none;
 		}
 		.group {
-			margin: 10px 12px 4px;
-			font-size: 12px;
+			margin: 10px 14px 4px;
+			font-size: 13px;
 			font-weight: 600;
 			letter-spacing: 0.02em;
 			color: var(--loka-ink-3);
@@ -421,11 +442,12 @@ export class LokaCommandBar extends LitElement {
 			gap: 12px;
 			height: 44px;
 			padding: 0 10px 0 14px;
-			border-radius: 12px;
+			border-radius: 22px;
 		}
+		/* Rows are flat; the selected one sits on a soft pill of the space's accent, which reads on light glass and
+		   dark glass alike (the light theme's white card would vanish on a white panel). */
 		.result.on {
-			background: var(--loka-selected);
-			box-shadow: var(--loka-selected-edge);
+			background: color-mix(in srgb, var(--loka-accent) 16%, transparent);
 		}
 		.icon {
 			display: grid;

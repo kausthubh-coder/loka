@@ -9,7 +9,7 @@ import type { ActionId } from "../../prototype/src/features/command-bar/command-
 import "../../prototype/src/features/command-bar/loka-command-bar";
 import { setDownloadSource } from "../../prototype/src/features/downloads/loka-downloads";
 import type { Media, MediaAction } from "../../prototype/src/features/media/loka-media-card";
-import { setFaviconSource } from "../../prototype/src/features/sidebar/favicon";
+import { type LiveTabs, setFaviconSource } from "../../prototype/src/features/sidebar/favicon";
 import "../../prototype/src/features/sidebar/loka-sidebar";
 import { type LokaSidebar, setExtensionSource } from "../../prototype/src/features/sidebar/loka-sidebar";
 import { SPACE_HUES } from "../../prototype/src/features/sidebar/planet";
@@ -22,11 +22,13 @@ import {
 	type SpaceLook,
 	stepTab,
 	switchSpace,
+	type TabId,
 	updateSpace,
 } from "../../prototype/src/features/sidebar/sidebar.logic";
 import "../../prototype/src/features/spaces/loka-space-editor";
 import { browserDownloads, browserExtensions, openUrl } from "./browser";
-import { faviconUrl, readSession, readState, readUi, watch, writeState } from "./store";
+import { pageInfo } from "./browser.logic";
+import { faviconUrl, LIVE_KEY, readSession, readState, readUi, watch, writeState } from "./store";
 import { saveSoon } from "./sync";
 
 setFaviconSource(faviconUrl);
@@ -43,6 +45,7 @@ export class LokaPanel extends LitElement {
 		commandOpen: { state: true },
 		editing: { state: true },
 		previewHue: { state: true },
+		live: { state: true },
 	};
 
 	state: BrowserState | null = null;
@@ -51,6 +54,21 @@ export class LokaPanel extends LitElement {
 	commandOpen = false;
 	editing: Editing | null = null;
 	previewHue: number | null = null;
+	/** Each loaded tab's page: its own icon, loading, sound. */
+	live: LiveTabs = {};
+	private icons = new Map<TabId, string>();
+	private liveQueued = false;
+
+	/** Reads the tabs again, at most once a frame however many events arrive. */
+	private refreshLive = () => {
+		if (this.liveQueued) return;
+		this.liveQueued = true;
+		requestAnimationFrame(async () => {
+			this.liveQueued = false;
+			const [{ live: links }, tabs] = await Promise.all([readSession(), chrome.tabs.query({})]);
+			this.live = pageInfo(links, tabs, this.icons);
+		});
+	};
 
 	apply: Update = (change) => {
 		if (!this.state) return;
@@ -73,7 +91,25 @@ export class LokaPanel extends LitElement {
 			if (ui) this.ui = ui;
 			if (media !== undefined) this.media = media;
 		});
+		this.refreshLive();
+		chrome.tabs.onUpdated.addListener((_id, change) => {
+			if ("favIconUrl" in change || "status" in change || "audible" in change || "mutedInfo" in change) {
+				this.refreshLive();
+			}
+		});
+		chrome.tabs.onRemoved.addListener(this.refreshLive);
+		// The background links a new browser tab to its Loka tab a moment after the browser reports it.
+		chrome.storage.onChanged.addListener((changes, area) => {
+			if (area === "session" && changes[LIVE_KEY]) this.refreshLive();
+		});
 		window.addEventListener("keydown", this.onKey);
+	}
+
+	private async toggleMute(tabId: string) {
+		const browserId = await this.browserTab(tabId);
+		if (browserId === undefined) return;
+		const tab = await chrome.tabs.get(browserId);
+		await chrome.tabs.update(browserId, { muted: !tab.mutedInfo?.muted });
 	}
 
 	private onKey = (e: KeyboardEvent) => {
@@ -184,6 +220,9 @@ export class LokaPanel extends LitElement {
 		const state = this.state;
 		if (!state) return null;
 		const hue = this.previewHue ?? activeSpace(state).hue;
+		// Whether it's playing is whatever the tab says now: the background only records that sound started.
+		const audible = this.media ? this.live[this.media.tabId]?.audible : undefined;
+		const media = this.media && audible !== undefined ? { ...this.media, playing: audible } : this.media;
 		return html`
 			<div
 				class="window"
@@ -200,12 +239,20 @@ export class LokaPanel extends LitElement {
 				}}
 			>
 				${skyLayer()}
-				<loka-sidebar .state=${state} .apply=${this.apply} .media=${this.media} .demo=${false}></loka-sidebar>
+				<loka-sidebar
+					.state=${state}
+					.apply=${this.apply}
+					.media=${media}
+					.live=${this.live}
+					.demo=${false}
+					@loka-tab-mute=${(e: CustomEvent<string>) => this.toggleMute(e.detail)}
+				></loka-sidebar>
 				${
 					this.commandOpen
 						? html`<loka-command-bar
 								.state=${state}
 								.apply=${this.apply}
+								.live=${this.live}
 								.go=${openUrl("new-tab")}
 								@loka-close=${() => {
 									this.commandOpen = false;

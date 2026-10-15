@@ -7,6 +7,7 @@ import "../features/onboarding/loka-onboarding";
 import type { ActionId } from "../features/command-bar/command-bar.logic";
 import type { Media, MediaAction } from "../features/media/loka-media-card";
 import { applyTour, type TourResult } from "../features/onboarding/onboarding.logic";
+import type { LiveTabs } from "../features/sidebar/favicon";
 import type { LokaSidebar, Panel } from "../features/sidebar/loka-sidebar";
 import { SPACE_HUES } from "../features/sidebar/planet";
 import {
@@ -237,6 +238,10 @@ export class LokaApp extends LitElement {
 		const space = activeSpace(this.state);
 		const { sidebarSide: side, sidebarHidden: hidden, sidebarWidth: width } = this.ui;
 		const layout = `${side} ${hidden ? "hidden" : ""} ${hidden && this.peek ? "peek" : ""} ${this.tourOpen ? "touring" : ""}`;
+		// The prototype's one playing tab is the only page it knows anything live about.
+		const live: LiveTabs = this.media
+			? { [this.media.tabId]: { audible: this.media.playing, muted: this.media.muted } }
+			: {};
 		return html`
 			<div
 				class="window ${layout}"
@@ -266,7 +271,9 @@ export class LokaApp extends LitElement {
 					.state=${this.state}
 					.apply=${this.apply}
 					.media=${this.media}
+					.live=${live}
 					@loka-media=${(e: CustomEvent<MediaAction>) => this.onMedia(e.detail)}
+					@loka-tab-mute=${() => this.onMedia("mute")}
 					@pointerleave=${() => (this.peek = false)}
 					@loka-command=${() => {
 						this.commandOpen = true;

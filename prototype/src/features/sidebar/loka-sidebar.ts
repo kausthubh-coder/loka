@@ -3,7 +3,7 @@ import { keyed } from "lit/directives/keyed.js";
 import { repeat } from "lit/directives/repeat.js";
 import type { Update } from "../../app/loka-app";
 import type { ActionId } from "../command-bar/command-bar.logic";
-import { faviconBackground, faviconInner, hostOf } from "./favicon";
+import { faviconBackground, faviconInner, hostOf, type LiveTabs } from "./favicon";
 import "../archive/loka-archive-panel";
 import "../downloads/loka-downloads";
 import "../media/loka-media-card";
@@ -103,6 +103,7 @@ export class LokaSidebar extends LitElement {
 		pinnedExtensions: { state: true },
 		extensions: { state: true },
 		media: { attribute: false },
+		live: { attribute: false },
 		demo: { type: Boolean },
 	};
 
@@ -121,6 +122,8 @@ export class LokaSidebar extends LitElement {
 	extensions: ExtensionInfo[] = extensionSource ? [] : EXTENSIONS;
 	private stopWatchingExtensions: (() => void) | null = null;
 	declare media: Media | null;
+	/** What the browser says about each loaded tab: its page's icon, loading, playing sound. */
+	live: LiveTabs = {};
 	/** The prototype: shows "Reset demo data". The real browser leaves it out. */
 	demo = true;
 
@@ -478,8 +481,34 @@ export class LokaSidebar extends LitElement {
 
 	// ---- rendering -----------------------------------------------------------
 
-	private favicon(url: string, size = 18): TemplateResult {
-		return html`<span class="fav" aria-hidden="true" style="--fav: ${faviconBackground(url)}; --size: ${size}px">${faviconInner(url)}</span>`;
+	private favicon(tabId: TabId, url: string, size = 18): TemplateResult {
+		const live = this.live[tabId];
+		return html`<span
+			class="fav ${live?.loading ? "loading" : ""}"
+			aria-hidden="true"
+			style="--fav: ${faviconBackground(url, live)}; --size: ${size}px"
+		>${faviconInner(url, live)}</span>`;
+	}
+
+	/** The speaker on a row whose page is playing sound, or was muted while it did. Clicking it mutes or unmutes. */
+	private sound(tabId: TabId, title: string): TemplateResult | typeof nothing {
+		const live = this.live[tabId];
+		if (!live?.audible && !live?.muted) return nothing;
+		return html`<button
+			class="sound ${live.muted ? "muted" : ""}"
+			aria-label="${live.muted ? "Unmute" : "Mute"} ${title}"
+			aria-pressed=${Boolean(live.muted)}
+			@click=${(e: Event) => {
+				e.stopPropagation();
+				this.dispatchEvent(new CustomEvent("loka-tab-mute", { detail: tabId, bubbles: true, composed: true }));
+			}}
+		>
+			${
+				live.muted
+					? html`<svg viewBox="0 0 16 16"><path d="M3 6h2.5L9 3v10L5.5 10H3zM11.5 6l3 4m0-4-3 4" /></svg>`
+					: html`<svg viewBox="0 0 16 16"><path d="M3 6h2.5L9 3v10L5.5 10H3zM11.5 5.5a3.5 3.5 0 0 1 0 5" /></svg>`
+			}
+		</button>`;
 	}
 
 	private tabRow(
@@ -508,8 +537,9 @@ export class LokaSidebar extends LitElement {
 				@keydown=${(e: KeyboardEvent) => this.rowKey(e, () => this.apply((s) => activateTab(s, tabId)))}
 				@contextmenu=${(e: MouseEvent) => this.openMenu(e, this.tabMenu(tabId))}
 			>
-				${this.favicon(tab.url)}
+				${this.favicon(tabId, tab.url)}
 				<span class="label">${tab.title}</span>
+				${this.sound(tabId, tab.title)}
 				${
 					closable
 						? html`<button
@@ -702,7 +732,7 @@ export class LokaSidebar extends LitElement {
 									@click=${() => this.apply((s) => activateTab(s, id))}
 									@contextmenu=${(e: MouseEvent) => this.openMenu(e, this.tabMenu(id))}
 								>
-									${this.favicon(tab.url, 22)}
+									${this.favicon(id, tab.url, 22)}
 								</button>
 							`;
 						},
@@ -791,7 +821,7 @@ export class LokaSidebar extends LitElement {
 
 				${
 					this.media && this.media.tabId !== space.activeTabId && state.tabs[this.media.tabId]
-						? html`<loka-media-card class="media" .media=${this.media} .state=${state}></loka-media-card>`
+						? html`<loka-media-card class="media" .media=${this.media} .state=${state} .live=${this.live[this.media.tabId]}></loka-media-card>`
 						: nothing
 				}
 				<nav class="horizon" aria-label="Spaces">
@@ -1176,6 +1206,7 @@ export class LokaSidebar extends LitElement {
 			text-overflow: ellipsis;
 		}
 		.fav {
+			position: relative;
 			flex: none;
 			display: grid;
 			place-items: center;
@@ -1186,6 +1217,38 @@ export class LokaSidebar extends LitElement {
 			color: #0b0c10;
 			font-size: calc(var(--size) * 0.6);
 			font-weight: 700;
+		}
+		/* Loading: the icon dims and a thin arc in the space's color turns around it. */
+		.fav.loading > * {
+			opacity: 0.55;
+		}
+		.fav.loading::after {
+			content: "";
+			position: absolute;
+			inset: -3px;
+			border-radius: 50%;
+			border: 1.5px solid hsl(var(--hue) 30% 85% / 0.12);
+			border-top-color: var(--accent);
+		}
+		.sound {
+			flex: none;
+			display: grid;
+			place-items: center;
+			width: 22px;
+			height: 22px;
+			padding: 0;
+			border-radius: 6px;
+			color: var(--accent);
+		}
+		.sound.muted {
+			color: var(--muted);
+		}
+		.sound svg {
+			width: 14px;
+			height: 14px;
+		}
+		.sound:hover {
+			background: var(--row-hover);
 		}
 		.folder {
 			color: var(--text);
@@ -1411,6 +1474,14 @@ export class LokaSidebar extends LitElement {
 			.row,
 			.essential {
 				transition: background-color 120ms;
+			}
+			.fav.loading::after {
+				animation: spin 800ms linear infinite;
+			}
+			@keyframes spin {
+				to {
+					rotate: 1turn;
+				}
 			}
 			.world-name {
 				animation: rise 320ms cubic-bezier(0.2, 0, 0, 1);

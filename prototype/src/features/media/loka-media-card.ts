@@ -1,5 +1,5 @@
 import { css, html, LitElement } from "lit";
-import { faviconBackground, faviconInner, hostOf } from "../sidebar/favicon";
+import { faviconBackground, faviconInner, hostOf, type LiveTab } from "../sidebar/favicon";
 import type { BrowserState } from "../sidebar/sidebar.logic";
 
 /** What's playing. In the real browser this comes from Chromium's media sessions; the prototype has one sample. */
@@ -20,10 +20,13 @@ export class LokaMediaCard extends LitElement {
 	static override properties = {
 		media: { attribute: false },
 		state: { attribute: false },
+		live: { attribute: false },
 	};
 
 	declare media: Media;
 	declare state: BrowserState;
+	/** The playing tab's page, for its own icon. */
+	declare live: LiveTab | undefined;
 
 	private send(action: MediaAction) {
 		this.dispatchEvent(new CustomEvent("loka-media", { detail: action, bubbles: true, composed: true }));
@@ -35,8 +38,8 @@ export class LokaMediaCard extends LitElement {
 		const { playing, muted } = this.media;
 		return html`
 			<section aria-label="Now playing: ${tab.title}">
-				<button class="art" style="--fav: ${faviconBackground(tab.url)}" title="Go to ${tab.title}" @click=${() => this.send("go")}>
-					<span aria-hidden="true">${faviconInner(tab.url)}</span>
+				<button class="art" style="--fav: ${faviconBackground(tab.url, this.live)}" title="Go to ${tab.title}" @click=${() => this.send("go")}>
+					<span aria-hidden="true">${faviconInner(tab.url, this.live)}</span>
 					${playing ? html`<span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>` : null}
 				</button>
 				<button class="info" title="Go to ${tab.title}" @click=${() => this.send("go")}>

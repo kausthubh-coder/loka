@@ -1364,7 +1364,7 @@
      .text {
 --- /dev/null
 +++ b/components/helium_onboarding/src/components/Sky.svelte
-@@ -0,0 +1,324 @@
+@@ -0,0 +1,357 @@
 +<script lang="ts">
 +    import { onMount } from "svelte";
 +    import { reducedMotion } from "../lib/motion";
@@ -1400,6 +1400,9 @@
 +
 +    // How far each depth layer moves per page, in CSS px: far stars barely move, near ones most.
 +    const DRIFT = [18, 38, 70];
++    // The sky is never still, like the sidebar's: it cruises sideways this many pages a second, so far stars creep
++    // about 1 px/s and near ones about 4 px/s.
++    const CRUISE = 0.06;
 +    const FRAME_MS = 1000 / 30;
 +
 +    onMount(() => {
@@ -1419,7 +1422,7 @@
 +        let last = 0;
 +        let start = performance.now();
 +        let meteor: { x: number; y: number; t0: number; angle: number; length: number } | null = null;
-+        let nextMeteor = start + 9000 + Math.random() * 8000;
++        let nextMeteor = start + 3500 + Math.random() * 4000;
 +        let reduce = false;
 +
 +        // Seeded like the sidebar's sky, so the same stars come back every time.
@@ -1479,7 +1482,7 @@
 +        const draw = (now: number) => {
 +            const t = (now - start) / 1000;
 +            const appear = reduce ? 1 : Math.min(1, t / 1.2);
-+            const shift = reduce ? 0 : offset;
++            const shift = reduce ? 0 : offset + t * CRUISE;
 +
 +            ctx.setTransform(1, 0, 0, 1, 0, 0);
 +            ctx.clearRect(0, 0, el.width, el.height);
@@ -1532,7 +1535,7 @@
 +            raf = requestAnimationFrame(frame);
 +            const moving = Math.abs(targetTravel - offset) > 0.0005;
 +
-+            // Twinkling alone runs at 30fps; a page change or a meteor gets every frame.
++            // The slow cruise and twinkling run at 30fps; a page change or a meteor gets every frame.
 +            if (!moving && !meteor && now - last < FRAME_MS && now - start > 1200) return;
 +            const dt = Math.min(0.05, (now - last) / 1000);
 +            last = now;
@@ -1548,7 +1551,7 @@
 +                    angle: Math.PI * (0.12 + Math.random() * 0.12),
 +                    length: 160 + Math.random() * 120,
 +                };
-+                nextMeteor = now + 14000 + Math.random() * 14000;
++                nextMeteor = now + 7000 + Math.random() * 9000;
 +            }
 +
 +            draw(now);
@@ -1600,6 +1603,7 @@
 +</script>
 +
 +<div class="sky" aria-hidden="true">
++    <div class="nebula"></div>
 +    <canvas bind:this={canvas}></canvas>
 +    <div class="horizon {horizon}"></div>
 +</div>
@@ -1630,6 +1634,31 @@
 +            hsl(calc(var(--hue) + 30) 70% 85% / 0.08) 52%,
 +            transparent 62%
 +        );
++    }
++
++    /* Slow clouds of the space's color drifting behind the stars, like the sidebar's nebula. Transform and opacity
++       only, so it costs the compositor, not the page. */
++    .nebula {
++        position: absolute;
++        inset: -20%;
++        background:
++            radial-gradient(28% 22% at 30% 40%, hsl(var(--hue) 70% 55% / 0.16), transparent 70%),
++            radial-gradient(24% 30% at 70% 30%, hsl(calc(var(--hue) + 50) 60% 55% / 0.12), transparent 70%),
++            radial-gradient(30% 20% at 55% 75%, hsl(calc(var(--hue) - 40) 60% 50% / 0.1), transparent 70%);
++        filter: blur(18px);
++        animation: nebula-drift 90s ease-in-out infinite alternate;
++        will-change: transform;
++    }
++
++    @keyframes nebula-drift {
++        from {
++            transform: translate3d(-3%, -2%, 0) rotate(-4deg) scale(1);
++            opacity: 0.8;
++        }
++        to {
++            transform: translate3d(4%, 3%, 0) rotate(5deg) scale(1.08);
++            opacity: 1;
++        }
 +    }
 +
 +    canvas {
@@ -1679,6 +1708,10 @@
 +    }
 +
 +    @media (prefers-reduced-motion: reduce) {
++        .nebula {
++            animation: none;
++        }
++
 +        .horizon {
 +            transition: opacity 600ms var(--ease);
 +        }
@@ -1923,7 +1956,7 @@
  export const markIntroSeen = () => {
 --- /dev/null
 +++ b/components/helium_onboarding/src/lib/sound.ts
-@@ -0,0 +1,264 @@
+@@ -0,0 +1,319 @@
 +import { get, writable } from "svelte/store";
 +import { SPACE_HUES } from "./spaces";
 +
@@ -1989,7 +2022,8 @@
 +    soften.connect(ctx.destination);
 +
 +    out = ctx.createGain();
-+    out.gain.value = 1;
++    // The cues are written quiet; this sets how loud the whole set is.
++    out.gain.value = 2.2;
 +    out.connect(soften);
 +
 +    const delay = ctx.createDelay(1);
@@ -2132,6 +2166,57 @@
 +    },
 +};
 +
++// A barely-there drone under the whole flow: two soft low notes a fifth apart, breathing slowly. It starts with the
++// first click or key press, fades out when muted or hidden, and never plays on its own.
++let ambience: { gain: GainNode; stop: () => void } | undefined;
++
++const startAmbience = () => {
++    if (!ctx || !out || ambience) return;
++    const gain = ctx.createGain();
++    gain.gain.value = 0.0001;
++    const filter = ctx.createBiquadFilter();
++    filter.type = "lowpass";
++    filter.frequency.value = 520;
++    gain.connect(filter);
++    filter.connect(out);
++    const oscillators = [110, 164.8, 220.4].map((freq, i) => {
++        const osc = ctx!.createOscillator();
++        osc.type = i === 2 ? "triangle" : "sine";
++        osc.frequency.value = freq;
++        osc.detune.value = (i - 1) * 6;
++        const level = ctx!.createGain();
++        level.gain.value = i === 2 ? 0.25 : 1;
++        osc.connect(level);
++        level.connect(gain);
++        osc.start();
++        return osc;
++    });
++    // A slow swell, every eleven seconds or so.
++    const lfo = ctx.createOscillator();
++    lfo.frequency.value = 0.09;
++    const depth = ctx.createGain();
++    depth.gain.value = 0.0035;
++    lfo.connect(depth);
++    depth.connect(gain.gain);
++    lfo.start();
++    gain.gain.setTargetAtTime(0.006, ctx.currentTime, 2.5);
++    ambience = {
++        gain,
++        stop: () => {
++            const now = ctx!.currentTime;
++            gain.gain.cancelScheduledValues(now);
++            gain.gain.setTargetAtTime(0.0001, now, 0.4);
++            for (const osc of [...oscillators, lfo]) osc.stop(now + 2);
++            ambience = undefined;
++        },
++    };
++};
++
++const updateAmbience = () => {
++    if (get(muted) || document.hidden || !gestureSeen) ambience?.stop();
++    else startAmbience();
++};
++
 +export const play = (cue: Cue) => {
 +    if (get(muted) || !gestureSeen || document.hidden) return;
 +    startAudio();
@@ -2161,7 +2246,10 @@
 +    const markGesture = () => {
 +        gestureSeen = true;
 +        if (!get(muted)) startAudio();
++        updateAmbience();
 +    };
++    muted.subscribe(() => updateAmbience());
++    document.addEventListener("visibilitychange", updateAmbience);
 +    window.addEventListener("pointerdown", markGesture, { capture: true });
 +    window.addEventListener("keydown", markGesture, { capture: true });
 +

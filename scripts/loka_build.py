@@ -60,6 +60,38 @@ def rmtree_clearing_readonly(path, *args, **kwargs):
     return _rmtree(path, *args, **kwargs)
 
 
+def real_clang_format():
+    """
+    The clang-format binary itself, with no junctions in its path.
+
+    build.py symlinks buildtools/win-format/clang-format.exe to `shutil.which('clang-format')`. With pip that is a
+    launcher under a path like scoop's apps/python/current, a junction Siso can't resolve ("store resolve next dir
+    current failed"), so the build fails seconds into compiling. pip's clang-format package ships the real exe.
+    """
+    try:
+        import clang_format
+        exe = Path(clang_format.__file__).resolve().parent / 'data' / 'bin' / 'clang-format.exe'
+        if exe.exists():
+            return exe
+    except ImportError:
+        pass
+    found = shutil.which('clang-format')
+    return Path(os.path.realpath(found)) if found else None
+
+
+def link_clang_format():
+    """Point build.py (via PATH) and an existing tree's formatter link at the real clang-format."""
+    exe = real_clang_format()
+    if not exe:
+        sys.exit('clang-format not found. Run: python -m pip install clang-format')
+    os.environ['PATH'] = f"{exe.parent};{os.environ.get('PATH', '')}"
+    link = SOURCE_TREE / 'buildtools' / 'win-format' / 'clang-format.exe'
+    if link.is_symlink() and Path(os.readlink(link)) != exe:
+        link.unlink()
+        link.symlink_to(exe)
+        print(f'Relinked {link.relative_to(SOURCE_TREE)} to {exe}', flush=True)
+
+
 def clean_previous_unpacks():
     """
     Remove what an earlier attempt unpacked, so a restarted first build unpacks into empty folders.
@@ -121,6 +153,7 @@ def main():
     # vcvars64.bat runs vswhere.exe by bare name, and the Visual Studio installer doesn't add its folder to PATH.
     installer = Path(os.environ.get('ProgramFiles(x86)', r'C:\Program Files (x86)')) / 'Microsoft Visual Studio' / 'Installer'
     os.environ['PATH'] = f"{installer};{os.environ.get('PATH', '')}"
+    link_clang_format()
     if args.mode == 'first':
         first(args.jobs, args.restart)
     else:

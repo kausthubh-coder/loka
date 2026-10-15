@@ -227,7 +227,11 @@ const HOUR = 60 * 60 * 1000;
 describe("folders made by dropping a tab on a tab", () => {
 	test("two pinned tabs become a folder in the target's place", () => {
 		const [state, id] = groupIntoFolder(seedState(), "t-lit", "t-chromium", "Reading");
-		expect(id).not.toBeNull();
+		const docs = space(state, "s-build").pinned[0];
+		const docsFolder = docs?.kind === "folder" ? docs.children[1] : undefined;
+		const reading = docsFolder?.kind === "folder" ? docsFolder.children[0] : undefined;
+		const found = reading?.kind === "folder" ? { id: reading.id, name: reading.name } : null;
+		expect(found).toEqual({ id: id ?? "no id returned", name: "Reading" });
 		expect(outline(state, "s-build")).toEqual([
 			"0:Loka",
 			"1:imputnet/helium-windows",

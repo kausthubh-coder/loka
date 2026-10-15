@@ -8,7 +8,18 @@ const NOW = Date.UTC(2026, 9, 15, 4, 0);
 test("a sealed file opens with the passphrase and gives back the same spaces", async () => {
 	const state = seedState(NOW);
 	const file = await sealState(state, "correct horse battery", "Laptop", NOW);
-	expect(file.data).not.toContain("Build");
+	// Only the envelope is readable: no space name or tab title shows in the file.
+	expect({ ...file, salt: "", iv: "", data: "" }).toEqual({
+		format: "loka-sync",
+		version: 1,
+		device: "Laptop",
+		savedAt: NOW,
+		salt: "",
+		iv: "",
+		data: "",
+	});
+	const readable = ["Build", "School", "Home", "Hacker News", "Canvas"];
+	expect(readable.filter((word) => JSON.stringify(file).includes(word))).toEqual([]);
 	const opened = await openSyncFile(JSON.stringify(file), "correct horse battery");
 	expect(opened.ok && opened.state).toEqual(state);
 });
@@ -51,5 +62,5 @@ test("taking another computer's spaces keeps every tab open here", () => {
 		"Zen Browser",
 		"Lo-fi beats",
 	]);
-	expect(importState(JSON.stringify(state))).not.toBeNull();
+	expect(importState(JSON.stringify(state))).toEqual(state);
 });

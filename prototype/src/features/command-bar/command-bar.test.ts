@@ -25,7 +25,11 @@ test("typing a word offers the search first, then matching tabs from any space",
 });
 
 test("a site name finds tabs by their address too", () => {
-	expect(lines("github")).toContain("tab:imputnet/helium-windows (Build)");
+	expect(lines("github")).toEqual([
+		'go:Search for "github"',
+		"tab:GitHub (Build)",
+		"tab:imputnet/helium-windows (Build)",
+	]);
 });
 
 test("commands are found by their words, not only their label", () => {

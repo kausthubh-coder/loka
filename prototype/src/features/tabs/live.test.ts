@@ -45,9 +45,13 @@ describe("when Loka starts, it takes over the browser's tabs", () => {
 
 	test("a first launch starts with one space holding every open browser tab", () => {
 		const [state, live] = adoptTabs(firstState(), [tab(1, "https://a.example/"), tab(2, "https://b.example/")], NOW);
-		expect(state.spaces).toHaveLength(1);
-		expect(state.spaces[0]?.open).toHaveLength(2);
-		expect(Object.values(live).sort()).toEqual([1, 2]);
+		const opened = state.spaces.map((s) => ({ name: s.name, open: s.open.map((id) => state.tabs[id]?.url) }));
+		expect(opened).toEqual([{ name: "Personal", open: ["https://b.example/", "https://a.example/"] }]);
+		const linked = Object.entries(live).map(([lokaId, browserId]) => [state.tabs[lokaId]?.url, browserId]);
+		expect(linked.sort()).toEqual([
+			["https://a.example/", 1],
+			["https://b.example/", 2],
+		]);
 	});
 });
 
@@ -66,7 +70,7 @@ describe("the browser's tab events update the spaces", () => {
 		const [s0, live0] = start();
 		const [state, live] = tabCreated(s0, live0, tab(30, "https://lit.dev/docs"), NOW, "t-lit");
 		expect(state).toBe(s0);
-		expect(live["t-lit"]).toBe(30);
+		expect(live).toEqual({ ...live0, "t-lit": 30 });
 	});
 
 	test("closing an open tab in the browser removes it; closing a pinned one only unloads it", () => {
@@ -162,8 +166,12 @@ describe("Loka tells the browser what to do", () => {
 			browserId: 82,
 		});
 		const home = { ...school, activeSpaceId: "s-home" };
-		expect(planReconcile(home, live, browser, {}, true)[0]).toEqual({ op: "new-tab" });
-		expect(planReconcile(home, live, browser, {}, false).some((o) => o.op === "new-tab")).toBe(false);
+		const groups: ReturnType<typeof planReconcile> = [
+			{ op: "group", key: "s-build@1", browserIds: [81], title: "Build", color: "blue" },
+			{ op: "group", key: "s-school@1", browserIds: [82], title: "School", color: "orange" },
+		];
+		expect(planReconcile(home, live, browser, {}, true)).toEqual([{ op: "new-tab" }, ...groups]);
+		expect(planReconcile(home, live, browser, {}, false)).toEqual(groups);
 	});
 
 	test("a space open in two windows gets a tab group in each, since a group can't span windows", () => {

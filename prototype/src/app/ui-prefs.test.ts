@@ -22,7 +22,11 @@ describe("window preferences", () => {
 
 	test("sounds are on at half volume until turned off; a saved volume stays between 0 and 1", () => {
 		expect([parseUiPrefs(null).sound, parseUiPrefs(null).soundVolume]).toEqual([true, 0.5]);
-		expect(parseUiPrefs('{"sound": false, "soundVolume": 0.2}')).toMatchObject({ sound: false, soundVolume: 0.2 });
+		expect(parseUiPrefs('{"sound": false, "soundVolume": 0.2}')).toEqual({
+			...DEFAULT_UI,
+			sound: false,
+			soundVolume: 0.2,
+		});
 		expect(parseUiPrefs('{"soundVolume": 3}').soundVolume).toBe(1);
 		expect(parseUiPrefs('{"soundVolume": "loud"}').soundVolume).toBe(0.5);
 	});

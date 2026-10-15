@@ -43,7 +43,7 @@ from this checkout. Run it first, and again whenever a recipe fails strangely.
 Run the mapped recipes:
 
 ```
-node .agents/skills/verify-loka/scripts/run.mjs <folders|spaces|tabs|essentials|export-import|all>
+node .agents/skills/verify-loka/scripts/run.mjs <folders|spaces|tabs|essentials|export-import|command-bar|space-editor|layout|onboarding|all>
 ```
 
 Each one opens a fresh browser, resets the app to the seed data, drives the UI the way a user would (clicks,

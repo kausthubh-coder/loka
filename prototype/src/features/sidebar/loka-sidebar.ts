@@ -2,7 +2,9 @@ import { css, html, LitElement, nothing, svg, type TemplateResult } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { repeat } from "lit/directives/repeat.js";
 import type { Update } from "../../app/loka-app";
+import type { ActionId } from "../command-bar/command-bar.logic";
 import { faviconColor, faviconLetter, hostOf } from "./favicon";
+import { planet } from "./planet";
 import {
 	activateTab,
 	activeSpace,
@@ -10,7 +12,6 @@ import {
 	type BrowserState,
 	closeTab,
 	createFolder,
-	createSpace,
 	exportState,
 	folderHolds,
 	importState,
@@ -37,7 +38,12 @@ interface MenuItem {
 	run: () => void;
 }
 
-const SPACE_HUES = [200, 30, 150, 330, 260, 90, 0];
+/** Stand-ins for installed extensions. Helium ships uBlock Origin; the others show how a user's own would sit. */
+const EXTENSIONS = [
+	{ id: "ublock", name: "uBlock Origin", letter: "u", color: "#c74b4b", detail: "12 blocked on this page" },
+	{ id: "bitwarden", name: "Bitwarden", letter: "b", color: "#3f7fdd", detail: "Passwords" },
+	{ id: "darkreader", name: "Dark Reader", letter: "d", color: "#4c4f5c", detail: "Off for this site" },
+];
 
 /** The Arc-style sidebar: URL pill, essentials, the space's pinned tree, open tabs and the space switcher. */
 export class LokaSidebar extends LitElement {
@@ -48,6 +54,9 @@ export class LokaSidebar extends LitElement {
 		drop: { state: true },
 		menu: { state: true },
 		renamingId: { state: true },
+		swipe: { state: true },
+		extensionsOpen: { state: true },
+		pinnedExtensions: { state: true },
 	};
 
 	declare state: BrowserState;
@@ -56,6 +65,10 @@ export class LokaSidebar extends LitElement {
 	drop: Drop | null = null;
 	menu: { x: number; y: number; items: MenuItem[] } | null = null;
 	renamingId: string | null = null;
+	/** Sideways swipe distance so far, in wheel pixels (negative is towards the previous space). */
+	swipe = 0;
+	extensionsOpen = false;
+	pinnedExtensions = new Set(["ublock"]);
 
 	// ---- drag and drop -------------------------------------------------------
 
@@ -175,10 +188,9 @@ export class LokaSidebar extends LitElement {
 		this.renamingId = id;
 	}
 
-	private newSpace() {
-		const hue = SPACE_HUES[this.state.spaces.length % SPACE_HUES.length] ?? 200;
-		const [next] = createSpace(this.state, `Space ${this.state.spaces.length + 1}`, hue);
-		this.apply(() => next);
+	/** Commands the window handles (the space editor, pages, the tour) go up as one event, like the command bar's. */
+	private action(action: ActionId) {
+		this.dispatchEvent(new CustomEvent("loka-action", { detail: action, bubbles: true, composed: true }));
 	}
 
 	// ---- spaces: the horizon ------------------------------------------------
@@ -198,7 +210,6 @@ export class LokaSidebar extends LitElement {
 		const number = this.state.spaces.indexOf(target) + 1;
 		return html`<button
 			class="neighbour ${side}"
-			style="--h: ${target.hue}"
 			aria-label="${target.name} (Ctrl ${number})"
 			title="${target.name}, Ctrl+${number}"
 			@click=${() => this.apply((s) => switchSpace(s, target.id))}
@@ -208,7 +219,9 @@ export class LokaSidebar extends LitElement {
 				e.preventDefault();
 				this.apply((s) => switchSpace(s, target.id));
 			}}
-		></button>`;
+		>
+			${planet(target.planet, target.hue, 30)}
+		</button>`;
 	}
 
 	private spacesMenu(): MenuItem[] {
@@ -217,14 +230,18 @@ export class LokaSidebar extends LitElement {
 				label: `${s.name}  (Ctrl+${i + 1})`,
 				run: () => this.apply((st) => switchSpace(st, s.id)),
 			})),
-			{ label: "New space", run: () => this.newSpace() },
+			{ label: "Edit this space", run: () => this.action("edit-space") },
+			{ label: "New space", run: () => this.action("new-space") },
 		];
 	}
 
-	private swipeDistance = 0;
 	private lastSwipe = 0;
+	private settleTimer = 0;
 
-	/** A sideways two-finger swipe anywhere on the sidebar turns to the next or previous space. */
+	/**
+	 * A sideways two-finger swipe anywhere on the sidebar drags the space's list with the fingers. Past the threshold
+	 * it turns to the next or previous space; let go before that and it springs back.
+	 */
 	private onWheel = {
 		passive: false,
 		handleEvent: (e: WheelEvent) => {
@@ -232,18 +249,40 @@ export class LokaSidebar extends LitElement {
 			e.preventDefault();
 			// One swipe sends dozens of wheel events; after a switch, ignore the rest of that gesture.
 			if (e.timeStamp - this.lastSwipe < 450) return;
-			this.swipeDistance += e.deltaX;
-			if (Math.abs(this.swipeDistance) < 60) return;
-			const target = this.neighbourAt(this.swipeDistance > 0 ? 1 : -1) ?? this.neighbourAt(1);
-			this.swipeDistance = 0;
-			this.lastSwipe = e.timeStamp;
-			if (target) this.apply((s) => switchSpace(s, target.id));
+			const target = this.neighbourAt(this.swipe + e.deltaX > 0 ? 1 : -1) ?? this.neighbourAt(1);
+			this.swipe = target ? Math.max(-90, Math.min(90, this.swipe + e.deltaX)) : 0;
+			window.clearTimeout(this.settleTimer);
+			if (Math.abs(this.swipe) >= 60 && target) {
+				this.swipe = 0;
+				this.lastSwipe = e.timeStamp;
+				this.apply((s) => switchSpace(s, target.id));
+				return;
+			}
+			this.settleTimer = window.setTimeout(() => {
+				this.swipe = 0;
+			}, 140);
 		},
 	};
 
+	/** Which way the list slides in after a switch: from the right when moving forward, as if turning a page. */
+	private slideFrom: "left" | "right" | null = null;
+
+	protected override willUpdate(changed: Map<string, unknown>) {
+		const before = changed.get("state") as BrowserState | undefined;
+		if (!before || before.activeSpaceId === this.state.activeSpaceId) return;
+		const ids = this.state.spaces.map((s) => s.id);
+		const from = ids.indexOf(before.activeSpaceId);
+		const to = ids.indexOf(this.state.activeSpaceId);
+		const forward = (to - from + ids.length) % ids.length <= ids.length / 2;
+		this.slideFrom = forward ? "right" : "left";
+	}
+
 	private moreMenu(e: MouseEvent) {
 		this.openMenu(e, [
-			{ label: "New space", run: () => this.newSpace() },
+			{ label: "New space", run: () => this.action("new-space") },
+			{ label: "Settings", run: () => this.action("settings") },
+			{ label: "Downloads", run: () => this.action("downloads") },
+			{ label: "Show the welcome tour", run: () => this.action("onboarding") },
 			{ label: "Export spaces (JSON)", run: () => this.exportFile() },
 			{ label: "Import spaces (JSON)", run: () => this.importFile() },
 			{
@@ -318,7 +357,7 @@ export class LokaSidebar extends LitElement {
 									this.apply((s) => closeTab(s, tabId));
 								}}
 							>
-								×
+								<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 4.5 7 7m0-7-7 7" /></svg>
 							</button>`
 						: nothing
 				}
@@ -415,12 +454,35 @@ export class LokaSidebar extends LitElement {
 		const rows = pinnedRows(space.pinned);
 
 		return html`
-			<aside @click=${this.closeMenu} @wheel=${this.onWheel} @contextmenu=${(e: MouseEvent) => e.target === e.currentTarget && e.preventDefault()}>
+			<aside
+				@click=${() => {
+					this.closeMenu();
+					this.extensionsOpen = false;
+				}}
+				@wheel=${this.onWheel} @contextmenu=${(e: MouseEvent) => e.target === e.currentTarget && e.preventDefault()}>
 				<div class="toolbar">
 					<button class="icon" aria-label="Back"><svg viewBox="0 0 16 16"><path d="M10 3L5 8l5 5" /></svg></button>
 					<button class="icon" aria-label="Forward"><svg viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" /></svg></button>
 					<button class="icon" aria-label="Reload"><svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 3v2.5h-2.5" /></svg></button>
-					<button class="icon push" aria-label="New folder" title="New folder" @click=${() => this.newFolder(null)}>
+					<span class="push"></span>
+					${EXTENSIONS.filter((x) => this.pinnedExtensions.has(x.id)).map(
+						(x) => html`<button class="icon ext" aria-label=${x.name} title="${x.name}: ${x.detail}">
+							<span class="ext-tile" style="--x: ${x.color}">${x.letter}</span>
+						</button>`,
+					)}
+					<button
+						class="icon"
+						aria-label="Extensions"
+						aria-expanded=${this.extensionsOpen}
+						title="Extensions"
+						@click=${(e: Event) => {
+							e.stopPropagation();
+							this.extensionsOpen = !this.extensionsOpen;
+						}}
+					>
+						<svg viewBox="0 0 16 16"><path d="M6.5 2.5h3v2a1 1 0 0 0 2 0v-.5h2v3.5h-.5a1 1 0 0 0 0 2h.5v4h-4v-.5a1 1 0 0 0-2 0v.5h-5v-4h.5a1 1 0 0 0 0-2h-.5v-3.5h4z" /></svg>
+					</button>
+					<button class="icon" aria-label="New folder" title="New folder" @click=${() => this.newFolder(null)}>
 						<svg viewBox="0 0 16 16"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.5h5A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5zM8 7v4M6 9h4" /></svg>
 					</button>
 					<button class="icon" aria-label="More" @click=${(e: MouseEvent) => this.moreMenu(e)}>
@@ -485,7 +547,12 @@ export class LokaSidebar extends LitElement {
 					}
 				</div>
 
-				<div class="scroll">
+				${keyed(
+					space.id,
+					html`<div
+				class="scroll ${this.slideFrom ? `from-${this.slideFrom}` : ""} ${this.swipe ? "swiping" : ""}"
+				style="translate: ${-this.swipe * 0.5}px 0; opacity: ${1 - Math.abs(this.swipe) / 180}"
+			>
 					<div class="pinned" role="tree" aria-label="Pinned in ${space.name}">
 						${repeat(
 							rows,
@@ -542,26 +609,59 @@ export class LokaSidebar extends LitElement {
 								),
 						)}
 					</div>
-				</div>
+				</div>`,
+				)}
 
 				<nav class="horizon" aria-label="Spaces">
 					${this.neighbour(this.neighbourAt(-1), "left")}
-					<button
-						class="world"
-						aria-label="Spaces: ${space.name}"
-						title="All spaces"
-						@click=${(e: MouseEvent) => this.openMenu(e, this.spacesMenu())}
-					></button>
-					${keyed(space.id, html`<span class="world-name" aria-hidden="true">${space.name}</span>`)}
+					${keyed(
+						space.id,
+						html`<button
+								class="world"
+								style="translate: ${-this.swipe * 0.6}px 0"
+								aria-label="Spaces: ${space.name}"
+								title="All spaces"
+								@click=${(e: MouseEvent) => this.openMenu(e, this.spacesMenu())}
+							>
+								${planet(space.planet, space.hue, 400, true)}
+							</button>
+							<span class="world-name" aria-hidden="true">${space.name}</span>`,
+					)}
 					${this.neighbour(this.neighbourAt(1), "right")}
 				</nav>
 
+				${
+					this.extensionsOpen
+						? html`<div class="extensions" role="dialog" aria-label="Extensions" @click=${(e: Event) => e.stopPropagation()}>
+								<p class="ext-head">Extensions</p>
+								${EXTENSIONS.map(
+									(x) => html`<div class="ext-row">
+										<span class="ext-tile big" style="--x: ${x.color}" aria-hidden="true">${x.letter}</span>
+										<span class="ext-name">${x.name}<small>${x.detail}</small></span>
+										<button
+											class="icon pin ${this.pinnedExtensions.has(x.id) ? "on" : ""}"
+											aria-label="${this.pinnedExtensions.has(x.id) ? "Unpin" : "Pin"} ${x.name}"
+											aria-pressed=${this.pinnedExtensions.has(x.id)}
+											@click=${() => {
+												const next = new Set(this.pinnedExtensions);
+												if (!next.delete(x.id)) next.add(x.id);
+												this.pinnedExtensions = next;
+											}}
+										>
+											<svg viewBox="0 0 16 16"><path d="M9.5 2.5 13.5 6.5 11 7.5 8.5 10l-.5 3L3 8l3-.5L8.5 5z" /><path d="M5.5 10.5 2.5 13.5" /></svg>
+										</button>
+									</div>`,
+								)}
+								<button class="ext-more">Get more extensions</button>
+							</div>`
+						: nothing
+				}
 				${
 					this.menu
 						? html`<div
 								class="menu"
 								role="menu"
-								style="left: ${Math.min(this.menu.x, 272 - 196)}px; top: ${Math.min(this.menu.y, window.innerHeight - 40 * this.menu.items.length)}px"
+								style="left: ${Math.min(this.menu.x, this.getBoundingClientRect().right - 196)}px; top: ${Math.min(this.menu.y, window.innerHeight - 40 * this.menu.items.length)}px"
 								@keydown=${(e: KeyboardEvent) => e.key === "Escape" && this.closeMenu()}
 							>
 								${this.menu.items.map(
@@ -641,8 +741,81 @@ export class LokaSidebar extends LitElement {
 			background: var(--row-hover);
 			color: var(--text);
 		}
-		.icon.push {
+		.push {
 			margin-left: auto;
+		}
+		.ext-tile {
+			display: grid;
+			place-items: center;
+			width: 16px;
+			height: 16px;
+			border-radius: 4px;
+			background: var(--x);
+			color: #fff;
+			font-size: 11px;
+			font-weight: 700;
+		}
+		.ext-tile.big {
+			width: 26px;
+			height: 26px;
+			border-radius: 7px;
+			font-size: 14px;
+		}
+		.extensions {
+			position: absolute;
+			z-index: 10;
+			top: 44px;
+			left: 6px;
+			right: 6px;
+			padding: 8px;
+			border-radius: 12px;
+			background: hsl(var(--hue) 22% 13% / 0.97);
+			box-shadow:
+				0 0 0 1px hsl(var(--hue) 30% 85% / 0.12),
+				0 16px 40px #0009;
+		}
+		.ext-head {
+			margin: 4px 8px 8px;
+			font-weight: 600;
+			color: var(--text);
+		}
+		.ext-row {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			padding: 6px 8px;
+			border-radius: 8px;
+		}
+		.ext-row:hover {
+			background: var(--row-hover);
+		}
+		.ext-name {
+			flex: 1;
+			display: grid;
+			color: var(--text);
+		}
+		.ext-name small {
+			color: var(--muted);
+			font-size: 12px;
+		}
+		.pin.on {
+			color: var(--accent);
+		}
+		.pin.on svg {
+			fill: currentColor;
+			fill-opacity: 0.3;
+		}
+		.ext-more {
+			width: 100%;
+			margin-top: 6px;
+			padding: 8px;
+			border-radius: 8px;
+			color: var(--muted);
+			text-align: left;
+		}
+		.ext-more:hover {
+			background: var(--row-hover);
+			color: var(--text);
 		}
 		.url {
 			display: flex;
@@ -787,8 +960,11 @@ export class LokaSidebar extends LitElement {
 		/* No arrow: the icon itself is the open or closed state. */
 		.folder-icon {
 			flex: none;
+			width: 19px;
+			height: 19px;
+			margin: 0 -1px 0 -2px;
 			color: var(--accent);
-			stroke-width: 1.3;
+			stroke-width: 1.2;
 		}
 		.folder-icon .body {
 			fill: currentColor;
@@ -820,15 +996,20 @@ export class LokaSidebar extends LitElement {
 			outline: none;
 		}
 		.close {
+			flex: none;
 			display: grid;
 			place-items: center;
 			width: 22px;
 			height: 22px;
+			margin-right: -2px;
+			padding: 0;
 			border-radius: 6px;
 			color: var(--muted);
-			font-size: 16px;
-			line-height: 1;
 			opacity: 0;
+		}
+		.close svg {
+			width: 14px;
+			height: 14px;
 		}
 		.row:hover .close,
 		.row.active .close,
@@ -903,21 +1084,23 @@ export class LokaSidebar extends LitElement {
 		.world {
 			position: absolute;
 			left: 50%;
-			top: 46px;
+			top: 32px;
 			width: 400px;
 			height: 400px;
 			margin-left: -200px;
+			padding: 0;
 			border-radius: 50%;
-			/* --hue animates between spaces, so the planet changes color with the sky. */
-			background: radial-gradient(
-				circle at 40% 4%,
-				hsl(var(--hue) 90% 82%),
-				hsl(var(--hue) 65% 56%) 20%,
-				hsl(var(--hue) 50% 22%) 58%
-			);
-			box-shadow:
-				inset 0 6px 14px hsl(var(--hue) 90% 90% / 0.35),
-				0 -6px 32px hsl(var(--hue) 85% 65% / 0.28);
+		}
+		.world svg,
+		.neighbour svg {
+			display: block;
+			width: 100%;
+			height: 100%;
+			stroke: none;
+		}
+		/* The glow follows the planet's own edge (the body is 92% of the box), not the button's. */
+		.world svg {
+			filter: drop-shadow(0 -4px 22px hsl(var(--hue) 85% 65% / 0.35));
 		}
 		.world:hover {
 			filter: brightness(1.08);
@@ -926,38 +1109,44 @@ export class LokaSidebar extends LitElement {
 			position: absolute;
 			left: 0;
 			right: 0;
-			top: 64px;
+			top: 66px;
 			text-align: center;
 			font-size: 14px;
 			font-weight: 650;
-			color: hsl(var(--hue) 50% 9%);
+			color: #fff;
+			text-shadow:
+				0 1px 3px #000a,
+				0 0 10px #0006;
 			pointer-events: none;
 		}
 		.neighbour {
 			position: absolute;
-			top: 22px;
-			width: 26px;
-			height: 26px;
+			top: 20px;
+			width: 30px;
+			height: 30px;
+			padding: 0;
 			border-radius: 50%;
-			background: radial-gradient(
-				circle at 33% 28%,
-				hsl(var(--h) 90% 80%),
-				hsl(var(--h) 60% 52%) 38%,
-				hsl(var(--h) 50% 18%) 78%
-			);
-			box-shadow: inset -2px -3px 6px #0006;
 		}
 		.neighbour.left {
-			left: 26px;
+			left: 24px;
 		}
 		.neighbour.right {
-			right: 26px;
+			right: 24px;
 		}
 		.neighbour:hover {
-			box-shadow:
-				inset -2px -3px 6px #0006,
-				0 0 0 2px hsl(var(--h) 40% 8%),
-				0 0 0 3.5px hsl(var(--h) 85% 75% / 0.8);
+			filter: brightness(1.15);
+		}
+		@keyframes in-right {
+			from {
+				translate: 36px 0;
+				opacity: 0;
+			}
+		}
+		@keyframes in-left {
+			from {
+				translate: -36px 0;
+				opacity: 0;
+			}
 		}
 		.menu {
 			position: fixed;
@@ -995,6 +1184,28 @@ export class LokaSidebar extends LitElement {
 					opacity: 0;
 					transform: translateY(8px);
 				}
+			}
+			/* After a switch the new planet rises and the new list slides in from the side it came from. */
+			.world {
+				animation: planet-rise 380ms cubic-bezier(0.2, 0, 0, 1);
+			}
+			@keyframes planet-rise {
+				from {
+					transform: translateY(34px);
+				}
+			}
+			.scroll.from-right {
+				animation: in-right 260ms cubic-bezier(0.2, 0, 0, 1);
+			}
+			.scroll.from-left {
+				animation: in-left 260ms cubic-bezier(0.2, 0, 0, 1);
+			}
+			/* Springs back when a swipe stops short; follows the fingers exactly while swiping. */
+			.scroll:not(.swiping),
+			.world {
+				transition:
+					translate 220ms cubic-bezier(0.2, 0, 0, 1),
+					opacity 220ms;
 			}
 		}
 	`;

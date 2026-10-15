@@ -14,7 +14,7 @@ the previous and next spaces are small planets on the left and right.
 - `space-list` lists every space when the current planet is clicked, plus `New space`.
 - `space-memory` keeps one active tab per space.
 - `space-empty` shows "Nothing open in <space>." in the page area when the space has no active tab.
-- `space-new` adds `Space N` with the next color and switches to it.
+- `space-new` opens the space editor with `Space N` and the next color; creating switches to it.
 
 ## How to get to it (user POV)
 
@@ -33,8 +33,8 @@ Preconditions: seed data (Build, School, Home).
 - **Memory.** From Home, `loka.space("Build").click()`. `activeTab` is `imputnet/helium-windows` again.
 - **Drag-hover.** From Build, `loka.row("Zen Browser").dragTo(loka.space("School"))`. `space` is `School`.
 - **Swipe.** Hover a sidebar row, then `page.mouse.wheel(120, 0)`. From School, `space` is `Home`.
-- **New.** Click the `Spaces: <current>` button, then `loka.menuItem("New space")`. `space` is `Space 4`, with empty
-  `pinned` and `open`.
+- **New.** Click the `Spaces: <current>` button, `loka.menuItem("New space")`, then `Create space` in the editor
+  (see [space-editor.md](./space-editor.md)). `space` is `Space 4`, with empty `pinned` and `open`.
 - **Tint.** Compare `proof()` screenshots of Build (blue) and School (amber). The sky, the big planet and the accents
   change hue.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs spaces`.

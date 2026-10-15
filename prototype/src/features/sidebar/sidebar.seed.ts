@@ -37,6 +37,7 @@ export function seedState(): BrowserState {
 				id: "s-build",
 				name: "Build",
 				hue: 200,
+				planet: "ringed",
 				activeTabId: "t-helium",
 				pinned: [
 					{
@@ -56,6 +57,7 @@ export function seedState(): BrowserState {
 				id: "s-school",
 				name: "School",
 				hue: 30,
+				planet: "banded",
 				activeTabId: "t-canvas",
 				pinned: [
 					tab("t-canvas"),
@@ -81,6 +83,7 @@ export function seedState(): BrowserState {
 				id: "s-home",
 				name: "Home",
 				hue: 150,
+				planet: "ocean",
 				activeTabId: null,
 				pinned: [],
 				open: ["t-music"],

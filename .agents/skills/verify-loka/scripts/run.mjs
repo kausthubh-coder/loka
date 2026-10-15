@@ -1,5 +1,5 @@
 // Runs the mapped feature recipes against the running prototype and saves evidence.
-//   node .agents/skills/verify-loka/scripts/run.mjs <folders|spaces|tabs|essentials|export-import|all>
+//   node .agents/skills/verify-loka/scripts/run.mjs <folders|spaces|tabs|essentials|export-import|command-bar|space-editor|layout|onboarding|all>
 // Each recipe starts from fresh seed data, drives the UI the way a user does, asserts the saved state,
 // and writes screenshots, ARIA snapshots and outlines to .agents/verify-runs/<time>-<feature>/.
 
@@ -82,9 +82,10 @@ const recipes = {
 		await loka.proof("03-swiped-to-home");
 		await loka.page.keyboard.press("Control+2");
 
-		// The current planet lists every space and can add one.
+		// The current planet lists every space and can add one (through the editor, with the suggested name).
 		await loka.sidebar.getByRole("button", { name: "Spaces: School", exact: true }).click();
 		await loka.menuItem("New space").click();
+		await loka.page.getByRole("dialog", { name: "New space" }).getByRole("button", { name: "Create space" }).click();
 		o = await loka.outline();
 		assert.equal(o.space, "Space 4");
 		assert.deepEqual([o.pinned, o.open], [[], []], "a new space starts empty");
@@ -93,7 +94,7 @@ const recipes = {
 
 	async tabs(loka) {
 		await loka.page.keyboard.press("Control+k");
-		await loka.page.getByRole("textbox", { name: "Search or enter address" }).fill("lit.dev/playground");
+		await loka.page.getByRole("combobox", { name: "Search or enter address" }).fill("lit.dev/playground");
 		await loka.page.keyboard.press("Enter");
 		let o = await loka.outline();
 		assert.equal(o.open[0], "lit.dev", "new tab opens at the top of open tabs");
@@ -182,19 +183,171 @@ const recipes = {
 		assert.deepEqual(dialogs, ["That file isn't a Loka spaces export."]);
 		assert.deepEqual(await loka.outline(), exported, "a bad file changes nothing");
 	},
+
+	async "command-bar"(loka) {
+		const bar = loka.page.getByRole("combobox", { name: "Search or enter address" });
+		await loka.page.keyboard.press("Control+k");
+		await bar.fill("canvas");
+		await loka.proof("01-results-for-canvas");
+		// Result 0 is the search; result 1 is the Canvas tab in School.
+		await loka.page.keyboard.press("ArrowDown");
+		await loka.page.keyboard.press("Enter");
+		let o = await loka.outline();
+		assert.deepEqual([o.space, o.activeTab], ["School", "Canvas: CSC 281"], "jumped to a tab in another space");
+
+		await loka.page.keyboard.press("Control+k");
+		await bar.fill("preferences");
+		await loka.page.keyboard.press("ArrowDown");
+		await loka.page.keyboard.press("Enter");
+		o = await loka.outline();
+		assert.equal(o.activeTab, "Settings", "a command found by a related word opened Settings");
+		await loka.page.locator("loka-settings").getByRole("heading", { name: "Settings" }).waitFor();
+		await loka.proof("02-settings-from-command");
+	},
+
+	async "space-editor"(loka) {
+		await loka.sidebar.getByRole("button", { name: "Spaces: Build", exact: true }).click();
+		await loka.menuItem("New space").click();
+		const dialog = loka.page.getByRole("dialog", { name: "New space" });
+		await dialog.getByRole("textbox", { name: "Space name" }).fill("Music");
+		await dialog.getByRole("button", { name: "Hue 330" }).click();
+		await dialog.getByRole("button", { name: "Moon" }).click();
+		await loka.proof("01-editor-filled");
+		await dialog.getByRole("button", { name: "Create space" }).click();
+		let s = (await loka.state()).spaces.at(-1);
+		assert.deepEqual([s.name, s.hue, s.planet], ["Music", 330, "cratered"], "the new space has the chosen look");
+		assert.equal((await loka.outline()).space, "Music", "and is now the current space");
+		await loka.page.waitForTimeout(500);
+		await loka.proof("02-music-space");
+
+		await loka.sidebar.getByRole("button", { name: "Spaces: Music", exact: true }).click();
+		await loka.menuItem("Edit this space").click();
+		const edit = loka.page.getByRole("dialog", { name: "Edit Music" });
+		await edit.getByRole("textbox", { name: "Space name" }).fill("Tunes");
+		await edit.getByRole("button", { name: "Ringed" }).click();
+		await edit.getByRole("button", { name: "Save" }).click();
+		s = (await loka.state()).spaces.at(-1);
+		assert.deepEqual([s.name, s.planet, s.hue], ["Tunes", "ringed", 330], "editing kept the color, changed the rest");
+
+		await loka.sidebar.getByRole("button", { name: "Spaces: Tunes", exact: true }).click();
+		await loka.menuItem("Edit this space").click();
+		await loka.page.keyboard.press("Escape");
+		assert.equal(await loka.page.locator("loka-space-editor").count(), 0, "Escape closes the editor");
+	},
+
+	async layout(loka) {
+		const box = async (/** @type {string | import("playwright").Locator} */ target) => {
+			const b = await (typeof target === "string" ? loka.page.locator(target) : target).boundingBox();
+			if (!b) throw new Error(`${target} is not visible`);
+			return b;
+		};
+		// Drag the sidebar's edge 80 px wider.
+		const handle = await box(loka.page.getByRole("separator", { name: "Resize sidebar" }));
+		await loka.page.mouse.move(handle.x + handle.width / 2, 400);
+		await loka.page.mouse.down();
+		await loka.page.mouse.move(handle.x + handle.width / 2 + 80, 400, { steps: 6 });
+		await loka.page.mouse.up();
+		assert.equal((await loka.ui()).sidebarWidth, 352, "dragging the edge saved the new width");
+		assert.equal(Math.round((await box("loka-sidebar")).width), 352);
+		await loka.proof("01-wider");
+
+		await loka.sidebar.getByRole("button", { name: "More" }).click();
+		await loka.menuItem("Settings").click();
+		const settings = loka.page.locator("loka-settings");
+		await settings.getByRole("radio", { name: "Right" }).click();
+		assert.ok((await box("loka-sidebar")).x > (await box("loka-page")).x, "the sidebar moved to the right");
+		await loka.proof("02-sidebar-right");
+		await settings.getByRole("radio", { name: "Left" }).click();
+
+		await loka.page.keyboard.press("Control+s");
+		await loka.page.waitForTimeout(300);
+		assert.equal((await loka.ui()).sidebarHidden, true, "Ctrl+S hid the sidebar");
+		assert.ok((await box("loka-sidebar")).x + 352 <= 0, "a hidden sidebar is off screen");
+		await loka.proof("03-hidden");
+		await loka.page.mouse.move(2, 400);
+		await loka.page.mouse.move(4, 420);
+		await loka.page.waitForTimeout(350);
+		assert.ok((await box("loka-sidebar")).x >= 0, "reaching the edge slides it in");
+		await loka.proof("04-peek");
+		await loka.page.keyboard.press("Control+s");
+
+		await loka.page.keyboard.press("Control+k");
+		await loka.page.getByRole("combobox", { name: "Search or enter address" }).fill("downloads");
+		await loka.page.keyboard.press("ArrowDown");
+		await loka.page.keyboard.press("Enter");
+		const downloads = loka.page.locator("loka-downloads");
+		await downloads.getByRole("button", { name: "Retry" }).click();
+		assert.equal(await downloads.getByRole("progressbar").count(), 2, "retrying a failed download restarts it");
+		await loka.proof("05-downloads");
+	},
 };
 
+/** Waits until the tour's step has finished fading in, so its screenshot isn't blank on a busy machine. @param {Loka} loka */
+async function settled(loka) {
+	await loka.page.waitForFunction(() => {
+		const tour = document.querySelector("loka-app")?.shadowRoot?.querySelector("loka-onboarding");
+		return tour?.shadowRoot?.getAnimations().length === 0;
+	});
+}
+
+/** Run with the first-run tour showing, which the other recipes skip. */
+const tourRecipes = {
+	async onboarding(/** @type {Loka} */ loka) {
+		const tour = loka.page.getByRole("dialog", { name: "Welcome to Loka" });
+		await tour.getByRole("heading", { name: "Welcome to Loka" }).waitFor();
+		await settled(loka);
+		await loka.proof("01-welcome");
+		await tour.getByRole("button", { name: "Get started" }).click();
+		await tour.getByRole("checkbox", { name: /Arc/ }).click();
+		await settled(loka);
+		await loka.proof("02-import");
+		await tour.getByRole("button", { name: "Import from 2 browsers" }).click();
+
+		await tour.getByRole("textbox", { name: "Space 1 name" }).fill("Code");
+		await tour.getByRole("radiogroup", { name: "Space 1 color" }).getByRole("radio", { name: "Hue 260" }).click();
+		await tour.getByRole("button", { name: /Code: change planet/ }).click();
+		await settled(loka);
+		await loka.proof("03-spaces");
+		await tour.getByRole("button", { name: "Next" }).click();
+
+		await loka.page.keyboard.press("Control+k");
+		await tour.getByText("Done").waitFor();
+		assert.equal(
+			await loka.page.locator("loka-command-bar").count(),
+			0,
+			"trying Ctrl+K in the tour doesn't open the bar",
+		);
+		await settled(loka);
+		await loka.proof("04-keys-tried");
+		await tour.getByRole("button", { name: "Open Loka" }).click();
+
+		const first = (await loka.state()).spaces[0];
+		assert.deepEqual(
+			[first.name, first.hue, first.planet],
+			["Code", 260, "cratered"],
+			"the tour edited the first space",
+		);
+		assert.equal((await loka.outline()).space, "Code");
+		assert.equal((await loka.ui()).onboarded, true);
+		await loka.page.reload({ waitUntil: "networkidle" });
+		assert.equal(await loka.page.locator("loka-onboarding").count(), 0, "the tour doesn't come back after a reload");
+		await loka.proof("05-after-tour");
+	},
+};
+
+/** @type {Record<string, (loka: Loka) => Promise<void>>} */
+const all = { ...recipes, ...tourRecipes };
 const wanted = process.argv[2];
-const names = wanted === "all" ? Object.keys(recipes) : [wanted ?? ""];
-if (!names.every((n) => n in recipes)) {
-	console.error(`Usage: node run.mjs <${Object.keys(recipes).join("|")}|all>`);
+const names = wanted === "all" ? Object.keys(all) : [wanted ?? ""];
+if (!names.every((n) => n in all)) {
+	console.error(`Usage: node run.mjs <${Object.keys(all).join("|")}|all>`);
 	process.exit(1);
 }
 let failed = 0;
 for (const name of names) {
-	const loka = await openLoka(name);
+	const loka = await openLoka(name, { onboarding: name in tourRecipes });
 	try {
-		await recipes[name]?.(loka);
+		await all[name]?.(loka);
 		await loka.close();
 		console.log(`PASS  ${name}  evidence: ${loka.dir}`);
 	} catch (error) {

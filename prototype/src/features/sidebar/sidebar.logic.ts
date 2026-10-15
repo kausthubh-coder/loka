@@ -25,11 +25,16 @@ export interface TabNode {
 
 export type PinnedNode = FolderNode | TabNode;
 
+/** How a space's planet is drawn on the horizon. */
+export type PlanetKind = "banded" | "ringed" | "cratered" | "ocean";
+export const PLANET_KINDS: PlanetKind[] = ["banded", "ringed", "cratered", "ocean"];
+
 export interface Space {
 	id: string;
 	name: string;
 	/** Hue (0-360) that tints the whole window while this space is active. */
 	hue: number;
+	planet: PlanetKind;
 	pinned: PinnedNode[];
 	open: TabId[];
 	activeTabId: TabId | null;
@@ -255,10 +260,35 @@ export function switchSpace(state: BrowserState, spaceId: string): BrowserState 
 	return { ...state, activeSpaceId: spaceId };
 }
 
-export function createSpace(state: BrowserState, name: string, hue: number): [BrowserState, string] {
+export interface SpaceLook {
+	name: string;
+	hue: number;
+	planet: PlanetKind;
+}
+
+export function createSpace(state: BrowserState, look: SpaceLook): [BrowserState, string] {
 	const id = newId();
-	const space: Space = { id, name, hue, pinned: [], open: [], activeTabId: null };
+	const space: Space = { id, ...look, pinned: [], open: [], activeTabId: null };
 	return [{ ...state, spaces: [...state.spaces, space], activeSpaceId: id }, id];
+}
+
+/** Changes a space's name, color or planet. Its tabs stay as they are. */
+export function updateSpace(state: BrowserState, spaceId: string, look: SpaceLook): BrowserState {
+	const name = look.name.trim();
+	if (!name) return state;
+	return replaceSpace(state, spaceId, (s) => ({ ...s, ...look, name }));
+}
+
+/** Opens a tab, or goes to it if a tab with that URL is already open anywhere (used for Settings and Downloads). */
+export function focusOrOpen(state: BrowserState, url: string, title: string): BrowserState {
+	for (const space of state.spaces) {
+		const ids = [...space.open, ...pinnedTabIds(space.pinned)];
+		const found = ids.find((id) => state.tabs[id]?.url === url);
+		if (found) return activateTab(switchSpace(state, space.id), found);
+	}
+	const found = state.essentials.find((id) => state.tabs[id]?.url === url);
+	if (found) return activateTab(state, found);
+	return openTab(state, url, title);
 }
 
 export function createFolder(
@@ -331,6 +361,11 @@ function pinnedTabIds(nodes: PinnedNode[]): TabId[] {
 	return nodes.flatMap((n) => (n.kind === "tab" ? [n.id] : pinnedTabIds(n.children)));
 }
 
+/** Every tab a space holds: pinned at any depth plus open. Essentials are shared, so they don't count. */
+export function countTabs(space: Space): number {
+	return pinnedTabIds(space.pinned).length + space.open.length;
+}
+
 export function exportState(state: BrowserState): string {
 	return JSON.stringify(state, null, 2);
 }
@@ -349,7 +384,8 @@ export function importState(json: string): BrowserState | null {
 	if (placed.length !== new Set(placed).size) return null;
 	if (placed.length !== tabIds.length || !placed.every((id) => data.tabs[id])) return null;
 	if (!data.spaces.some((s) => s.id === data.activeSpaceId)) return null;
-	return data;
+	// Exports from before planets existed have none; give them the first style.
+	return { ...data, spaces: data.spaces.map((s) => ({ ...s, planet: s.planet ?? "banded" })) };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -384,6 +420,7 @@ function isBrowserState(value: unknown): value is BrowserState {
 			typeof s.id === "string" &&
 			typeof s.name === "string" &&
 			typeof s.hue === "number" &&
+			(s.planet === undefined || PLANET_KINDS.includes(s.planet as PlanetKind)) &&
 			isStringArray(s.open) &&
 			Array.isArray(s.pinned) &&
 			s.pinned.every(isPinnedNode) &&

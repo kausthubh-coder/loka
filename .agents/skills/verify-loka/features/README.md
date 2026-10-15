@@ -43,4 +43,8 @@ Each feature file has an H1, one paragraph on the user-visible behavior, then fo
 - [Tabs](./tabs.md): open from Ctrl+K, activate, close, pin and unpin, unload pinned tabs, Clear.
 - [Essentials](./essentials.md): the shared icon grid. Drag in, reorder, remove.
 - [Export and import](./export-import.md): JSON export, import, reset, rejecting bad files.
+- [Command bar](./command-bar.md): Ctrl+K for addresses, searches, tabs in any space, and commands.
+- [Space editor](./space-editor.md): create or change a space's name, color and planet.
+- [Window layout and pages](./layout.md): resize, right side, hide and peek; Settings, Downloads, extensions.
+- [Onboarding](./onboarding.md): the first-run tour.
 - [Browser build](./browser-build.md): the real Helium-based browser. Launch only; no Loka patches yet.

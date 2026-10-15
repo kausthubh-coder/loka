@@ -2,9 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
 	activeTab,
 	closeTab,
+	countTabs,
 	createFolder,
+	createSpace,
 	exportState,
 	findFolder,
+	focusOrOpen,
 	folderHolds,
 	importState,
 	moveItem,
@@ -12,6 +15,7 @@ import {
 	pinnedRows,
 	switchSpace,
 	ungroupFolder,
+	updateSpace,
 } from "./sidebar.logic";
 import { seedState } from "./sidebar.seed";
 
@@ -130,6 +134,35 @@ describe("tabs and spaces", () => {
 		expect(state.tabs["t-arc"]).toBeUndefined();
 	});
 
+	test("a new space has the chosen look, starts empty, and becomes active", () => {
+		const [state, id] = createSpace(seedState(), { name: "Music", hue: 330, planet: "cratered" });
+		const made = space(state, id);
+		expect([made.name, made.hue, made.planet, made.pinned, made.open]).toEqual(["Music", 330, "cratered", [], []]);
+		expect(state.activeSpaceId).toBe(id);
+	});
+
+	test("editing a space changes its look and keeps its tabs", () => {
+		const state = updateSpace(seedState(), "s-home", { name: "  Weekend ", hue: 260, planet: "ringed" });
+		const home = space(state, "s-home");
+		expect([home.name, home.hue, home.planet, home.open]).toEqual(["Weekend", 260, "ringed", ["t-music"]]);
+		expect(updateSpace(seedState(), "s-home", { name: "   ", hue: 260, planet: "ringed" })).toEqual(seedState());
+	});
+
+	test("opening Settings twice goes back to the first Settings tab, even from another space", () => {
+		const once = focusOrOpen(seedState(), "loka://settings", "Settings");
+		const elsewhere = switchSpace(once, "s-home");
+		const twice = focusOrOpen(elsewhere, "loka://settings", "Settings");
+		const settingsTabs = Object.values(twice.tabs).filter((t) => t.url === "loka://settings");
+		expect(settingsTabs.length).toBe(1);
+		expect(twice.activeSpaceId).toBe("s-build");
+		expect(activeTab(twice)?.title).toBe("Settings");
+	});
+
+	test("a space's tab count includes tabs in closed and nested folders, not Essentials", () => {
+		// School: one pinned tab, two inside the closed Game project folder, no open tabs.
+		expect(countTabs(space(seedState(), "s-school"))).toBe(3);
+	});
+
 	test("closing a pinned tab keeps it pinned", () => {
 		const state = closeTab(seedState(), "t-helium");
 		expect(outline(state, "s-build")).toContain("1:imputnet/helium-windows");
@@ -147,6 +180,18 @@ describe("export and import", () => {
 		const broken = seedState();
 		broken.essentials.push("t-hn");
 		expect(importState(exportState(broken))).toBeNull();
+	});
+
+	test("a file from before planets imports with the first planet style", () => {
+		const old = JSON.parse(exportState(seedState()));
+		for (const s of old.spaces) delete s.planet;
+		expect(importState(JSON.stringify(old))?.spaces.map((s) => s.planet)).toEqual(["banded", "banded", "banded"]);
+	});
+
+	test("a file with an unknown planet style is rejected", () => {
+		const bad = JSON.parse(exportState(seedState()));
+		bad.spaces[0].planet = "square";
+		expect(importState(JSON.stringify(bad))).toBeNull();
 	});
 
 	test("a file that isn't JSON is rejected", () => {

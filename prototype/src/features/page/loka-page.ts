@@ -1,19 +1,37 @@
 import { css, html, LitElement } from "lit";
+import type { UiPrefs } from "../../app/ui-prefs.logic";
+import "../downloads/loka-downloads";
+import "../settings/loka-settings";
+import type { SetUi } from "../settings/loka-settings";
 import { faviconColor, faviconLetter, hostOf } from "../sidebar/favicon";
-import type { Tab } from "../sidebar/sidebar.logic";
+import type { BrowserState, Tab } from "../sidebar/sidebar.logic";
 
-/** Stands in for the web view. In the real browser Chromium renders the page here. */
+/** Stands in for the web view. In the real browser Chromium renders the page here; loka:// pages are Loka's own. */
 export class LokaPage extends LitElement {
 	static override properties = {
 		tab: { attribute: false },
 		spaceName: { attribute: false },
+		state: { attribute: false },
+		ui: { attribute: false },
+		setUi: { attribute: false },
 	};
 
 	declare tab: Tab | null;
 	declare spaceName: string;
+	declare state: BrowserState;
+	declare ui: UiPrefs;
+	declare setUi: SetUi;
 
 	override render() {
 		const tab = this.tab;
+		if (tab?.url === "loka://settings") {
+			return html`<section class="frame inside">
+				<loka-settings .state=${this.state} .ui=${this.ui} .setUi=${this.setUi}></loka-settings>
+			</section>`;
+		}
+		if (tab?.url === "loka://downloads") {
+			return html`<section class="frame inside"><loka-downloads></loka-downloads></section>`;
+		}
 		if (!tab) {
 			return html`<section class="frame empty">
 				<p class="hint">Nothing open in ${this.spaceName}.</p>
@@ -58,6 +76,12 @@ export class LokaPage extends LitElement {
 				0 0 0 1px hsl(var(--hue) 40% 80% / 0.12),
 				0 20px 60px #0006;
 			overflow: hidden;
+		}
+		/* Loka's own pages sit on the night sky instead of a white web page. */
+		.frame.inside {
+			padding: 0;
+			background: hsl(var(--hue) 25% 9% / 0.82);
+			color: #e6e7ee;
 		}
 		.frame.empty {
 			display: grid;

@@ -67,14 +67,15 @@ Driver handles, all by accessible name:
 |---|---|
 | `loka.row(text)` | a pinned or open row (tab or folder) in the visible space |
 | `loka.essential(title)` | an Essentials tile |
-| `loka.space(name)` | a space button in the bottom switcher |
+| `loka.space(name)` | a neighbouring planet on the horizon (only the spaces next to the current one) |
 | `loka.menuItem(label)` | a context-menu item after a right-click |
 | `loka.drag(source, target, "before" \| "after" \| "into")` | a real HTML5 drag onto the target's top edge, bottom edge or middle |
 | `loka.outline()` / `loka.state()` | the saved state, readable / raw |
 | `loka.proof(name)` | `<name>.png`, `<name>.aria.txt`, `<name>.outline.json` |
 
 Other stable handles: the URL pill button (`github.com Ctrl K`), the Ctrl+K textbox (`Search or enter address`),
-`More` (the `...` menu), `New space`, `New folder`, `Clear`, and `Close <tab title>` buttons.
+`More` (the `...` menu), `New folder`, `Spaces: <current space>` (the big planet), `Clear`, and
+`Close <tab title>` buttons.
 
 ## Evidence
 

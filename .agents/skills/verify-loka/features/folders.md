@@ -6,10 +6,12 @@ saved and survives a reload.
 
 ## Sub-features
 
-- `folder-new` creates a folder at the top of the pinned list (the folder icon next to the space name).
+- `folder-new` creates a folder at the end of the pinned list (the `New folder` button in the top toolbar).
 - `folder-new-inside` creates a folder inside another one (right-click > `New folder inside`).
 - `folder-rename` renames with an inline box (double-click, or right-click > `Rename`). Enter saves, Escape cancels.
-- `folder-toggle` opens and closes by clicking. A closed folder shows how many items it holds.
+- `folder-toggle` opens and closes by clicking. There is no arrow: the icon is an open or a closed folder. A closed
+  folder shows how many items it holds.
+- `folder-holds-active` puts a white dot on a closed folder's icon when the active tab is somewhere inside it.
 - `folder-drop-into` puts a dragged tab or folder at the end of the folder (middle of the row).
 - `folder-reorder` drops before or after a row (top or bottom edge of the row).
 - `folder-no-cycle` refuses to drop a folder into itself or its own subfolders.
@@ -17,7 +19,7 @@ saved and survives a reload.
 
 ## How to get to it (user POV)
 
-- The `New folder` icon button beside the space name.
+- The `New folder` icon button in the toolbar at the top of the sidebar.
 - Right-click a folder: `Rename`, `New folder inside`, `Ungroup (keep tabs)`.
 - Double-click a folder name to rename it.
 - Drag any tab row or folder row onto a folder row.
@@ -33,6 +35,8 @@ Preconditions: seed data, `Build` space active.
 - **No cycle.** `await loka.drag(loka.row("Loka"), loka.row("Lit docs"), "before")`. `pinned` is unchanged.
 - **Close and open.** Click `loka.row("Docs")`. `pinned` shows `1:Docs (closed)` and `loka.row("Lit docs")` has
   count 0. Click again to open.
+- **Holds the active tab.** Click `loka.row("Loka")` to close it (it holds `imputnet/helium-windows`, the active
+  tab). `loka.row("Loka").locator(".holds")` has count 1; open it again and the count is 0.
 - **Ungroup.** Right-click `Docs`, then `Ungroup (keep tabs)`. No `Docs` line remains, and `1:Lit docs` and
   `1:Patches` sit where it was.
 - **Persistence.** `page.reload()`, then `pinned` equals the line list from before the reload.

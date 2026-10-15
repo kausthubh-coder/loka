@@ -13,7 +13,7 @@ and changes nothing when it refuses.
 
 ## How to get to it (user POV)
 
-- The `...` button (`More`) at the bottom right of the sidebar.
+- The `...` button (`More`) at the top right of the sidebar, in the toolbar.
 
 ## Driving it with loka.mjs
 

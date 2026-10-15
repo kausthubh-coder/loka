@@ -4,6 +4,8 @@ import {
 	closeTab,
 	createFolder,
 	exportState,
+	findFolder,
+	folderHolds,
 	importState,
 	moveItem,
 	openTab,
@@ -74,6 +76,18 @@ describe("folders inside folders", () => {
 
 	test("closed folders hide their insides", () => {
 		expect(outline(seedState(), "s-school")).toEqual(["0:Canvas: CSC 281", "0:CSC 281", "1:Game project"]);
+	});
+
+	test("a folder knows when a tab sits inside it, at any depth", () => {
+		const pinned = space(seedState(), "s-school").pinned;
+		const csc = findFolder(pinned, "f-csc281");
+		const game = findFolder(pinned, "f-game");
+		if (!csc || !game) throw new Error("seed folders missing");
+		expect([folderHolds(csc, "t-gdd"), folderHolds(game, "t-gdd"), folderHolds(game, "t-mail")]).toEqual([
+			true,
+			true,
+			false,
+		]);
 	});
 });
 

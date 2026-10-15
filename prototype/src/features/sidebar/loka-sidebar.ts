@@ -1,4 +1,5 @@
-import { css, html, LitElement, nothing, type TemplateResult } from "lit";
+import { css, html, LitElement, nothing, svg, type TemplateResult } from "lit";
+import { keyed } from "lit/directives/keyed.js";
 import { repeat } from "lit/directives/repeat.js";
 import type { Update } from "../../app/loka-app";
 import { faviconColor, faviconLetter, hostOf } from "./favicon";
@@ -11,12 +12,14 @@ import {
 	createFolder,
 	createSpace,
 	exportState,
+	folderHolds,
 	importState,
 	moveItem,
 	type PinnedRow,
 	type Place,
 	pinnedRows,
 	renameFolder,
+	type Space,
 	switchSpace,
 	type TabId,
 	toggleFolder,
@@ -178,6 +181,66 @@ export class LokaSidebar extends LitElement {
 		this.apply(() => next);
 	}
 
+	// ---- spaces: the horizon ------------------------------------------------
+
+	/** The space `step` places away from the current one, wrapping around. Null when there is no other space. */
+	private neighbourAt(step: 1 | -1): Space | null {
+		const spaces = this.state.spaces;
+		if (spaces.length < 2) return null;
+		// With two spaces both neighbours are the same one; show it once, on the right.
+		if (spaces.length === 2 && step === -1) return null;
+		const index = spaces.findIndex((s) => s.id === this.state.activeSpaceId);
+		return spaces[(index + step + spaces.length) % spaces.length] ?? null;
+	}
+
+	private neighbour(target: Space | null, side: "left" | "right"): TemplateResult | typeof nothing {
+		if (!target) return nothing;
+		const number = this.state.spaces.indexOf(target) + 1;
+		return html`<button
+			class="neighbour ${side}"
+			style="--h: ${target.hue}"
+			aria-label="${target.name} (Ctrl ${number})"
+			title="${target.name}, Ctrl+${number}"
+			@click=${() => this.apply((s) => switchSpace(s, target.id))}
+			@dragover=${(e: DragEvent) => {
+				// Hovering a space while dragging switches to it, like Arc.
+				if (!this.dragId) return;
+				e.preventDefault();
+				this.apply((s) => switchSpace(s, target.id));
+			}}
+		></button>`;
+	}
+
+	private spacesMenu(): MenuItem[] {
+		return [
+			...this.state.spaces.map((s, i) => ({
+				label: `${s.name}  (Ctrl+${i + 1})`,
+				run: () => this.apply((st) => switchSpace(st, s.id)),
+			})),
+			{ label: "New space", run: () => this.newSpace() },
+		];
+	}
+
+	private swipeDistance = 0;
+	private lastSwipe = 0;
+
+	/** A sideways two-finger swipe anywhere on the sidebar turns to the next or previous space. */
+	private onWheel = {
+		passive: false,
+		handleEvent: (e: WheelEvent) => {
+			if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+			e.preventDefault();
+			// One swipe sends dozens of wheel events; after a switch, ignore the rest of that gesture.
+			if (e.timeStamp - this.lastSwipe < 450) return;
+			this.swipeDistance += e.deltaX;
+			if (Math.abs(this.swipeDistance) < 60) return;
+			const target = this.neighbourAt(this.swipeDistance > 0 ? 1 : -1) ?? this.neighbourAt(1);
+			this.swipeDistance = 0;
+			this.lastSwipe = e.timeStamp;
+			if (target) this.apply((s) => switchSpace(s, target.id));
+		},
+	};
+
 	private moreMenu(e: MouseEvent) {
 		this.openMenu(e, [
 			{ label: "New space", run: () => this.newSpace() },
@@ -280,6 +343,8 @@ export class LokaSidebar extends LitElement {
 			return sibling(mode);
 		};
 		const renaming = this.renamingId === node.id;
+		const activeId = activeSpace(this.state).activeTabId;
+		const holdsActive = !node.open && activeId !== null && folderHolds(node, activeId);
 		return html`
 			<div
 				class="row folder ${this.dragId === node.id ? "dragging" : ""} ${this.dropClass(node.id)}"
@@ -298,10 +363,18 @@ export class LokaSidebar extends LitElement {
 				@keydown=${(e: KeyboardEvent) => e.key === "Enter" && !renaming && this.apply((s) => toggleFolder(s, node.id))}
 				@contextmenu=${(e: MouseEvent) => this.openMenu(e, this.folderMenu(node.id))}
 			>
-				<svg class="chevron ${node.open ? "open" : ""}" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" /></svg>
-				<svg class="folder-icon" viewBox="0 0 16 16" aria-hidden="true">
-					<path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.5h5A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5z" />
-				</svg>
+				${
+					node.open
+						? html`<svg class="folder-icon" viewBox="0 0 16 16" aria-hidden="true">
+								<path class="back" d="M2.4 12.6 1.6 12V4.6c0-.8.6-1.4 1.4-1.4h3l1.6 1.6h4.2c.8 0 1.4.6 1.4 1.4v1.1" />
+								<path class="body" d="M4.2 7.4h10.1c.6 0 1 .6.8 1.1l-1.4 4.2c-.2.5-.6.8-1.1.8H2.3c-.6 0-1-.6-.8-1.1l1.5-4.2c.2-.5.6-.8 1.2-.8z" />
+							</svg>`
+						: html`<svg class="folder-icon" viewBox="0 0 16 16" aria-hidden="true">
+								<path class="body" d="M1.6 4.6c0-.8.6-1.4 1.4-1.4h3l1.6 1.6H13c.8 0 1.4.6 1.4 1.4v6.2c0 .8-.6 1.4-1.4 1.4H3c-.8 0-1.4-.6-1.4-1.4z" />
+								<path class="lip" d="M1.9 6.6h12.2" />
+								${holdsActive ? svg`<circle class="holds" cx="13" cy="12.4" r="2.2" />` : nothing}
+							</svg>`
+				}
 				${
 					renaming
 						? html`<input
@@ -342,11 +415,17 @@ export class LokaSidebar extends LitElement {
 		const rows = pinnedRows(space.pinned);
 
 		return html`
-			<aside @click=${this.closeMenu} @contextmenu=${(e: MouseEvent) => e.target === e.currentTarget && e.preventDefault()}>
+			<aside @click=${this.closeMenu} @wheel=${this.onWheel} @contextmenu=${(e: MouseEvent) => e.target === e.currentTarget && e.preventDefault()}>
 				<div class="toolbar">
 					<button class="icon" aria-label="Back"><svg viewBox="0 0 16 16"><path d="M10 3L5 8l5 5" /></svg></button>
 					<button class="icon" aria-label="Forward"><svg viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" /></svg></button>
 					<button class="icon" aria-label="Reload"><svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 3v2.5h-2.5" /></svg></button>
+					<button class="icon push" aria-label="New folder" title="New folder" @click=${() => this.newFolder(null)}>
+						<svg viewBox="0 0 16 16"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.5h5A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5zM8 7v4M6 9h4" /></svg>
+					</button>
+					<button class="icon" aria-label="More" @click=${(e: MouseEvent) => this.moreMenu(e)}>
+						<svg viewBox="0 0 16 16"><path d="M4 8h.01M8 8h.01M12 8h.01" /></svg>
+					</button>
 				</div>
 				<button
 					class="url"
@@ -404,14 +483,6 @@ export class LokaSidebar extends LitElement {
 								</div>`
 							: nothing
 					}
-				</div>
-
-				<div class="space-head">
-					<span class="space-dot"></span>
-					<h2>${space.name}</h2>
-					<button class="icon small" aria-label="New folder" title="New folder" @click=${() => this.newFolder(null)}>
-						<svg viewBox="0 0 16 16"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.5h5A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5zM8 7v4M6 9h4" /></svg>
-					</button>
 				</div>
 
 				<div class="scroll">
@@ -473,31 +544,16 @@ export class LokaSidebar extends LitElement {
 					</div>
 				</div>
 
-				<nav class="spaces" aria-label="Spaces">
-					${state.spaces.map(
-						(s, i) => html`
-							<button
-								class="space ${s.id === space.id ? "current" : ""}"
-								style="--h: ${s.hue}"
-								aria-label="${s.name} (Ctrl ${i + 1})"
-								aria-current=${s.id === space.id ? "true" : "false"}
-								title="${s.name}  ·  Ctrl ${i + 1}"
-								@click=${() => this.apply((st) => switchSpace(st, s.id))}
-								@dragover=${(e: DragEvent) => {
-									// Hovering a space while dragging switches to it, like Arc.
-									if (!this.dragId || s.id === space.id) return;
-									e.preventDefault();
-									this.apply((st) => switchSpace(st, s.id));
-								}}
-							>
-								${s.name.slice(0, 1)}
-							</button>
-						`,
-					)}
-					<button class="space add" aria-label="New space" title="New space" @click=${() => this.newSpace()}>+</button>
-					<button class="icon more" aria-label="More" @click=${(e: MouseEvent) => this.moreMenu(e)}>
-						<svg viewBox="0 0 16 16"><path d="M4 8h.01M8 8h.01M12 8h.01" /></svg>
-					</button>
+				<nav class="horizon" aria-label="Spaces">
+					${this.neighbour(this.neighbourAt(-1), "left")}
+					<button
+						class="world"
+						aria-label="Spaces: ${space.name}"
+						title="All spaces"
+						@click=${(e: MouseEvent) => this.openMenu(e, this.spacesMenu())}
+					></button>
+					${keyed(space.id, html`<span class="world-name" aria-hidden="true">${space.name}</span>`)}
+					${this.neighbour(this.neighbourAt(1), "right")}
 				</nav>
 
 				${
@@ -585,9 +641,7 @@ export class LokaSidebar extends LitElement {
 			background: var(--row-hover);
 			color: var(--text);
 		}
-		.icon.small {
-			width: 24px;
-			height: 24px;
+		.icon.push {
 			margin-left: auto;
 		}
 		.url {
@@ -658,25 +712,6 @@ export class LokaSidebar extends LitElement {
 		.essential.slot.drop-before,
 		.essential.slot.drop-after {
 			box-shadow: inset 0 0 0 1.5px var(--accent);
-		}
-		.space-head {
-			display: flex;
-			align-items: center;
-			gap: 8px;
-			padding: 4px 4px 0 6px;
-		}
-		.space-dot {
-			width: 8px;
-			height: 8px;
-			border-radius: 50%;
-			background: var(--accent);
-			box-shadow: 0 0 10px var(--accent);
-		}
-		h2 {
-			margin: 0;
-			font-size: 13px;
-			font-weight: 600;
-			color: var(--text);
 		}
 		.scroll {
 			flex: 1;
@@ -749,19 +784,24 @@ export class LokaSidebar extends LitElement {
 		.folder {
 			color: var(--text);
 		}
-		.chevron {
-			flex: none;
-			width: 12px;
-			height: 12px;
-			margin: 0 -4px 0 -2px;
-			color: var(--muted);
-		}
-		.chevron.open {
-			transform: rotate(90deg);
-		}
+		/* No arrow: the icon itself is the open or closed state. */
 		.folder-icon {
 			flex: none;
 			color: var(--accent);
+			stroke-width: 1.3;
+		}
+		.folder-icon .body {
+			fill: currentColor;
+			fill-opacity: 0.24;
+		}
+		.folder-icon .lip {
+			stroke-opacity: 0.55;
+			stroke-width: 1.1;
+		}
+		.folder-icon .holds {
+			fill: #fff;
+			stroke: hsl(var(--hue) 40% 8%);
+			stroke-width: 1.6;
 		}
 		.count {
 			color: var(--muted);
@@ -852,43 +892,72 @@ export class LokaSidebar extends LitElement {
 			width: 16px;
 			font-size: 16px;
 		}
-		.spaces {
-			display: flex;
-			align-items: center;
-			justify-content: center;
-			gap: 6px;
-			padding-top: 6px;
+		/* Spaces as a horizon: the current space is a planet rising at the bottom, its neighbours sit either side. */
+		.horizon {
+			position: relative;
+			flex: none;
+			height: 116px;
+			margin: 0 -10px -8px -12px;
+			overflow: hidden;
 		}
-		.space {
-			display: grid;
-			place-items: center;
+		.world {
+			position: absolute;
+			left: 50%;
+			top: 46px;
+			width: 400px;
+			height: 400px;
+			margin-left: -200px;
+			border-radius: 50%;
+			/* --hue animates between spaces, so the planet changes color with the sky. */
+			background: radial-gradient(
+				circle at 40% 4%,
+				hsl(var(--hue) 90% 82%),
+				hsl(var(--hue) 65% 56%) 20%,
+				hsl(var(--hue) 50% 22%) 58%
+			);
+			box-shadow:
+				inset 0 6px 14px hsl(var(--hue) 90% 90% / 0.35),
+				0 -6px 32px hsl(var(--hue) 85% 65% / 0.28);
+		}
+		.world:hover {
+			filter: brightness(1.08);
+		}
+		.world-name {
+			position: absolute;
+			left: 0;
+			right: 0;
+			top: 64px;
+			text-align: center;
+			font-size: 14px;
+			font-weight: 650;
+			color: hsl(var(--hue) 50% 9%);
+			pointer-events: none;
+		}
+		.neighbour {
+			position: absolute;
+			top: 22px;
 			width: 26px;
 			height: 26px;
 			border-radius: 50%;
-			font-size: 11px;
-			font-weight: 600;
-			color: hsl(var(--h) 70% 82%);
-			background: hsl(var(--h) 50% 50% / 0.14);
+			background: radial-gradient(
+				circle at 33% 28%,
+				hsl(var(--h) 90% 80%),
+				hsl(var(--h) 60% 52%) 38%,
+				hsl(var(--h) 50% 18%) 78%
+			);
+			box-shadow: inset -2px -3px 6px #0006;
 		}
-		.space:hover {
-			background: hsl(var(--h) 50% 50% / 0.26);
+		.neighbour.left {
+			left: 26px;
 		}
-		.space.current {
-			color: #0b0c10;
-			background: hsl(var(--h) 80% 72%);
-			box-shadow: 0 0 14px hsl(var(--h) 80% 60% / 0.55);
+		.neighbour.right {
+			right: 26px;
 		}
-		.space.add {
-			color: var(--muted);
-			background: none;
-			box-shadow: inset 0 0 0 1px hsl(var(--hue) 30% 85% / 0.16);
-			font-size: 15px;
-			font-weight: 400;
-		}
-		.more {
-			position: absolute;
-			right: 8px;
-			bottom: 8px;
+		.neighbour:hover {
+			box-shadow:
+				inset -2px -3px 6px #0006,
+				0 0 0 2px hsl(var(--h) 40% 8%),
+				0 0 0 3.5px hsl(var(--h) 85% 75% / 0.8);
 		}
 		.menu {
 			position: fixed;
@@ -914,13 +983,18 @@ export class LokaSidebar extends LitElement {
 			background: var(--row-active);
 		}
 		@media (prefers-reduced-motion: no-preference) {
-			.chevron {
-				transition: transform 160ms cubic-bezier(0.2, 0, 0, 1);
-			}
 			.row,
-			.essential,
-			.space {
+			.essential {
 				transition: background-color 120ms;
+			}
+			.world-name {
+				animation: rise 320ms cubic-bezier(0.2, 0, 0, 1);
+			}
+			@keyframes rise {
+				from {
+					opacity: 0;
+					transform: translateY(8px);
+				}
 			}
 		}
 	`;

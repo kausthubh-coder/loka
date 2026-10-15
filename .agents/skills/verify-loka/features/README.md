@@ -38,7 +38,8 @@ Each feature file has an H1, one paragraph on the user-visible behavior, then fo
 ## Features
 
 - [Folders](./folders.md): nested pinned folders. Create, rename, open and close, drag in and out, ungroup.
-- [Spaces](./spaces.md): switch by click, Ctrl+1-9 or drag-hover; each space's tint and remembered tab; new spaces.
+- [Spaces](./spaces.md): the horizon switcher; switch by click, Ctrl+1-9, swipe or drag-hover; each space's tint and
+  remembered tab; new spaces.
 - [Tabs](./tabs.md): open from Ctrl+K, activate, close, pin and unpin, unload pinned tabs, Clear.
 - [Essentials](./essentials.md): the shared icon grid. Drag in, reorder, remove.
 - [Export and import](./export-import.md): JSON export, import, reset, rejecting bad files.

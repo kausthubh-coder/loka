@@ -85,6 +85,11 @@ export function findFolder(nodes: PinnedNode[], folderId: string): FolderNode | 
 	return null;
 }
 
+/** True when the tab sits anywhere inside the folder, at any depth. A closed folder marks itself when it holds the active tab. */
+export function folderHolds(folder: FolderNode, tabId: TabId): boolean {
+	return folder.children.some((child) => (child.kind === "tab" ? child.id === tabId : folderHolds(child, tabId)));
+}
+
 function containsFolder(folder: FolderNode, folderId: string): boolean {
 	return findFolder([folder], folderId) !== null;
 }

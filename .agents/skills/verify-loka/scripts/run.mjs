@@ -38,12 +38,19 @@ const recipes = {
 		assert.equal(await loka.row("Lit docs").count(), 0, "closed folder hides its tabs");
 		await loka.row("Docs").click();
 
+		// A closed folder that holds the active tab shows a dot on its icon.
+		await loka.row("Loka").click();
+		assert.equal(await loka.row("Loka").locator(".holds").count(), 1, "closed Loka marks the active tab inside");
+		await loka.proof("04-closed-folder-holds-active");
+		await loka.row("Loka").click();
+		assert.equal(await loka.row("Loka").locator(".holds").count(), 0, "open folders show no dot");
+
 		await loka.row("Docs").click({ button: "right" });
 		await loka.menuItem("Ungroup (keep tabs)").click();
 		o = await loka.outline();
 		assert.ok(!o.pinned.some((l) => l.endsWith(":Docs")), "Docs is gone");
 		assert.ok(o.pinned.includes("1:Lit docs") && o.pinned.includes("1:Patches"), "its contents moved up a level");
-		await loka.proof("04-ungrouped");
+		await loka.proof("05-ungrouped");
 
 		await loka.page.reload({ waitUntil: "networkidle" });
 		assert.deepEqual((await loka.outline()).pinned, o.pinned, "the tree survives a reload");
@@ -64,15 +71,24 @@ const recipes = {
 		await loka.space("Build").click();
 		assert.equal((await loka.outline()).activeTab, "imputnet/helium-windows", "Build's active tab came back");
 
-		// Hovering a space button mid-drag switches to that space, like Arc.
+		// Hovering a neighbouring planet mid-drag switches to that space, like Arc.
 		await loka.row("Zen Browser").dragTo(loka.space("School"));
 		assert.equal((await loka.outline()).space, "School", "drag-hover switched space");
 
-		await loka.sidebar.getByRole("button", { name: "New space", exact: true }).click();
+		// A sideways swipe on the sidebar turns to the next space (School -> Home).
+		await loka.row("Canvas: CSC 281").hover();
+		await loka.page.mouse.wheel(120, 0);
+		assert.equal((await loka.outline()).space, "Home", "swipe moved to the next space");
+		await loka.proof("03-swiped-to-home");
+		await loka.page.keyboard.press("Control+2");
+
+		// The current planet lists every space and can add one.
+		await loka.sidebar.getByRole("button", { name: "Spaces: School", exact: true }).click();
+		await loka.menuItem("New space").click();
 		o = await loka.outline();
 		assert.equal(o.space, "Space 4");
 		assert.deepEqual([o.pinned, o.open], [[], []], "a new space starts empty");
-		await loka.proof("03-new-space");
+		await loka.proof("04-new-space");
 	},
 
 	async tabs(loka) {

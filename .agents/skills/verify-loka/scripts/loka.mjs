@@ -67,7 +67,7 @@ export async function openLoka(runName, { fresh = true, width = 1280, height = 8
 		row: (name) => sidebar.getByRole("treeitem", { name }).first(),
 		/** An Essentials tile, by tab title. @param {string} title */
 		essential: (title) => sidebar.getByRole("listitem", { name: title, exact: true }),
-		/** A space button in the bottom switcher. @param {string} name */
+		/** A neighbouring planet on the horizon switcher. @param {string} name */
 		space: (name) => sidebar.getByRole("button", { name: new RegExp(`^${name} \\(Ctrl \\d\\)$`) }),
 		/** A context-menu item, after a right-click. @param {string} name */
 		menuItem: (name) => sidebar.getByRole("menuitem", { name, exact: true }),

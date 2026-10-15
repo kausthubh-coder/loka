@@ -1,4 +1,4 @@
-import { css, html, LitElement } from "lit";
+import { css, html, LitElement, svg } from "lit";
 import "../features/sidebar/loka-sidebar";
 import "../features/page/loka-page";
 import "../features/command-bar/loka-command-bar";
@@ -13,6 +13,25 @@ import {
 import { seedState } from "../features/sidebar/sidebar.seed";
 
 const STORAGE_KEY = "loka.state.v1";
+
+// The star field: seeded, so the sky is the same every launch. Drawn once in a 1280x800 box that scales to the window.
+const STARS = (() => {
+	let seed = 7919;
+	const rand = () => {
+		seed = (seed * 16807) % 2147483647;
+		return seed / 2147483647;
+	};
+	return Array.from({ length: 160 }, () => {
+		const bright = rand() > 0.92;
+		return {
+			x: (rand() * 1280).toFixed(1),
+			y: (rand() * 800).toFixed(1),
+			r: (bright ? 1 + rand() * 0.8 : 0.35 + rand() * 0.6).toFixed(2),
+			fill: rand() > 0.8 ? "hsl(200 90% 88%)" : "#fff",
+			opacity: (0.25 + rand() * 0.65).toFixed(2),
+		};
+	});
+})();
 
 function loadState(): BrowserState {
 	const saved = localStorage.getItem(STORAGE_KEY);
@@ -75,6 +94,11 @@ export class LokaApp extends LitElement {
 		const space = activeSpace(this.state);
 		return html`
 			<div class="window" style="--hue: ${space.hue}">
+				<div class="sky" aria-hidden="true">
+					<svg viewBox="0 0 1280 800" preserveAspectRatio="xMidYMid slice">
+						${STARS.map((s) => svg`<circle cx=${s.x} cy=${s.y} r=${s.r} fill=${s.fill} opacity=${s.opacity} />`)}
+					</svg>
+				</div>
 				<loka-sidebar
 					.state=${this.state}
 					.apply=${this.apply}
@@ -110,24 +134,37 @@ export class LokaApp extends LitElement {
 			grid-template-columns: 272px 1fr;
 			height: 100%;
 			overflow: hidden;
-			/* Deep-space backdrop, tinted by the active space. */
-			background:
-				radial-gradient(900px 520px at 0% 0%, hsl(var(--hue) 65% 32% / 0.42), transparent 65%),
-				radial-gradient(700px 460px at 100% 100%, hsl(calc(var(--hue) + 50) 55% 26% / 0.3), transparent 60%),
-				hsl(var(--hue) 28% 7%);
+			isolation: isolate;
 		}
-		.window::before {
-			/* A sparse star field: three offset dot layers. */
+		/* Night sky tinted by the active space: a glow top-left, a faint band of light, a deep ground, stars. */
+		.sky {
+			position: absolute;
+			inset: 0;
+			z-index: -1;
+			pointer-events: none;
+			background:
+				radial-gradient(60% 50% at 6% 0%, hsl(var(--hue) 58% 34% / 0.45), transparent 70%),
+				radial-gradient(38% 34% at 26% 58%, hsl(calc(var(--hue) + 40) 45% 32% / 0.18), transparent 70%),
+				radial-gradient(55% 55% at 100% 100%, hsl(calc(var(--hue) - 35) 42% 26% / 0.28), transparent 70%),
+				linear-gradient(165deg, hsl(var(--hue) 32% 8%), hsl(var(--hue) 38% 4%));
+		}
+		.sky::after {
 			content: "";
 			position: absolute;
 			inset: 0;
-			pointer-events: none;
-			opacity: 0.5;
-			background-image:
-				radial-gradient(1px 1px at 20px 30px, #fff9, transparent),
-				radial-gradient(1px 1px at 140px 90px, #fff6, transparent),
-				radial-gradient(1.5px 1.5px at 90px 160px, #fff8, transparent);
-			background-size: 230px 210px, 310px 270px, 410px 380px;
+			background: linear-gradient(
+				118deg,
+				transparent 38%,
+				hsl(var(--hue) 70% 85% / 0.06) 47%,
+				hsl(calc(var(--hue) + 30) 70% 85% / 0.08) 52%,
+				transparent 62%
+			);
+		}
+		.sky svg {
+			position: absolute;
+			inset: 0;
+			width: 100%;
+			height: 100%;
 		}
 		@media (prefers-reduced-motion: no-preference) {
 			.window {

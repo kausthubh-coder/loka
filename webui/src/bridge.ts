@@ -124,8 +124,8 @@ function tell(message: string, ...args: unknown[]) {
 }
 
 function on(event: string, listener: (...args: unknown[]) => void): () => void {
-	let set = listeners.get(event);
-	if (!set) listeners.set(event, (set = new Set()));
+	const set = listeners.get(event) ?? new Set();
+	listeners.set(event, set);
 	set.add(listener);
 	return () => set.delete(listener);
 }

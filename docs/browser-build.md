@@ -47,12 +47,13 @@ bun run browser:run     # opens the dev build with a throwaway profile
 
 ## 3a. The Loka sidebar and branding
 
-The sidebar is `extension/`: the prototype's components running in the browser's side panel and new tab page,
-driving real tabs (see `extension/README.md`).
+The sidebar is built into the browser: `webui/` is the page `chrome://loka-sidebar.top-chrome` (and the command
+bar overlay, `command.html`), made of the prototype's components and talking to the browser through
+`webui/src/bridge.ts`.
 
 ```
-bun run ext:build                              # extension/dist
-bun run browser:run                            # loads extension/dist into the dev build
+bun run webui:build                            # webui/dist, copied into components/loka_sidebar/dist
+bun run browser:build                          # packs it into the browser
 python scripts/loka_brand.py apply             # in C:\src\loka, once after the first build: Loka name + icons
 python scripts/loka_build.py incremental       # then rebuild to pick the branding up
 ```
@@ -78,7 +79,7 @@ Loka's patches live in `patches/loka/` and are listed at the end of `patches/ser
 ## 3b. The portable alpha
 
 ```
-bun run ext:build
+bun run webui:build && bun run browser:build
 bun run browser:package    # C:\src\loka\dist\Loka-<version>-windows-x64.zip and .sha256
 ```
 

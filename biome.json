@@ -4,7 +4,8 @@
 	"files": {
 		"includes": [
 			"prototype/**",
-			"extension/**",
+			"webui/**",
+			"!webui/dist",
 			"scripts/**",
 			".agents/skills/*/scripts/**",
 			"package.json",

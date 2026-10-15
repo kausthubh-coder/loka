@@ -30,11 +30,6 @@ export interface BrowserTab {
 
 export type LiveMap = Record<TabId, number>;
 
-/** Pages the browser shows for a new tab; Loka's own command bar page is one of them. */
-export function isNewTabPage(url: string): boolean {
-	return url === "" || url.startsWith("chrome://newtab") || /^chrome-extension:\/\/[^/]+\/newtab\.html/.test(url);
-}
-
 function pinnedIds(nodes: PinnedNode[]): TabId[] {
 	return nodes.flatMap((n) => (n.kind === "tab" ? [n.id] : pinnedIds(n.children)));
 }

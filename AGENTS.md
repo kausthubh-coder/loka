@@ -26,7 +26,8 @@ page with a C++ model behind it. The browser build is Helium's Python build plus
 | `prototype/src/features/command-bar/` | Ctrl+K bar and URL parsing |
 | `prototype/src/features/page/` | stand-in for the web view |
 | `prototype/src/app/loka-app.ts` | window shell: owns state, saves it, global shortcuts, space theme |
-| `extension/` | the sidebar in the real browser: prototype components on real tabs (`extension/README.md`) |
+| `webui/` | the sidebar built into the browser (`sidebar.html`, `command.html`): the prototype's components, talking to the browser only through `webui/src/bridge.ts`; `live.logic.ts` keeps real tabs and spaces in step |
+| `prototype/src/demo/` | the fake browser behind `bun run dev`. Sample data (extensions, downloads, media, suggestions) lives only here |
 | `scripts/` | `setup`, `doctor`, `browser.mjs` (build checkout), `loka_build.py` (dev builds), `loka_brand.py` (name, icons) |
 | `resources/loka/` | Loka's brand images, drawn by `loka_brand.py assets` |
 | `patches/loka/` + end of `patches/series` | Loka's Chromium patches, applied after Helium's (folder appears with the first patch; Helium's linter rejects any file not in the series) |

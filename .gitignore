@@ -6,7 +6,6 @@ __pycache__
 # Loka
 node_modules
 prototype/dist
-extension/dist
 .env.local
 .env*.local
 *.log

@@ -1,7 +1,12 @@
 // The spaces the user made in Loka's setup page (chrome://setup) become the sidebar's spaces. Setup saves them as
 // {"version":1,"spaces":[{name, hue, planet}]}; the sidebar applies them once.
 
-import { type BrowserState, createSpace, type SpaceLook, updateSpace } from "../../prototype/src/features/sidebar/sidebar.logic";
+import {
+	type BrowserState,
+	createSpace,
+	type SpaceLook,
+	updateSpace,
+} from "../../prototype/src/features/sidebar/sidebar.logic";
 
 const PLANETS = new Set(["ringed", "banded", "ocean", "cratered"]);
 

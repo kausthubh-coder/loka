@@ -52,5 +52,4 @@ Each feature file has an H1, one paragraph on the user-visible behavior, then fo
 - [Import](./import.md): Chrome and Edge bookmarks, Arc spaces and Favorites.
 - [Media controls](./media.md): the now-playing card.
 - [Sound](./sound.md): interface cues for sidebar actions, the throttle, and Settings > Sound.
-- [The sidebar in the real browser](./extension.md): the extension on real tabs; `node extension/test/e2e.mjs`.
 - [Browser build](./browser-build.md): the real Helium-based browser. Launch only; no Loka patches yet.

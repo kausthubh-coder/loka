@@ -4,7 +4,7 @@
 		"lib": ["ESNext", "DOM", "DOM.Iterable"],
 		"module": "ESNext",
 		"moduleResolution": "bundler",
-		"types": ["bun", "chrome"],
+		"types": ["bun"],
 		"strict": true,
 		"noUncheckedIndexedAccess": true,
 		"noImplicitOverride": true,
@@ -16,5 +16,12 @@
 		"checkJs": true,
 		"noEmit": true
 	},
-	"include": ["prototype/src", "extension/src", "extension/vite.config.ts", "webui/src", "webui/vite.config.ts", "prototype/vite.config.ts", "scripts", ".agents/skills/*/scripts"]
+	"include": [
+		"prototype/src",
+		"webui/src",
+		"webui/vite.config.ts",
+		"prototype/vite.config.ts",
+		"scripts",
+		".agents/skills/*/scripts"
+	]
 }

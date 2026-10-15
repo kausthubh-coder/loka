@@ -1,9 +1,9 @@
 // Packages the built browser as the portable Windows alpha:
 //
-//   bun run ext:build && node scripts/alpha/package_alpha.mjs
+//   bun run webui:build && bun run browser:build && node scripts/alpha/package_alpha.mjs
 //
 // makes <build checkout>\dist\Loka-<version>-windows-x64.zip and its .sha256. Inside: Loka.exe (the launcher),
-// app\ (the browser's runtime files, the Loka sidebar extension and first-run defaults) and README.txt. Nothing is
+// app\ (the browser's runtime files, with the Loka sidebar built in, and first-run defaults) and README.txt. Nothing is
 // installed: unzip anywhere and run Loka.exe. The profile lives in %LOCALAPPDATA%\Loka\User Data.
 
 import { spawnSync } from "node:child_process";

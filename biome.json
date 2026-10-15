@@ -9,6 +9,7 @@
 			"site/**",
 			"!site/.next",
 			"!site/.clerk",
+			"video/scripts/**",
 			"package.json",
 			"tsconfig.json",
 			"biome.json"

@@ -126,7 +126,7 @@ const FAQ: { q: string; a: string }[] = [
 ];
 
 // The launch video only exists once it has been rendered (see video/ in the repo), so the section waits for the file.
-const hasVideo = existsSync(join(process.cwd(), "public", "launch.mp4"));
+const hasVideo = ["launch.mp4", "launch-poster.jpg"].every((f) => existsSync(join(process.cwd(), "public", f)));
 
 export default function Page() {
 	return (
@@ -192,7 +192,8 @@ export default function Page() {
 
 				{hasVideo ? (
 					<section className="video" aria-labelledby="video-title">
-						<h2 id="video-title">loka in 40 seconds</h2>
+						<h2 id="video-title">Watch the tour</h2>
+						{/* Loads nothing but the poster until someone presses play. */}
 						<video
 							controls
 							playsInline
@@ -200,10 +201,10 @@ export default function Page() {
 							poster="/launch-poster.jpg"
 							width={1920}
 							height={1080}
-							aria-describedby="video-title"
+							aria-labelledby="video-title"
 						>
 							<source src="/launch.mp4" type="video/mp4" />
-							{/* The video has music and no speech; the captions carry its on-screen words. */}
+							{/* The only sound is a music bed; every word in the video is on screen. */}
 							<track kind="captions" src="/launch.vtt" srcLang="en" label="English" />
 						</video>
 					</section>

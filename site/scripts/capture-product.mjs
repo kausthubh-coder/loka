@@ -55,7 +55,9 @@ async function settled() {
 		const all = (/** @type {Document | ShadowRoot} */ root) => {
 			let n = root
 				.getAnimations()
-				.filter((a) => a.playState === "running" && a.effect?.getTiming().iterations !== Number.POSITIVE_INFINITY).length;
+				.filter(
+					(a) => a.playState === "running" && a.effect?.getTiming().iterations !== Number.POSITIVE_INFINITY,
+				).length;
 			for (const el of root.querySelectorAll("*")) if (el.shadowRoot) n += all(el.shadowRoot);
 			return n;
 		};

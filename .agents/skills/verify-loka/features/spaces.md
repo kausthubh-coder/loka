@@ -46,6 +46,8 @@ Preconditions: seed data (Build, School, Home).
 - `loka.space(name)` matches the button's full label, `<name> (Ctrl <n>)`. The big planet is `Spaces: <name>`.
 - One swipe gesture sends many wheel events. After a switch the rest are ignored for 450 ms, so a second swipe in a
   test needs a wait.
-- The tint animates over about 420 ms. Wait before screenshotting a hue change.
+- The tint changes at once; the old sky crossfades out over 650 ms and the star layers sweep for 1.1 s. Wait before
+  screenshotting a hue change, or pause and scrub the animations. They live in shadow roots, which
+  `document.getAnimations()` doesn't search: collect them from each `shadowRoot.getAnimations()`.
 - Dropping onto a planet itself does nothing. Only hovering switches spaces, and the drop has to land on a row in the
   new space.

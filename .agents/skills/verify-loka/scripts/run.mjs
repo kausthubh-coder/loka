@@ -1,5 +1,5 @@
 // Runs the mapped feature recipes against the running prototype and saves evidence.
-//   node .agents/skills/verify-loka/scripts/run.mjs <folders|spaces|tabs|essentials|export-import|command-bar|space-editor|layout|make-folders|archive|search-and-keys|import|media|onboarding|all>
+//   node .agents/skills/verify-loka/scripts/run.mjs <folders|spaces|tabs|essentials|export-import|command-bar|space-editor|layout|make-folders|archive|search-and-keys|import|media|sound|onboarding|all>
 // Each recipe starts from fresh seed data, drives the UI the way a user does, asserts the saved state,
 // and writes screenshots, ARIA snapshots and outlines to .agents/verify-runs/<time>-<feature>/.
 
@@ -424,6 +424,51 @@ const recipes = {
 		assert.equal(await card.count(), 0, "no card while the playing tab is on screen");
 		await loka.page.keyboard.press("Control+1");
 		await card.waitFor();
+	},
+
+	async sound(loka) {
+		// Counts the oscillators each action starts; the page is reloaded with the counter in place.
+		await loka.page.addInitScript(() => {
+			/** @type {any} */ (window).__tones = 0;
+			const start = OscillatorNode.prototype.start;
+			OscillatorNode.prototype.start = function (...args) {
+				/** @type {any} */ (window).__tones++;
+				return start.apply(this, args);
+			};
+		});
+		await loka.page.reload({ waitUntil: "networkidle" });
+		await loka.sidebar.getByRole("tree").first().waitFor();
+		const tones = async () => {
+			await loka.page.waitForTimeout(300);
+			return loka.page.evaluate(() => {
+				const n = /** @type {any} */ (window).__tones;
+				/** @type {any} */ (window).__tones = 0;
+				return n;
+			});
+		};
+		assert.equal(await tones(), 0, "nothing plays as the page loads");
+		await loka.row("Docs").click();
+		assert.ok((await tones()) > 0, "closing a folder plays a cue");
+		await loka.page.keyboard.press("Control+2");
+		assert.ok((await tones()) > 0, "switching spaces plays a cue");
+		await loka.page.keyboard.press("Control+2");
+		assert.equal(await tones(), 0, "the space you're already in plays nothing");
+		// Each folder cue is two tones. The gate allows at most three cues in 600ms, so some of five quick clicks drop.
+		for (let i = 0; i < 5; i++) await loka.row("Game project").click({ delay: 0 });
+		const fast = await tones();
+		assert.ok(fast > 0 && fast < 10, `five quick clicks play fewer than five cues (${fast / 2})`);
+
+		await loka.page.keyboard.press("Control+1");
+		await loka.page.waitForTimeout(400);
+		await loka.page.getByRole("button", { name: "More" }).click();
+		await loka.menuItem("Settings").click();
+		const settings = loka.page.locator("loka-settings");
+		await settings.getByRole("switch", { name: "Sound effects" }).click();
+		assert.equal((await loka.ui()).sound, false, "the switch saves sound off");
+		await loka.proof("01-sound-off");
+		await tones();
+		await loka.row("Docs").click();
+		assert.equal(await tones(), 0, "with sound off, nothing plays");
 	},
 };
 

@@ -10,8 +10,11 @@ you scroll.
 - `history-days`: Today, Yesterday, then dates; the year once it isn't this one.
 - `history-search`: debounced; days off screen skip layout (content-visibility).
 - `history-pick`: a row's box, Shift for a run, Space on the keyboard; Delete removes every visit to those pages.
-- `history-clear`: the menu and its confirm (it can't be undone).
+- `history-clear`: the menu and its confirm (it can't be undone). The menu takes focus and moves with the arrows;
+  the confirm focuses its Clear button, makes the page behind it inert, and gives focus back to "Clear history".
 - `history-keys`: arrows, Home and End, Enter (Ctrl for a new tab), Delete, Escape, `/` to search.
+- `history-header`: full width; clear over the sky at the top, frosted once the list scrolls under it. A stuck
+  day heading sits on a glass pill.
 
 ## How to get to it (user POV)
 

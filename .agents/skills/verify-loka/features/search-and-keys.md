@@ -8,6 +8,8 @@ opens the folders above it. The keyboard moves between tabs in sidebar order and
 - `sidebar-search`: Ctrl+Shift+F, or `...` > `Search the sidebar`, or Ctrl+K > `Search the sidebar`. Arrows and Enter.
 - `tab-step`: Ctrl+Alt+Down / Up: next or previous tab in sidebar order (Essentials, visible pinned, open), wrapping.
 - `tree-keys`: on a focused row, Up and Down move focus, Enter runs it, Right opens a closed folder, Left closes one.
+- `menu-keys`: a menu (right-click, Shift+F10 on a row, `...`, the space label, `+`) focuses its first item; Up,
+  Down, Home and End move; Escape or Tab closes it and focus goes back to what opened it.
 
 ## How to get to it (user POV)
 

@@ -5,6 +5,9 @@ Loka's local (developer) build, on top of Helium's build.py.
   python scripts/loka_build.py first [-j N]        unpack Chromium, apply every patch, build chrome
   python scripts/loka_build.py incremental [-j N]  rebuild chrome after editing build/src
 
+An incremental build keeps build-status.json and appends to build-times.log in the build checkout
+(see build_log.py; `bun run build:status` prints them).
+
 Run it from the build checkout (C:\\src\\loka by default), never from OneDrive.
 Helium's `build.py --dev` stops and waits for someone to apply patches with quilt. `first` answers
 that prompt by applying the same series a release build applies: Helium core, then patches/series
@@ -18,7 +21,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / 'scripts'))
 import build  # noqa: E402  Helium's build.py, imported so its helpers and toolchain setup are reused
+import build_log  # noqa: E402
 
 SOURCE_TREE = ROOT / 'build' / 'src'
 
@@ -48,8 +53,18 @@ def incremental(jobs):
         sys.exit('No previous build found. Run "first" before "incremental".')
     os.chdir(SOURCE_TREE)
     os.environ.setdefault('SISO_PATH', str(SOURCE_TREE / 'third_party/siso/cipd/siso.exe'))
-    build._run_build_process(
-        sys.executable, 'third_party\\depot_tools\\autoninja.py', '-j', str(jobs), '-C', 'out\\Default', 'chrome')
+    command = (sys.executable, 'third_party\\depot_tools\\autoninja.py', '-j', str(jobs), '-C', 'out\\Default', 'chrome')
+    # What Helium's build._run_build_process sends cmd.exe (the compiler's environment, then the build), run through
+    # build_log so build-status.json and build-times.log say how it is going and how long it took.
+    cmd_input = '\n'.join([
+        f'call "{build._get_vcvars_path()}" >nul',
+        'set DEPOT_TOOLS_WIN_TOOLCHAIN=0',
+        ' '.join(map('"{}"'.format, command)),
+        'exit\n',
+    ])
+    code = build_log.run(['cmd.exe', '/k'], cmd_input, build_dir=ROOT, mode='incremental', jobs=jobs)
+    if code:
+        sys.exit(code)
 
 
 def main():

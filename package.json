@@ -21,6 +21,7 @@
 		"patches:check": "python scripts/patches_check.py",
 		"browser:build": "bun scripts/browser.mjs build",
 		"browser:run": "bun scripts/browser.mjs run",
+		"build:status": "bun scripts/browser.mjs status",
 		"browser:package": "node scripts/alpha/package_alpha.mjs"
 	},
 	"dependencies": {

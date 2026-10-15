@@ -1,5 +1,5 @@
 // Playwright driver for the Loka sidebar prototype. Run recipes with node, not bun: Playwright's browser launch
-// hangs under bun on Windows.
+// hangs under bun on Windows. scripts/test-browser.mjs picks the browser (the VM's Chromium in cloud sessions).
 //
 //   import { openLoka } from "./loka.mjs";
 //   const loka = await openLoka("my-check");      // fresh seed data, evidence folder created
@@ -10,7 +10,7 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { chromium } from "playwright";
+import { launchBrowser } from "../../../../scripts/test-browser.mjs";
 
 export const ROOT = resolve(import.meta.dirname, "..", "..", "..", "..");
 
@@ -36,7 +36,7 @@ export async function openLoka(runName, { fresh = true, width = 1280, height = 8
 	const dir = join(ROOT, ".agents", "verify-runs", `${stamp()}-${runName}`);
 	mkdirSync(dir, { recursive: true });
 
-	const browser = await chromium.launch();
+	const browser = await launchBrowser();
 	const context = await browser.newContext({ viewport: { width, height }, acceptDownloads: true });
 	const page = await context.newPage();
 	/** @type {string[]} */

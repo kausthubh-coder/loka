@@ -26,7 +26,7 @@ page with a C++ model behind it. The browser build is Helium's Python build plus
 | `prototype/src/features/command-bar/` | Ctrl+K bar and URL parsing |
 | `prototype/src/features/page/` | stand-in for the web view |
 | `prototype/src/app/loka-app.ts` | window shell: owns state, saves it, global shortcuts, space theme |
-| `scripts/` | `setup`, `doctor`, `browser.mjs` (build checkout), `loka_build.py` (dev builds) |
+| `scripts/` | `setup`, `doctor`, `cloud.mjs` (cloud sessions), `test-browser.mjs` (Playwright's browser), `browser.mjs` (build checkout), `loka_build.py` (dev builds) |
 | `patches/loka/` + end of `patches/series` | Loka's Chromium patches, applied after Helium's (folder appears with the first patch; Helium's linter rejects any file not in the series) |
 | `build.py`, `patches/`, `helium-chromium/`, `.github/` | Helium's, kept where Helium has them so merges stay clean |
 | `docs/` | `browser-build.md`, `upstream.md`, Helium's original README |
@@ -38,7 +38,7 @@ No barrel files. The sidebar model is the spec for the future C++ model, so keep
 
 - Install: `bun install`
 - Setup a fresh worktree: `bun run setup` (installs deps, copies `.env.local` from the main checkout, picks a free port)
-- Doctor: `bun run doctor` (add `--browser` for the Chromium toolchain). Run it first when anything looks off.
+- Doctor: `bun run doctor` (add `--browser` for the Chromium toolchain, Windows only). Run it first when anything looks off.
 - Remove a worktree: `bun run worktree:remove <path>` (stops its dev server, removes the skills junction safely)
 - Dev: `bun run dev` (port from `PORT` in `.env.local`; ready when Vite prints `Local: http://localhost:<port>/`)
 - Test one file: `bun test prototype/src/features/sidebar/sidebar.test.ts`
@@ -54,6 +54,25 @@ No barrel files. The sidebar model is the spec for the future C++ model, so keep
 - Ship only with the `ship-loka` skill, and only when I say ship or release.
 - Only one build checkout exists (`C:\src\loka`, ~100 GB). Ask before syncing it, deleting `build\src`, or starting a
   first build. They cost hours.
+
+## Cloud sessions
+
+A cloud VM (Claude Code on the web, Codex Cloud) is Linux with a bare clone. The SessionStart hook in
+`.claude/settings.json` runs `node scripts/cloud.mjs` (Codex: set the environment's setup script to
+`CLOUD=1 node scripts/cloud.mjs`). It loads my global skills and rules, installs bun if it's missing, runs
+setup, and makes sure Playwright has a browser. It does nothing outside the cloud. Its last line says ready or what
+failed; rerun it if you're unsure.
+
+- Works here: the prototype. `bun run setup`, `doctor`, `dev`, `check`, single tests, and every `verify-loka` recipe,
+  headless on the VM's Chromium (`scripts/test-browser.mjs` picks it when Playwright's own build isn't installed).
+  Start `bun run dev` with `setsid` so it gets its own process group; stop it as `verify-loka` Cleanup says.
+- Shipping with `ship-loka` works. `gh pr` doesn't; the GitHub REST calls in `ship-loka` do.
+- Skipped on purpose: the Chromium/Helium browser build. It's Windows-only, ~100 GB and hours, so setup doesn't fetch
+  the `helium-chromium` submodule here and `doctor --browser` says so. Heavy builds run in CI (`main.yml`), not on
+  this VM and not on my laptop. Don't run `browser:*` here.
+- Only on my machine: the main checkout (`ship-loka` step 4), `bun run worktree:remove` (PowerShell and
+  `taskkill`), T3 tools, and running a browser build.
+- Env vars: none. The prototype has no secrets.
 
 ## Proving a change works
 

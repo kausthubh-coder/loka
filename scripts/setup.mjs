@@ -3,12 +3,13 @@
 //   2. copies .env.local from the main checkout if this one has none
 //   3. claims a PORT for the prototype that no other worktree has claimed
 //   4. links .claude/skills to .agents/skills
-//   5. runs the doctor
+//   5. on Windows, fetches the helium-chromium submodule for the browser build
+//   6. runs the doctor
 // The prototype has no backend: it saves to localStorage, which the browser keys by origin, so a different
 // port is all a worktree needs to keep its own data.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 
@@ -20,7 +21,9 @@ const PORT_RANGE = 400;
 function freeOn(port, host) {
 	return new Promise((done) => {
 		const server = createServer();
-		server.once("error", (/** @type {NodeJS.ErrnoException} */ e) => done(e.code === "EADDRNOTAVAIL"));
+		// Only "in use" means taken. A host without IPv6 (Linux cloud VMs) fails ::1 with EAFNOSUPPORT, or no
+		// code at all under bun, and nothing can be listening there.
+		server.once("error", (/** @type {NodeJS.ErrnoException} */ e) => done(e.code !== "EADDRINUSE"));
 		server.listen(port, host, () => server.close(() => done(true)));
 	});
 }
@@ -114,12 +117,14 @@ if (import.meta.main) {
 
 	const link = join(root, ".claude", "skills");
 	if (!existsSync(link)) {
-		spawnSync("cmd", ["/c", "mkdir", join(root, ".claude")], { stdio: "ignore" });
+		mkdirSync(join(root, ".claude"), { recursive: true });
+		// A junction on Windows (no admin needed); Node makes a plain symlink elsewhere.
 		symlinkSync(join(root, ".agents", "skills"), link, "junction");
 		steps.push("linked .claude/skills");
 	}
 
-	if (!existsSync(join(root, "helium-chromium", "flags.gn"))) {
+	// The submodule only feeds the browser build, which is Windows-only. Elsewhere (cloud VMs) CI builds the browser.
+	if (process.platform === "win32" && !existsSync(join(root, "helium-chromium", "flags.gn"))) {
 		spawnSync("git", ["submodule", "update", "--init", "--recursive"], { cwd: root, stdio: "inherit" });
 		steps.push("fetched the helium-chromium submodule");
 	}

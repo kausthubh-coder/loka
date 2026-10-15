@@ -1,16 +1,30 @@
 // Packages the built browser as the portable Windows alpha:
 //
-//   bun run browser:package
+//   LOKA_VERSION=0.1.0-alpha.4 bun run browser:package
 //
 // makes <build checkout>\dist\Loka-<version>-windows-x64.zip and its .sha256. Inside: Loka.exe (the launcher),
 // app\ (the browser's runtime files, with the Loka sidebar built in, and first-run defaults) and README.txt. Nothing
 // is installed: unzip anywhere and run Loka.exe. The profile lives in %LOCALAPPDATA%\Loka\User Data.
+// Last, it points <build checkout>\dist\snapshot at the new app\ folder: the copy tests drive while a build writes
+// out\Default (testBinary in scripts/browser.mjs).
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, createReadStream, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+	cpSync,
+	createReadStream,
+	existsSync,
+	lstatSync,
+	mkdirSync,
+	readdirSync,
+	rmdirSync,
+	rmSync,
+	statSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
-import { BUILD_DIR, INITIAL_PREFERENCES } from "../browser.mjs";
+import { BUILD_DIR, INITIAL_PREFERENCES, requireWindowsBuild } from "../browser.mjs";
 
 export const VERSION = process.env.LOKA_VERSION ?? "0.1.0-alpha.1";
 
@@ -92,6 +106,7 @@ function sha256(file) {
 	});
 }
 
+requireWindowsBuild("browser:package");
 if (!existsSync(join(out, "chrome.exe"))) {
 	console.error(`No build at ${out}. Build it first: bun run browser:build`);
 	process.exit(1);
@@ -133,3 +148,9 @@ run("7z", ["a", "-tzip", "-mx=7", zip, name], dist);
 const digest = await sha256(zip);
 writeFileSync(`${zip}.sha256`, `${digest}  ${name}.zip\n`);
 console.log(`${zip}\n${(statSync(zip).size / 1024 ** 2).toFixed(0)} MB, sha256 ${digest}`);
+
+// The snapshot is a junction: rmdir drops the link itself, never the folder it points at.
+const snapshot = join(dist, "snapshot");
+if (lstatSync(snapshot, { throwIfNoEntry: false })) rmdirSync(snapshot);
+symlinkSync(app, snapshot, "junction");
+console.log(`dist\\snapshot now points at ${app}`);

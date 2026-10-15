@@ -4,10 +4,9 @@
 // /json/list and each target's websocket.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
-import { BUILD_DIR } from "./browser.mjs";
+import { BUILD_DIR, BUILT_BINARY, buildRunning, requireWindowsBuild, testBinary } from "./browser.mjs";
 
 const repo = resolve(import.meta.dirname, "..");
 
@@ -17,31 +16,19 @@ const repo = resolve(import.meta.dirname, "..");
 /** @param {number} ms */
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** The binary to test: LOKA_CHROME, else the dev build. */
-export const chromePath = () =>
-	resolve(process.env.LOKA_CHROME ?? join(BUILD_DIR, "build", "src", "out", "Default", "chrome.exe"));
+/** The binary to test: LOKA_CHROME, else the dev build when no build is writing it, else the packaged snapshot. */
+export const chromePath = () => testBinary().path || BUILT_BINARY;
 
-/** Refuses to run a binary the build is writing: linking fails on a chrome.exe that's running. @param {string} chrome */
+/**
+ * Refuses to run a binary the build is writing (linking fails on a chrome.exe that's running), and anything off
+ * Windows, where these drives can't run yet (window.ps1, WM_NCHITTEST, taskkill). Exits 2: skipped, not failed.
+ * @param {string} chrome
+ */
 export function refuseWhileBuilding(chrome) {
+	requireWindowsBuild("Driving the built browser");
 	const out = join(BUILD_DIR, "build", "src", "out").toLowerCase();
 	if (!chrome.toLowerCase().startsWith(out)) return;
-	const reasons = [];
-	if (existsSync(join(BUILD_DIR, "build.lock"))) reasons.push("build.lock exists");
-	const log = join(BUILD_DIR, "compile.log");
-	if (existsSync(log)) {
-		const last = readFileSync(log, "utf8").trimEnd().split("\n").at(-1) ?? "";
-		if (!last.includes("compile exited")) reasons.push("compile.log has no exit line yet");
-	}
-	const statusFile = join(BUILD_DIR, "build-status.json");
-	if (existsSync(statusFile)) {
-		const status = JSON.parse(readFileSync(statusFile, "utf8"));
-		let running = false;
-		try {
-			process.kill(status.pid, 0);
-			running = true;
-		} catch {}
-		if (status.phase === "compiling" && running) reasons.push(`build-status.json says compiling (pid ${status.pid})`);
-	}
+	const reasons = buildRunning();
 	if (reasons.length) {
 		console.error(`A build is using ${chrome} (${reasons.join("; ")}). Wait for it, or set LOKA_CHROME to a copy.`);
 		process.exit(2);

@@ -545,10 +545,52 @@ export function importState(json: string): BrowserState | null {
 	if (placed.length !== tabIds.length || !placed.every((id) => data.tabs[id])) return null;
 	if (!data.spaces.some((s) => s.id === data.activeSpaceId)) return null;
 	// Exports from before planets and the archive existed have neither: give them the first style and an empty one.
-	return {
+	return withoutAlphaPages({
 		...data,
 		archive: data.archive ?? [],
 		spaces: data.spaces.map((s) => ({ ...s, planet: s.planet ?? "banded" })),
+	});
+}
+
+/** The 0.1.0 alpha's sidebar was an extension with this id (pinned by `key` in extension/public/manifest.json). */
+const ALPHA_EXTENSION_ID = "kklllonkklkjgekkpeboddibgbjadkej";
+
+function isAlphaPage(url: string): boolean {
+	try {
+		const page = new URL(url);
+		return page.protocol === "chrome-extension:" && page.hostname === ALPHA_EXTENSION_ID;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * The alpha saved its own pages (sidebar, tour, settings, new tab) as tabs. The built-in sidebar has no such pages,
+ * so an alpha file arrives without them rather than as tabs that can't load.
+ */
+function withoutAlphaPages(state: BrowserState): BrowserState {
+	const dead = new Set(
+		Object.values(state.tabs)
+			.filter((t) => isAlphaPage(t.url))
+			.map((t) => t.id),
+	);
+	if (!dead.size) return state;
+	const prune = (nodes: PinnedNode[]): PinnedNode[] =>
+		nodes.flatMap((n): PinnedNode[] => {
+			if (n.kind === "tab") return dead.has(n.id) ? [] : [n];
+			return [{ ...n, children: prune(n.children) }];
+		});
+	return {
+		...state,
+		tabs: Object.fromEntries(Object.entries(state.tabs).filter(([id]) => !dead.has(id))),
+		essentials: state.essentials.filter((id) => !dead.has(id)),
+		spaces: state.spaces.map((s) => ({
+			...s,
+			pinned: prune(s.pinned),
+			open: s.open.filter((id) => !dead.has(id)),
+			activeTabId: s.activeTabId && dead.has(s.activeTabId) ? null : s.activeTabId,
+		})),
+		archive: state.archive.filter((a) => !isAlphaPage(a.tab.url)),
 	};
 }
 

@@ -85,7 +85,10 @@
 						}
 					}
 				}
-			},
+			}
+		},
+		{
+			"includes": ["webui/**", "prototype/src/features/**", "!**/*.test.ts"],
 			"plugins": ["./scripts/lint/no-extension-urls.grit"]
 		}
 	]

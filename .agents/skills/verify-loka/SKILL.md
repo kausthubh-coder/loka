@@ -16,6 +16,8 @@ Loka has two surfaces. Only the browser build proves what a user gets.
   the sidebar's own behavior (folders, drags, menus), never the browser's.
 
 Run every script here with **node**, never bun. Playwright's browser launch hangs under bun on Windows.
+`scripts/test-browser.mjs` picks the browser: Playwright's own Chromium, else Google Chrome, else the VM's Chromium
+in a cloud session. The doctor (`bun run doctor`) names the one it found.
 
 ## Launch
 
@@ -96,6 +98,13 @@ Report the feature, the recipe or script you ran, PASS or FAIL, and the evidence
 ## Cleanup
 
 Stop the dev server you started, by its PID, with its children: `taskkill /T /F /PID <pid>`. Never kill by name.
+On Linux (cloud sessions), start it with `setsid bun run dev` and stop its process group. `setsid` forks, so `$!`
+isn't the group; read it from the listener:
+
+```
+pgid=$(ps -o pgid= -p "$(lsof -nP -iTCP:<PORT> -sTCP:LISTEN -t | head -1)" | tr -d ' ')
+kill -- -"$pgid"
+```
 Recipes close their own browsers. Leave `.agents/verify-runs/` alone. If you need the seed data back in a
 browser you use by hand, choose `...` > `Reset demo data`.
 

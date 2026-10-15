@@ -1,6 +1,6 @@
 // Is this checkout healthy? Run it before trusting a failure.
 //   bun run doctor            prototype checks (deps, port, git)
-//   bun run doctor --browser  also the Windows toolchain needed to build Chromium
+//   bun run doctor --browser  also the Windows toolchain needed to build Chromium (skipped off Windows)
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, statfsSync } from "node:fs";
@@ -57,6 +57,13 @@ if (port !== null) {
 	);
 }
 check(existsSync(join(root, ".claude", "skills")), ".claude/skills links to .agents/skills", "bun run setup");
+// Imported only now: it loads playwright, which is missing until the install above is fixed.
+const testBrowser = stale.includes("playwright") ? null : (await import("./test-browser.mjs")).findBrowser();
+check(
+	testBrowser !== null,
+	`a browser for verify-loka${testBrowser ? `: ${testBrowser.name}` : ""}`,
+	"node node_modules/playwright/cli.js install chromium",
+);
 info("no backend: the prototype keeps its data in localStorage for its own port");
 
 const base = out("git", ["describe", "--tags", "--abbrev=0"]);
@@ -70,7 +77,9 @@ if (out("git", ["remote"]).split("\n").includes("origin")) {
 
 // ---- browser toolchain -----------------------------------------------------
 
-if (process.argv.includes("--browser")) {
+if (process.argv.includes("--browser") && process.platform !== "win32") {
+	console.log("\nBrowser toolchain: skipped. The browser builds on Windows only: on my machine, or in CI (main.yml).");
+} else if (process.argv.includes("--browser")) {
 	console.log("\nBrowser toolchain (Chromium's Windows guide + Helium's README)");
 	const vswhere = "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe";
 	const vsVersions = existsSync(vswhere)

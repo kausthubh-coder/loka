@@ -23,7 +23,8 @@ bun run setup
 
 It is safe to rerun. In order, it installs deps if they don't match `package.json`, copies `.env.local` from the main
 checkout (without its `PORT`), claims a `PORT` no other worktree has claimed, links `.claude\skills` to
-`.agents\skills`, fetches the `helium-chromium` submodule if missing, then runs the doctor.
+`.agents\skills`, fetches the `helium-chromium` submodule if missing (Windows only), then runs the doctor. In a
+cloud session `scripts/cloud.mjs` runs it for you; see `## Cloud sessions` in AGENTS.md.
 
 Done when the last line reads `setup: ... Prototype: bun run dev -> http://localhost:<port>/` and the doctor printed
 `All checks passed.`

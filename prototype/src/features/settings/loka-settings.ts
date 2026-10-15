@@ -528,10 +528,18 @@ export class LokaSettings extends LitElement {
 			box-shadow: inset 0 0 0 1px var(--loka-line);
 		}
 		.segmented button {
+			position: relative;
 			min-width: 64px;
 			height: 30px;
 			border-radius: 8px;
 			color: var(--loka-ink-2);
+		}
+		.segmented button:not(.on):hover {
+			background: var(--loka-hover);
+			color: var(--loka-ink);
+		}
+		.segmented button:not(.on):active {
+			background: var(--loka-fill-hover);
 		}
 		.segmented.small button {
 			min-width: 56px;
@@ -551,8 +559,11 @@ export class LokaSettings extends LitElement {
 			font-variant-numeric: tabular-nums;
 			color: var(--loka-ink-2);
 		}
+		/* Taller than its track, so the thumb can be grabbed from a little above or below the line. */
 		input[type="range"] {
 			width: 150px;
+			height: 32px;
+			margin: -8px 0;
 			accent-color: var(--loka-accent);
 		}
 		.switch {
@@ -576,6 +587,12 @@ export class LokaSettings extends LitElement {
 			box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
 			transition: translate 160ms cubic-bezier(0.2, 0, 0, 1);
 		}
+		.switch:not(.on):not(:disabled):hover {
+			background: var(--loka-selected);
+		}
+		.switch.on:not(:disabled):hover {
+			filter: brightness(1.06);
+		}
 		.switch.on {
 			background: var(--loka-accent);
 			box-shadow: none;
@@ -596,6 +613,28 @@ export class LokaSettings extends LitElement {
 		}
 		.button:hover {
 			background: var(--loka-selected);
+		}
+		.button:active {
+			background: var(--loka-fill);
+		}
+		/* Settings has room: every control takes clicks across a 44px band, however small it's drawn. The switch's
+		   ::after is its knob, so its band is ::before. */
+		.button,
+		.switch {
+			position: relative;
+		}
+		.button::after,
+		.segmented button::after,
+		.switch::before {
+			content: "";
+			position: absolute;
+			inset: -6px 0;
+		}
+		.segmented button::after {
+			inset: -8px 0;
+		}
+		.switch::before {
+			inset: -10px -2px;
 		}
 		.button.add {
 			margin-top: 12px;
@@ -626,11 +665,14 @@ export class LokaSettings extends LitElement {
 			flex: none;
 		}
 		select {
-			height: 34px;
+			height: 36px;
 			padding: 0 10px;
 			border-radius: 8px;
 			background: var(--loka-fill-hover);
 			box-shadow: inset 0 0 0 1px var(--loka-line);
+		}
+		select:hover {
+			background: var(--loka-selected);
 		}
 		.keys {
 			min-height: 44px;

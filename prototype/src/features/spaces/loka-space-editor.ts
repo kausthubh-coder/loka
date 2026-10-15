@@ -217,8 +217,14 @@ export class LokaSpaceEditor extends LitElement {
 			box-shadow: inset 0 0 0 1px var(--loka-line);
 			outline: none;
 		}
+		/* One ring: the field's own edge turns the accent, with a soft halo, instead of an outline around it. */
 		input:focus {
-			box-shadow: inset 0 0 0 1.5px var(--loka-accent);
+			box-shadow:
+				inset 0 0 0 1.5px var(--loka-accent),
+				0 0 0 3px color-mix(in srgb, var(--loka-accent) 22%, transparent);
+		}
+		input:focus-visible {
+			outline: none;
 		}
 		fieldset {
 			border: 0;
@@ -243,11 +249,23 @@ export class LokaSpaceEditor extends LitElement {
 			gap: 10px;
 		}
 		.swatch {
+			position: relative;
 			width: 28px;
 			height: 28px;
 			border-radius: 50%;
 			background: hsl(var(--s) 75% 62%);
 			box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08);
+		}
+		.swatch::after {
+			content: "";
+			position: absolute;
+			inset: -3px;
+			border-radius: 50%;
+		}
+		.swatch:not(.on):hover {
+			box-shadow:
+				0 0 0 2.5px var(--loka-dialog),
+				0 0 0 4.5px color-mix(in srgb, hsl(var(--s) 75% 55%) 45%, transparent);
 		}
 		.swatch.on {
 			box-shadow:
@@ -259,13 +277,17 @@ export class LokaSpaceEditor extends LitElement {
 			grid-template-columns: repeat(4, 1fr);
 			gap: 6px;
 		}
+		/* Planet on top, name under it; names that wrap in a narrow sidebar still start on the same line. */
 		.kind {
 			display: grid;
 			justify-items: center;
+			align-content: start;
 			gap: 8px;
 			padding: 12px 2px 10px;
 			border-radius: 12px;
 			font-size: 12px;
+			line-height: 1.25;
+			text-align: center;
 			color: var(--loka-ink-2);
 		}
 		.kind:hover,
@@ -339,12 +361,20 @@ export class LokaSpaceEditor extends LitElement {
 		.quiet:hover {
 			background: var(--loka-hover);
 		}
+		.quiet:active,
+		.kind:active,
+		.scheme:not(.on):active {
+			background: var(--loka-fill-hover);
+		}
 		.primary {
 			background: var(--loka-accent);
 			color: var(--loka-on-accent);
 		}
 		.primary:hover {
 			filter: brightness(1.06);
+		}
+		.primary:not(:disabled):active {
+			filter: brightness(0.94);
 		}
 		.primary:disabled {
 			opacity: 0.45;
@@ -356,7 +386,7 @@ export class LokaSpaceEditor extends LitElement {
 		}
 		@media (prefers-reduced-motion: no-preference) {
 			.scrim {
-				transition: opacity 160ms ease-out;
+				transition: opacity 150ms cubic-bezier(0.2, 0, 0, 1);
 				@starting-style {
 					opacity: 0;
 				}

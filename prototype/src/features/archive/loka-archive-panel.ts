@@ -2,6 +2,7 @@ import { css, html, LitElement } from "lit";
 import type { Update } from "../../app/loka-app";
 import { faviconBackground, faviconInner, hostOf } from "../sidebar/favicon";
 import { type BrowserState, restoreArchived } from "../sidebar/sidebar.logic";
+import { playCue } from "../sound/sound";
 import { timeAgo } from "./archive.logic";
 
 /** The sidebar's Archived tabs panel: search what the archive took, click one to bring it back. */
@@ -36,7 +37,15 @@ export class LokaArchivePanel extends LitElement {
 				<b>Archived tabs</b>
 				${
 					this.state.archive.length
-						? html`<button class="quiet" @click=${() => this.apply((s) => ({ ...s, archive: [] }))}>Clear</button>`
+						? html`<button
+								class="quiet"
+								@click=${() => {
+									playCue("clear");
+									this.apply((s) => ({ ...s, archive: [] }));
+								}}
+							>
+								Clear
+							</button>`
 						: null
 				}
 			</header>
@@ -58,7 +67,10 @@ export class LokaArchivePanel extends LitElement {
 						<button
 							class="row"
 							title="Bring back ${a.tab.title}"
-							@click=${() => this.apply((s) => restoreArchived(s, a.tab.id))}
+							@click=${() => {
+								playCue("tab-open");
+								this.apply((s) => restoreArchived(s, a.tab.id));
+							}}
 						>
 							<span class="fav" aria-hidden="true" style="--fav: ${faviconBackground(a.tab.url)}">${faviconInner(a.tab.url)}</span>
 							<span class="text">

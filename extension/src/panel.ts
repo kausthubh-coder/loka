@@ -25,6 +25,7 @@ import {
 	type TabId,
 	updateSpace,
 } from "../../prototype/src/features/sidebar/sidebar.logic";
+import { playCue, setSoundPrefs } from "../../prototype/src/features/sound/sound";
 import "../../prototype/src/features/spaces/loka-space-editor";
 import { browserDownloads, browserExtensions, openUrl } from "./browser";
 import { pageInfo } from "./browser.logic";
@@ -122,16 +123,22 @@ export class LokaPanel extends LitElement {
 			this.sidebar()?.openPanel("search");
 		} else if (e.key === "k" || e.key === "l") {
 			e.preventDefault();
-			this.commandOpen = true;
+			this.openCommandBar();
 		} else {
 			const n = Number(e.key);
 			const target = Number.isInteger(n) && n >= 1 ? this.state?.spaces[n - 1] : undefined;
 			if (target) {
 				e.preventDefault();
+				if (target.id !== this.state?.activeSpaceId) playCue("space");
 				this.apply((s) => switchSpace(s, target.id));
 			}
 		}
 	};
+
+	private openCommandBar() {
+		if (!this.commandOpen) playCue("command");
+		this.commandOpen = true;
+	}
 
 	private sidebar() {
 		return this.renderRoot.querySelector<LokaSidebar>("loka-sidebar");
@@ -211,6 +218,7 @@ export class LokaPanel extends LitElement {
 	private saveSpace(look: SpaceLook) {
 		const editing = this.editing;
 		if (!editing) return;
+		if (editing.mode === "create") playCue("space-new");
 		this.apply((s) => (editing.mode === "create" ? createSpace(s, look)[0] : updateSpace(s, editing.spaceId, look)));
 		this.editing = null;
 		this.previewHue = null;
@@ -220,6 +228,7 @@ export class LokaPanel extends LitElement {
 		const state = this.state;
 		if (!state) return null;
 		const hue = this.previewHue ?? activeSpace(state).hue;
+		setSoundPrefs({ on: this.ui.sound, volume: this.ui.soundVolume });
 		// Whether it's playing is whatever the tab says now: the background only records that sound started.
 		const audible = this.media ? this.live[this.media.tabId]?.audible : undefined;
 		const media = this.media && audible !== undefined ? { ...this.media, playing: audible } : this.media;
@@ -228,9 +237,7 @@ export class LokaPanel extends LitElement {
 				class="window"
 				style="--hue: ${hue}"
 				@loka-action=${(e: CustomEvent<ActionId>) => this.run(e.detail)}
-				@loka-command=${() => {
-					this.commandOpen = true;
-				}}
+				@loka-command=${() => this.openCommandBar()}
 				@loka-media=${(e: CustomEvent<MediaAction>) => this.onMedia(e.detail)}
 				@loka-nav=${(e: CustomEvent<"back" | "forward" | "reload">) => this.onNav(e.detail)}
 				@loka-tab-closed=${(e: CustomEvent<string>) => this.unload(e.detail)}

@@ -9,6 +9,8 @@ import "../downloads/loka-downloads";
 import "../media/loka-media-card";
 import type { Media } from "../media/loka-media-card";
 import "../search/loka-sidebar-search";
+import { playCue } from "../sound/sound";
+import type { Cue } from "../sound/sound.logic";
 import { planet } from "./planet";
 import {
 	activateTab,
@@ -147,6 +149,7 @@ export class LokaSidebar extends LitElement {
 
 	/** Closes a tab, telling the browser too: unloading a pinned tab changes nothing in the spaces, only the browser. */
 	private closeTabFor(tabId: TabId) {
+		playCue("tab-close");
 		this.apply((s) => closeTab(s, tabId));
 		this.dispatchEvent(new CustomEvent("loka-tab-closed", { detail: tabId, bubbles: true, composed: true }));
 	}
@@ -220,10 +223,17 @@ export class LokaSidebar extends LitElement {
 		if (drop.groupWith) {
 			const [next, folderId] = groupIntoFolder(this.state, drop.groupWith, id, "New folder");
 			if (!folderId) return;
+			playCue("into-folder");
 			this.apply(() => next);
 			this.renamingId = folderId;
 			return;
 		}
+		// A move within the same list is silent; landing in a folder, or crossing between open and saved, is not.
+		const wasOpen = this.state.spaces.some((s) => s.open.includes(id));
+		const toOpen = drop.place.area === "open";
+		if (drop.mode === "into") playCue("into-folder");
+		else if (wasOpen && !toOpen) playCue("pin");
+		else if (!wasOpen && toOpen) playCue("unpin");
 		this.apply((s) => moveItem(s, id, drop.place));
 	}
 
@@ -250,27 +260,24 @@ export class LokaSidebar extends LitElement {
 		const isEssential = state.essentials.includes(tabId);
 		const isOpen = space.open.includes(tabId);
 		const items: MenuItem[] = [];
+		const move = (cue: Cue, place: Place) => () => {
+			playCue(cue);
+			this.apply((s) => moveItem(s, tabId, place));
+		};
 		if (isOpen) {
 			items.push({
 				label: "Pin to space",
-				run: () =>
-					this.apply((s) => moveItem(s, tabId, { area: "pinned", spaceId: space.id, parentId: null, index: Infinity })),
+				run: move("pin", { area: "pinned", spaceId: space.id, parentId: null, index: Infinity }),
 			});
 		} else if (!isEssential) {
-			items.push({
-				label: "Unpin",
-				run: () => this.apply((s) => moveItem(s, tabId, { area: "open", spaceId: space.id, index: 0 })),
-			});
+			items.push({ label: "Unpin", run: move("unpin", { area: "open", spaceId: space.id, index: 0 }) });
 		}
 		if (!isEssential) {
-			items.push({
-				label: "Add to Essentials",
-				run: () => this.apply((s) => moveItem(s, tabId, { area: "essentials", index: Infinity })),
-			});
+			items.push({ label: "Add to Essentials", run: move("pin", { area: "essentials", index: Infinity }) });
 		} else {
 			items.push({
 				label: "Remove from Essentials",
-				run: () => this.apply((s) => moveItem(s, tabId, { area: "open", spaceId: space.id, index: 0 })),
+				run: move("unpin", { area: "open", spaceId: space.id, index: 0 }),
 			});
 		}
 		for (const other of state.spaces) {
@@ -285,6 +292,7 @@ export class LokaSidebar extends LitElement {
 				label: "New folder with this tab",
 				run: () => {
 					const [made, folderId] = createFolder(this.state, space.id, null, "New folder");
+					playCue("into-folder");
 					this.apply(() => moveItem(made, tabId, { area: "pinned", spaceId: space.id, parentId: folderId, index: 0 }));
 					this.renamingId = folderId;
 				},
@@ -338,6 +346,11 @@ export class LokaSidebar extends LitElement {
 		];
 	}
 
+	private toggle(folderId: string, open: boolean) {
+		playCue(open ? "folder-close" : "folder-open");
+		this.apply((s) => toggleFolder(s, folderId));
+	}
+
 	private newFolder(parentId: string | null) {
 		const [next, id] = createFolder(this.state, activeSpace(this.state).id, parentId, "New folder");
 		this.apply(() => next);
@@ -373,23 +386,29 @@ export class LokaSidebar extends LitElement {
 			class="neighbour ${side}"
 			aria-label="${target.name} (Ctrl ${number})"
 			title="${target.name}, Ctrl+${number}"
-			@click=${() => this.apply((s) => switchSpace(s, target.id))}
+			@click=${() => this.switchTo(target.id)}
 			@dragover=${(e: DragEvent) => {
 				// Hovering a space while dragging switches to it, like Arc.
 				if (!this.dragId) return;
 				e.preventDefault();
-				this.apply((s) => switchSpace(s, target.id));
+				this.switchTo(target.id);
 			}}
 		>
 			${planet(target.planet, target.hue, 30)}
 		</button>`;
 	}
 
+	private switchTo(spaceId: string) {
+		if (spaceId === this.state.activeSpaceId) return;
+		playCue("space");
+		this.apply((s) => switchSpace(s, spaceId));
+	}
+
 	private spacesMenu(): MenuItem[] {
 		return [
 			...this.state.spaces.map((s, i) => ({
 				label: `${s.name}  (Ctrl+${i + 1})`,
-				run: () => this.apply((st) => switchSpace(st, s.id)),
+				run: () => this.switchTo(s.id),
 			})),
 			{ label: "Edit this space", run: () => this.action("edit-space") },
 			{ label: "New space", run: () => this.action("new-space") },
@@ -416,7 +435,7 @@ export class LokaSidebar extends LitElement {
 			if (Math.abs(this.swipe) >= 60 && target) {
 				this.swipe = 0;
 				this.lastSwipe = e.timeStamp;
-				this.apply((s) => switchSpace(s, target.id));
+				this.switchTo(target.id);
 				return;
 			}
 			this.settleTimer = window.setTimeout(() => {
@@ -590,10 +609,9 @@ export class LokaSidebar extends LitElement {
 				@dragend=${() => this.endDrag()}
 				@dragover=${(e: DragEvent) => this.over(e, node.id, folderPlace, "folder")}
 				@drop=${(e: DragEvent) => this.dropHere(e)}
-				@click=${() => !renaming && this.apply((s) => toggleFolder(s, node.id))}
+				@click=${() => !renaming && this.toggle(node.id, node.open)}
 				@dblclick=${() => (this.renamingId = node.id)}
-				@keydown=${(e: KeyboardEvent) =>
-					!renaming && this.rowKey(e, () => this.apply((s) => toggleFolder(s, node.id)), node.open)}
+				@keydown=${(e: KeyboardEvent) => !renaming && this.rowKey(e, () => this.toggle(node.id, node.open), node.open)}
 				@contextmenu=${(e: MouseEvent) => this.openMenu(e, this.folderMenu(node.id))}
 			>
 				${
@@ -787,7 +805,10 @@ export class LokaSidebar extends LitElement {
 							space.open.length > 0
 								? html`<button
 										class="clear"
-										@click=${() => this.apply((s) => space.open.reduce((acc, id) => closeTab(acc, id), s))}
+										@click=${() => {
+											playCue("clear");
+											this.apply((s) => space.open.reduce((acc, id) => closeTab(acc, id), s));
+										}}
 									>
 										Clear
 									</button>`

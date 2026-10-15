@@ -10,6 +10,7 @@ import {
 import { IMPORT_SOURCES, type ImportSource, pickFile } from "../import/pick-file";
 import { planet, SPACE_HUES } from "../sidebar/planet";
 import { PLANET_KINDS, type SpaceLook } from "../sidebar/sidebar.logic";
+import { playCue } from "../sound/sound";
 import type { TourResult } from "./onboarding.logic";
 
 type Picked = { summary: string; bookmarks?: ImportNode[]; arc?: ArcImport };
@@ -61,7 +62,9 @@ export class LokaOnboarding extends LitElement {
 	}
 
 	private go(step: number) {
-		this.step = Math.max(0, Math.min(3, step));
+		const next = Math.max(0, Math.min(3, step));
+		if (next !== this.step) playCue(next > this.step ? "space" : "folder-close");
+		this.step = next;
 		if (this.step === 2) this.preview(this.worlds[0]?.hue ?? 200);
 	}
 
@@ -84,6 +87,7 @@ export class LokaOnboarding extends LitElement {
 			}),
 			arc: this.picked.arc?.arc ?? null,
 		};
+		playCue("space-new");
 		this.dispatchEvent(new CustomEvent("loka-finish", { detail: result, bubbles: true, composed: true }));
 	}
 

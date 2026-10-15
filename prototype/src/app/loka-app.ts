@@ -27,6 +27,7 @@ import {
 	updateSpace,
 } from "../features/sidebar/sidebar.logic";
 import { seedState } from "../features/sidebar/sidebar.seed";
+import { playCue, setSoundPrefs } from "../features/sound/sound";
 import { skyLayer, skyStyles } from "./sky";
 import { clampWidth, DEFAULT_UI, parseUiPrefs, type UiPrefs } from "./ui-prefs.logic";
 
@@ -145,8 +146,10 @@ export class LokaApp extends LitElement {
 	private saveSpace(look: SpaceLook) {
 		const editing = this.editing;
 		if (!editing) return;
-		if (editing.mode === "create") this.apply((s) => createSpace(s, look)[0]);
-		else this.apply((s) => updateSpace(s, editing.spaceId, look));
+		if (editing.mode === "create") {
+			playCue("space-new");
+			this.apply((s) => createSpace(s, look)[0]);
+		} else this.apply((s) => updateSpace(s, editing.spaceId, look));
 		this.editing = null;
 		this.previewHue = null;
 	}
@@ -181,7 +184,7 @@ export class LokaApp extends LitElement {
 		}
 		if (e.key === "k" || e.key === "l") {
 			e.preventDefault();
-			this.commandOpen = true;
+			this.openCommandBar();
 			return;
 		}
 		if (e.key === "s") {
@@ -193,7 +196,10 @@ export class LokaApp extends LitElement {
 			// Ctrl+W can't be caught by a web page, so the prototype closes tabs with Ctrl+E.
 			e.preventDefault();
 			const tab = activeTab(this.state);
-			if (tab) this.apply((s) => closeTab(s, tab.id));
+			if (tab) {
+				playCue("tab-close");
+				this.apply((s) => closeTab(s, tab.id));
+			}
 			return;
 		}
 		const n = Number(e.key);
@@ -201,9 +207,15 @@ export class LokaApp extends LitElement {
 			const target = this.state.spaces[n - 1];
 			if (!target) return;
 			e.preventDefault();
+			if (target.id !== this.state.activeSpaceId) playCue("space");
 			this.apply((s) => switchSpace(s, target.id));
 		}
 	};
+
+	private openCommandBar() {
+		if (!this.commandOpen) playCue("command");
+		this.commandOpen = true;
+	}
 
 	/** Dragging the sidebar's inner edge sets its width. Listens on the window so a fast drag can't outrun the handle. */
 	private startResize(e: PointerEvent) {
@@ -237,6 +249,7 @@ export class LokaApp extends LitElement {
 	override render() {
 		const space = activeSpace(this.state);
 		const { sidebarSide: side, sidebarHidden: hidden, sidebarWidth: width } = this.ui;
+		setSoundPrefs({ on: this.ui.sound, volume: this.ui.soundVolume });
 		const layout = `${side} ${hidden ? "hidden" : ""} ${hidden && this.peek ? "peek" : ""} ${this.tourOpen ? "touring" : ""}`;
 		// The prototype's one playing tab is the only page it knows anything live about.
 		const live: LiveTabs = this.media
@@ -275,9 +288,7 @@ export class LokaApp extends LitElement {
 					@loka-media=${(e: CustomEvent<MediaAction>) => this.onMedia(e.detail)}
 					@loka-tab-mute=${() => this.onMedia("mute")}
 					@pointerleave=${() => (this.peek = false)}
-					@loka-command=${() => {
-						this.commandOpen = true;
-					}}
+					@loka-command=${() => this.openCommandBar()}
 					@loka-reset=${() => this.apply(() => seedState())}
 				></loka-sidebar>
 				<loka-page

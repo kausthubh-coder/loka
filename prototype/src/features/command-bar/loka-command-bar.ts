@@ -3,6 +3,7 @@ import type { Update } from "../../app/loka-app";
 import { faviconBackground, faviconInner, hostOf, type LiveTabs } from "../sidebar/favicon";
 import { planet } from "../sidebar/planet";
 import { activateTab, type BrowserState, openTab, switchSpace } from "../sidebar/sidebar.logic";
+import { playCue } from "../sound/sound";
 import { type CommandResult, commandResults, isSearch } from "./command-bar.logic";
 
 /** The Ctrl+K bar: open an address or search, jump to any tab in any space, or run a command. */
@@ -36,9 +37,11 @@ export class LokaCommandBar extends LitElement {
 		if (!result) return;
 		if (result.kind === "go") {
 			const search = isSearch(result.url);
+			playCue("tab-open");
 			if (this.go) this.go({ url: result.url, query: this.query.trim(), search });
 			else this.apply((s) => openTab(s, result.url, search ? this.query.trim() : hostOf(result.url)));
 		} else if (result.kind === "tab") {
+			if (result.spaceId !== this.state.activeSpaceId) playCue("space");
 			this.apply((s) => activateTab(switchSpace(s, result.spaceId), result.tabId));
 		} else {
 			this.dispatchEvent(new CustomEvent("loka-action", { detail: result.action, bubbles: true, composed: true }));

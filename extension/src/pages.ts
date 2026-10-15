@@ -19,6 +19,7 @@ import {
 	type SpaceLook,
 	updateSpace,
 } from "../../prototype/src/features/sidebar/sidebar.logic";
+import { playCue, setSoundPrefs } from "../../prototype/src/features/sound/sound";
 import "../../prototype/src/features/spaces/loka-space-editor";
 import { browserBookmarks, openBrowserSettings, openUrl } from "./browser";
 import { faviconUrl, readState, readUi, watch, writeState, writeUi } from "./store";
@@ -94,6 +95,7 @@ abstract class LokaPage extends LitElement {
 			@loka-save=${(e: CustomEvent<SpaceLook>) => {
 				const look = e.detail;
 				const id = editing.spaceId;
+				if (!id) playCue("space-new");
 				this.apply((s) => (id ? updateSpace(s, id, look) : createSpace(s, look)[0]));
 				this.editing = null;
 				this.previewHue = null;
@@ -107,6 +109,10 @@ abstract class LokaPage extends LitElement {
 
 	protected hue(): number {
 		return this.previewHue ?? (this.state ? activeSpace(this.state).hue : 200);
+	}
+
+	protected override willUpdate() {
+		setSoundPrefs({ on: this.ui.sound, volume: this.ui.soundVolume });
 	}
 
 	protected run(action: ActionId) {

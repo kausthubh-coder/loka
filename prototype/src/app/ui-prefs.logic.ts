@@ -8,6 +8,9 @@ export interface UiPrefs {
 	onboarded: boolean;
 	/** Archive open tabs not shown for this many hours. Null (the default) never archives. */
 	archiveAfterHours: number | null;
+	/** Interface sounds: on unless turned off, at a quiet volume from 0 to 1. */
+	sound: boolean;
+	soundVolume: number;
 }
 
 export const SIDEBAR_MIN = 220;
@@ -18,6 +21,8 @@ export const DEFAULT_UI: UiPrefs = {
 	sidebarHidden: false,
 	onboarded: false,
 	archiveAfterHours: null,
+	sound: true,
+	soundVolume: 0.5,
 };
 
 export function clampWidth(width: number): number {
@@ -38,5 +43,10 @@ export function parseUiPrefs(json: string | null): UiPrefs {
 		sidebarHidden: d.sidebarHidden === true,
 		onboarded: d.onboarded === true,
 		archiveAfterHours: typeof d.archiveAfterHours === "number" && d.archiveAfterHours > 0 ? d.archiveAfterHours : null,
+		sound: d.sound !== false,
+		soundVolume:
+			typeof d.soundVolume === "number" && Number.isFinite(d.soundVolume)
+				? Math.min(1, Math.max(0, d.soundVolume))
+				: DEFAULT_UI.soundVolume,
 	};
 }

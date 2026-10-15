@@ -12,8 +12,8 @@ export const themeTokens = css`
 	.theme-dark {
 		color-scheme: dark;
 		--loka-ink: #ececf1;
-		--loka-ink-2: #a7a8b4;
-		--loka-ink-3: #8e909e;
+		--loka-ink-2: #b0b1bc;
+		--loka-ink-3: #9294a2;
 		--loka-hover: hsl(var(--hue) 30% 80% / 0.08);
 		--loka-selected: hsl(var(--hue) 40% 85% / 0.16);
 		--loka-selected-edge: 0 0 0 0 transparent;
@@ -29,13 +29,14 @@ export const themeTokens = css`
 		--loka-dialog-edge: 0 0 0 1px hsl(var(--hue) 50% 80% / 0.16), 0 28px 72px #000b;
 		--loka-scrim: #0008;
 		--loka-danger: #ff9b8f;
+		--loka-on-danger: hsl(5 70% 12%);
 		--loka-label-shadow: 0 1px 3px #000a, 0 0 10px #0006;
 	}
 	.theme-light {
 		color-scheme: light;
 		--loka-ink: hsl(var(--hue) 35% 12%);
-		--loka-ink-2: hsl(var(--hue) 16% 33%);
-		--loka-ink-3: hsl(var(--hue) 10% 44%);
+		--loka-ink-2: hsl(var(--hue) 16% 28%);
+		--loka-ink-3: hsl(var(--hue) 12% 36%);
 		--loka-hover: hsl(var(--hue) 50% 25% / 0.07);
 		--loka-selected: hsl(0 0% 100% / 0.8);
 		--loka-selected-edge: 0 1px 2px hsl(var(--hue) 50% 20% / 0.14), 0 0 0 0.5px hsl(var(--hue) 40% 20% / 0.1);
@@ -51,13 +52,26 @@ export const themeTokens = css`
 		--loka-dialog-edge: 0 0 0 1px hsl(var(--hue) 40% 20% / 0.1), 0 28px 72px hsl(var(--hue) 50% 18% / 0.28);
 		--loka-scrim: hsl(var(--hue) 40% 12% / 0.26);
 		--loka-danger: #b3261e;
-		--loka-label-shadow: 0 1px 2px hsl(var(--hue) 60% 15% / 0.55), 0 0 10px hsl(var(--hue) 60% 15% / 0.25);
+		--loka-on-danger: #fff;
+		--loka-label-shadow: 0 1px 2px hsl(var(--hue) 60% 15% / 0.7), 0 0 12px hsl(var(--hue) 60% 15% / 0.45);
 	}
 	.theme-dark,
 	.theme-light {
 		color: var(--loka-ink);
 	}
 `;
+
+// Lists fade at an edge while there's more to scroll past it, with a scroll-driven animation of these two lengths.
+// @property is ignored inside shadow roots, so they're registered here, once per page, which lets them animate.
+if (typeof CSS !== "undefined" && "registerProperty" in CSS) {
+	for (const name of ["--fade-top", "--fade-bottom"]) {
+		try {
+			CSS.registerProperty({ name, syntax: "<length>", inherits: false, initialValue: "0px" });
+		} catch {
+			// Already registered by another module on this page.
+		}
+	}
+}
 
 /** The motion every component shares: ease-out for what people start, ease-in for what leaves. */
 export const EASE_OUT = "cubic-bezier(0.2, 0, 0, 1)";

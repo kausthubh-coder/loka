@@ -19,6 +19,7 @@
 //   suggest     suggest("example") answers with a search first
 //   identity    the window is "<tab> - Loka", no title says Chromium or Helium, chrome.exe's ProductName is Loka
 //   hit test    Windows' WM_NCHITTEST on the sidebar column answers "page" (real mouse input; CDP skips it)
+//   real click  a click posted to the window (WM_LBUTTONDOWN/UP, Chromium's own Win32 input path) on a row switches tab
 //   alpha       the sidebar's Import spaces (JSON) takes the 0.1.0 alpha's export, without its extension pages
 // Evidence (PNGs, JSON, chrome.log) goes to .agents/verify-runs/<time>-browser. The run stops only the process tree
 // it started, downloads into its own profile, and deletes that profile.
@@ -167,6 +168,30 @@ const CLICK_USE_DEFAULTS = `(() => {
 	if (!button) return false;
 	button.click();
 	return true;
+})()`;
+
+// In the sidebar page: keeps the last trusted mouse events (where the page saw them) in window.__verifyMouse.
+const RECORD_MOUSE = `(() => {
+	if (window.__verifyMouse) return true;
+	window.__verifyMouse = [];
+	for (const type of ["mousemove", "mousedown", "click"])
+		document.addEventListener(type, (e) => {
+			if (e.isTrusted) window.__verifyMouse.push({ type, x: e.clientX, y: e.clientY });
+		}, true);
+	return true;
+})()`;
+
+/** In the sidebar page: the middle of the tab row labelled `label`, in the page's CSS px. @param {string} label */
+const rowCenterExpression = (label) => `(() => {
+	const walk = (root) => {
+		for (const el of root.querySelectorAll("[role=treeitem]")) {
+			const text = (el.querySelector(".label")?.textContent ?? "").trim();
+			if (text === ${JSON.stringify(label)}) { const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; }
+		}
+		for (const el of root.querySelectorAll("*")) { const inner = el.shadowRoot && walk(el.shadowRoot); if (inner) return inner; }
+		return null;
+	};
+	return walk(document);
 })()`;
 
 // In the sidebar page: every tab row in every shadow root, as the user sees it.
@@ -554,6 +579,54 @@ async function main() {
 			hits.length === points.length && hits.every((h) => h.trim() === "1"),
 			points.map((p, i) => `${p}=${hits[i]?.trim()}`).join(" "),
 		);
+
+		// Real mouse input on top of the hit test: a click posted to the window as WM_LBUTTONDOWN/UP goes through
+		// Chromium's own Win32 input path, which CDP's Input domain skips. A posted move first finds where the
+		// sidebar sits in the window (posted coordinates are client DIPs).
+		/** @param {string} kind @param {number} x @param {number} y */
+		const post = (kind, x, y) =>
+			spawnSync(
+				"powershell",
+				[
+					"-NoProfile",
+					"-File",
+					join(repo, "scripts", "window-input.ps1"),
+					"-ProcId",
+					String(pid),
+					"-Kind",
+					kind,
+					"-X",
+					String(Math.round(x)),
+					"-Y",
+					String(Math.round(y)),
+				],
+				{ encoding: "utf8" },
+			).stdout.trim();
+		await evaluate(sidebar, RECORD_MOUSE);
+		const probe = { x: Math.round(size.w / 2), y: Math.round(size.h * 0.6) };
+		post("move", probe.x, probe.y);
+		/** @type {{ type: string, x: number, y: number } | undefined} */
+		const seen = await until(async () => (await evaluate(sidebar, "window.__verifyMouse")).at(-1), 3000);
+		const target = (await evaluate(sidebar, GET_TABS)).find((/** @type {Tab} */ t) => !t.active && t.title);
+		const center = target && seen ? await evaluate(sidebar, rowCenterExpression(target.title)) : null;
+		if (seen && center) post("click", center.x + probe.x - seen.x, center.y + probe.y - seen.y);
+		const switched =
+			target && center
+				? await until(
+						async () => (await evaluate(sidebar, GET_TABS)).find((/** @type {Tab} */ t) => t.active)?.id === target.id,
+						4000,
+					)
+				: false;
+		check(
+			"a real click (posted WM_LBUTTONDOWN/UP) on a tab's row switches to it",
+			switched,
+			!seen
+				? "the page never saw the posted mouse move"
+				: !center
+					? `no row for "${target?.title ?? "a background tab"}"`
+					: `sidebar at client ${probe.x - seen.x},${probe.y - seen.y}; clicked "${target?.title}" at ${Math.round(center.x)},${Math.round(center.y)}`,
+		);
+
 		const product = spawnSync(
 			"powershell",
 			["-NoProfile", "-Command", `(Get-Item -LiteralPath '${chrome}').VersionInfo.ProductName`],

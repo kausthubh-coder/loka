@@ -27,9 +27,24 @@ import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, rm
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { BUILD_DIR } from "./browser.mjs";
+import {
+	alive,
+	askExpression,
+	chromePath,
+	connect,
+	evaluate,
+	freePort,
+	processTree,
+	RECORD_EVENTS,
+	refuseWhileBuilding,
+	sleep,
+	toneWav,
+	until,
+	windows as windowsOf,
+} from "./browser-session.mjs";
 
 const repo = resolve(import.meta.dirname, "..");
-const chrome = resolve(process.env.LOKA_CHROME ?? join(BUILD_DIR, "build", "src", "out", "Default", "chrome.exe"));
+const chrome = chromePath();
 const noFirstRun = process.argv.includes("--no-first-run");
 const stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
 const evidence = join(repo, ".agents", "verify-runs", `${stamp}-browser`);
@@ -42,13 +57,9 @@ const ALPHA_EXTENSION_ID = "kklllonkklkjgekkpeboddibgbjadkej";
 /** uBlock Origin, which Helium installs and Loka keeps. */
 const UBLOCK = "blockjmkbacgjkknlgpkjjiijinjdanf";
 
-/** @typedef {{ id: string, type: string, url: string, title: string, webSocketDebuggerUrl: string }} Target */
+/** @typedef {import("./browser-session.mjs").Target} Target */
 /** @typedef {{ id: number, url: string, title: string, favicon: string, loading: boolean, audible: boolean, active: boolean }} Tab */
 /** @typedef {{ label: string, icon: string | null, sound: string | null }} Row */
-/** @typedef {Awaited<ReturnType<typeof connect>>} Session */
-
-/** @param {number} ms */
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** @type {{ name: string, ok: boolean, detail: string }[]} */
 const checks = [];
 /** @param {string} name @param {unknown} ok @param {string} detail */
@@ -62,67 +73,6 @@ const notes = [];
 function note(name, detail) {
 	notes.push({ name, detail });
 	console.log(`NOTE  ${name}: ${detail}`);
-}
-
-/** Refuses to run a binary the build is writing: linking fails on a chrome.exe that's running. */
-function refuseWhileBuilding() {
-	const out = join(BUILD_DIR, "build", "src", "out").toLowerCase();
-	if (!chrome.toLowerCase().startsWith(out)) return;
-	const reasons = [];
-	if (existsSync(join(BUILD_DIR, "build.lock"))) reasons.push("build.lock exists");
-	const log = join(BUILD_DIR, "compile.log");
-	if (existsSync(log)) {
-		const last = readFileSync(log, "utf8").trimEnd().split("\n").at(-1) ?? "";
-		if (!last.includes("compile exited")) reasons.push("compile.log has no exit line yet");
-	}
-	const statusFile = join(BUILD_DIR, "build-status.json");
-	if (existsSync(statusFile)) {
-		const status = JSON.parse(readFileSync(statusFile, "utf8"));
-		let alive = false;
-		try {
-			process.kill(status.pid, 0);
-			alive = true;
-		} catch {}
-		if (status.phase === "compiling" && alive) reasons.push(`build-status.json says compiling (pid ${status.pid})`);
-	}
-	if (reasons.length) {
-		console.error(`A build is using ${chrome} (${reasons.join("; ")}). Wait for it, or set LOKA_CHROME to a copy.`);
-		process.exit(2);
-	}
-}
-
-/** A free localhost port, from the OS. */
-function freePort() {
-	return new Promise((done) => {
-		const server = createServer();
-		server.listen(0, "127.0.0.1", () => {
-			const { port } = /** @type {import("node:net").AddressInfo} */ (server.address());
-			server.close(() => done(port));
-		});
-	});
-}
-
-/** A quiet six-second tone as a WAV file, so the audio page plays without the network. */
-function toneWav() {
-	const rate = 8000;
-	const samples = rate * 6; // Chrome gives a media session only to media of 5 s or more
-	const data = Buffer.alloc(samples * 2);
-	for (let i = 0; i < samples; i++)
-		data.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 220 * i) / rate) * 400), i * 2);
-	const head = Buffer.alloc(44);
-	head.write("RIFF", 0);
-	head.writeUInt32LE(36 + data.length, 4);
-	head.write("WAVEfmt ", 8);
-	head.writeUInt32LE(16, 16);
-	head.writeUInt16LE(1, 20);
-	head.writeUInt16LE(1, 22);
-	head.writeUInt32LE(rate, 24);
-	head.writeUInt32LE(rate * 2, 28);
-	head.writeUInt16LE(2, 32);
-	head.writeUInt16LE(16, 34);
-	head.write("data", 36);
-	head.writeUInt32LE(data.length, 40);
-	return Buffer.concat([head, data]);
 }
 
 /** Two local pages: one with its own icon, one with an <audio> element. */
@@ -150,103 +100,7 @@ async function startPages() {
 	return { server, origin: `http://127.0.0.1:${port}` };
 }
 
-/** One CDP websocket with request/response by id. @param {string} wsUrl */
-async function connect(wsUrl) {
-	const ws = new WebSocket(wsUrl);
-	await new Promise((ok, fail) => {
-		ws.addEventListener("open", ok, { once: true });
-		ws.addEventListener("error", fail, { once: true });
-	});
-	let next = 0;
-	/** @type {Map<number, (msg: { error?: { message: string }, result?: any }) => void>} */
-	const waiting = new Map();
-	/** @type {Map<string, (params: any) => void>} */
-	const handlers = new Map();
-	ws.addEventListener("message", (e) => {
-		const msg = JSON.parse(String(e.data));
-		if (msg.method) handlers.get(msg.method)?.(msg.params);
-		const done = waiting.get(msg.id);
-		if (!done) return;
-		waiting.delete(msg.id);
-		done(msg);
-	});
-	return {
-		/** @param {string} method @param {object} [params] @param {number} [timeout] @returns {Promise<any>} */
-		call(method, params = {}, timeout = 15000) {
-			const id = ++next;
-			return new Promise((ok, fail) => {
-				const timer = setTimeout(() => fail(new Error(`${method} timed out`)), timeout);
-				waiting.set(id, (msg) => {
-					clearTimeout(timer);
-					if (msg.error) fail(new Error(`${method}: ${msg.error.message}`));
-					else ok(msg.result);
-				});
-				ws.send(JSON.stringify({ id, method, params }));
-			});
-		},
-		/** Calls back on a CDP event. @param {string} method @param {(params: any) => void} handler */
-		on: (method, handler) => handlers.set(method, handler),
-		close: () => ws.close(),
-	};
-}
-
-/**
- * Evaluates an expression in a page and returns its value.
- * @param {Session} session @param {string} expression @param {boolean} [userGesture]
- * @returns {Promise<any>}
- */
-async function evaluate(session, expression, userGesture = false) {
-	const r = await session.call("Runtime.evaluate", {
-		expression,
-		awaitPromise: true,
-		returnByValue: true,
-		userGesture,
-	});
-	if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text);
-	return r.result.value;
-}
-
-/**
- * Waits until `probe` returns something truthy, or gives up after `ms` and returns the last value.
- * @template T @param {() => Promise<T>} probe @param {number} ms @returns {Promise<T>}
- */
-async function until(probe, ms) {
-	const end = Date.now() + ms;
-	let value = await probe();
-	while (!value && Date.now() < end) {
-		await sleep(300);
-		value = await probe();
-	}
-	return value;
-}
-
-// In the sidebar page: one request to LokaSidebarHandler through chrome.send, and its answer ("no answer" after 5 s).
-/** @param {string} message @param {unknown[]} [args] */
-const askExpression = (message, args = []) => `new Promise((resolve) => {
-	const id = "verify-" + Math.random();
-	const original = window.cr.webUIResponse;
-	const timer = setTimeout(() => { window.cr.webUIResponse = original; resolve("no answer"); }, 5000);
-	window.cr.webUIResponse = function (callbackId, ok, value) {
-		if (callbackId !== id) return original.call(this, callbackId, ok, value);
-		clearTimeout(timer);
-		window.cr.webUIResponse = original;
-		resolve(value);
-	};
-	chrome.send(${JSON.stringify(message)}, [id, ...${JSON.stringify(args)}]);
-})`;
 const GET_TABS = askExpression("getTabs");
-
-// In the sidebar page: keeps every event the handler pushes (cr.webUIListenerCallback) in window.__verifyEvents.
-const RECORD_EVENTS = `(() => {
-	if (window.__verifyEvents) return true;
-	window.__verifyEvents = [];
-	const original = window.cr.webUIListenerCallback;
-	window.cr.webUIListenerCallback = function (event, ...args) {
-		window.__verifyEvents.push({ event, args });
-		return original.call(this, event, ...args);
-	};
-	return true;
-})()`;
 
 /** In the sidebar page: clicks the first button (any shadow root) whose label or text is `name`. @param {string} name */
 const clickExpression = (name) => `(() => {
@@ -335,45 +189,12 @@ const ROWS = `(() => {
 	return rows;
 })()`;
 
-/** Every pid in the tree under `root`, from Windows' process table. @param {number} root @returns {number[]} */
-function processTree(root) {
-	const ps = spawnSync(
-		"powershell",
-		[
-			"-NoProfile",
-			"-Command",
-			'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId)" }',
-		],
-		{ encoding: "utf8" },
-	);
-	/** @type {Map<number, number[]>} */
-	const children = new Map();
-	for (const line of ps.stdout.split(/\r?\n/)) {
-		const [pid = 0, parent = 0] = line.trim().split(" ").map(Number);
-		if (!pid) continue;
-		children.set(parent, [...(children.get(parent) ?? []), pid]);
-	}
-	const tree = [root];
-	for (const at of tree) tree.push(...(children.get(at) ?? []));
-	return tree;
-}
-
-/** @param {number} pid */
-const alive = (pid) => {
-	try {
-		process.kill(pid, 0);
-		return true;
-	} catch {
-		return false;
-	}
-};
-
 async function main() {
 	if (!existsSync(chrome)) {
 		console.error(`No browser at ${chrome}. Build it (bun run browser:build) or set LOKA_CHROME.`);
 		process.exit(2);
 	}
-	refuseWhileBuilding();
+	refuseWhileBuilding(chrome);
 	mkdirSync(evidence, { recursive: true });
 	mkdirSync(profile, { recursive: true });
 	const port = await freePort();
@@ -400,13 +221,7 @@ async function main() {
 	/** @type {Awaited<ReturnType<typeof connect>>[]} */
 	const sessions = [];
 	/** The browser's visible window titles, and with `shot` a PNG of the first one titled like `match`. */
-	const windows = (/** @type {string} */ shot = "", match = "") => {
-		const args = ["-NoProfile", "-File", join(repo, "scripts", "window.ps1"), "-ProcId", String(pid)];
-		if (shot) args.push("-Out", join(evidence, shot), ...(match ? ["-Match", match] : []));
-		const run = spawnSync("powershell", args, { encoding: "utf8" });
-		const titles = [...run.stdout.matchAll(/WINDOW:(.*)/g)].map((m) => (m[1] ?? "").trim());
-		return { titles, shot: /SHOT:(.*)/.exec(run.stdout)?.[1] ?? "", error: run.stderr.trim() };
-	};
+	const windows = (/** @type {string} */ shot = "", match = "") => windowsOf(pid, shot && join(evidence, shot), match);
 
 	try {
 		const version = await until(

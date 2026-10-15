@@ -475,7 +475,7 @@
    map.AddWebUIConfig(std::make_unique<SigninErrorUIConfig>());
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/BUILD.gn
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,58 @@
 +# Copyright 2026 The Loka Authors
 +# You can use, redistribute, and/or modify this source code under
 +# the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -529,6 +529,7 @@
 +    "//components/tabs:public",
 +    "//ui/base",
 +    "//ui/color",
++    "//ui/display",
 +    "//ui/gfx",
 +    "//ui/webui",
 +  ]
@@ -820,7 +821,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_HISTORY_UI_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.cc
-@@ -0,0 +1,631 @@
+@@ -0,0 +1,651 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -873,6 +874,9 @@
 +#include <windows.h>
 +
 +#include "ui/views/win/hwnd_util.h"
++#else
++#include "ui/display/screen.h"
++#include "ui/views/widget/widget.h"
 +#endif
 +
 +namespace {
@@ -1450,6 +1454,23 @@
 +  }
 +  ::ReleaseCapture();
 +  ::SendMessage(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
++#else
++  // Elsewhere (macOS, Linux) views' own move loop moves the window with the
++  // press that's down, as tab dragging does. Untested off Windows so far.
++  BrowserWindowInterface* browser = GetBrowser();
++  views::Widget* widget =
++      browser ? views::Widget::GetWidgetForNativeWindow(
++                    browser->GetWindow()->GetNativeWindow())
++              : nullptr;
++  if (!widget || !widget->IsMoveLoopSupported() ||
++      browser->GetWindow()->IsFullscreen()) {
++    return;
++  }
++  const gfx::Point cursor =
++      display::Screen::Get()->GetCursorScreenPoint();
++  widget->RunMoveLoop(cursor - widget->GetWindowBoundsInScreen().origin(),
++                      views::Widget::MoveLoopSource::kMouse,
++                      views::Widget::MoveLoopEscapeBehavior::kDontHide);
 +#endif
 +}
 --- /dev/null

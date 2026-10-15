@@ -14,6 +14,7 @@ import argparse
 import builtins
 import os
 import shutil
+import stat
 import sys
 from pathlib import Path
 
@@ -44,6 +45,19 @@ def find_7z():
     sys.exit('7-Zip not found. Install it (winget install 7zip.7zip) and rerun.')
 
 
+_rmtree = shutil.rmtree
+
+
+def rmtree_clearing_readonly(path, *args, **kwargs):
+    """CIPD writes read-only files, and on a rerun build.py rmtrees folders holding them, which fails on Windows."""
+    def onexc(func, failed_path, _exc):
+        os.chmod(failed_path, stat.S_IWRITE)
+        func(failed_path)
+    if not args and not kwargs:
+        kwargs['onexc'] = onexc
+    return _rmtree(path, *args, **kwargs)
+
+
 def first(jobs, restart):
     built = (SOURCE_TREE / 'out' / 'Default' / 'build.ninja').exists()
     if built or ((SOURCE_TREE / 'BUILD.gn').exists() and not restart):
@@ -51,6 +65,7 @@ def first(jobs, restart):
     # On rerun, clone.py fetches, `git reset --hard`s and cleans the existing tree, so a first build that failed
     # part way restarts from pristine sources; gclient's cache in build\src\uc_staging saves redownloading deps.
     builtins.input = apply_all_patches
+    shutil.rmtree = rmtree_clearing_readonly
     sys.argv = ['build.py', '--dev', '-j', str(jobs), '--7z-path', find_7z()]
     build.main()
 

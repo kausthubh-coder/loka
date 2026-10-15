@@ -1,0 +1,936 @@
+/* The hero's live sidebar. Sizes and colors are the prototype's (loka-sidebar.ts): 14px text, 36px rows, the space's
+   hue in every surface. --hue is set on .demo, and eases because it's a registered property (globals.css). */
+
+.demo {
+	--d-text: #ececf1;
+	--d-muted: #a7a8b4;
+	--d-row-hover: hsl(var(--hue) 30% 80% / 0.08);
+	--d-row-active: hsl(var(--hue) 40% 85% / 0.16);
+	--d-accent: hsl(var(--hue) 85% 72%);
+	position: relative;
+	display: grid;
+	grid-template-columns: 280px minmax(0, 1fr);
+	height: 640px;
+	padding: 8px 8px 0 0;
+	border-radius: 14px;
+	overflow: hidden;
+	text-align: left;
+	font-size: 14px;
+	line-height: 1.4;
+	color: var(--d-text);
+	background:
+		radial-gradient(80% 60% at 0% 0%, hsl(var(--hue) 58% 30% / 0.55), transparent 70%),
+		radial-gradient(60% 50% at 100% 100%, hsl(calc(var(--hue) - 35) 42% 22% / 0.4), transparent 70%),
+		linear-gradient(165deg, hsl(var(--hue) 34% 9%), hsl(var(--hue) 38% 5%));
+	box-shadow:
+		0 0 0 1px var(--border),
+		0 30px 80px -20px #000c,
+		0 0 120px -30px hsl(var(--hue) 80% 50% / 0.35);
+	user-select: none;
+	transition: --hue 420ms var(--ease);
+}
+
+:where(.demo) button,
+:where(.demo) input {
+	font: inherit;
+	color: inherit;
+	background: none;
+	border: 0;
+	margin: 0;
+	cursor: pointer;
+}
+
+.demo :focus-visible {
+	outline: 2px solid var(--d-accent);
+	outline-offset: -2px;
+	border-radius: 8px;
+}
+
+.demo kbd {
+	font: 11px var(--font);
+	color: var(--d-muted);
+}
+
+.d-icon {
+	width: 16px;
+	height: 16px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.5;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+/* ---- the sidebar ---- */
+.d-side {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-height: 0;
+	padding: 10px 10px 0 12px;
+}
+
+.d-toolbar {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	height: 28px;
+	padding: 0 6px;
+	color: var(--d-muted);
+}
+
+.d-push {
+	flex: 1;
+}
+
+.d-ext {
+	display: grid;
+	place-items: center;
+	width: 16px;
+	height: 16px;
+	border-radius: 4px;
+	background: #c33b3b;
+	color: #fff;
+	font-size: 11px;
+	font-weight: 700;
+}
+
+.d-url {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	height: 36px;
+	padding: 0 10px;
+	border-radius: 10px;
+	background: hsl(var(--hue) 30% 85% / 0.08);
+	text-align: left;
+}
+
+.d-url:hover {
+	background: hsl(var(--hue) 30% 85% / 0.12);
+}
+
+.d-url span {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.d-essentials {
+	display: grid;
+	grid-template-columns: repeat(4, 1fr);
+	gap: 6px;
+}
+
+.d-essential {
+	display: grid;
+	place-items: center;
+	height: 50px;
+	border-radius: 10px;
+	background: hsl(var(--hue) 30% 85% / 0.07);
+}
+
+.d-essential:hover {
+	background: hsl(var(--hue) 30% 85% / 0.12);
+}
+
+.d-essential.active {
+	background: var(--d-row-active);
+	box-shadow: inset 0 0 0 1px hsl(var(--hue) 70% 80% / 0.35);
+}
+
+.d-list {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	margin: 0 -4px;
+	padding: 0 4px;
+	scrollbar-width: none;
+}
+
+.d-row {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	height: 36px;
+	padding: 0 6px 0 calc(9px + var(--depth, 0) * 18px);
+	border-radius: 8px;
+	text-align: left;
+}
+
+.d-row:hover {
+	background: var(--d-row-hover);
+}
+
+.d-row.active {
+	background: var(--d-row-active);
+}
+
+.d-label {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.d-fav {
+	flex: none;
+	display: grid;
+	place-items: center;
+	width: var(--size);
+	height: var(--size);
+	border-radius: calc(var(--size) * 0.28);
+	background: var(--fav);
+	color: #0b0c10;
+	font-size: calc(var(--size) * 0.6);
+	font-weight: 700;
+	line-height: 1;
+}
+
+.d-folder {
+	flex: none;
+	width: 21px;
+	height: 21px;
+	margin: 0 -1px 0 -2px;
+	fill: none;
+	stroke: var(--d-accent);
+	stroke-width: 1.2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.d-folder .body {
+	fill: var(--d-accent);
+	fill-opacity: 0.24;
+}
+
+.d-folder .lip {
+	stroke-opacity: 0.55;
+	stroke-width: 1.1;
+}
+
+.d-folder .holds {
+	fill: #fff;
+	stroke: hsl(var(--hue) 40% 8%);
+	stroke-width: 1.6;
+}
+
+.d-count {
+	color: var(--d-muted);
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+}
+
+.d-empty {
+	padding: 10px 9px;
+	color: var(--d-muted);
+	font-size: 13px;
+}
+
+.d-divider {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 28px;
+	padding: 0 6px;
+}
+
+.d-divider span {
+	flex: 1;
+	height: 1px;
+	background: hsl(var(--hue) 30% 85% / 0.12);
+}
+
+.d-clear {
+	min-height: 24px;
+	padding: 2px 6px;
+	border-radius: 6px;
+	color: var(--d-muted);
+	font-size: 12px;
+}
+
+.d-clear:hover {
+	background: var(--d-row-hover);
+	color: var(--d-text);
+}
+
+.d-new {
+	color: var(--d-muted);
+}
+
+.d-new:hover {
+	color: var(--d-text);
+}
+
+.d-plus {
+	display: grid;
+	place-items: center;
+	width: 18px;
+	font-size: 17px;
+	line-height: 1;
+}
+
+.d-open {
+	padding: 0;
+}
+
+.d-hit {
+	display: flex;
+	flex: 1;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+	height: 100%;
+	padding-left: 9px;
+	text-align: left;
+}
+
+.d-close {
+	display: grid;
+	place-items: center;
+	flex: none;
+	width: 24px;
+	height: 24px;
+	margin-right: 6px;
+	border-radius: 6px;
+	color: var(--d-muted);
+	opacity: 0;
+}
+
+.d-close .d-icon {
+	width: 14px;
+	height: 14px;
+}
+
+.d-open:hover .d-close,
+.d-open.active .d-close,
+.d-close:focus-visible {
+	opacity: 1;
+}
+
+.d-close:hover {
+	background: var(--d-row-hover);
+	color: var(--d-text);
+}
+
+/* ---- the horizon: the current space rises at the bottom, its neighbours sit either side ---- */
+.d-horizon {
+	position: relative;
+	flex: none;
+	height: 140px;
+	margin: -14px -10px 0 -12px;
+	overflow: hidden;
+	touch-action: pan-y;
+}
+
+.d-world {
+	position: absolute;
+	left: 50%;
+	top: 56px;
+	width: 400px;
+	height: 400px;
+	margin-left: -200px;
+	padding: 0;
+	border-radius: 50%;
+}
+
+.d-world svg,
+.d-neighbour svg {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+.d-world svg {
+	filter: drop-shadow(0 -4px 22px hsl(var(--hue) 85% 65% / 0.35));
+}
+
+.d-world:hover {
+	filter: brightness(1.08);
+}
+
+.d-world-name {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 90px;
+	text-align: center;
+	font-weight: 650;
+	color: #fff;
+	text-shadow:
+		0 1px 3px #000a,
+		0 0 10px #0006;
+	pointer-events: none;
+}
+
+.d-neighbour {
+	position: absolute;
+	z-index: 1;
+	top: 44px;
+	width: 30px;
+	height: 30px;
+	padding: 0;
+	box-sizing: border-box;
+	border-radius: 50%;
+}
+
+.d-neighbour.left {
+	left: 24px;
+}
+
+.d-neighbour.right {
+	right: 24px;
+}
+
+.d-neighbour:hover {
+	filter: brightness(1.2);
+}
+
+.d-add {
+	display: grid;
+	place-items: center;
+	box-shadow: inset 0 0 0 1px hsl(var(--hue) 40% 85% / 0.35);
+	color: var(--d-muted);
+	font-size: 18px;
+	line-height: 1;
+}
+
+.d-add:hover {
+	color: var(--d-text);
+	box-shadow: inset 0 0 0 1px var(--d-accent);
+}
+
+/* ---- popovers over the sidebar: the spaces menu and the space editor ---- */
+.d-menu,
+.d-editor {
+	position: absolute;
+	z-index: 5;
+	left: 8px;
+	right: 8px;
+	bottom: 112px;
+	padding: 6px;
+	border-radius: 12px;
+	background: hsl(var(--hue) 22% 13% / 0.97);
+	box-shadow:
+		0 0 0 1px hsl(var(--hue) 30% 85% / 0.12),
+		0 16px 40px #0009;
+	backdrop-filter: blur(12px);
+}
+
+.d-menu {
+	display: flex;
+	flex-direction: column;
+}
+
+.d-menu button {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	height: 34px;
+	padding: 0 10px;
+	border-radius: 7px;
+	text-align: left;
+}
+
+.d-menu button:hover {
+	background: var(--d-row-active);
+}
+
+.d-menu button:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.d-check {
+	color: var(--d-accent);
+}
+
+.d-editor {
+	display: grid;
+	gap: 12px;
+	padding: 14px;
+}
+
+.d-editor h4 {
+	margin: 0;
+	font: 650 15px / 1.2 var(--font-display);
+}
+
+.d-field {
+	display: grid;
+	gap: 6px;
+}
+
+.d-field span,
+.d-editor legend {
+	color: var(--d-muted);
+	font-size: 12px;
+}
+
+.d-field input {
+	height: 34px;
+	padding: 0 10px;
+	border-radius: 8px;
+	background: hsl(var(--hue) 30% 6%);
+	box-shadow: inset 0 0 0 1px hsl(var(--hue) 30% 85% / 0.16);
+	cursor: text;
+	user-select: text;
+}
+
+.d-field input:focus {
+	outline: none;
+	box-shadow: inset 0 0 0 1.5px var(--d-accent);
+}
+
+.d-editor fieldset {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+.d-editor legend {
+	margin-bottom: 6px;
+	padding: 0;
+}
+
+.d-swatches,
+.d-kinds {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.d-swatch,
+.d-kind {
+	position: relative;
+	display: grid;
+	place-items: center;
+	border-radius: 50%;
+	cursor: pointer;
+}
+
+.d-swatch {
+	width: 24px;
+	height: 24px;
+	background: hsl(var(--h) 75% 62%);
+}
+
+.d-kind {
+	width: 40px;
+	height: 40px;
+	border-radius: 10px;
+	background: hsl(var(--hue) 30% 85% / 0.06);
+}
+
+.d-swatch:has(:checked) {
+	box-shadow:
+		0 0 0 2px hsl(var(--hue) 22% 13%),
+		0 0 0 4px hsl(var(--h) 85% 75%);
+}
+
+.d-kind:has(:checked) {
+	background: var(--d-row-active);
+	box-shadow: inset 0 0 0 1px var(--d-accent);
+}
+
+.d-swatch:has(:focus-visible),
+.d-kind:has(:focus-visible) {
+	outline: 2px solid var(--d-accent);
+	outline-offset: 2px;
+}
+
+.d-swatch input,
+.d-kind input {
+	position: absolute;
+	inset: 0;
+	opacity: 0;
+	margin: 0;
+	cursor: pointer;
+}
+
+.d-editor-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 6px;
+}
+
+.d-ghost,
+.d-primary {
+	height: 32px;
+	padding: 0 12px;
+	border-radius: 8px;
+	font-weight: 600;
+}
+
+.d-ghost {
+	color: var(--d-muted);
+}
+
+.d-ghost:hover {
+	background: var(--d-row-hover);
+	color: var(--d-text);
+}
+
+.d-primary {
+	background: var(--d-accent);
+	color: hsl(var(--hue) 50% 10%);
+}
+
+/* ---- the page: a stand-in for the site in the tab that's showing ---- */
+.d-page {
+	min-width: 0;
+	padding-bottom: 8px;
+}
+
+.d-site {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	height: 100%;
+	padding: 20px 44px 40px;
+	border-radius: 10px;
+	background: #f6f6f8;
+	color: #1b1c22;
+	overflow: hidden;
+}
+
+.d-site nav {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	margin: 0 -24px 18px;
+	padding: 0 24px 16px;
+	border-bottom: 1px solid #e6e6ec;
+}
+
+.d-pill {
+	width: 64px;
+	height: 10px;
+	border-radius: 5px;
+	background: #e1e1e8;
+}
+
+.d-pill.short {
+	width: 40px;
+	margin-left: auto;
+	height: 26px;
+	border-radius: 7px;
+	background: color-mix(in srgb, var(--fav) 70%, #fff);
+}
+
+.d-site header {
+	margin-bottom: 6px;
+}
+
+.d-site h3 {
+	margin: 0;
+	font: 700 28px / 1.15 var(--font-display);
+	letter-spacing: -0.02em;
+}
+
+.d-site header p {
+	margin-top: 4px;
+	color: #6b6d78;
+	font-size: 15px;
+}
+
+.d-line {
+	display: block;
+	height: 11px;
+	max-width: 560px;
+	border-radius: 6px;
+	background: #e4e4ea;
+}
+
+.d-block {
+	display: block;
+	flex: none;
+	height: 170px;
+	margin: 12px 0 4px;
+	border-radius: 14px;
+	background:
+		radial-gradient(70% 120% at 0% 0%, color-mix(in srgb, var(--fav) 55%, #fff) 0%, transparent 70%),
+		radial-gradient(60% 100% at 100% 100%, color-mix(in srgb, var(--fav) 30%, #fff) 0%, transparent 70%), #ececf1;
+}
+
+.d-cards {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 14px;
+}
+
+.d-cards span {
+	height: 110px;
+	border-radius: 12px;
+	background: #fff;
+	box-shadow:
+		0 0 0 1px #e6e6ec,
+		0 2px 6px #0000000a;
+}
+
+.d-site-empty {
+	display: grid;
+	place-content: center;
+	gap: 6px;
+	text-align: center;
+	color: #6b6d78;
+}
+
+.d-site-empty p:first-child {
+	color: #1b1c22;
+	font-weight: 600;
+}
+
+.d-site-empty kbd {
+	padding: 1px 5px;
+	border-radius: 4px;
+	background: #e4e4ea;
+	color: #1b1c22;
+}
+
+/* ---- the command bar, over the whole window ---- */
+.d-command-backdrop {
+	position: absolute;
+	inset: 0;
+	z-index: 10;
+	display: grid;
+	justify-items: center;
+	align-items: start;
+	padding: 96px 16px 0;
+	background: #0006;
+}
+
+.d-command {
+	width: min(560px, 100%);
+	padding: 6px;
+	border-radius: 14px;
+	background: hsl(var(--hue) 22% 12% / 0.97);
+	box-shadow:
+		0 0 0 1px hsl(var(--hue) 30% 85% / 0.14),
+		0 24px 60px #000a;
+	backdrop-filter: blur(14px);
+}
+
+.d-command input {
+	width: 100%;
+	height: 48px;
+	padding: 0 14px;
+	font-size: 16px;
+	cursor: text;
+	user-select: text;
+}
+
+.d-command input:focus {
+	outline: none;
+}
+
+.d-command [role="listbox"] {
+	display: grid;
+	padding-top: 4px;
+	border-top: 1px solid hsl(var(--hue) 30% 85% / 0.1);
+}
+
+.d-result {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	height: 40px;
+	padding: 0 12px;
+	border-radius: 8px;
+	text-align: left;
+}
+
+.d-result:hover,
+.d-result[aria-selected="true"] {
+	background: var(--d-row-active);
+}
+
+.d-result-icon {
+	display: grid;
+	place-items: center;
+	width: 18px;
+	color: var(--d-muted);
+}
+
+.d-where {
+	padding: 2px 8px;
+	border-radius: 999px;
+	background: hsl(var(--h) 40% 60% / 0.18);
+	color: hsl(var(--h) 85% 80%);
+	font-size: 12px;
+}
+
+.d-hint {
+	padding: 10px 12px;
+	color: var(--d-muted);
+}
+
+/* ---- motion ---- */
+@media (prefers-reduced-motion: no-preference) {
+	.d-row,
+	.d-essential,
+	.d-close {
+		transition:
+			background-color 120ms,
+			opacity 120ms;
+	}
+
+	/* After a switch the new list slides in from the side it came from, and the new planet rises. */
+	.d-list.from-right {
+		animation: d-in-right 280ms var(--ease);
+	}
+	.d-list.from-left {
+		animation: d-in-left 280ms var(--ease);
+	}
+	@keyframes d-in-right {
+		from {
+			translate: 40px 0;
+			opacity: 0;
+		}
+	}
+	@keyframes d-in-left {
+		from {
+			translate: -40px 0;
+			opacity: 0;
+		}
+	}
+
+	.d-world {
+		animation: d-rise 420ms var(--ease);
+	}
+	@keyframes d-rise {
+		from {
+			transform: translateY(40px);
+		}
+	}
+
+	.d-world-name {
+		animation: d-name 360ms var(--ease);
+	}
+	@keyframes d-name {
+		from {
+			opacity: 0;
+			transform: translateY(8px);
+		}
+	}
+
+	.d-neighbour {
+		animation: d-fade 360ms var(--ease);
+	}
+	@keyframes d-fade {
+		from {
+			opacity: 0;
+			transform: scale(0.6);
+		}
+	}
+
+	/* A new space's planet forms: it swells up out of a flash of its own color and settles onto the horizon. */
+	.d-world.born {
+		animation: d-born 900ms cubic-bezier(0.16, 1, 0.3, 1);
+	}
+	@keyframes d-born {
+		0% {
+			transform: translateY(90px) scale(0.25);
+			opacity: 0;
+			filter: brightness(2.2) blur(6px);
+		}
+		45% {
+			opacity: 1;
+			filter: brightness(1.5) blur(0);
+		}
+		100% {
+			transform: none;
+			filter: none;
+		}
+	}
+	.d-world.born::after {
+		content: "";
+		position: absolute;
+		inset: -40px;
+		border-radius: 50%;
+		box-shadow: 0 0 0 2px hsl(var(--hue) 90% 80% / 0.8);
+		animation: d-wave 900ms var(--ease) forwards;
+		pointer-events: none;
+	}
+	@keyframes d-wave {
+		from {
+			transform: scale(0.3);
+			opacity: 1;
+		}
+		to {
+			transform: scale(1.15);
+			opacity: 0;
+		}
+	}
+
+	.d-site {
+		animation: d-page 220ms var(--ease);
+	}
+	@keyframes d-page {
+		from {
+			opacity: 0.4;
+		}
+	}
+
+	.d-menu,
+	.d-editor,
+	.d-command {
+		animation: d-pop 180ms var(--ease);
+		transform-origin: bottom center;
+	}
+	.d-command {
+		transform-origin: top center;
+	}
+	@keyframes d-pop {
+		from {
+			opacity: 0;
+			transform: scale(0.96);
+		}
+	}
+}
+
+/* ---- phones: the sidebar alone, the way a narrow window shows it ---- */
+@media (max-width: 760px) {
+	.demo {
+		grid-template-columns: 1fr;
+		width: min(100%, 340px);
+		height: 600px;
+		margin-inline: auto;
+		padding: 0;
+	}
+	.d-page {
+		display: none;
+	}
+	.d-command-backdrop {
+		padding-top: 60px;
+	}
+	/* Fingers, not a mouse pointer: every target grows to 44px, while the planets keep their drawn size. */
+	.d-row,
+	.d-url {
+		height: 44px;
+	}
+	.d-clear {
+		min-width: 44px;
+		min-height: 44px;
+		margin-block: -8px;
+	}
+	.d-neighbour {
+		top: 37px;
+		width: 44px;
+		height: 44px;
+		padding: 7px;
+	}
+	.d-neighbour.left {
+		left: 17px;
+	}
+	.d-neighbour.right {
+		right: 17px;
+	}
+	.demo {
+		height: 640px;
+	}
+}

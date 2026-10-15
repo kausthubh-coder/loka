@@ -4,82 +4,67 @@ import { Waitlist } from "@clerk/nextjs";
 import Image, { type StaticImageData } from "next/image";
 import type { CSSProperties } from "react";
 import archive from "@/public/product/archive.png";
-import build from "@/public/product/build.png";
 import commandBar from "@/public/product/command-bar.png";
 import folders from "@/public/product/folders.png";
-import home from "@/public/product/home.png";
-import importShot from "@/public/product/import.png";
+import importShot from "@/public/product/import-crop.png";
 import media from "@/public/product/media.png";
-import school from "@/public/product/school.png";
 import search from "@/public/product/search.png";
 import sidebarBuild from "@/public/product/sidebar-build.png";
 import sidebarHome from "@/public/product/sidebar-home.png";
 import sidebarSchool from "@/public/product/sidebar-school.png";
+import { Demo } from "./demo/demo";
 import { Mark, Planet, type PlanetKind } from "./planet";
 import { Sky } from "./sky";
 
 const GITHUB = "https://github.com/kausthubh-coder/loka";
-
-type Space = {
-	id: string;
-	name: string;
-	hue: number;
-	planet: PlanetKind;
-	window: StaticImageData;
-	sidebar: StaticImageData;
-	alt: string;
-};
+const RELEASES = `${GITHUB}/releases`;
 
 // The prototype's seed spaces, in its order and colors (prototype/src/features/sidebar/sidebar.seed.ts).
-const SPACES: Space[] = [
-	{
-		id: "build",
-		name: "Build",
-		hue: 200,
-		planet: "ringed",
-		window: build,
-		sidebar: sidebarBuild,
-		alt: "loka in the Build space: a blue night-sky sidebar with four Essentials, a Loka folder holding a Docs folder, three open tabs, a music card, and Build's ringed planet rising at the bottom.",
-	},
-	{
-		id: "school",
-		name: "School",
-		hue: 30,
-		planet: "banded",
-		window: school,
-		sidebar: sidebarSchool,
-		alt: "loka in the School space: the same window turned amber, with a Canvas tab and a CSC 281 folder pinned, and School's banded planet on the horizon.",
-	},
-	{
-		id: "home",
-		name: "Home",
-		hue: 150,
-		planet: "ocean",
-		window: home,
-		sidebar: sidebarHome,
-		alt: "loka in the Home space: the window turned green, nothing open but the Lo-fi beats tab, and Home's ocean planet on the horizon.",
-	},
-];
+const SPACES: { id: string; name: string; hue: number; planet: PlanetKind; sidebar: StaticImageData; holds: string }[] =
+	[
+		{ id: "build", name: "Build", hue: 200, planet: "ringed", sidebar: sidebarBuild, holds: "Code, docs, the build" },
+		{ id: "school", name: "School", hue: 30, planet: "banded", sidebar: sidebarSchool, holds: "Canvas and coursework" },
+		{ id: "home", name: "Home", hue: 150, planet: "ocean", sidebar: sidebarHome, holds: "Music and the weekend" },
+	];
 
-// `width` is the size each crop is shown at, in CSS px: a little over the UI's real size, so its text reads.
-const FEATURES: { title: string; body: string; image: StaticImageData; width: number; alt: string }[] = [
+// `width` is the size each crop is shown at, in CSS px: about the UI's real size, so its text reads. Wide cards take
+// two of the grid's three columns.
+const FEATURES: {
+	title: string;
+	body: string;
+	image: StaticImageData;
+	width: number;
+	wide?: boolean;
+	keys?: string;
+	alt: string;
+}[] = [
 	{
-		title: "Find any tab with Ctrl+K",
+		title: "Find any tab, in any space",
 		body: "The command bar opens a page, searches the web, or runs a command. It finds tabs in every space and says which space each one is in.",
 		image: commandBar,
-		width: 640,
+		width: 600,
+		wide: true,
+		keys: "Ctrl K",
 		alt: "The command bar with “canvas” typed: a web search row, then the Canvas: CSC 281 tab, marked as being in School.",
 	},
 	{
 		title: "Search the whole sidebar",
-		body: "Ctrl+Shift+F searches every space's tabs and folders. Pick a result and loka takes you there, opening the folders on the way.",
+		body: "Pick a result and loka takes you there, opening the folders on the way.",
 		image: search,
-		width: 380,
+		width: 300,
+		keys: "Ctrl Shift F",
 		alt: "Sidebar search with “minecraft” typed, finding Minecraft farm designs in School, inside CSC 281, inside Game project.",
 	},
 	{
+		title: "Folders inside folders",
+		body: "Drop one tab on another to make a folder of both. A closed folder still shows the tab you're on.",
+		image: folders,
+		width: 300,
+		alt: "Build's pinned tabs: a Loka folder holding imputnet/helium-windows and a Docs folder, which holds Chromium: Windows build guide and Lit docs.",
+	},
+	{
 		title: "Old tabs put themselves away",
-		body: "Turn on the archive and open tabs you haven't looked at for a day or a week move out of the way. Search the archive to bring one back.",
+		body: "Turn on the archive and tabs you haven't looked at for a day or a week move out of the way, ready to bring back.",
 		image: archive,
 		// A 1x shot from a verify run, so shown at its real size rather than scaled up.
 		width: 272,
@@ -87,9 +72,9 @@ const FEATURES: { title: string; body: string; image: StaticImageData; width: nu
 	},
 	{
 		title: "Music from any space",
-		body: "Whatever plays in another space gets a card above the horizon: pause, skip, mute, or jump to the tab.",
+		body: "Whatever plays in another space gets a card above the horizon: pause, skip, mute, or jump to it.",
 		image: media,
-		width: 380,
+		width: 300,
 		alt: "A now-playing card for Lo-fi beats by Lofi Girl, with previous, pause, next and mute buttons, above the horizon.",
 	},
 ];
@@ -149,44 +134,30 @@ export default function Page() {
 
 			<main>
 				<section className="hero" aria-labelledby="hero-title">
-					<h1 id="hero-title">A calm, Arc-style browser for Windows</h1>
+					<h1 id="hero-title">Every space is its own world</h1>
 					<p className="lead">
-						loka keeps your tabs in a sidebar of spaces, with folders inside folders. Each space is its own world, with
-						its own color. It's open source and built on Helium, so it stays private and fast, and Chrome extensions
-						still work.
+						loka is a calm, Arc-style browser for Windows. Your tabs live in a sidebar of spaces, with folders inside
+						folders, and each space brings its own color and its own sky. It's open source and built on Helium, so it
+						stays private and fast, and Chrome extensions still work.
 					</p>
 					<div className="actions">
 						<a className="button" href="#waitlist">
 							Join the waitlist
 						</a>
-						<span className="note">Free and open source. Windows first.</span>
+						<a className="link" href={RELEASES}>
+							Try the Windows alpha
+						</a>
 					</div>
 
-					<fieldset className="switcher">
-						<legend>Pick a space</legend>
-						{SPACES.map((s, i) => (
-							<label key={s.id} style={{ "--h": s.hue } as CSSProperties}>
-								<input type="radio" name="space" id={`space-${s.id}`} value={s.id} defaultChecked={i === 0} />
-								<Planet kind={s.planet} hue={s.hue} size={22} />
-								{s.name}
-							</label>
-						))}
-					</fieldset>
-
 					<figure className="window">
-						<div className="shots">
-							{SPACES.map((s, i) => (
-								<Image
-									key={s.id}
-									className={`shot shot-${s.id}`}
-									src={s.window}
-									alt={s.alt}
-									sizes="(min-width: 1260px) 1200px, calc(100vw - 32px)"
-									priority={i === 0}
-								/>
-							))}
-						</div>
-						<figcaption>The sidebar prototype, with its demo data. Pick a space above and the sky follows.</figcaption>
+						<Demo />
+						<figcaption>
+							<span>This is live. Click a tab or a folder.</span>
+							<span>Click a planet or swipe sideways to change space.</span>
+							<span>
+								<b>+</b> makes a new one, and <kbd>Ctrl</kbd> <kbd>K</kbd> searches every space.
+							</span>
+						</figcaption>
 					</figure>
 				</section>
 
@@ -212,7 +183,7 @@ export default function Page() {
 
 				<section className="spaces" aria-labelledby="spaces-title">
 					<div className="copy">
-						<h2 id="spaces-title">Every space is its own world</h2>
+						<h2 id="spaces-title">A planet for every space</h2>
 						<p>
 							A space keeps its own pinned tabs, folders and open tabs, and paints the window its color. Work stays in
 							Build, coursework in School, music in Home.
@@ -222,47 +193,47 @@ export default function Page() {
 							Click one, swipe with two fingers, or press Ctrl+1 to Ctrl+9.
 						</p>
 					</div>
-					<div className="sidebars">
+					<ul className="sidebars">
 						{SPACES.map((s) => (
-							<Image key={s.id} src={s.sidebar} alt={`The sidebar in ${s.name}.`} sizes="272px" placeholder="blur" />
+							<li key={s.id} style={{ "--h": s.hue } as CSSProperties}>
+								<Image
+									src={s.sidebar}
+									alt={`The sidebar in ${s.name}: ${s.holds.toLowerCase()}.`}
+									sizes="272px"
+									placeholder="blur"
+								/>
+								<p>
+									<Planet kind={s.planet} hue={s.hue} size={18} />
+									<b>{s.name}</b>
+									<span>{s.holds}</span>
+								</p>
+							</li>
 						))}
-					</div>
-				</section>
-
-				<section className="split" aria-labelledby="folders-title">
-					<div className="copy">
-						<h2 id="folders-title">Folders inside folders</h2>
-						<p>
-							Pin a tab and file it. Folders hold folders, as deep as you need. Drop one tab on another to make a folder
-							of both, and a closed folder still shows the tab you're on.
-						</p>
-					</div>
-					<Image
-						className="crop"
-						src={folders}
-						alt="Build's pinned tabs: a Loka folder holding imputnet/helium-windows and a Docs folder, which holds Chromium: Windows build guide and Lit docs."
-						sizes="408px"
-						placeholder="blur"
-					/>
+					</ul>
 				</section>
 
 				<section className="features" aria-labelledby="features-title">
 					<h2 id="features-title">The rest of what you reach for</h2>
-					<div className="grid">
+					<div className="bento">
 						{FEATURES.map((f) => (
-							<article key={f.title}>
-								<div className="feature-media">
+							<article key={f.title} className={f.wide ? "wide" : undefined}>
+								<div className="stage">
 									<Image
 										className="crop"
 										src={f.image}
 										alt={f.alt}
 										style={{ width: f.width }}
-										sizes={`(min-width: 760px) ${f.width}px, calc(100vw - 32px)`}
+										sizes={`(min-width: 760px) ${f.width}px, calc(100vw - 64px)`}
 										placeholder="blur"
 									/>
 								</div>
-								<h3>{f.title}</h3>
-								<p>{f.body}</p>
+								<div className="card-copy">
+									<h3>
+										{f.title}
+										{f.keys ? <kbd>{f.keys}</kbd> : null}
+									</h3>
+									<p>{f.body}</p>
+								</div>
 							</article>
 						))}
 					</div>
@@ -317,21 +288,25 @@ export default function Page() {
 					<div className="copy">
 						<Mark size={72} />
 						<h2 id="join-title">Get the first Windows build</h2>
-						<p>Leave your email and you'll hear when there's a build to download.</p>
+						<p className="join-note">
+							Leave your email and you'll hear when the beta is ready. Can't wait? The{" "}
+							<a href={RELEASES}>Windows alpha is on GitHub</a>: unsigned and early, so expect rough edges.
+						</p>
 					</div>
 					<div className="form">
 						<Waitlist
 							appearance={{
 								variables: {
-									colorPrimary: "var(--accent)",
-									colorPrimaryForeground: "var(--accent-fg)",
-									colorBackground: "var(--surface-raised)",
-									colorForeground: "var(--text)",
-									colorMutedForeground: "var(--text-muted)",
-									colorInput: "var(--surface)",
-									colorInputForeground: "var(--text)",
-									colorBorder: "var(--border)",
-									colorRing: "var(--focus)",
+									// Clerk works out its own shades from these, so they are real colors, not CSS variables: Build's blue.
+									colorPrimary: "#7dc8f5",
+									colorPrimaryForeground: "#0d1d26",
+									colorBackground: "#151e26",
+									colorForeground: "#ececf1",
+									colorMutedForeground: "#a7a8b4",
+									colorInput: "#1d2933",
+									colorInputForeground: "#ececf1",
+									colorBorder: "#2d3c47",
+									colorRing: "#7dc8f5",
 									borderRadius: "8px",
 									fontFamily: "inherit",
 									fontFamilyButtons: "inherit",

@@ -12,3 +12,6 @@ next-env.d.ts
 
 # Critly rewrites these on every run
 .critly/taste/
+
+.vercel
+.env*

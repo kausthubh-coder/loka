@@ -3,10 +3,49 @@
 
 export type PlanetKind = "ringed" | "banded" | "cratered" | "ocean";
 
-export function Planet({ kind, hue, size }: { kind: PlanetKind; hue: number; size: number }) {
-	const id = `pl-${kind}-${hue}`;
-	const ring = (front: boolean) =>
-		kind === "ringed" ? (
+/**
+ * `horizon` is the big planet at the bottom of the sidebar, of which only the top cap shows: the surface is squeezed
+ * into that cap, and a ring, seen from just above its plane, shows only its far side as an arc behind the planet.
+ */
+export function Planet({
+	kind,
+	hue,
+	size,
+	horizon = false,
+}: {
+	kind: PlanetKind;
+	hue: number;
+	size: number;
+	horizon?: boolean;
+}) {
+	const id = `pl-${kind}-${hue}${horizon ? "-h" : ""}`;
+	const ring = (front: boolean) => {
+		if (kind !== "ringed") return null;
+		if (horizon) {
+			return front ? null : (
+				<g clipPath={`url(#${id}-back)`}>
+					<ellipse
+						cx="50"
+						cy="50"
+						rx="78"
+						ry="53"
+						fill="none"
+						stroke={`hsl(${hue + 30} 70% 82% / 0.6)`}
+						strokeWidth="2.4"
+					/>
+					<ellipse
+						cx="50"
+						cy="50"
+						rx="72"
+						ry="49.5"
+						fill="none"
+						stroke={`hsl(${hue + 30} 60% 75% / 0.4)`}
+						strokeWidth="1"
+					/>
+				</g>
+			);
+		}
+		return (
 			<g transform="rotate(-16 50 50)" clipPath={front ? `url(#${id}-front)` : undefined}>
 				<ellipse
 					cx="50"
@@ -27,7 +66,8 @@ export function Planet({ kind, hue, size }: { kind: PlanetKind; hue: number; siz
 					strokeWidth="2"
 				/>
 			</g>
-		) : null;
+		);
+	};
 
 	return (
 		<svg className="planet" width={size} height={size} viewBox="0 0 100 100" overflow="visible" aria-hidden="true">
@@ -37,6 +77,9 @@ export function Planet({ kind, hue, size }: { kind: PlanetKind; hue: number; siz
 				</clipPath>
 				<clipPath id={`${id}-front`} clipPathUnits="userSpaceOnUse">
 					<rect x="-60" y="50" width="220" height="120" />
+				</clipPath>
+				<clipPath id={`${id}-back`} clipPathUnits="userSpaceOnUse">
+					<rect x="-60" y="-60" width="220" height="110" />
 				</clipPath>
 				<radialGradient id={`${id}-lit`} cx="0.35" cy="0.28" r="0.85">
 					<stop offset="0" stopColor={`hsl(${hue} 90% 82%)`} />
@@ -51,7 +94,13 @@ export function Planet({ kind, hue, size }: { kind: PlanetKind; hue: number; siz
 			{ring(false)}
 			<circle cx="50" cy="50" r="46" fill={`url(#${id}-lit)`} />
 			<g clipPath={`url(#${id}-body)`}>
-				<Surface kind={kind} hue={hue} />
+				{horizon ? (
+					<g transform="translate(0 4) scale(1 0.2) translate(0 -4)">
+						<Surface kind={kind} hue={hue} />
+					</g>
+				) : (
+					<Surface kind={kind} hue={hue} />
+				)}
 			</g>
 			<circle cx="50" cy="50" r="46" fill={`url(#${id}-shade)`} />
 			<circle cx="50" cy="50" r="45.5" fill="none" stroke={`hsl(${hue} 90% 88% / 0.3)`} strokeWidth="1" />

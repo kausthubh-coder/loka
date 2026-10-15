@@ -54,6 +54,9 @@ build is running.
   getExtensions, targets). Evidence per flow in `.agents/verify-runs/<time>-flows/<flow>/`: a picture and the saved
   spaces per step, window pictures, `failed.png`/`failed.json` where a flow stopped, and `checks.json`. Its CDP
   helpers live in `scripts/browser-session.mjs`, shared with verify:browser.
+- **Performance.** `bun run verify:perf` (`-- --webui=checkout` for this checkout's pages, `--runs N`, `--trace`,
+  `--blame` to pause each animation in turn) checks idle CPU, a 150-row scroll, space switches and the command bar
+  against the budgets atop `scripts/verify-perf.mjs`. Read its machine-load line first: another Chromium skews it.
 - **Your own drive.** Start chrome.exe with `--user-data-dir` under `C:\src\loka\profile-verify`,
   `--remote-debugging-port=<free port>` and `--disable-features=CalculateNativeWinOcclusion`. The sidebar target
   (type `browser_ui`) appears in `/json/list` once the window has a normal tab; connect to its

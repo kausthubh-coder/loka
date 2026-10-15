@@ -19,6 +19,7 @@
 //   bun run verify:perf -- --webui=checkout     this checkout's sidebar and command bar in the built browser
 //   bun run verify:perf -- --runs 5
 //   bun run verify:perf -- --trace              also a Chrome trace and the sidebar's JS profile per scenario
+//   bun run verify:perf -- --blame              after idle, pause each running animation in turn: what it costs
 //
 // The binary is LOKA_CHROME, else C:\src\loka\dist\snapshot\chrome.exe; never out\Default. Exit 1 when a median is
 // over its budget (BUDGETS below), 2 when it can't run. Evidence (perf.json, summary.txt, traces) goes to
@@ -83,6 +84,9 @@ const BUDGETS = [
 	},
 	{ scenario: "command", metric: "command.frames.p95Ms", max: 20, why: "60 Hz is 16.7 ms a frame, plus vsync jitter" },
 ];
+/** The numbers besides the budgets that the summary prints. */
+const SHOWN =
+	/^(sidebar|command)\.(styleRecalcsPerSec|layoutsPerSec|scriptMs|styleMs|longTasks|loafMaxMs|pageNodeGrowth)$|\.cpuPct$|^machine\.|frames\.(p50Ms|maxMs)$|^(scroll\.deepestPx|switch\.seen)$/;
 /** Other processes using more than this share of the machine (all cores) make a run noisy. */
 const BUSY_MACHINE_PCT = 15;
 
@@ -100,8 +104,9 @@ const option = (name) => {
 const webui = option("webui") ?? "build";
 const runs = Number(option("runs") ?? 3);
 const tracing = argv.includes("--trace");
+const blaming = argv.includes("--blame");
 if (!["build", "checkout"].includes(webui) || !Number.isInteger(runs) || runs < 1) {
-	console.error("Usage: bun scripts/verify-perf.mjs [--webui=build|checkout] [--runs N] [--trace]");
+	console.error("Usage: bun scripts/verify-perf.mjs [--webui=build|checkout] [--runs N] [--trace] [--blame]");
 	process.exit(2);
 }
 const chrome = resolve(process.env.LOKA_CHROME ?? join(BUILD_DIR, "dist", "snapshot", "chrome.exe"));
@@ -275,6 +280,20 @@ const STOP_PROBES = `(() => {
 const BUSY = `(() => { const end = performance.now() + 400; let x = 0; while (performance.now() < end) x++; return x > 0; })()`;
 
 /** The focused element, through shadow roots. */
+/** Every node in the page, shadow roots included. */
+const PAGE_NODES = `(() => {
+	const count = (root) => {
+		let n = 0;
+		const walker = document.createTreeWalker(root, NodeFilter.SHOW_ALL);
+		for (let node = walker.currentNode; node; node = walker.nextNode()) {
+			n++;
+			if (node.shadowRoot) n += count(node.shadowRoot);
+		}
+		return n;
+	};
+	return count(document);
+})()`;
+
 const DEEP_ACTIVE = `(() => { let a = document.activeElement; while (a?.shadowRoot?.activeElement) a = a.shadowRoot.activeElement; return a; })()`;
 
 // ---- measuring ----------------------------------------------------------------------------------------------------
@@ -503,24 +522,6 @@ function traceSummary(events, pids) {
 	);
 }
 
-/**
- * The page's animations as the trace saw them, and why any of them couldn't run on the compositor (Blink's
- * compositeFailed bits and unsupportedProperties): those tick on the main thread every frame.
- * @param {any[]} events @param {number} pid
- */
-function animationSummary(events, pid) {
-	/** @type {Map<string, number>} */
-	const by = new Map();
-	for (const e of events) {
-		if (e.pid !== pid || e.name !== "Animation") continue;
-		const data = e.args?.data ?? e.args?.args?.data;
-		if (!data || data.compositeFailed === undefined) continue;
-		const key = `${data.name || data.id || "?"}: compositeFailed ${data.compositeFailed}${data.unsupportedProperties?.length ? `, unsupported ${data.unsupportedProperties.join(" ")}` : ""}`;
-		by.set(key, (by.get(key) ?? 0) + 1);
-	}
-	return [...by].sort((a, b) => b[1] - a[1]).map(([key, count]) => `${key} (x${count})`);
-}
-
 /** Self time per function in a JS CPU profile, top first. @param {any} profile */
 function profileSummary(profile) {
 	/** @type {Map<number, any>} */
@@ -537,6 +538,91 @@ function profileSummary(profile) {
 		.sort((a, b) => b[1] - a[1])
 		.slice(0, 15)
 		.map(([key, ms]) => `${key}: ${round(ms, 1)} ms`);
+}
+
+// ---- blame: what the idle cost is made of -------------------------------------------------------------------------
+
+/**
+ * In the sidebar: its running animations, grouped by name and target. document.getAnimations() leaves out shadow
+ * trees, so every shadow root is asked too.
+ */
+const ANIMATION_GROUPS = `(() => {
+	const describe = (el) => el ? el.tagName.toLowerCase() + (el.classList.length ? "." + [...el.classList].join(".") : "") : "?";
+	const animations = [...document.getAnimations()];
+	const walk = (root) => {
+		for (const el of root.querySelectorAll("*")) {
+			if (!el.shadowRoot) continue;
+			animations.push(...el.shadowRoot.getAnimations());
+			walk(el.shadowRoot);
+		}
+	};
+	walk(document);
+	const groups = new Map();
+	for (const a of animations) {
+		if (a.playState !== "running") continue;
+		const name = a.animationName || a.transitionProperty || a.id || "script";
+		const key = name + " on " + describe(a.effect?.target) + (a.timeline instanceof ScrollTimeline ? " (scroll timeline)" : "");
+		groups.set(key, [...(groups.get(key) ?? []), a]);
+	}
+	window.__perfGroups = groups;
+	return [...groups.keys()];
+})()`;
+
+/**
+ * Pauses each group of the sidebar's running animations in turn (then all of them, then the whole sky) and measures
+ * 4 s of style recalcs and CPU each time, so the idle cost can be pinned on the animation that causes it.
+ * @param {Session} browser @param {Session} sidebar @param {Record<string, number>} pids
+ */
+async function blameIdle(browser, sidebar, pids) {
+	const groups = /** @type {string[]} */ (await evaluate(sidebar, ANIMATION_GROUPS));
+	/** @param {string} what @param {string} pause JS run before measuring @param {string} resume JS run after */
+	const measure = async (what, pause, resume) => {
+		await evaluate(sidebar, pause);
+		await sleep(1000);
+		const m0 = await metrics(sidebar);
+		const c0 = await processInfo(browser);
+		const t0 = performance.now();
+		await sleep(4000);
+		const seconds = (performance.now() - t0) / 1000;
+		const c1 = await processInfo(browser);
+		const m1 = await metrics(sidebar);
+		await evaluate(sidebar, resume);
+		/** @param {number} pid */
+		const pct = (pid) => {
+			const a = c0.find((p) => p.id === pid)?.cpuTime ?? 0;
+			const z = c1.find((p) => p.id === pid)?.cpuTime ?? 0;
+			return round(((z - a) / seconds) * 100, 1);
+		};
+		const row = {
+			what,
+			styleRecalcsPerSec: round(((m1.RecalcStyleCount ?? 0) - (m0.RecalcStyleCount ?? 0)) / seconds, 1),
+			layoutsPerSec: round(((m1.LayoutCount ?? 0) - (m0.LayoutCount ?? 0)) / seconds, 1),
+			sidebarCpuPct: pct(pids.sidebar ?? 0),
+			gpuCpuPct: pct(pids.gpu ?? 0),
+			browserCpuPct: pct(pids.browser ?? 0),
+		};
+		console.log(
+			`  blame: ${what}: ${row.styleRecalcsPerSec} recalcs/s, sidebar ${row.sidebarCpuPct}%, gpu ${row.gpuCpuPct}%, browser ${row.browserCpuPct}%`,
+		);
+		return row;
+	};
+	const rows = [await measure("everything running", "true", "true")];
+	const all = `[...window.__perfGroups.values()].flat()`;
+	for (const key of groups.slice(0, 30)) {
+		const pick = `window.__perfGroups.get(${JSON.stringify(key)})`;
+		rows.push(await measure(`without ${key}`, `${pick}.forEach((a) => a.pause())`, `${pick}.forEach((a) => a.play())`));
+		// Alone, as a compositor animation's cost hides behind any other animation that keeps frames coming.
+		const others = `${all}.filter((a) => !${pick}.includes(a))`;
+		rows.push(
+			await measure(`only ${key}`, `${others}.forEach((a) => a.pause())`, `${others}.forEach((a) => a.play())`),
+		);
+	}
+	rows.push(
+		await measure("without any animation", `${all}.forEach((a) => a.pause())`, `${all}.forEach((a) => a.play())`),
+	);
+	const sky = `document.querySelector("loka-panel").shadowRoot.querySelector(".sky").style`;
+	rows.push(await measure("without the sky (display: none)", `${sky}.display = "none"`, `${sky}.display = ""`));
+	return rows;
 }
 
 // ---- one run ------------------------------------------------------------------------------------------------------
@@ -616,7 +702,9 @@ async function oneRun(run, host) {
 		details.pids = allPids;
 		if (allPids.command === allPids.sidebar)
 			details.sharedRenderer = "the sidebar and the command bar share a renderer";
-		await sleep(3000);
+		// A new profile's own startup work (databases, module checks) keeps the browser process busy for a while;
+		// idle starts after it.
+		await sleep(10000);
 
 		/**
 		 * Runs one scenario with every probe around it.
@@ -629,18 +717,22 @@ async function oneRun(run, host) {
 			const heap0 = {};
 			/** @type {Record<string, number>} */
 			const nodes0 = {};
+			/** @type {Record<string, number>} */
+			const pageNodes0 = {};
 			for (const [who, s] of how.pages) {
 				heap0[who] = await heapAfterGc(s);
 				nodes0[who] = (await metrics(s)).Nodes ?? 0;
+				pageNodes0[who] = await evaluate(s, PAGE_NODES);
 			}
 			// The mouse rests outside the page, so hover can't change under it.
 			await sidebar.call("Input.dispatchMouseEvent", { type: "mouseMoved", x: 5000, y: 5000 });
 			for (const [, s] of how.pages) await evaluate(s, startProbes(how.frames && s !== tab));
 			const trace = tracing ? await startTrace(b.browser) : null;
-			if (tracing) {
-				await sidebar.call("Profiler.enable");
-				await sidebar.call("Profiler.setSamplingInterval", { interval: 200 });
-				await sidebar.call("Profiler.start");
+			const profiled = tracing ? how.pages.filter(([, s]) => s !== tab) : [];
+			for (const [, s] of profiled) {
+				await s.call("Profiler.enable");
+				await s.call("Profiler.setSamplingInterval", { interval: 200 });
+				await s.call("Profiler.start");
 			}
 			const visible = await evaluate(sidebar, "document.visibilityState");
 			const m0 = await Promise.all(how.pages.map(([, s]) => metrics(s)));
@@ -659,12 +751,13 @@ async function oneRun(run, host) {
 			const detail = { visible, loadSamples };
 			if (trace) {
 				const base = join(evidence, `run${run}-${name}`);
-				const { profile } = await sidebar.call("Profiler.stop");
-				writeFileSync(`${base}.sidebar.cpuprofile`, JSON.stringify(profile));
-				detail.sidebarProfile = profileSummary(profile);
+				for (const [who, s] of profiled) {
+					const { profile } = await s.call("Profiler.stop");
+					writeFileSync(`${base}.${who}.cpuprofile`, JSON.stringify(profile));
+					detail[`${who}.profile`] = profileSummary(profile);
+				}
 				const events = await trace.stop(`${base}.trace.json`);
 				detail.trace = traceSummary(events, allPids);
-				detail.animations = animationSummary(events, pids.sidebar);
 				detail.traceFile = `${base}.trace.json`;
 			}
 			/** @type {Record<string, number>} */
@@ -690,6 +783,9 @@ async function oneRun(run, host) {
 				out[`${who}.heapAfterGcMB`] = round(after);
 				out[`${who}.heapGrowthMB`] = round(after - (heap0[who] ?? after));
 				out[`${who}.nodeGrowth`] = ((await metrics(s)).Nodes ?? 0) - (nodes0[who] ?? 0);
+				// Nodes still in the page (shadow roots included): growth here is elements left on screen, growth only in
+				// Nodes is detached DOM something still holds.
+				out[`${who}.pageNodeGrowth`] = (await evaluate(s, PAGE_NODES)) - (pageNodes0[who] ?? 0);
 			}
 			for (const [who, p] of Object.entries(probes)) {
 				if (!p) continue;
@@ -725,6 +821,7 @@ async function oneRun(run, host) {
 			await sleep(20000);
 			return {};
 		});
+		if (blaming) details.blame = await blameIdle(b.browser, sidebar, pids);
 
 		// (b) scroll: the wheel over the list, down to the end and back up.
 		const box = await evaluate(
@@ -930,10 +1027,10 @@ async function main() {
 			`${ok ? "PASS" : "FAIL"}  ${b.scenario} ${b.metric}: ${s.median} (${s.min}-${s.max}) <= ${b.max}  ${b.why}`,
 		);
 	}
-	lines.push("\nOther numbers (median, min-max):");
+	lines.push("\nOther numbers (median, min-max; every metric is in perf.json):");
 	for (const [name, metricsOf] of Object.entries(summary)) {
 		const shown = Object.entries(metricsOf)
-			.filter(([key]) => !BUDGETS.some((b) => b.scenario === name && b.metric === key))
+			.filter(([key]) => !BUDGETS.some((b) => b.scenario === name && b.metric === key) && SHOWN.test(key))
 			.map(([key, s]) => `${key} ${s.median} (${s.min}-${s.max})`);
 		lines.push(`  ${name}: ${shown.join(", ")}`);
 	}
@@ -947,6 +1044,14 @@ async function main() {
 	const shared = all.find((r) => r.details.sharedRenderer)?.details.sharedRenderer;
 	if (shared) lines.push(`Note: ${shared}; their CPU numbers are the same process.`);
 	if (tracing) lines.push("Traced: these runs paid for tracing and profiling. Judge budgets from an untraced run.");
+	const blame = all.find((r) => r.details.blame)?.details.blame;
+	if (blame) {
+		lines.push("\nIdle with one thing paused at a time (4 s each, first run):");
+		for (const row of blame)
+			lines.push(
+				`  ${row.what}: ${row.styleRecalcsPerSec} recalcs/s, ${row.layoutsPerSec} layouts/s, sidebar ${row.sidebarCpuPct}%, gpu ${row.gpuCpuPct}%, browser ${row.browserCpuPct}%`,
+			);
+	}
 	for (const p of problems) lines.push(`PROBLEM ${p}`);
 	const verdict = problems.length || failed || !all.length ? "FAIL" : "PASS";
 	lines.push(`\n${verdict}: ${BUDGETS.length - failed}/${BUDGETS.length} budgets. Evidence: ${evidence}`);

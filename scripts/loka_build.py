@@ -86,7 +86,8 @@ def link_clang_format():
         sys.exit('clang-format not found. Run: python -m pip install clang-format')
     os.environ['PATH'] = f"{exe.parent};{os.environ.get('PATH', '')}"
     link = SOURCE_TREE / 'buildtools' / 'win-format' / 'clang-format.exe'
-    if link.is_symlink() and Path(os.readlink(link)) != exe:
+    # Compare resolved paths: os.readlink can return the \?\ form, which never equals exe as a string.
+    if link.is_symlink() and link.resolve() != exe.resolve():
         link.unlink()
         link.symlink_to(exe)
         print(f'Relinked {link.relative_to(SOURCE_TREE)} to {exe}', flush=True)

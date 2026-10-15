@@ -104,11 +104,14 @@ export class LokaPanel extends LitElement {
 		// A space in the other scheme crossfades the whole sidebar rather than snapping every color at once.
 		if (this.schemeOf(next) !== this.schemeOf(before) && !reducedMotion() && document.startViewTransition) {
 			this.pending = next;
-			document.startViewTransition(async () => {
+			const fade = document.startViewTransition(async () => {
 				this.state = this.pending ?? next;
 				this.pending = null;
 				await this.updateComplete;
 			});
+			// A quick second switch skips the first crossfade; that's fine, not an error.
+			fade.ready.catch(() => {});
+			fade.finished.catch(() => {});
 		} else this.state = next;
 	};
 

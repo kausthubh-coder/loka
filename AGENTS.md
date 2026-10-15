@@ -26,7 +26,9 @@ page with a C++ model behind it. The browser build is Helium's Python build plus
 | `prototype/src/features/command-bar/` | Ctrl+K bar and URL parsing |
 | `prototype/src/features/page/` | stand-in for the web view |
 | `prototype/src/app/loka-app.ts` | window shell: owns state, saves it, global shortcuts, space theme |
-| `scripts/` | `setup`, `doctor`, `browser.mjs` (build checkout), `loka_build.py` (dev builds) |
+| `extension/` | the sidebar in the real browser: prototype components on real tabs (`extension/README.md`) |
+| `scripts/` | `setup`, `doctor`, `browser.mjs` (build checkout), `loka_build.py` (dev builds), `loka_brand.py` (name, icons) |
+| `resources/loka/` | Loka's brand images, drawn by `loka_brand.py assets` |
 | `patches/loka/` + end of `patches/series` | Loka's Chromium patches, applied after Helium's (folder appears with the first patch; Helium's linter rejects any file not in the series) |
 | `build.py`, `patches/`, `helium-chromium/`, `.github/` | Helium's, kept where Helium has them so merges stay clean |
 | `docs/` | `browser-build.md`, `upstream.md`, Helium's original README |

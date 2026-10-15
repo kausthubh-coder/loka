@@ -41,7 +41,26 @@ bun run browser:run     # opens the dev build with a throwaway profile
 - The first build is a component build without PGO (`build.py --dev`): fast to rebuild, slower to run than a
   release. `scripts/loka_build.py first` applies Helium's patches, then `patches/series`, which ends with Loka's.
 - After that, `browser:build` runs an incremental `autoninja -C out\Default chrome`, usually minutes.
-- Jobs default to 6 (`LOKA_JOBS` overrides). More runs out of RAM on a 16 GB laptop while linking.
+- Jobs default to 6 (`LOKA_JOBS` overrides). More runs out of RAM on a 16 GB laptop while linking. On
+  15 Oct 2026 the laptop crashed twice with 6 jobs plus a browser test running (free RAM near 0.2 GB); 4 jobs
+  and nothing else heavy kept it stable.
+
+## 3a. The Loka sidebar and branding
+
+The sidebar is `extension/`: the prototype's components running in the browser's side panel and new tab page,
+driving real tabs (see `extension/README.md`).
+
+```
+bun run ext:build                              # extension/dist
+bun run browser:run                            # loads extension/dist into the dev build
+python scripts/loka_brand.py apply             # in C:\src\loka, once after the first build: Loka name + icons
+python scripts/loka_build.py incremental       # then rebuild to pick the branding up
+```
+
+- `browser:run` writes `initial_preferences` beside `chrome.exe`, so a new profile starts with the side panel on
+  the left and Helium's vertical tabs collapsed on the right.
+- `loka_brand.py assets` redraws the brand images in `resources/loka/branding` (committed); `apply` copies them
+  wherever Helium's go and renames Chrome/Chromium/Helium to Loka in the UI strings.
 - A new Helium release means a new Chromium version: delete `C:\src\loka\build\src` (keep
   `build\download_cache`) and run `browser:build` again.
 

@@ -106,6 +106,9 @@ const recipes = {
 		await loka.sidebar.getByRole("button", { name: "Close Zen Browser" }).click();
 		o = await loka.outline();
 		assert.ok(!o.open.includes("Zen Browser"), "closed tab is gone");
+		await loka.row("lit.dev").click({ button: "middle" });
+		o = await loka.outline();
+		assert.ok(!o.open.includes("lit.dev"), "a middle click closes a tab");
 
 		await loka.row("Arc: what we learned").click({ button: "right" });
 		await loka.menuItem("Pin to space").click();

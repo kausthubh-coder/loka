@@ -732,6 +732,13 @@ export class LokaSidebar extends LitElement {
 				@dragover=${(e: DragEvent) => this.over(e, tabId, place, "tab")}
 				@drop=${(e: DragEvent) => this.dropHere(e)}
 				@click=${() => this.apply((s) => activateTab(s, tabId))}
+				@mousedown=${(e: MouseEvent) => e.button === 1 && e.preventDefault()}
+				@auxclick=${(e: MouseEvent) => {
+					// A middle click closes the tab, as on a browser's tab strip; a pinned one unloads.
+					if (e.button !== 1) return;
+					e.preventDefault();
+					this.closeTabFor(tabId);
+				}}
 				@keydown=${(e: KeyboardEvent) => this.rowKey(e, () => this.apply((s) => activateTab(s, tabId)))}
 				@contextmenu=${(e: MouseEvent) => this.openMenu(e, this.tabMenu(tabId))}
 			>

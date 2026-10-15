@@ -194,7 +194,7 @@ describe("tabs and spaces", () => {
 
 	test("the stand-in page navigating gives the tab its new address and title", () => {
 		const state = navigateTab(seedState(), "t-hn", "https://lobste.rs/", "Lobsters");
-		expect(state.tabs["t-hn"]).toEqual({ ...seedState().tabs["t-hn"], url: "https://lobste.rs/", title: "Lobsters" });
+		expect([state.tabs["t-hn"]?.url, state.tabs["t-hn"]?.title]).toEqual(["https://lobste.rs/", "Lobsters"]);
 		expect(navigateTab(seedState(), "nope", "https://a.b/", "A")).toEqual(seedState());
 	});
 

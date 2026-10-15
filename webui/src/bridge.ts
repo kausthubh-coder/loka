@@ -97,6 +97,21 @@ export type ColorScheme = "light" | "dark" | "system";
 /** Browser shortcuts the sidebar answers: Ctrl+T and Ctrl+L open the command bar instead of a new tab page. */
 export type BrowserCommand = "new-tab" | "focus-location";
 
+/**
+ * What was picked in the command bar page (command.html). The page hands it to its window's sidebar, which runs it
+ * as if it had been picked there; the browser passes it on untouched.
+ * - open: go to `url`, in a new tab or the current one. `search` is set when it's a search for those words, which the
+ *   sidebar runs with the user's own search engine.
+ * - tab: show a Loka tab (ids are the sidebar's own); browser-tab: switch to a browser tab Loka doesn't know.
+ * - space: switch to a space. action: one of the command bar's commands ("new-space", "downloads", ...).
+ */
+export type CommandPick =
+	| { kind: "open"; url: string; newTab: boolean; search?: string }
+	| { kind: "tab"; tabId: string; spaceId: string }
+	| { kind: "browser-tab"; tabId: number }
+	| { kind: "space"; spaceId: string }
+	| { kind: "action"; action: string };
+
 const pending = new Map<string, (value: unknown) => void>();
 const listeners = new Map<string, Set<(...args: unknown[]) => void>>();
 let nextId = 0;
@@ -195,4 +210,22 @@ export const browser = {
 	/** Light or dark for the browser and the pages that follow it (prefers-color-scheme). */
 	setColorScheme: (scheme: ColorScheme) => tell("setColorScheme", scheme),
 	onCommand: (listener: (command: BrowserCommand) => void) => on("command", (c) => listener(c as BrowserCommand)),
+
+	// Planned, asked for by the sidebar's front end (not in the handler yet):
+	/** The pinned state changed from outside this page (another window, a browser menu). */
+	onSidebarPinnedChanged: (listener: (pinned: boolean) => void) =>
+		on("sidebar-pinned-changed", (p) => listener(p as boolean)),
+	/**
+	 * Shows the whole-window command bar (command.html, centered over the window) and sends it `command` through
+	 * onCommand; resolves true once it's showing. The sidebar shows its own bar when this doesn't answer.
+	 */
+	openCommandBar: (command: BrowserCommand) => ask<boolean>("openCommandBar", command),
+	/** From command.html: hide the command bar and give focus back to the page. */
+	closeCommandBar: () => tell("closeCommandBar"),
+	/** From command.html: pass what was picked to this window's sidebar, which gets it through onCommandPicked. */
+	commandPicked: (pick: CommandPick) => tell("commandPicked", pick),
+	onCommandPicked: (listener: (pick: CommandPick) => void) => on("command-picked", (p) => listener(p as CommandPick)),
 };
+
+/** Everything the sidebar can ask of the browser. The prototype's fake (prototype/src/demo/) has the same shape. */
+export type Browser = typeof browser;

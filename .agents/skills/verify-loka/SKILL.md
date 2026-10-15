@@ -76,9 +76,10 @@ Driver handles, all by accessible name:
 | `loka.outline()` / `loka.state()` | the saved state, readable / raw |
 | `loka.proof(name)` | `<name>.png`, `<name>.aria.txt`, `<name>.outline.json` |
 
-Other stable handles: the URL pill button (`github.com Ctrl K`), the Ctrl+K textbox (`Search or enter address`),
-`More` (the `...` menu), `New folder`, `Spaces: <current space>` (the big planet), `Clear`, and
-`Close <tab title>` buttons.
+Other stable handles: the address field (`Address: github.com`), the command bar's combobox (`Search or enter
+address`), `More` (the `...` menu), `Hide sidebar` / `Keep sidebar open`, `Downloads`, `Extensions`,
+`Spaces: <current space>` (the big planet), `New` (the + at the bottom), `Clear`, and `Close <tab title>` buttons.
+`window.lokaDemo.calls` lists every message the sidebar sent the fake browser.
 
 ## Evidence
 

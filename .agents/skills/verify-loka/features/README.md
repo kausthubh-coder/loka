@@ -42,11 +42,17 @@ Each feature file has an H1, one paragraph on the user-visible behavior, then fo
 - [Spaces](./spaces.md): the horizon switcher; switch by click, Ctrl+1-9, swipe or drag-hover; each space's tint and
   remembered tab; new spaces.
 - [Tabs](./tabs.md): open from Ctrl+K, activate, close, pin and unpin, unload pinned tabs, Clear.
-- [Essentials](./essentials.md): the shared icon grid. Drag in, reorder, remove.
+- [Essentials](./essentials.md): the shared icon grid. Drag in (an empty grid opens a tray while you drag), reorder,
+  remove; the one-time hint.
 - [Export and import](./export-import.md): JSON export, import, reset, rejecting bad files.
-- [Command bar](./command-bar.md): Ctrl+K for addresses, searches, tabs in any space, and commands.
-- [Space editor](./space-editor.md): create or change a space's name, color and planet.
-- [Window layout and pages](./layout.md): resize, right side, hide and peek; Settings, Downloads, extensions.
+- [Command bar](./command-bar.md): Ctrl+T, Ctrl+K, Ctrl+L and the address field: addresses, searches with the
+  browser's suggestions, tabs, spaces and commands; the floating `command.html`.
+- [Space editor](./space-editor.md): create or change a space's name, color, planet and light or dark.
+- [Light and dark](./theme.md): each space's scheme, the crossfade, and `setColorScheme`.
+- [Window layout and pages](./layout.md): resize, right side, hide and pin back (the top row's button, Ctrl+S),
+  peek; Settings, Downloads.
+- [Extensions](./extensions.md): pinned ones in the address field, running them, pinning, the empty state.
+- [History](./history.md): Loka's History page, Ctrl+H.
 - [Onboarding](./onboarding.md): the first-run tour.
 - [Archive](./archive.md): opt-in archiving of old open tabs, and bringing them back.
 - [Sidebar search and keyboard](./search-and-keys.md): Ctrl+Shift+F, next/previous tab, arrow keys in the tree.

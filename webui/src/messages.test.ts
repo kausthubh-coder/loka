@@ -1,39 +1,46 @@
 import { expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { EVENTS, MESSAGES, PLANNED_EVENTS, PLANNED_MESSAGES } from "./messages";
 
-// The handler as it is in the build checkout when there is one (it may be ahead of the patch), else as the patch
-// adds it. Only the patch's added lines count, so the test reads the same C++ either way.
-const BUILT = String.raw`C:\src\loka\build\src\chrome\browser\ui\webui\loka_sidebar\loka_sidebar_handler.cc`;
+// The handler (loka_sidebar_handler*.cc) as it is in the build checkout when there is one, since it may be ahead of
+// the patch, else as loka-native-sidebar.patch adds it. Only the patch's added lines count, so both read as C++.
+const BUILT = String.raw`C:\src\loka\build\src\chrome\browser\ui\webui\loka_sidebar`;
 const PATCH = join(import.meta.dirname, "..", "..", "patches", "loka", "loka-native-sidebar.patch");
+const HANDLER_FILE = /^loka_sidebar_handler.*\.cc$/;
 
 function handlerSource(): { from: string; code: string } {
-	if (existsSync(BUILT)) return { from: BUILT, code: readFileSync(BUILT, "utf8") };
-	const patch = readFileSync(PATCH, "utf8");
-	const start = patch.indexOf("+++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.cc");
-	const end = patch.indexOf("\n--- ", start);
-	const added = patch
-		.slice(start, end === -1 ? undefined : end)
-		.split("\n")
-		.filter((line) => line.startsWith("+") && !line.startsWith("+++"))
-		.map((line) => line.slice(1));
-	return { from: PATCH, code: added.join("\n") };
+	if (existsSync(BUILT)) {
+		const files = readdirSync(BUILT).filter((f) => HANDLER_FILE.test(f));
+		return { from: BUILT, code: files.map((f) => readFileSync(join(BUILT, f), "utf8")).join("\n") };
+	}
+	const code: string[] = [];
+	let inHandler = false;
+	for (const line of readFileSync(PATCH, "utf8").split("\n")) {
+		if (line.startsWith("+++ ")) {
+			const file = line.slice(4).split("/").at(-1) ?? "";
+			inHandler = line.includes("/loka_sidebar/") && HANDLER_FILE.test(file);
+		} else if (inHandler && line.startsWith("+")) code.push(line.slice(1));
+	}
+	return { from: PATCH, code: code.join("\n") };
 }
 
 const { from, code } = handlerSource();
-const registered = [...code.matchAll(/\badd\("(\w+)",/g)].map((m) => m[1]);
-const fired = [...new Set([...code.matchAll(/FireWebUIListener\(\s*"([\w-]+)"/g)].map((m) => m[1]))];
+const registered = [...code.matchAll(/\badd\("(\w+)",/g)].map((m) => m[1] ?? "");
+const fired = [...new Set([...code.matchAll(/FireWebUIListener\(\s*"([\w-]+)"/g)].map((m) => m[1] ?? ""))];
+/** The names in `names` that none of the lists has. */
+const missing = (names: readonly string[], ...lists: (readonly string[])[]) =>
+	names.filter((name) => !lists.some((list) => list.includes(name)));
 
-test(`the handler registers exactly the messages the table lists as live (${from})`, () => {
-	expect(registered.sort()).toEqual([...MESSAGES].sort());
+test(`every live message is registered by the handler (${from})`, () => {
+	expect(missing(MESSAGES, registered)).toEqual([]);
 });
 
-test("the handler fires exactly the events the table lists as live", () => {
-	expect(fired.sort()).toEqual([...EVENTS].sort());
+test("every live event is fired by the handler", () => {
+	expect(missing(EVENTS, fired)).toEqual([]);
 });
 
-test("planned names aren't answered yet, so moving one to the live list is a conscious step", () => {
-	expect(PLANNED_MESSAGES.filter((name) => registered.includes(name))).toEqual([]);
-	expect(PLANNED_EVENTS.filter((name) => fired.includes(name))).toEqual([]);
+test("every name the handler answers or fires is in the table, live or planned", () => {
+	expect(missing(registered, MESSAGES, PLANNED_MESSAGES)).toEqual([]);
+	expect(missing(fired, EVENTS, PLANNED_EVENTS)).toEqual([]);
 });

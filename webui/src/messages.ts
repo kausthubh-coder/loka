@@ -1,6 +1,6 @@
 // Every name the sidebar and LokaSidebarHandler (chrome/browser/ui/webui/loka_sidebar/) share. bridge.ts may only
-// send and listen for names listed here, and messages.test.ts checks the handler registers each one that isn't
-// planned. When the handler starts answering a planned name, move it to the list above it.
+// send and listen for names listed here. messages.test.ts checks that the handler registers every live name and that
+// every name it registers is listed here, live or planned.
 
 /** Requests the sidebar sends with chrome.send; the handler registers each in RegisterMessages. */
 export const MESSAGES = [
@@ -28,7 +28,10 @@ export const MESSAGES = [
 /** News the handler pushes with FireWebUIListener. */
 export const EVENTS = ["tabs-changed", "store-changed"] as const;
 
-/** Requests bridge.ts already sends that the handler doesn't answer yet: the browser drops them. */
+/**
+ * Requests the handler in patches/loka doesn't answer yet (the browser drops them). The build checkout may be ahead:
+ * once the C++ for one is exported into the patch, move it up to MESSAGES.
+ */
 export const PLANNED_MESSAGES = [
 	"getExtensions",
 	"runExtension",
@@ -41,9 +44,11 @@ export const PLANNED_MESSAGES = [
 	"setSidebarPinned",
 	"getSidebarPinned",
 	"setColorScheme",
+	"openCommandBar",
+	"closeCommandBar",
 ] as const;
 
-/** Events bridge.ts listens for that the handler doesn't fire yet. */
+/** Events the handler in patches/loka doesn't fire yet; same rule as PLANNED_MESSAGES. */
 export const PLANNED_EVENTS = [
 	"extensions-changed",
 	"downloads-changed",

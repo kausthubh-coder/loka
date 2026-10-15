@@ -127,7 +127,7 @@ function toneWav() {
 
 /** Two local pages: one with its own icon, one with an <audio> element. */
 async function startPages() {
-	const icon = readFileSync(join(repo, "extension", "public", "icons", "32.png"));
+	const icon = readFileSync(join(repo, "resources", "loka", "branding", "product_logo_22_mono.png"));
 	const wav = toneWav();
 	/** @type {Record<string, string>} */
 	const pages = {
@@ -642,6 +642,8 @@ async function main() {
 			return Array.isArray(list) && list.find((d) => d.name === "loka-verify.txt" && d.state === "complete");
 		}, 15000);
 		check("a download arrives complete", Boolean(downloaded), downloaded ? JSON.stringify(downloaded) : "not listed");
+		// The browser batches download updates every quarter second, so the event can trail the list.
+		await until(async () => (await events("downloads-changed")).length > 0, 3000);
 		const downloadEvents = (await events("downloads-changed")).length;
 		check('"downloads-changed" fired', downloadEvents > 0, `${downloadEvents} events`);
 

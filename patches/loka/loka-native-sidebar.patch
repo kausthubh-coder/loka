@@ -803,7 +803,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_HISTORY_UI_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.cc
-@@ -0,0 +1,625 @@
+@@ -0,0 +1,631 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -832,6 +832,7 @@
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
 +#include "chrome/browser/ui/webui/util/image_util.h"
 +#include "chrome/browser/ui/webui/webui_embedding_context.h"
++#include "chrome/common/pref_names.h"
 +#include "components/prefs/pref_service.h"
 +#include "components/prefs/scoped_user_pref_update.h"
 +#include "components/search_engines/template_url.h"
@@ -935,6 +936,7 @@
 +  add("setColorScheme", &LokaSidebarHandler::HandleSetColorScheme);
 +  add("openCommandBar", &LokaSidebarHandler::HandleOpenCommandBar);
 +  add("closeCommandBar", &LokaSidebarHandler::HandleCloseCommandBar);
++  add("commandPicked", &LokaSidebarHandler::HandleCommandPicked);
 +}
 +
 +void LokaSidebarHandler::OnJavascriptAllowed() {
@@ -945,6 +947,10 @@
 +  pref_change_registrar_.Add(
 +      kLokaSidebarStorePref,
 +      base::BindRepeating(&LokaSidebarHandler::OnStoreChanged,
++                          base::Unretained(this)));
++  pref_change_registrar_.Add(
++      prefs::kHeliumZenModeSidebarPinned,
++      base::BindRepeating(&LokaSidebarHandler::OnSidebarPinnedChanged,
 +                          base::Unretained(this)));
 +  pref_change_registrar_.Add(
 +      kLokaOnboardingSpacesPref,
@@ -1431,7 +1437,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h
-@@ -0,0 +1,202 @@
+@@ -0,0 +1,204 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1567,6 +1573,8 @@
 +  void HandleSetColorScheme(const base::ListValue& args);
 +  void HandleOpenCommandBar(const base::ListValue& args);
 +  void HandleCloseCommandBar(const base::ListValue& args);
++  void HandleCommandPicked(const base::ListValue& args);
++  void OnSidebarPinnedChanged();
 +  // Whether this handler serves the floating command bar, not the sidebar.
 +  bool IsCommandBarPage();
 +
@@ -1636,7 +1644,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler_features.cc
-@@ -0,0 +1,632 @@
+@@ -0,0 +1,652 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1814,6 +1822,26 @@
 +    return;
 +  }
 +  DispatchCommand(browser, args[0].GetString());
++}
++
++void LokaSidebarHandler::HandleCommandPicked(const base::ListValue& args) {
++  // The floating bar picked something only the sidebar can do (a space, an
++  // unloaded Loka tab, a Loka command): hand it to this window's sidebar.
++  BrowserWindowInterface* browser = GetBrowser();
++  if (!browser || args.empty()) {
++    return;
++  }
++  auto it = Sidebars().find(browser);
++  if (it != Sidebars().end() && it->second->IsJavascriptAllowed()) {
++    it->second->FireWebUIListener("command-picked", args[0]);
++  }
++}
++
++void LokaSidebarHandler::OnSidebarPinnedChanged() {
++  FireWebUIListener(
++      "sidebar-pinned-changed",
++      base::Value(Profile::FromWebUI(web_ui())->GetPrefs()->GetBoolean(
++          prefs::kHeliumZenModeSidebarPinned)));
 +}
 +
 +void LokaSidebarHandler::HandleCloseCommandBar(const base::ListValue& args) {

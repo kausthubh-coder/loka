@@ -536,7 +536,15 @@ async function main() {
 		);
 		const hits = spawnSync(
 			"powershell",
-			["-NoProfile", "-File", join(repo, "scripts", "window-hittest.ps1"), "-ProcId", String(pid), "-Points", points.join(";")],
+			[
+				"-NoProfile",
+				"-File",
+				join(repo, "scripts", "window-hittest.ps1"),
+				"-ProcId",
+				String(pid),
+				"-Points",
+				points.join(";"),
+			],
 			{ encoding: "utf8" },
 		)
 			.stdout.trim()

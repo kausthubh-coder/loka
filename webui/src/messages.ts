@@ -48,6 +48,8 @@ export const PLANNED_MESSAGES = [
 	"closeCommandBar",
 	// The floating command bar (command.html) hands its pick to the window's sidebar; the browser passes it on.
 	"commandPicked",
+	// The window's frame around the page takes the space's color ("#rrggbb", or null for the default).
+	"setThemeColor",
 ] as const;
 
 /** Events the handler in patches/loka doesn't fire yet; same rule as PLANNED_MESSAGES. */

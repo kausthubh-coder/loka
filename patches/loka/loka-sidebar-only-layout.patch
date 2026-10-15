@@ -1,3 +1,17 @@
+--- a/chrome/browser/download/download_prefs.cc
++++ b/chrome/browser/download/download_prefs.cc
+@@ -364,7 +364,10 @@
+   registry->RegisterIntegerPref(policy::policy_prefs::kDownloadRestrictions, 0);
+   // TODO(chlily): Clean up the following two prefs once SysUI integration is
+   // enabled by default.
+-  registry->RegisterBooleanPref(prefs::kDownloadBubblePartialViewEnabled, true);
++  // Loka: downloads show in the sidebar, so the toolbar's download bubble
++  // doesn't pop up by itself.
++  registry->RegisterBooleanPref(prefs::kDownloadBubblePartialViewEnabled,
++                                false);
+   registry->RegisterIntegerPref(prefs::kDownloadBubblePartialViewImpressions,
+                                 0);
+ 
 --- a/chrome/browser/ui/helium/helium_layout_state_controller.cc
 +++ b/chrome/browser/ui/helium/helium_layout_state_controller.cc
 @@ -52,7 +52,8 @@

@@ -38,12 +38,20 @@ export type PinnedNode = FolderNode | TabNode;
 export type PlanetKind = "banded" | "ringed" | "cratered" | "ocean";
 export const PLANET_KINDS: PlanetKind[] = ["banded", "ringed", "cratered", "ocean"];
 
+/**
+ * Light or dark for the sidebar, the browser and the pages that follow it, while this space is showing. "system"
+ * follows the computer's own setting.
+ */
+export type SpaceScheme = "light" | "dark" | "system";
+export const SPACE_SCHEMES: SpaceScheme[] = ["light", "dark", "system"];
+
 export interface Space {
 	id: string;
 	name: string;
 	/** Hue (0-360) that tints the whole window while this space is active. */
 	hue: number;
 	planet: PlanetKind;
+	scheme: SpaceScheme;
 	pinned: PinnedNode[];
 	open: TabId[];
 	activeTabId: TabId | null;
@@ -214,7 +222,11 @@ export function moveItem(state: BrowserState, id: string, to: Place): BrowserSta
 
 	// Indexes are given against the list before the move, so moving down the same list shifts by one.
 	const index = sameContainer(from, to) && from.index < to.index ? to.index - 1 : to.index;
-	const next = detached.state;
+	// A tab sent to another space stops being the one its old space shows. Essentials belong to every space.
+	const next =
+		from.area !== "essentials" && to.area !== "essentials" && from.spaceId !== to.spaceId
+			? replaceSpace(detached.state, from.spaceId, (s) => (s.activeTabId === id ? { ...s, activeTabId: null } : s))
+			: detached.state;
 
 	if (to.area === "essentials") {
 		return { ...next, essentials: next.essentials.toSpliced(clamp(index, next.essentials.length), 0, node.id) };
@@ -237,6 +249,16 @@ export function openTab(state: BrowserState, url: string, title = url, now = Dat
 	const spaceId = state.activeSpaceId;
 	const withTab = { ...state, tabs: { ...state.tabs, [id]: { id, url, title, lastActiveAt: now } } };
 	return replaceSpace(withTab, spaceId, (s) => ({ ...s, open: [id, ...s.open], activeTabId: id }));
+}
+
+/**
+ * The prototype's stand-in for a page navigating: the tab takes the new address and title. In the real browser the
+ * page navigates itself and the sync records it (live.logic's tabUpdated).
+ */
+export function navigateTab(state: BrowserState, tabId: TabId, url: string, title: string): BrowserState {
+	const tab = state.tabs[tabId];
+	if (!tab) return state;
+	return { ...state, tabs: { ...state.tabs, [tabId]: { ...tab, url, title } } };
 }
 
 export function activateTab(state: BrowserState, tabId: TabId, now = Date.now()): BrowserState {
@@ -288,19 +310,21 @@ export interface SpaceLook {
 	name: string;
 	hue: number;
 	planet: PlanetKind;
+	/** Left out by looks that don't choose one (setup, imports): a new space follows the system, an edit keeps it. */
+	scheme?: SpaceScheme;
 }
 
 export function createSpace(state: BrowserState, look: SpaceLook): [BrowserState, string] {
 	const id = newId();
-	const space: Space = { id, ...look, pinned: [], open: [], activeTabId: null };
+	const space: Space = { id, ...look, scheme: look.scheme ?? "system", pinned: [], open: [], activeTabId: null };
 	return [{ ...state, spaces: [...state.spaces, space], activeSpaceId: id }, id];
 }
 
-/** Changes a space's name, color or planet. Its tabs stay as they are. */
+/** Changes a space's name, color, planet or scheme. Its tabs stay as they are. */
 export function updateSpace(state: BrowserState, spaceId: string, look: SpaceLook): BrowserState {
 	const name = look.name.trim();
 	if (!name) return state;
-	return replaceSpace(state, spaceId, (s) => ({ ...s, ...look, name }));
+	return replaceSpace(state, spaceId, (s) => ({ ...s, ...look, name, scheme: look.scheme ?? s.scheme }));
 }
 
 /** Opens a tab, or goes to it if a tab with that URL is already open anywhere (used for Settings and Downloads). */
@@ -544,11 +568,12 @@ export function importState(json: string): BrowserState | null {
 	if (placed.length !== new Set(placed).size) return null;
 	if (placed.length !== tabIds.length || !placed.every((id) => data.tabs[id])) return null;
 	if (!data.spaces.some((s) => s.id === data.activeSpaceId)) return null;
-	// Exports from before planets and the archive existed have neither: give them the first style and an empty one.
+	// Exports from before planets, schemes and the archive existed have none of them: give them the first planet,
+	// the system's scheme and an empty archive.
 	return {
 		...data,
 		archive: data.archive ?? [],
-		spaces: data.spaces.map((s) => ({ ...s, planet: s.planet ?? "banded" })),
+		spaces: data.spaces.map((s) => ({ ...s, planet: s.planet ?? "banded", scheme: s.scheme ?? "system" })),
 	};
 }
 
@@ -602,6 +627,7 @@ function isBrowserState(value: unknown): value is BrowserState {
 			typeof s.name === "string" &&
 			typeof s.hue === "number" &&
 			(s.planet === undefined || PLANET_KINDS.includes(s.planet as PlanetKind)) &&
+			(s.scheme === undefined || SPACE_SCHEMES.includes(s.scheme as SpaceScheme)) &&
 			isStringArray(s.open) &&
 			Array.isArray(s.pinned) &&
 			s.pinned.every(isPinnedNode) &&

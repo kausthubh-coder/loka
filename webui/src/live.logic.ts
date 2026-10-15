@@ -278,6 +278,7 @@ export function firstState(): BrowserState {
 		name: "Personal",
 		hue: 200,
 		planet: "ringed",
+		scheme: "system",
 		pinned: [],
 		open: [],
 		activeTabId: null,

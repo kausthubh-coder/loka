@@ -48,6 +48,7 @@ export function seedState(now = Date.now()): BrowserState {
 				name: "Build",
 				hue: 200,
 				planet: "ringed",
+				scheme: "dark",
 				activeTabId: "t-helium",
 				pinned: [
 					{
@@ -68,6 +69,7 @@ export function seedState(now = Date.now()): BrowserState {
 				name: "School",
 				hue: 30,
 				planet: "banded",
+				scheme: "light",
 				activeTabId: "t-canvas",
 				pinned: [
 					tab("t-canvas"),
@@ -94,6 +96,7 @@ export function seedState(now = Date.now()): BrowserState {
 				name: "Home",
 				hue: 150,
 				planet: "ocean",
+				scheme: "system",
 				activeTabId: null,
 				pinned: [],
 				open: ["t-music"],

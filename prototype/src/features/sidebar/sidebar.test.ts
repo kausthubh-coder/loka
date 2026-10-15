@@ -14,6 +14,7 @@ import {
 	groupIntoFolder,
 	importState,
 	moveItem,
+	navigateTab,
 	openTab,
 	pinnedRows,
 	restoreArchived,
@@ -165,6 +166,38 @@ describe("tabs and spaces", () => {
 		expect(updateSpace(seedState(), "s-home", { name: "   ", hue: 260, planet: "ringed" })).toEqual(seedState());
 	});
 
+	test("a new space follows the system's light or dark unless it picks one", () => {
+		const [state, id] = createSpace(seedState(), { name: "Music", hue: 330, planet: "cratered" });
+		expect(space(state, id).scheme).toBe("system");
+		const [lit, litId] = createSpace(seedState(), { name: "Day", hue: 30, planet: "ocean", scheme: "light" });
+		expect(space(lit, litId).scheme).toBe("light");
+	});
+
+	test("editing a space can change its scheme, and a look without one keeps it", () => {
+		const look = { name: "School", hue: 30, planet: "banded" as const };
+		expect(space(updateSpace(seedState(), "s-school", { ...look, scheme: "dark" }), "s-school").scheme).toBe("dark");
+		expect(space(updateSpace(seedState(), "s-school", look), "s-school").scheme).toBe("light");
+	});
+
+	test("moving the shown tab to another space leaves its old space showing nothing", () => {
+		const state = moveItem(seedState(), "t-helium", { area: "open", spaceId: "s-home", index: 0 });
+		expect(space(state, "s-build").activeTabId).toBeNull();
+		expect(space(state, "s-home").open).toEqual(["t-helium", "t-music"]);
+	});
+
+	test("moving the shown tab within its space, or into Essentials, keeps it shown", () => {
+		const pinned = moveItem(seedState(), "t-helium", { area: "open", spaceId: "s-build", index: 0 });
+		expect(activeTab(pinned)?.id).toBe("t-helium");
+		const essential = moveItem(seedState(), "t-helium", { area: "essentials", index: 0 });
+		expect(activeTab(essential)?.id).toBe("t-helium");
+	});
+
+	test("the stand-in page navigating gives the tab its new address and title", () => {
+		const state = navigateTab(seedState(), "t-hn", "https://lobste.rs/", "Lobsters");
+		expect(state.tabs["t-hn"]).toEqual({ ...seedState().tabs["t-hn"], url: "https://lobste.rs/", title: "Lobsters" });
+		expect(navigateTab(seedState(), "nope", "https://a.b/", "A")).toEqual(seedState());
+	});
+
 	test("opening Settings twice goes back to the first Settings tab, even from another space", () => {
 		const once = focusOrOpen(seedState(), "loka://settings", "Settings");
 		const elsewhere = switchSpace(once, "s-home");
@@ -203,6 +236,18 @@ describe("export and import", () => {
 		const old = JSON.parse(exportState(seedState()));
 		for (const s of old.spaces) delete s.planet;
 		expect(importState(JSON.stringify(old))?.spaces.map((s) => s.planet)).toEqual(["banded", "banded", "banded"]);
+	});
+
+	test("a file from before schemes imports with every space following the system", () => {
+		const old = JSON.parse(exportState(seedState()));
+		for (const s of old.spaces) delete s.scheme;
+		expect(importState(JSON.stringify(old))?.spaces.map((s) => s.scheme)).toEqual(["system", "system", "system"]);
+	});
+
+	test("a file with an unknown scheme is rejected", () => {
+		const bad = JSON.parse(exportState(seedState()));
+		bad.spaces[0].scheme = "sepia";
+		expect(importState(JSON.stringify(bad))).toBeNull();
 	});
 
 	test("a file with an unknown planet style is rejected", () => {

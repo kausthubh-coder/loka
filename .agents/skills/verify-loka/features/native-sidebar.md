@@ -15,7 +15,17 @@ nothing about the browser.
 - `native-favicon`: a loaded tab's row shows its page's own icon (a data: URL from `getTabs`); an unloaded one asks
   the favicon cache (`chrome://favicon2`), which answers the default globe when it knows nothing.
 - `native-sound`: a tab playing sound gets a speaker on its row; it goes about two seconds after the sound stops.
-- `native-window`: window titles end in "- Loka", never Chromium or Helium; no horizontal tab strip or toolbar.
+- `native-media`: the playing tab is in `getMedia`; `mediaAction` pause and play switch it like the page's controls.
+- `native-extensions`: `getExtensions` lists installed extensions with their toolbar icon and pinned state; the
+  sidebar's Extensions panel shows the same ones.
+- `native-downloads`: `getDownloads` lists real downloads; `downloads-changed` fires as they progress.
+- `native-scheme`: `setColorScheme` light or dark changes `prefers-color-scheme` for pages.
+- `native-pinning`: `setSidebarPinned(false)` lets the sidebar slide away; `getSidebarPinned` reads it back.
+- `native-suggest`: `suggest(query)` answers through the `suggestions` event, a search first for plain words.
+- `native-window`: the window is titled "<tab> - Loka", chrome.exe's ProductName is "Loka", never Chromium or
+  Helium; no horizontal tab strip or toolbar.
+- `native-alpha-import`: `...` > `Import spaces (JSON)` takes a 0.1.0 alpha export and leaves out the alpha's own
+  extension pages.
 - `native-messages`: every `chrome.send` name the page uses is in `webui/src/messages.ts`, checked against the
   handler by `webui/src/messages.test.ts`.
 
@@ -31,8 +41,8 @@ Preconditions: a built `chrome.exe`. While a build runs, `out\Default` is busy (
 use the copy `C:\src\loka\dist\snapshot\chrome.exe` through `LOKA_CHROME`. `bun run build:status` says whether a
 build is running.
 
-- **Recipe.** `LOKA_CHROME=C:\src\loka\dist\snapshot\chrome.exe bun run verify:browser` covers `native-first-run`
-  through `native-window`; add `-- --no-first-run` to check setup stays away. It prints `PASS`/`FAIL`/`NOTE` per
+- **Recipe.** `LOKA_CHROME=C:\src\loka\dist\snapshot\chrome.exe bun run verify:browser` covers every sub-feature
+  above; add `-- --no-first-run` to check setup stays away. It prints `PASS`/`FAIL`/`NOTE` per
   check and leaves `checks.json`, `startup-targets.json`, `rows.json`, `setup.png`, `sidebar.png`, `window.png` and
   `chrome.log` in `.agents/verify-runs/<time>-browser/`. It stops only its own process tree and deletes its profile.
 - **Your own drive.** Start chrome.exe with `--user-data-dir` under `C:\src\loka\profile-verify`,
@@ -48,6 +58,12 @@ build is running.
 ## Gotchas
 
 - Until a normal tab exists there is no sidebar target, so a drive that starts on setup must finish setup first.
+- A file input opens its picker only from a user gesture: evaluate the click with `userGesture: true`, and catch the
+  picker with `Page.setInterceptFileChooserDialog` plus `DOM.setFileInputFiles`. The import reports a bad file with
+  `alert()`, which stalls the page until `Page.handleJavaScriptDialog` answers it.
+- Downloads go to the user's Downloads folder unless `Browser.setDownloadBehavior` points them into the profile.
+- Chrome gives a media session only to media of 5 s or more, so a test tone shorter than that never reaches
+  `getMedia`.
 - Setup's text credits Helium ("Loka is built on Helium and uses Helium's services"); verify:browser lists it as a
   NOTE for a person to judge.
 - Each Chromium is about 0.4 GB. On the 16 GB laptop, never drive it while the build is linking.

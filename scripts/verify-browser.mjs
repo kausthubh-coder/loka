@@ -5,12 +5,22 @@
 //   bun run verify:browser                    binary from LOKA_CHROME, else C:\src\loka\build\src\out\Default\chrome.exe
 //   bun run verify:browser -- --no-first-run  skip setup (Chrome's --no-first-run): no setup page may show at all
 //
-// A first run shows Loka's setup (chrome://setup) in its own window and no browser window. The run lists any mention
-// of Helium or Chromium in setup as a note, then picks "Use defaults" like a user would. After that: no setup or
-// helium:// page left, no "Chromium" or "Helium" in any window title, the sidebar target lists real tab rows, a loaded tab with an
-// icon shows that icon instead of the default, and the audible state follows a playing tab. Saves the sidebar and
-// the window as PNGs in .agents/verify-runs/<time>-browser. Stops only the process tree it started and deletes its
-// profile.
+// The checks, in order:
+//   first run   setup (chrome://setup) is the only page and "Welcome to Loka" the only window; any Helium or
+//               Chromium in its text is a NOTE; "Use defaults" finishes it and no setup or helium:// page is left
+//   sidebar     the chrome://loka-sidebar target lists the opened tabs as rows
+//   icons       a local page's icon reaches getTabs and its row (a cached icon is compared with the default globe)
+//   sound       a playing <audio> tab is audible with a speaker on its row, and stops after pause
+//   media       getMedia lists it playing; mediaAction pause and play switch it within 3 s
+//   extensions  getExtensions has uBlock Origin, pinned, with its icon; the Extensions panel lists the same names
+//   downloads   none on a fresh profile; a local file arrives complete and "downloads-changed" fires
+//   scheme      setColorScheme light and dark reach prefers-color-scheme in a tab
+//   pinning     setSidebarPinned false and true read back through getSidebarPinned, with a window picture each
+//   suggest     suggest("example") answers with a search first
+//   identity    the window is "<tab> - Loka", no title says Chromium or Helium, chrome.exe's ProductName is Loka
+//   alpha       the sidebar's Import spaces (JSON) takes the 0.1.0 alpha's export, without its extension pages
+// Evidence (PNGs, JSON, chrome.log) goes to .agents/verify-runs/<time>-browser. The run stops only the process tree
+// it started, downloads into its own profile, and deletes that profile.
 
 import { spawn, spawnSync } from "node:child_process";
 import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -26,9 +36,14 @@ const evidence = join(repo, ".agents", "verify-runs", `${stamp}-browser`);
 const profileRoot = join(BUILD_DIR, "profile-verify");
 const profile = join(profileRoot, `run-${stamp}-${process.pid}`);
 const SIDEBAR_URL = "chrome://loka-sidebar.top-chrome";
+/** What the 0.1.0 alpha's "Export spaces (JSON)" wrote, captured from the alpha build. */
+const ALPHA_EXPORT = join(repo, "prototype", "src", "features", "sidebar", "alpha-0.1.0-export.json");
+const ALPHA_EXTENSION_ID = "kklllonkklkjgekkpeboddibgbjadkej";
+/** uBlock Origin, which Helium installs and Loka keeps. */
+const UBLOCK = "blockjmkbacgjkknlgpkjjiijinjdanf";
 
 /** @typedef {{ id: string, type: string, url: string, title: string, webSocketDebuggerUrl: string }} Target */
-/** @typedef {{ id: number, url: string, title: string, favicon: string, loading: boolean, audible: boolean }} Tab */
+/** @typedef {{ id: number, url: string, title: string, favicon: string, loading: boolean, audible: boolean, active: boolean }} Tab */
 /** @typedef {{ label: string, icon: string | null, sound: string | null }} Row */
 /** @typedef {Awaited<ReturnType<typeof connect>>} Session */
 
@@ -87,10 +102,10 @@ function freePort() {
 	});
 }
 
-/** A quiet one-second tone as a WAV file, so the audio page plays without the network. */
+/** A quiet six-second tone as a WAV file, so the audio page plays without the network. */
 function toneWav() {
 	const rate = 8000;
-	const samples = rate;
+	const samples = rate * 6; // Chrome gives a media session only to media of 5 s or more
 	const data = Buffer.alloc(samples * 2);
 	for (let i = 0; i < samples; i++)
 		data.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 220 * i) / rate) * 400), i * 2);
@@ -123,6 +138,10 @@ async function startPages() {
 		const path = new URL(req.url ?? "/", "http://x").pathname;
 		if (path === "/icon.png") res.writeHead(200, { "content-type": "image/png" }).end(icon);
 		else if (path === "/tone.wav") res.writeHead(200, { "content-type": "audio/wav" }).end(wav);
+		else if (path === "/loka-verify.txt")
+			res
+				.writeHead(200, { "content-type": "text/plain", "content-disposition": "attachment; filename=loka-verify.txt" })
+				.end("Loka verify download");
 		else if (pages[path]) res.writeHead(200, { "content-type": "text/html" }).end(pages[path]);
 		else res.writeHead(404).end();
 	});
@@ -141,8 +160,11 @@ async function connect(wsUrl) {
 	let next = 0;
 	/** @type {Map<number, (msg: { error?: { message: string }, result?: any }) => void>} */
 	const waiting = new Map();
+	/** @type {Map<string, (params: any) => void>} */
+	const handlers = new Map();
 	ws.addEventListener("message", (e) => {
 		const msg = JSON.parse(String(e.data));
+		if (msg.method) handlers.get(msg.method)?.(msg.params);
 		const done = waiting.get(msg.id);
 		if (!done) return;
 		waiting.delete(msg.id);
@@ -162,6 +184,8 @@ async function connect(wsUrl) {
 				ws.send(JSON.stringify({ id, method, params }));
 			});
 		},
+		/** Calls back on a CDP event. @param {string} method @param {(params: any) => void} handler */
+		on: (method, handler) => handlers.set(method, handler),
 		close: () => ws.close(),
 	};
 }
@@ -196,17 +220,66 @@ async function until(probe, ms) {
 	return value;
 }
 
-// In the sidebar page: the browser's tab list straight from LokaSidebarHandler, through chrome.send.
-const GET_TABS = `new Promise((resolve) => {
+// In the sidebar page: one request to LokaSidebarHandler through chrome.send, and its answer ("no answer" after 5 s).
+/** @param {string} message @param {unknown[]} [args] */
+const askExpression = (message, args = []) => `new Promise((resolve) => {
 	const id = "verify-" + Math.random();
 	const original = window.cr.webUIResponse;
+	const timer = setTimeout(() => { window.cr.webUIResponse = original; resolve("no answer"); }, 5000);
 	window.cr.webUIResponse = function (callbackId, ok, value) {
 		if (callbackId !== id) return original.call(this, callbackId, ok, value);
+		clearTimeout(timer);
 		window.cr.webUIResponse = original;
 		resolve(value);
 	};
-	chrome.send("getTabs", [id]);
+	chrome.send(${JSON.stringify(message)}, [id, ...${JSON.stringify(args)}]);
 })`;
+const GET_TABS = askExpression("getTabs");
+
+// In the sidebar page: keeps every event the handler pushes (cr.webUIListenerCallback) in window.__verifyEvents.
+const RECORD_EVENTS = `(() => {
+	if (window.__verifyEvents) return true;
+	window.__verifyEvents = [];
+	const original = window.cr.webUIListenerCallback;
+	window.cr.webUIListenerCallback = function (event, ...args) {
+		window.__verifyEvents.push({ event, args });
+		return original.call(this, event, ...args);
+	};
+	return true;
+})()`;
+
+/** In the sidebar page: clicks the first button (any shadow root) whose label or text is `name`. @param {string} name */
+const clickExpression = (name) => `(() => {
+	const find = (root) => {
+		for (const el of root.querySelectorAll("button, [role=button], [role=menuitem]")) {
+			const label = el.getAttribute("aria-label") ?? (el.textContent ?? "").trim();
+			if (label === ${JSON.stringify(name)}) return el;
+		}
+		for (const el of root.querySelectorAll("*")) {
+			const inner = el.shadowRoot && find(el.shadowRoot);
+			if (inner) return inner;
+		}
+		return null;
+	};
+	const button = find(document);
+	if (!button) return false;
+	button.click();
+	return true;
+})()`;
+
+// In the sidebar page: the extension names its Extensions panel shows, read from their Pin/Unpin buttons.
+const EXTENSION_ROWS = `(() => {
+	const names = [];
+	const walk = (root) => {
+		for (const el of root.querySelectorAll("button")) {
+			const m = /^(Pin|Unpin) (.+)$/.exec(el.getAttribute("aria-label") ?? "");
+			if (m) names.push(m[2]);
+		}
+		for (const el of root.querySelectorAll("*")) if (el.shadowRoot) walk(el.shadowRoot);
+	};
+	walk(document);
+	return [...new Set(names)];
+})()`;
 
 // In any page: its text, including what's inside shadow roots.
 const ALL_TEXT = `(() => {
@@ -312,6 +385,8 @@ async function main() {
 			`--user-data-dir=${profile}`,
 			`--remote-debugging-port=${port}`,
 			"--disable-features=CalculateNativeWinOcclusion",
+			// The audio page starts itself, so the media checks don't depend on a gesture.
+			"--autoplay-policy=no-user-gesture-required",
 			...(noFirstRun ? ["--no-first-run"] : []),
 		],
 		{ stdio: ["ignore", "pipe", "pipe"] },
@@ -324,6 +399,14 @@ async function main() {
 	let tree = [pid];
 	/** @type {Awaited<ReturnType<typeof connect>>[]} */
 	const sessions = [];
+	/** The browser's visible window titles, and with `shot` a PNG of the first one titled like `match`. */
+	const windows = (/** @type {string} */ shot = "", match = "") => {
+		const args = ["-NoProfile", "-File", join(repo, "scripts", "window.ps1"), "-ProcId", String(pid)];
+		if (shot) args.push("-Out", join(evidence, shot), ...(match ? ["-Match", match] : []));
+		const run = spawnSync("powershell", args, { encoding: "utf8" });
+		const titles = [...run.stdout.matchAll(/WINDOW:(.*)/g)].map((m) => (m[1] ?? "").trim());
+		return { titles, shot: /SHOT:(.*)/.exec(run.stdout)?.[1] ?? "", error: run.stderr.trim() };
+	};
 
 	try {
 		const version = await until(
@@ -352,11 +435,14 @@ async function main() {
 			check("no setup page with --no-first-run", setupPages.length === 0, described || "none");
 		} else {
 			const setup = setupPages.length === 1 ? setupPages[0] : undefined;
-			check("first run opens Loka's setup", setup?.url.startsWith("chrome://setup"), described || "no setup page");
+			// Extension background pages aside, setup is the only page and its window the only window.
+			const pages = startup.filter((t) => t.type === "page").map((t) => t.url);
+			check("first run opens only Loka's setup", pages.join() === "chrome://setup/", pages.join(", ") || "no page");
+			const setupWindows = windows().titles;
 			check(
-				"no browser window until setup is done",
-				!startup.some((t) => t.url.startsWith(SIDEBAR_URL)),
-				startup.map((t) => t.url).join(", "),
+				'the only window is "Welcome to Loka"',
+				setupWindows.join() === "Welcome to Loka",
+				setupWindows.map((t) => `"${t}"`).join(", ") || "no window",
 			);
 			if (setup) {
 				const page = await connect(setup.webSocketDebuggerUrl);
@@ -394,6 +480,15 @@ async function main() {
 		sessions.push(sidebar);
 		await sidebar.call("Runtime.enable");
 		await until(() => evaluate(sidebar, "Boolean(window.cr && document.querySelector('loka-panel'))"), 10000);
+		await evaluate(sidebar, RECORD_EVENTS);
+		/** A request to the handler and its answer. @param {string} message @param {unknown[]} args */
+		const ask = (message, ...args) => evaluate(sidebar, askExpression(message, args));
+		/** A message with no answer. @param {string} message @param {unknown[]} args */
+		const tell = (message, ...args) =>
+			evaluate(sidebar, `(chrome.send(${JSON.stringify(message)}, ${JSON.stringify(args)}), true)`);
+		/** @param {string} name @returns {Promise<{ event: string, args: any[] }[]>} */
+		const events = (name) =>
+			evaluate(sidebar, `window.__verifyEvents.filter((e) => e.event === ${JSON.stringify(name)})`);
 		const leftover = (await targets()).filter(isSetup);
 		check("no setup or helium:// page left", leftover.length === 0, leftover.map((t) => t.url).join(", ") || "none");
 
@@ -491,7 +586,105 @@ async function main() {
 			stopped ? "getTabs audible=false" : "still audible after 10 s",
 		);
 
-		// 6. Evidence: the sidebar page and the whole window.
+		// 6. Media session: the playing tab is in getMedia, and mediaAction pauses and plays it like its own controls.
+		const audioTabId = audioTab(await evaluate(sidebar, GET_TABS))?.id;
+		await evaluate(page, "document.getElementById('a').play().then(() => true)");
+		/** @param {boolean} want @param {number} ms */
+		const mediaPlaying = (want, ms) =>
+			until(async () => {
+				/** @type {{ tabId: number, playing: boolean }[] | string} */
+				const media = await ask("getMedia");
+				return Array.isArray(media) && media.some((m) => m.tabId === audioTabId && m.playing === want);
+			}, ms);
+		check("getMedia lists the playing tab", await mediaPlaying(true, 10000), `tab ${audioTabId}`);
+		await tell("mediaAction", audioTabId, "pause");
+		check("mediaAction pause stops it within 3 s", await mediaPlaying(false, 3000), "getMedia playing=false");
+		await tell("mediaAction", audioTabId, "play");
+		check("mediaAction play starts it again", await mediaPlaying(true, 3000), "getMedia playing=true");
+		await evaluate(page, "(document.getElementById('a').pause(), true)");
+
+		// 7. Extensions: the installed ones, as their toolbar buttons would show, and the same list in the sidebar.
+		/** @type {{ id: string, name: string, icon: string, pinned: boolean }[] | string} */
+		const extensions = await ask("getExtensions");
+		writeFileSync(join(evidence, "extensions.json"), JSON.stringify(extensions, null, 2));
+		const ublock = Array.isArray(extensions) ? extensions.find((x) => x.id === UBLOCK) : undefined;
+		check(
+			"getExtensions has uBlock Origin, pinned, with its icon",
+			ublock?.icon === `chrome://extension-icon/${UBLOCK}/32/1` && ublock.pinned === true,
+			ublock ? JSON.stringify(ublock) : JSON.stringify(extensions).slice(0, 200),
+		);
+		await evaluate(sidebar, clickExpression("Extensions"));
+		await sleep(800);
+		/** @type {string[]} */
+		const listed = await evaluate(sidebar, EXTENSION_ROWS);
+		writeFileSync(join(evidence, "extensions-panel.txt"), await evaluate(sidebar, ALL_TEXT));
+		const installed = Array.isArray(extensions) ? extensions.map((x) => x.name).sort() : [];
+		check(
+			"the sidebar's Extensions panel lists exactly those",
+			listed.length > 0 && JSON.stringify([...listed].sort()) === JSON.stringify(installed),
+			`panel: ${listed.join(", ") || "nothing"}; installed: ${installed.join(", ")}`,
+		);
+		await sidebar.call("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
+
+		// 8. Downloads: none on a fresh profile; a small local file arrives complete, and the handler says so.
+		/** @type {{ name: string, state: string }[] | string} */
+		const before = await ask("getDownloads");
+		check("getDownloads is empty on a fresh profile", JSON.stringify(before) === "[]", JSON.stringify(before));
+		// Into the throwaway profile, never the user's Downloads folder.
+		await browserSession.call("Browser.setDownloadBehavior", {
+			behavior: "allow",
+			downloadPath: join(profile, "downloads"),
+		});
+		await browserSession.call("Target.createTarget", { url: `${origin}/loka-verify.txt` });
+		const downloaded = await until(async () => {
+			/** @type {{ name: string, state: string }[] | string} */
+			const list = await ask("getDownloads");
+			return Array.isArray(list) && list.find((d) => d.name === "loka-verify.txt" && d.state === "complete");
+		}, 15000);
+		check("a download arrives complete", Boolean(downloaded), downloaded ? JSON.stringify(downloaded) : "not listed");
+		const downloadEvents = (await events("downloads-changed")).length;
+		check('"downloads-changed" fired', downloadEvents > 0, `${downloadEvents} events`);
+
+		// 9. Color scheme: light and dark reach the pages that follow the browser.
+		const iconTarget = (await targets()).find((t) => t.url === `${origin}/icon`);
+		if (!iconTarget) throw new Error("the icon tab has no target");
+		const iconPage = await connect(iconTarget.webSocketDebuggerUrl);
+		sessions.push(iconPage);
+		for (const scheme of ["light", "dark"]) {
+			await tell("setColorScheme", scheme);
+			const follows = await until(
+				() => evaluate(iconPage, `matchMedia("(prefers-color-scheme: ${scheme})").matches`),
+				5000,
+			);
+			check(`setColorScheme("${scheme}") reaches pages`, follows, `prefers-color-scheme: ${scheme} is ${follows}`);
+		}
+		await tell("setColorScheme", "system");
+
+		// 10. Pinned sidebar: off and on, read back, with a picture of each.
+		for (const pinned of [false, true]) {
+			await tell("setSidebarPinned", pinned);
+			await sleep(800);
+			const now = await ask("getSidebarPinned");
+			const picture = windows(`sidebar-pinned-${pinned}.png`, " - Loka");
+			check(`setSidebarPinned(${pinned}) reads back`, now === pinned, `getSidebarPinned=${now}; ${picture.shot}`);
+		}
+
+		// 11. Suggestions: the browser's own autocomplete answers, searching first for plain words.
+		await tell("suggest", "example");
+		/** @type {{ event: string, args: any[] }[]} */
+		const answered = await until(async () => {
+			const got = await events("suggestions");
+			const full = got.filter((e) => e.args[0] === "example" && Array.isArray(e.args[1]) && e.args[1].length > 0);
+			return full.length ? full : null;
+		}, 10000).then((got) => got ?? []);
+		const first = answered.at(-1)?.args[1]?.[0];
+		check(
+			'suggest("example") answers, a search first',
+			first?.kind === "search",
+			first ? `${answered.at(-1)?.args[1].length} suggestions, first ${JSON.stringify(first)}` : "no suggestions event",
+		);
+
+		// 12. Evidence: the sidebar page and the whole window, whose titles are Loka's, as is chrome.exe itself.
 		try {
 			const shot = await sidebar.call("Page.captureScreenshot", { format: "png" }, 20000);
 			writeFileSync(join(evidence, "sidebar.png"), Buffer.from(shot.data, "base64"));
@@ -499,34 +692,75 @@ async function main() {
 		} catch (e) {
 			check("sidebar screenshot", false, String(e));
 		}
-		const win = spawnSync(
+		const win = windows("window.png", "Loka verify");
+		const shown = `${(await evaluate(sidebar, GET_TABS)).find((/** @type {Tab} */ t) => t.active)?.title} - Loka`;
+		check(
+			'the window is titled "<tab> - Loka"',
+			win.titles.includes(shown),
+			win.titles.length ? win.titles.map((t) => `"${t}"`).join(", ") : `no window (${win.error})`,
+		);
+		check(
+			"no window title says Chromium or Helium",
+			!win.titles.some((t) => /chromium|helium/i.test(t)),
+			win.titles.map((t) => `"${t}"`).join(", "),
+		);
+		const others = win.titles.filter((t) => t !== shown);
+		if (others.length) note("other visible windows", others.map((t) => `"${t}"`).join(", "));
+		check("window screenshot", existsSync(join(evidence, "window.png")), win.shot || "not saved");
+		const product = spawnSync(
 			"powershell",
-			[
-				"-NoProfile",
-				"-File",
-				join(repo, "scripts", "window.ps1"),
-				"-ProcId",
-				String(pid),
-				"-Out",
-				join(evidence, "window.png"),
-				"-Match",
-				"Loka verify",
-			],
+			["-NoProfile", "-Command", `(Get-Item -LiteralPath '${chrome}').VersionInfo.ProductName`],
 			{ encoding: "utf8" },
-		);
-		const titles = [...win.stdout.matchAll(/WINDOW:(.*)/g)].map((m) => (m[1] ?? "").trim());
+		).stdout.trim();
+		check('chrome.exe ProductName is "Loka"', product === "Loka", `"${product}"`);
+
+		// 13. The alpha's spaces: the sidebar's own Import takes the file the 0.1.0 alpha exported. Last, since it
+		// replaces this profile's spaces.
+		await sidebar.call("Page.enable");
+		await sidebar.call("Page.setInterceptFileChooserDialog", { enabled: true });
+		// The import reports a bad file with alert(), which would stall the page: record and dismiss it.
+		/** @type {string[]} */
+		const alerts = [];
+		sidebar.on("Page.javascriptDialogOpening", (/** @type {{ message: string }} */ d) => {
+			alerts.push(d.message);
+			void sidebar.call("Page.handleJavaScriptDialog", { accept: true }).catch(() => {});
+		});
+		/** @type {Promise<{ backendNodeId: number } | null>} */
+		const chooser = new Promise((resolve) => sidebar.on("Page.fileChooserOpened", resolve));
+		await evaluate(sidebar, clickExpression("More"));
+		await sleep(400);
+		// A file input opens its picker only from a user gesture. The click's evaluate can wait until the picker is
+		// answered, so it isn't awaited before the chooser event.
+		const picking = evaluate(sidebar, clickExpression("Import spaces (JSON)"), true).catch(() => false);
+		const opened = await Promise.race([chooser, sleep(5000).then(() => null)]);
+		if (opened)
+			await sidebar.call("DOM.setFileInputFiles", { files: [ALPHA_EXPORT], backendNodeId: opened.backendNodeId });
+		const picked = await Promise.race([picking, sleep(5000).then(() => "still waiting")]);
+		/** @type {{ spaces: { name: string }[], tabs: Record<string, { url: string }> } | null} */
+		const imported = await until(async () => {
+			/** @type {Record<string, string> | string} */
+			const store = await ask("getStore");
+			const saved = typeof store === "object" ? store["state.v1"] : undefined;
+			const state = saved ? JSON.parse(saved) : null;
+			const urls = state ? Object.values(state.tabs).map((/** @type {{ url: string }} */ t) => t.url) : [];
+			return urls.includes("https://example.com/") && urls.includes("https://www.wikipedia.org/") ? state : null;
+		}, 10000);
 		check(
-			"window titles are Loka's",
-			titles.length > 0 && !titles.some((t) => /chromium|helium/i.test(t)),
-			titles.length ? titles.map((t) => `"${t}"`).join(", ") : `no window (${win.stdout.trim() || win.stderr.trim()})`,
+			"Import spaces (JSON) takes the alpha's export",
+			Boolean(imported),
+			imported
+				? `state.v1 now has ${imported.spaces.map((x) => x.name).join(", ")} with the alpha's sites`
+				: `menu item ${picked}, file chooser ${opened ? "answered" : "never opened"}, alerts: ${alerts.join(" | ") || "none"}`,
 		);
+		const deadPages = imported ? Object.values(imported.tabs).filter((t) => t.url.includes(ALPHA_EXTENSION_ID)) : [];
 		check(
-			"window screenshot",
-			existsSync(join(evidence, "window.png")),
-			/SHOT:(.*)/.exec(win.stdout)?.[1] ?? "not saved",
+			"the alpha's own extension pages are left out",
+			imported !== null && deadPages.length === 0,
+			deadPages.length ? deadPages.map((t) => t.url).join(", ") : imported ? "none" : "nothing imported",
 		);
 	} catch (e) {
-		check("run finished", false, String(e instanceof Error ? e.message : e));
+		const after = checks.at(-1)?.name ?? "the start";
+		check("run finished", false, `${e instanceof Error ? e.message : e} (after "${after}")`);
 	} finally {
 		tree = [...new Set([...tree, ...processTree(pid)])];
 		for (const s of sessions) s.close();

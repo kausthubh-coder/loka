@@ -448,10 +448,76 @@ export class LokaSidebar extends LitElement {
 	/** Which way the list slides in after a switch: from the right when moving forward, as if turning a page. */
 	private slideFrom: "left" | "right" | null = null;
 
+	/** Where each row of the space's list was before this update, to animate from. Null when nothing should move. */
+	private rowsBefore: Map<string, { el: HTMLElement; rect: DOMRect }> | null = null;
+
 	protected override willUpdate(changed: Map<string, unknown>) {
 		const before = changed.get("state") as BrowserState | undefined;
-		if (!before || before.activeSpaceId === this.state.activeSpaceId) return;
-		this.slideFrom = switchesForward(this.state, before.activeSpaceId, this.state.activeSpaceId) ? "right" : "left";
+		if (!before) return;
+		if (before.activeSpaceId !== this.state.activeSpaceId) {
+			this.slideFrom = switchesForward(this.state, before.activeSpaceId, this.state.activeSpaceId) ? "right" : "left";
+			return;
+		}
+		// Same space, new state: the DOM still shows the old rows, so this is where they are now.
+		this.rowsBefore = new Map(
+			[...this.renderRoot.querySelectorAll<HTMLElement>(".scroll [data-key]")].map((el) => [
+				el.dataset.key ?? "",
+				{ el, rect: el.getBoundingClientRect() },
+			]),
+		);
+	}
+
+	/**
+	 * Rows move instead of jumping (FLIP): a row that changed place slides from where it was, a new row (an opened
+	 * tab, a folder's contents) fades in from just above, and a row that left (a closed tab, a folder closing) fades
+	 * out where it was while the rows below close the gap. Transforms and opacity only; with reduced motion, only the
+	 * fades.
+	 */
+	private animateRows() {
+		const before = this.rowsBefore;
+		this.rowsBefore = null;
+		const scroll = this.renderRoot.querySelector<HTMLElement>(".scroll");
+		if (!before || !scroll) return;
+		const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+		const ease = "cubic-bezier(0.2, 0, 0, 1)";
+		const now = new Map(
+			[...scroll.querySelectorAll<HTMLElement>("[data-key]")].map((el) => [el.dataset.key ?? "", el]),
+		);
+		for (const [key, el] of now) {
+			for (const a of el.getAnimations()) if (a.id === "row") a.cancel();
+			const was = before.get(key);
+			if (!was) {
+				const from = still ? { opacity: 0 } : { opacity: 0, transform: "translateY(-6px)" };
+				el.animate([from, { opacity: 1, transform: "none" }], { duration: 200, easing: ease, id: "row" });
+				continue;
+			}
+			const dy = was.rect.top - el.getBoundingClientRect().top;
+			if (!still && Math.abs(dy) > 0.5) {
+				el.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], {
+					duration: 240,
+					easing: ease,
+					id: "row",
+				});
+			}
+		}
+		const box = scroll.getBoundingClientRect();
+		for (const [key, { el, rect }] of before) {
+			if (now.has(key) || el.isConnected) continue;
+			// Lit has let go of the old row; put it back where it was, on top, just long enough to fade.
+			el.classList.add("leaving");
+			el.removeAttribute("data-key");
+			el.removeAttribute("role");
+			Object.assign(el.style, {
+				top: `${rect.top - box.top + scroll.scrollTop}px`,
+				left: `${rect.left - box.left}px`,
+				width: `${rect.width}px`,
+			});
+			scroll.append(el);
+			const to = still ? { opacity: 0 } : { opacity: 0, transform: "scale(0.97)" };
+			void el
+				.animate([{ opacity: 1 }, to], { duration: 140, easing: "cubic-bezier(0.4, 0, 1, 1)", fill: "forwards" })
+				.finished.then(() => el.remove());
+		}
 	}
 
 	private moreMenu(e: MouseEvent) {
@@ -539,6 +605,7 @@ export class LokaSidebar extends LitElement {
 		return html`
 			<div
 				class="row ${active ? "active" : ""} ${this.dragId === tabId ? "dragging" : ""} ${this.dropClass(tabId)}"
+				data-key=${tabId}
 				style="--depth: ${depth}"
 				role="treeitem"
 				aria-level=${depth + 1}
@@ -596,6 +663,7 @@ export class LokaSidebar extends LitElement {
 		return html`
 			<div
 				class="row folder ${this.dragId === node.id ? "dragging" : ""} ${this.dropClass(node.id)}"
+				data-key=${node.id}
 				style="--depth: ${depth}"
 				role="treeitem"
 				aria-level=${depth + 1}
@@ -649,6 +717,7 @@ export class LokaSidebar extends LitElement {
 	}
 
 	protected override updated() {
+		this.animateRows();
 		const input = this.renderRoot.querySelector<HTMLInputElement>("input.rename");
 		if (input && document.activeElement !== this && this.shadowRoot?.activeElement !== input) {
 			input.focus();
@@ -783,6 +852,7 @@ export class LokaSidebar extends LitElement {
 						)}
 						<div
 							class="end-zone ${rows.length === 0 ? "empty" : ""} ${this.dropClass("pinned-end")}"
+							data-key="pinned-end"
 							@dragover=${(e: DragEvent) =>
 								this.over(e, "pinned-end", () => ({
 									area: "pinned",
@@ -796,7 +866,7 @@ export class LokaSidebar extends LitElement {
 						</div>
 					</div>
 
-					<div class="divider">
+					<div class="divider" data-key="divider">
 						<span></span>
 						${
 							space.open.length > 0
@@ -816,6 +886,7 @@ export class LokaSidebar extends LitElement {
 					<div class="open" role="tree" aria-label="Open tabs in ${space.name}">
 						<button
 							class="row new-tab ${this.dropClass("open-start")}"
+							data-key="new-tab"
 							@click=${() => this.dispatchEvent(new CustomEvent("loka-command", { bubbles: true, composed: true }))}
 							@dragover=${(e: DragEvent) => this.over(e, "open-start", () => ({ area: "open", spaceId: space.id, index: 0 }))}
 							@drop=${(e: DragEvent) => this.dropHere(e)}
@@ -1168,6 +1239,7 @@ export class LokaSidebar extends LitElement {
 			box-shadow: inset 0 0 0 1.5px var(--accent);
 		}
 		.scroll {
+			position: relative;
 			flex: 1;
 			min-height: 0;
 			overflow-y: auto;
@@ -1196,6 +1268,12 @@ export class LokaSidebar extends LitElement {
 		.row.dragging,
 		.essential.dragging {
 			opacity: 0.4;
+		}
+		/* A row that just left the list, fading where it was. */
+		.row.leaving {
+			position: absolute;
+			z-index: 1;
+			pointer-events: none;
 		}
 		.row.drop-before::before,
 		.row.drop-after::after {

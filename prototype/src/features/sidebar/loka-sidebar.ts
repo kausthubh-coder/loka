@@ -68,6 +68,8 @@ export interface ExtensionInfo {
 /** Where the Extensions panel's list comes from, and what clicking a pinned icon does. */
 export interface ExtensionSource {
 	list(): Promise<ExtensionInfo[]>;
+	/** Calls `changed` whenever extensions are installed, removed, turned on or off. Returns a stop function. */
+	watch(changed: () => void): () => void;
 	open(id: string): void;
 	manage(): void;
 }
@@ -115,7 +117,9 @@ export class LokaSidebar extends LitElement {
 	/** The popover open under the toolbar, if any. */
 	panel: Panel | null = null;
 	pinnedExtensions = new Set<string>(JSON.parse(localStorage.getItem(PINNED_KEY) ?? '["ublock"]'));
-	extensions: ExtensionInfo[] = EXTENSIONS;
+	/** The prototype's samples; in the browser, the installed extensions once they've loaded. */
+	extensions: ExtensionInfo[] = extensionSource ? [] : EXTENSIONS;
+	private stopWatchingExtensions: (() => void) | null = null;
 	declare media: Media | null;
 	/** The prototype: shows "Reset demo data". The real browser leaves it out. */
 	demo = true;
@@ -128,7 +132,14 @@ export class LokaSidebar extends LitElement {
 	}
 
 	private async loadExtensions() {
-		if (extensionSource) this.extensions = await extensionSource.list();
+		if (!extensionSource) return;
+		this.extensions = await extensionSource.list();
+		// First run in the browser: pin uBlock Origin, which Helium ships, by its real ID.
+		if (localStorage.getItem(PINNED_KEY) === null) {
+			const ublock = this.extensions.find((x) => x.name.startsWith("uBlock Origin"));
+			this.pinnedExtensions = new Set(ublock ? [ublock.id] : []);
+			localStorage.setItem(PINNED_KEY, JSON.stringify([...this.pinnedExtensions]));
+		}
 	}
 
 	/** Closes a tab, telling the browser too: unloading a pinned tab changes nothing in the spaces, only the browser. */
@@ -147,10 +158,15 @@ export class LokaSidebar extends LitElement {
 	override connectedCallback() {
 		super.connectedCallback();
 		window.addEventListener("keydown", this.onEscape);
+		if (extensionSource) {
+			void this.loadExtensions();
+			this.stopWatchingExtensions = extensionSource.watch(() => void this.loadExtensions());
+		}
 	}
 
 	override disconnectedCallback() {
 		window.removeEventListener("keydown", this.onEscape);
+		this.stopWatchingExtensions?.();
 		super.disconnectedCallback();
 	}
 

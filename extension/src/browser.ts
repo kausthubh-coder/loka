@@ -60,6 +60,18 @@ export const browserExtensions: ExtensionSource = {
 				icon: x.icons?.at(-1)?.url,
 			}));
 	},
+	watch(changed) {
+		const events = [
+			chrome.management.onInstalled,
+			chrome.management.onUninstalled,
+			chrome.management.onEnabled,
+			chrome.management.onDisabled,
+		] as chrome.events.Event<() => void>[];
+		for (const e of events) e.addListener(changed);
+		return () => {
+			for (const e of events) e.removeListener(changed);
+		};
+	},
 	open: (id) => void chrome.tabs.create({ url: `chrome://extensions/?id=${id}` }),
 	manage: () => void chrome.tabs.create({ url: "chrome://extensions" }),
 };

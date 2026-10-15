@@ -1,0 +1,78 @@
+--- a/chrome/browser/ui/startup/startup_browser_creator_impl.cc
++++ b/chrome/browser/ui/startup/startup_browser_creator_impl.cc
+@@ -67,6 +67,9 @@
+ #include "chrome/common/webui_url_constants.h"
+ #include "components/custom_handlers/protocol_handler_registry.h"
+ #include "components/helium_services/pref_names.h"
++#include "base/task/sequenced_task_runner.h"
++#include "components/prefs/pref_change_registrar.h"
++#include "ui/display/screen.h"
+ #include "components/prefs/pref_service.h"
+ #include "components/sessions/core/serialized_navigation_entry.h"
+ #include "components/sessions/core/serialized_user_agent_override.h"
+@@ -111,6 +114,50 @@
+ #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+ 
+ namespace {
++
++// Loka: first run opens Loka's setup page in a window of its own, before any
++// browser window. When setup finishes, the browser window opens and the setup
++// window closes.
++void ShowLokaSetupWindow(Profile* profile) {
++  gfx::Rect bounds(0, 0, 1180, 780);
++  if (display::Screen* screen = display::Screen::Get()) {
++    const gfx::Rect area = screen->GetPrimaryDisplay().work_area();
++    bounds.set_size(gfx::Size(std::min(bounds.width(), area.width()),
++                              std::min(bounds.height(), area.height())));
++    bounds.set_origin(area.CenterPoint() -
++                      gfx::Vector2d(bounds.width() / 2, bounds.height() / 2));
++  }
++  BrowserWindowInterface* setup =
++      CreateBrowserWindow(BrowserWindowCreateParams::CreateForAppPopup(
++          "loka_setup", /*trusted_source=*/true, bounds, profile,
++          /*user_gesture=*/true));
++  if (!setup) {
++    return;
++  }
++  chrome::AddTabAt(setup, GURL(chrome::kHeliumSetupURL), -1,
++                   /*foreground=*/true);
++  setup->GetWindow()->Show();
++
++  auto* registrar = new PrefChangeRegistrar();
++  registrar->Init(profile->GetPrefs());
++  registrar->Add(
++      prefs::kHeliumDidOnboarding,
++      base::BindRepeating(
++          [](PrefChangeRegistrar* registrar, Profile* profile,
++             base::WeakPtr<BrowserWindowInterface> setup) {
++            if (!profile->GetPrefs()->GetBoolean(prefs::kHeliumDidOnboarding)) {
++              return;
++            }
++            chrome::NewEmptyWindow(profile,
++                                   /*should_trigger_session_restore=*/false);
++            if (setup) {
++              setup->GetWindow()->Close();
++            }
++            base::SequencedTaskRunner::GetCurrentDefault()->DeleteSoon(
++                FROM_HERE, registrar);
++          },
++          registrar, profile, setup->GetWeakPtr()));
++}
+ 
+ // Utility functions ----------------------------------------------------------
+ 
+@@ -569,6 +616,14 @@
+       is_post_crash_launch, promotions_enabled, whats_new_enabled);
+   StartupTabs tabs = std::move(result.tabs);
+ 
++  // Loka: setup comes first, in its own window; the browser waits for it.
++  if (std::ranges::any_of(tabs, [](const StartupTab& tab) {
++        return tab.url == GURL(chrome::kHeliumSetupURL);
++      })) {
++    ShowLokaSetupWindow(profile_);
++    return;
++  }
++
+   // Return immediately if we start an async restore, since the remainder of
+   // that process is self-contained.
+   if (MaybeAsyncRestore(tabs, process_startup, is_post_crash_launch)) {

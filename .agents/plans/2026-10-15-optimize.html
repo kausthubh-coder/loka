@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Make "native only" impossible to break</title>
+<style>
+:root {
+	color-scheme: light dark;
+	--bg: #f7f8f9;
+	--text: #17191c;
+	--muted: #4d535b;
+	--line: #d9dde2;
+	--accent: #0b5f8a;
+	--good: #1d6b3a;
+}
+@media (prefers-color-scheme: dark) {
+	:root { --bg: #0f1418; --text: #e6e9ec; --muted: #a9b1ba; --line: #2a333b; --accent: #7dc8f5; --good: #7fd19b; }
+}
+html { background: var(--bg); color: var(--text); }
+body { margin: 0; font: 1.0625rem/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 50rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+h1 { font-size: 2rem; line-height: 1.15; margin: 0 0 0.5rem; text-wrap: balance; }
+h2 { font-size: 1.3rem; margin: 2.75rem 0 0.75rem; text-wrap: balance; }
+p, li { max-width: 64ch; text-wrap: pretty; }
+p { margin: 0 0 0.75rem; }
+.lead { color: var(--muted); font-size: 1.125rem; margin-bottom: 1.5rem; }
+code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.86em; overflow-wrap: anywhere; }
+ol.ask { padding-left: 1.4rem; margin: 0 0 0.5rem; }
+ol.ask li { margin-bottom: 0.5rem; }
+ol.ask b { color: var(--accent); }
+.wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+th, td { text-align: left; padding: 0.5rem 0.8rem 0.5rem 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 600; }
+td.n, th.r { text-align: right; } td.n { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+td.size, th.rs { text-align: right; } td.size { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+body { font-variant-numeric: tabular-nums; }
+.status { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 0.6rem 0; margin: 1.25rem 0 0; color: var(--muted); }
+.status b { color: var(--good); font-weight: 600; }
+details { border-top: 1px solid var(--line); margin-top: 1.5rem; }
+details:last-of-type { border-bottom: 1px solid var(--line); }
+summary { padding-block: 0.7rem; cursor: pointer; font-weight: 600; }
+details > *:not(summary) { margin-bottom: 1rem; }
+@media print {
+	:root { color-scheme: light; --bg: #fff; --text: #000; --muted: #333; --line: #ccc; --accent: #0b5f8a; --good: #1d6b3a; }
+	table { break-inside: avoid; }
+	h2 { break-after: avoid; }
+}
+</style>
+</head>
+<body>
+<main>
+<h1>Make "native only" impossible to break</h1>
+<p class="lead">Every complaint today had one cause: the agent tested its prototype or extension and called it the browser. These items make that fail first.</p>
+
+<ol class="ask">
+	<li><b>Pick items</b> by number below (or "all quick wins"). I'll do them one at a time, each checked.</li>
+	<li><b>Say so</b> if any should wait. The native features (extensions, address bar, audio, settings, setup) continue either way.</li>
+</ol>
+
+<p class="status">Status (15 Oct, 17:10): items 1 and 3 to 9 <b>done</b> on <code>feat/guardrails</code>, <a href="https://github.com/kausthubh-coder/loka/pull/9">PR 9</a> against <code>feat/native-sidebar</code>. Item 2 and 10 to 13 belong to the UI branch. <code>bun run verify:browser</code> on today's snapshot passes 29 of 32 checks; the 3 failures are in the build: the Extensions panel lists nothing, chrome.exe's ProductName is still "Helium", and the snapshot's sidebar predates the alpha-page cleanup. <code>bun run patches:check</code> lists 19 files in <code>build\src</code> that no patch has yet.</p>
+
+<h2>Quick wins</h2>
+<div class="wrap">
+<table>
+	<thead><tr><th scope="col" class="r">#</th><th scope="col">Change</th><th scope="col">Fixes</th><th scope="col">Proof</th><th scope="col" class="rs">Size</th></tr></thead>
+	<tbody>
+		<tr><td class="n">1</td><td>Lint bans <code>chrome.*</code> extension APIs and imports of <code>extension/</code> in sidebar code; AGENTS.md records "UI is native WebUI + C++ patches"</td><td>Extension shortcut (5 pushbacks)</td><td>Lint fails on a planted <code>chrome.tabs</code> call</td><td class="size">1 h</td></tr>
+		<tr><td class="n">2</td><td>Sample data moves to <code>prototype/src/demo/</code>; data sources have no sample default, so a host must pass a real one</td><td>Fake Extensions menu, fake downloads</td><td>Type error if the browser page omits a source</td><td class="size">2 h</td></tr>
+		<tr><td class="n">3</td><td>One command, <code>bun run verify:browser</code>: fresh profile, drives <code>chrome://loka-sidebar</code>, asserts the first-run gate</td><td>Globe icons, Helium setup, unverified "done"</td><td>Fails on today's bugs</td><td class="size">3 h</td></tr>
+		<tr><td class="n">4</td><td>Guard: <code>browser:setup</code> refuses when <code>build/src</code> has edits missing from <code>patches/loka/</code>; fix <code>docs/upstream.md:22</code>; move <code>keys/</code> out of the build checkout</td><td>C++ lived only in the build folder</td><td>Guard trips on an unexported edit</td><td class="size">1 h</td></tr>
+		<tr><td class="n">5</td><td>Deny rules for <code>gh release</code>, <code>gh workflow run</code>, push to <code>main</code>, real profile paths and <code>*.pem</code></td><td>Safety rests on prose</td><td>A denied command is blocked</td><td class="size">30 min</td></tr>
+	</tbody>
+</table>
+</div>
+
+<h2>Medium</h2>
+<div class="wrap">
+<table>
+	<thead><tr><th scope="col" class="r">#</th><th scope="col">Change</th><th scope="col">Fixes</th><th scope="col" class="rs">Size</th></tr></thead>
+	<tbody>
+		<tr><td class="n">6</td><td>Message names in one table, with a test that each exists in the C++ handler</td><td>Page and handler matched only by string</td><td class="size">1 h</td></tr>
+		<tr><td class="n">7</td><td>Migrate the alpha's spaces (<code>loka.state.v1</code>) into the new store</td><td>Alpha users would lose spaces</td><td class="size">1 h</td></tr>
+		<tr><td class="n">8</td><td>Build log with timings and a status file</td><td>"8 hours" claim; you asking for build status 6 times</td><td class="size">1 h</td></tr>
+		<tr><td class="n">9</td><td>Rewrite 7 weak tests; refresh AGENTS.md's map, commands and stale docs</td><td>Tests that pass on <code>undefined</code>; stale claims</td><td class="size">2 h</td></tr>
+	</tbody>
+</table>
+</div>
+
+<h2>Deep: feature folders, one by one</h2>
+<p>Each step keeps the tests and <code>verify:browser</code> passing.</p>
+<div class="wrap">
+<table>
+	<thead><tr><th scope="col" class="r">#</th><th scope="col">Step</th></tr></thead>
+	<tbody>
+		<tr><td class="n">10</td><td>Pass bridges into <code>&lt;loka-sidebar&gt;</code> instead of module-level <code>set*Source</code> globals</td></tr>
+		<tr><td class="n">11</td><td>Move <code>live.logic.ts</code> and the sync into <code>features/tabs/</code>; the native page stops importing <code>extension/</code></td></tr>
+		<tr><td class="n">12</td><td>Feature folders hold UI, logic, test and bridge slice; split <code>loka-sidebar.ts</code> (1450 lines)</td></tr>
+		<tr><td class="n">13</td><td>Delete <code>extension/</code> and its manifest key; turn the prototype into <code>demo/</code> with fake bridges</td></tr>
+	</tbody>
+</table>
+</div>
+
+<details>
+	<summary>Item 3's first-run gate: 6 checks</summary>
+	<p>No <code>chrome://setup</code> tab; no "Helium" or "Chromium" in the title; no horizontal tab strip or toolbar; tab icons that aren't the default globe; audio state that follows a playing tab; an Extensions menu that matches what's installed.</p>
+</details>
+
+<details>
+	<summary>Evidence: 9 mistake classes from your messages</summary>
+	<ul>
+		<li>Extension instead of browser: "I asked for a browser… You keep trying to just put extensions on top of it" (19:20 UTC), plus 4 more.</li>
+		<li>Sample data in the build: "the extensions thing isn't even dynamic" (19:06); Bitwarden and Dark Reader came from <code>loka-sidebar.ts:86-90</code>.</li>
+		<li>Placeholder tab data: "the tabs don't even get actual data" (19:10); it came back in the native build and is fixed in efff367.</li>
+		<li>Helium leftovers: setup page, top bar, horizontal tabs (18:55, 19:45).</li>
+		<li>Overstated rebuild time: 8 hours claimed; the measured incremental rebuild was 81 s.</li>
+		<li>"Done" without the real build: f9d5ffc claimed real favicons and extensions.</li>
+		<li>Half-steps after "completely redo this": the organizer-panel attempt.</li>
+		<li>Status asked for 6 times overnight; Critly and resources asked for twice each.</li>
+	</ul>
+</details>
+
+<details>
+	<summary>Evidence: verification, steering, locality, safety</summary>
+	<ul>
+		<li><code>verify-loka</code> still says "no Loka patches yet" (<code>SKILL.md:12</code>) and opens <code>chrome-extension://…/sidebar.html</code> (<code>browser-build.md:63</code>).</li>
+		<li>Weak tests: <code>sync.test.ts:54</code>, <code>sidebar.test.ts:221</code>, <code>live.test.ts:166</code> and 4 more pass on empty results.</li>
+		<li>Two copies of the panel, store and sync (<code>extension/src</code> vs <code>webui/src</code>), four favicon sources, three onboarding flows.</li>
+		<li>Changing how a favicon shows touches 11 files; switching space, 13.</li>
+		<li>Store keys differ: <code>loka.state.v1</code> (extension) vs <code>state.v1</code> (native).</li>
+		<li>The private key sits untracked and unignored in <code>C:\src\loka\keys\</code>.</li>
+	</ul>
+</details>
+</main>
+</body>
+</html>

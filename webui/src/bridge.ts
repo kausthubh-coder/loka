@@ -2,6 +2,8 @@
 // and LokaSidebarHandler (chrome/browser/ui/webui/loka_sidebar/) answers it: chrome.send carries a request, and the
 // browser answers through cr.webUIResponse or pushes news through cr.webUIListenerCallback.
 
+import type { BrowserEvent, Message } from "./messages";
+
 declare global {
 	interface Window {
 		cr: {
@@ -12,7 +14,7 @@ declare global {
 }
 
 /** WebUI's chrome.send, which the extension typings (also loaded in this repo) don't describe. */
-const send = (message: string, args: unknown[]) =>
+const send = (message: Message, args: unknown[]) =>
 	(globalThis as unknown as { chrome: { send(message: string, args: unknown[]): void } }).chrome.send(message, args);
 
 /** A tab in this window, as the browser reports it. Ids are the browser's tab handles. */
@@ -126,7 +128,7 @@ window.cr = {
 	},
 };
 
-function ask<T>(message: string, ...args: unknown[]): Promise<T> {
+function ask<T>(message: Message, ...args: unknown[]): Promise<T> {
 	const id = `loka-${nextId++}`;
 	return new Promise((resolve) => {
 		pending.set(id, resolve as (value: unknown) => void);
@@ -134,11 +136,11 @@ function ask<T>(message: string, ...args: unknown[]): Promise<T> {
 	});
 }
 
-function tell(message: string, ...args: unknown[]) {
+function tell(message: Message, ...args: unknown[]) {
 	send(message, args);
 }
 
-function on(event: string, listener: (...args: unknown[]) => void): () => void {
+function on(event: BrowserEvent, listener: (...args: unknown[]) => void): () => void {
 	const set = listeners.get(event) ?? new Set();
 	listeners.set(event, set);
 	set.add(listener);
@@ -177,8 +179,8 @@ export const browser = {
 	onStoreChanged: (listener: (store: Record<string, string>) => void) =>
 		on("store-changed", (s) => listener(s as Record<string, string>)),
 
-	// Planned: the C++ handler is being extended to answer these. Until a message exists the browser ignores it and
-	// an ask() never resolves, so callers must treat these as optional while the native side lands.
+	// Planned (PLANNED_MESSAGES in messages.ts): the C++ handler is being extended to answer these. Until a message
+	// exists the browser ignores it and an ask() never resolves, so callers must treat these as optional for now.
 	extensions: () => ask<NativeExtension[]>("getExtensions"),
 	/** Clicks the extension's toolbar button: opens its popup next to `anchor` (sidebar CSS pixels) or runs it. */
 	runExtension: (id: string, anchor: { x: number; y: number; width: number; height: number }) =>

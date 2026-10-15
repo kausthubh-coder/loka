@@ -37,59 +37,66 @@ bun run browser:build   # first time: downloads ~3.7 GB and compiles for hours
 bun run browser:run     # opens the dev build with a throwaway profile
 ```
 
-- `browser:setup` syncs the build checkout to the current **commit**, so commit before syncing.
+- `browser:setup` syncs the build checkout to the current **commit**, so commit before syncing. It refuses while
+  `build\src` has edits `patches/loka` doesn't capture (`bun run patches:check` lists them).
 - The first build is a component build without PGO (`build.py --dev`): fast to rebuild, slower to run than a
   release. `scripts/loka_build.py first` applies Helium's patches, then `patches/series`, which ends with Loka's.
 - After that, `browser:build` runs an incremental `autoninja -C out\Default chrome`, usually minutes.
 - Jobs default to 6 (`LOKA_JOBS` overrides). More runs out of RAM on a 16 GB laptop while linking. On
   15 Oct 2026 the laptop crashed twice with 6 jobs plus a browser test running (free RAM near 0.2 GB); 4 jobs
   and nothing else heavy kept it stable.
+- `bun run build:status` says whether an incremental build is running, its last error line, and the last few build
+  times. The build writes them to `C:\src\loka\build-status.json` and `build-times.log`.
 
 ## 3a. The Loka sidebar and branding
 
-The sidebar is built into the browser: `webui/` is the page `chrome://loka-sidebar.top-chrome` (and the command
-bar overlay, `command.html`), made of the prototype's components and talking to the browser through
-`webui/src/bridge.ts`.
+The sidebar is a built-in browser page, `chrome://loka-sidebar.top-chrome`, in the window's left column. Its front
+end is `webui/` (Lit, sharing the prototype's components); `webui/src/bridge.ts` talks to `LokaSidebarHandler`
+(C++, in `patches/loka/loka-native-sidebar.patch`) with `chrome.send`, and `webui/src/messages.ts` lists every
+message. Extensions are never how Loka's UI ships; the old `extension/` sidebar is legacy.
 
 ```
-bun run webui:build                            # webui/dist, copied into components/loka_sidebar/dist
+bun run webui:build                            # builds webui/dist, copies it to build\src\components\loka_sidebar\dist
 bun run browser:build                          # packs it into the browser
 python scripts/loka_brand.py apply             # in C:\src\loka, once after the first build: Loka name + icons
 python scripts/loka_build.py incremental       # then rebuild to pick the branding up
 ```
 
-- `browser:run` writes `initial_preferences` beside `chrome.exe`, so a new profile starts with the side panel on
-  the left and Helium's vertical tabs collapsed on the right.
+- `browser:run` writes `initial_preferences` beside `chrome.exe`, Loka's first-run defaults for a new profile.
 - `loka_brand.py assets` redraws the brand images in `resources/loka/branding` (committed); `apply` copies them
   wherever Helium's go and renames Chrome/Chromium/Helium to Loka in the UI strings.
-- A new Helium release means a new Chromium version: delete `C:\src\loka\build\src` (keep
-  `build\download_cache`) and run `browser:build` again.
+- `bun run verify:browser` checks the result on a throwaway profile: first run, sidebar, icons, sound, media,
+  extensions, downloads and window titles. Point `LOKA_CHROME` at a copy while a build is running.
+- A new Helium release means a new Chromium version: export every edit first (`bun run patches:check` must pass),
+  then delete `C:\src\loka\build\src` (keep `build\download_cache`) and run `browser:build` again.
 
 ## 4. Writing a Loka patch
 
 Loka's patches live in `patches/loka/` and are listed at the end of `patches/series`, after Helium's.
 
-1. In the build checkout, start a branch: `git -C C:\src\loka switch -c patch/<name>`.
-2. Edit files under `C:\src\loka\build\src`, rebuild with `bun run browser:build`, and check the result in
-   `bun run browser:run`.
-3. Turn the change into a patch file with quilt, as Helium does: see "Updating patches" in
-   `docs/helium-windows-README.md` (MSYS2 + quilt, `devutils/set_quilt_vars.sh`).
-4. Add the file to `patches/series`, commit on the branch, and open a PR. CI runs Helium's patch linter.
+1. Before editing a Chromium file under `C:\src\loka\build\src`, copy it to the same path under
+   `C:\src\loka\patch-orig` (new Loka files need no copy).
+2. Edit, rebuild with `bun run browser:build`, and check the result with `bun run verify:browser`.
+3. Write the patch: `python scripts/export_patch.py <name> <file>...` diffs each file against its copy in
+   `patch-orig` (or against nothing, for a new file), writes `patches/loka/<name>.patch` and adds it to
+   `patches/series`. A patch is rewritten whole, so list every file it covers.
+4. `bun run patches:check` must print `match patches/loka`. It lists any edit no patch captured, with the export
+   command. Commit the patch and open a PR; CI runs Helium's patch linter.
 
 ## 3b. The portable alpha
 
 ```
-bun run webui:build && bun run browser:build
 bun run browser:package    # C:\src\loka\dist\Loka-<version>-windows-x64.zip and .sha256
 ```
 
 - `scripts/alpha/package_alpha.mjs` copies what `gn desc out\Default //chrome:chrome runtime_deps` lists (every
-  DLL, since the dev build is a component build), the sidebar as `app\loka-sidebar`, `initial_preferences` and a
-  README. `LOKA_VERSION` sets the version (default `0.1.0-alpha.1`).
+  DLL, since the dev build is a component build; the sidebar is inside the browser's paks), `initial_preferences`
+  and a README. `LOKA_VERSION` sets the version (default `0.1.0-alpha.1`).
 - `Loka.exe` is `scripts/alpha/Loka.cs`, compiled with the `csc.exe` that ships in Windows. It starts
-  `app\chrome.exe` with the sidebar, the profile `%LOCALAPPDATA%\Loka\User Data`, and
-  `--custom-update-server-url` pointed at Loka's (not yet published) feed, so Helium's updater never offers
-  Helium.
+  `app\chrome.exe` with the profile `%LOCALAPPDATA%\Loka\User Data` and `--custom-update-server-url` pointed at
+  Loka's (not yet published) feed, so Helium's updater never offers Helium.
+- The 0.1.0 alpha's sidebar was an extension. Its users keep their spaces by exporting them there and importing them
+  in the new build (see the README).
 - Don't run `gn desc` while a 6-job build is running on the 16 GB laptop: it needs about 1.5 GB of its own.
 - The alpha is the dev build: component build, unsigned, and without the full Loka name in every string. A
   release build (below) is the efficient one, as a single `chrome.dll`.

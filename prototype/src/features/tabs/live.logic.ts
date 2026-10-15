@@ -14,7 +14,7 @@ import {
 	type Space,
 	switchSpace,
 	type TabId,
-} from "../../prototype/src/features/sidebar/sidebar.logic";
+} from "../sidebar/sidebar.logic";
 
 /** The parts of a browser tab Loka reads. */
 export interface BrowserTab {

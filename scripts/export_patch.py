@@ -5,38 +5,45 @@
 Each file is a path under build/src. Edited files are diffed against their saved original in --orig (default
 C:\\src\\loka\\patch-orig, where a copy is kept before the first edit); files with no original there are new and
 diff against nothing. The patch lands in patches/loka/<name>.patch, in the a/ b/ form quilt applies, and the name is
-added to the end of patches/series once.
+added to the end of patches/series once. `python scripts/patches_check.py` lists edits no patch has captured yet.
 """
 import argparse
 import difflib
+import os
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SOURCE_TREE = Path(r'C:\src\loka\build\src')
+BUILD_DIR = Path(os.environ.get('LOKA_BUILD_DIR', r'C:\src\loka'))
+SOURCE_TREE = BUILD_DIR / 'build' / 'src'
+ORIG_DIR = BUILD_DIR / 'patch-orig'
 
 
 def read(path: Path) -> list[str]:
     return path.read_text(encoding='utf-8').splitlines(keepends=True) if path.exists() else []
 
 
+def file_diff(rel: str, orig: Path) -> list[str]:
+    """The patch section for one file: its saved original (or nothing, for a new file) against the source tree."""
+    before = read(orig / rel)
+    after = read(SOURCE_TREE / rel)
+    diff = difflib.unified_diff(before, after, f'a/{rel}' if before else '/dev/null', f'b/{rel}', n=3)
+    return [line if line.endswith('\n') else line + '\n\\ No newline at end of file\n' for line in diff]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('name')
     parser.add_argument('files', nargs='+')
-    parser.add_argument('--orig', default=r'C:\src\loka\patch-orig')
+    parser.add_argument('--orig', default=str(ORIG_DIR))
     args = parser.parse_args()
 
     out = []
     for file in sorted(set(args.files)):
         rel = file.replace('\\', '/')
-        before = read(Path(args.orig) / rel)
-        after = read(SOURCE_TREE / rel)
-        if not after:
+        if not (SOURCE_TREE / rel).exists():
             sys.exit(f'{rel} is missing from the source tree')
-        diff = list(difflib.unified_diff(before, after, f'a/{rel}' if before else '/dev/null', f'b/{rel}', n=3))
-        for line in diff:
-            out.append(line if line.endswith('\n') else line + '\n\\ No newline at end of file\n')
+        out += file_diff(rel, Path(args.orig))
     patch = ROOT / 'patches' / 'loka' / f'{args.name}.patch'
     patch.parent.mkdir(exist_ok=True)
     patch.write_text(''.join(out), encoding='utf-8', newline='\n')

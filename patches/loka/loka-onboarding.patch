@@ -1,0 +1,4500 @@
+--- a/components/helium_onboarding/helium_onboarding_strings.grdp
++++ b/components/helium_onboarding/helium_onboarding_strings.grdp
+@@ -1,14 +1,14 @@
+ <grit-part>
+ 
+-<message name="IDS_HELIUM_ONBOARDING_PAGE_TITLE" desc="The title of the Helium setup onboarding page.">
+-  Helium Setup
++<message name="IDS_HELIUM_ONBOARDING_PAGE_TITLE" desc="The title of the Loka setup onboarding page.">
++  Welcome to Loka
+ </message>
+ 
+ <message name="IDS_HELIUM_ONBOARDING_BUTTON_USE_DEFAULTS" desc="Button label that skips detailed setup and applies the default onboarding choices.">
+   Use defaults
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_BUTTON_CONFIGURE" desc="Button label that starts the detailed onboarding setup flow.">
+-  Configure
++  Set up Loka
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_BUTTON_NEXT" desc="Button label to continue to the next onboarding step.">
+   Next
+@@ -17,96 +17,206 @@
+   Back
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_BUTTON_LETS_GO" desc="Button label that finishes onboarding and opens the browser.">
+-  Let's go!
++  Open Loka
+ </message>
+ 
+ <message name="IDS_HELIUM_ONBOARDING_PARTNER_TITLE" desc="Badge title shown for partner services in onboarding.">
+-  Helium Partner
+-</message>
+-<message name="IDS_HELIUM_ONBOARDING_PARTNER_TOOLTIP" desc="Tooltip explaining why a listed service is marked as a Helium partner.">
+-  Paying for this service will support the development of Helium.
++  Helium partner
++</message>
++<message name="IDS_HELIUM_ONBOARDING_PARTNER_TOOLTIP" desc="Tooltip explaining why a listed service is marked as a Helium partner. Loka is built on Helium.">
++  Paying for this service supports Helium, the browser Loka is built on.
+ </message>
+ 
+ <message name="IDS_HELIUM_ONBOARDING_WELCOME_GREETING" desc="Main greeting on the first onboarding screen.">
+-  Meet Helium
++  Welcome to Loka
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_WELCOME_BODY" desc="Introductory body text on the first onboarding screen.">
+-  Configure Helium to match your taste and import data from other browsers. Make it feel like home or jump straight to browsing.
+-</message>
+-<message name="IDS_HELIUM_ONBOARDING_WELCOME_TERMS" desc="Legal note shown during onboarding. Keep each BEGIN/END placeholder pair around its corresponding link text, but move the pairs as needed for a natural translation.">
+-  By continuing, you agree to the <ph name="BEGIN_LINK_PRIVACY">$1</ph>privacy policy<ph name="END_LINK_PRIVACY">$2</ph> and <ph name="BEGIN_LINK_TERMS">$3</ph>terms of use<ph name="END_LINK_TERMS">$4</ph>.
+-</message>
+-<message name="IDS_HELIUM_ONBOARDING_WELCOME_FOOTER" desc="Footer text explaining that setup can be skipped but Helium services require consent.">
+-  If you use defaults, Helium services will be automatically enabled.
+-</message>
+-
+-<message name="IDS_HELIUM_ONBOARDING_FINISH_TITLE" desc="Title on the final onboarding screen.">
+-  Ready to browse?
+-</message>
+-<message name="IDS_HELIUM_ONBOARDING_FINISH_BODY" desc="Body text on the final onboarding screen.">
+-  The setup is complete, thank you for choosing Helium. Time to enjoy the internet again.
+-</message>
+-
+-<message name="IDS_HELIUM_ONBOARDING_SERVICES_TITLE" desc="Title of the onboarding screen for Helium services consent.">
++  A calm browser where every space is its own world. Set it up in about a minute, or start browsing now.
++</message>
++<message name="IDS_HELIUM_ONBOARDING_WELCOME_TERMS" desc="Legal note shown during onboarding. Loka is built on Helium and uses Helium's services, so the policies are Helium's. Keep each BEGIN/END placeholder pair around its corresponding link text, but move the pairs as needed for a natural translation.">
++  Loka is built on Helium and uses Helium's services. By continuing, you agree to Helium's <ph name="BEGIN_LINK_PRIVACY">$1</ph>privacy policy<ph name="END_LINK_PRIVACY">$2</ph> and <ph name="BEGIN_LINK_TERMS">$3</ph>terms of use<ph name="END_LINK_TERMS">$4</ph>.
++</message>
++<message name="IDS_HELIUM_ONBOARDING_WELCOME_FOOTER" desc="Footer text explaining that using defaults turns on Helium services without showing the consent page.">
++  Use defaults turns Helium's services on for you.
++</message>
++
++<message name="IDS_HELIUM_ONBOARDING_FINISH_TITLE" desc="Title on the final onboarding screen, shown when the user made at least one space.">
++  Your worlds are ready
++</message>
++<message name="IDS_HELIUM_ONBOARDING_FINISH_BODY" desc="Body text on the final onboarding screen, shown when the user made at least one space.">
++  Setup is done. Your spaces are waiting in the sidebar, each with its own color and sky.
++</message>
++<message name="IDS_HELIUM_ONBOARDING_FINISH_TITLE_NO_SPACES" desc="Title on the final onboarding screen, shown when the user made no spaces.">
++  You're all set
++</message>
++<message name="IDS_HELIUM_ONBOARDING_FINISH_BODY_NO_SPACES" desc="Body text on the final onboarding screen, shown when the user made no spaces.">
++  Setup is done. Make your first space from the sidebar whenever you like.
++</message>
++
++<message name="IDS_HELIUM_ONBOARDING_SPACES_TITLE" desc="Title of the onboarding screen where the user makes their first spaces. A space is a named set of tabs with its own color, drawn as a planet.">
++  Make your first spaces
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_SUBTITLE" desc="Subtitle explaining what a space is.">
++  Every space is its own world, with its own pinned tabs, folders and color. Start with two or three.
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_NAME_LABEL" desc="Label of the text field for a space's name.">
++  Name
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_KIND_LABEL" desc="Label of the group of buttons that pick the kind of planet drawn for a space.">
++  Planet
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_HUE_LABEL" desc="Label of the group of buttons that pick a space's color.">
++  Color
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_SUGGESTIONS_LABEL" desc="Accessible label of a group of buttons with suggested space names.">
++  Suggested names
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_CREATE" desc="Button label that creates the space the user is making.">
++  Create space
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_SAVE" desc="Button label that saves changes to a space the user made earlier.">
++  Save
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_REMOVE" desc="Button label that removes a space the user made earlier.">
++  Remove
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_NAME_MISSING" desc="Hint shown when the user tries to create a space without a name.">
++  Give this space a name first.
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_FULL" desc="Shown after the user has made the most starter spaces onboarding allows (three).">
++  Three is a good start. You can add more from the sidebar any time.
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_EMPTY" desc="Hint inside the empty orbit diagram, before the user has made a space.">
++  Your spaces will orbit here
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_CREATED" desc="Screen reader announcement after a space is created.">
++  <ph name="NAME">$1<ex>Work</ex></ph> created
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_EDIT" desc="Accessible label of a button that opens a space the user made, to change it.">
++  Edit <ph name="NAME">$1<ex>Work</ex></ph>
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_SUGGEST_WORK" desc="Suggested name for a space.">
++  Work
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_SUGGEST_SCHOOL" desc="Suggested name for a space.">
++  School
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_SUGGEST_HOME" desc="Suggested name for a space.">
++  Home
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_SUGGEST_PERSONAL" desc="Suggested name for a space.">
++  Personal
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_SUGGEST_PROJECTS" desc="Suggested name for a space.">
++  Projects
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_KIND_RINGED" desc="Name of a planet style with a ring around it.">
++  Ringed
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_KIND_BANDED" desc="Name of a planet style with horizontal cloud bands, like Jupiter.">
++  Banded
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_KIND_OCEAN" desc="Name of a planet style covered in sea with a few islands.">
++  Ocean
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_KIND_CRATERED" desc="Name of a planet style covered in craters, like the Moon.">
++  Cratered
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_HUE_BLUE" desc="Name of a space color.">
++  Blue
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_HUE_AMBER" desc="Name of a space color.">
++  Amber
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_HUE_GREEN" desc="Name of a space color.">
++  Green
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_HUE_PINK" desc="Name of a space color.">
++  Pink
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_HUE_VIOLET" desc="Name of a space color.">
++  Violet
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_HUE_TEAL" desc="Name of a space color.">
++  Teal
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_HUE_RED" desc="Name of a space color.">
++  Red
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SPACES_HUE_LIME" desc="Name of a space color.">
++  Lime
++</message>
++
++<message name="IDS_HELIUM_ONBOARDING_SOUND_MUTE" desc="Accessible label of the corner button that turns onboarding sounds off.">
++  Mute sounds
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SOUND_UNMUTE" desc="Accessible label of the corner button that turns onboarding sounds back on.">
++  Turn sounds on
++</message>
++<message name="IDS_HELIUM_ONBOARDING_STEPS_PROGRESS" desc="Accessible label of the onboarding progress indicator.">
++  Step <ph name="CURRENT">$1<ex>2</ex></ph> of <ph name="TOTAL">$2<ex>6</ex></ph>
++</message>
++
++<message name="IDS_HELIUM_ONBOARDING_SERVICES_TITLE" desc="Title of the onboarding screen for Helium services consent. Loka is built on Helium and uses Helium's services.">
+   Helium services
+ </message>
+-<message name="IDS_HELIUM_ONBOARDING_SERVICES_SUBTITLE" desc="Subtitle explaining when Helium services consent choices take effect.">
+-  Services are not active until you consent to using them. Changes will be applied after you go to the next page.
++<message name="IDS_HELIUM_ONBOARDING_SERVICES_SUBTITLE" desc="Subtitle explaining who runs the services and when consent choices take effect.">
++  Loka is built on Helium. These services run on Helium's servers, not Loka's, and stay off until you go to the next page.
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_SERVICES_CONNECTION_TITLE" desc="Title of the global toggle for connecting to Helium services.">
+   Allow connecting to Helium services
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_SERVICES_CONNECTION_DESC" desc="Description of the global Helium services toggle.">
+-  Helium services provide additional functionality, such as: extension downloads, native !bangs, filter list updates, and browser updates. When disabled, none of these features will work, but Helium will not make any web requests.
++  Helium's services handle extension downloads, native !bangs, filter list updates and updates. When this is off, none of those work, and Loka makes no requests to Helium's servers.
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_SERVICES_BANGS_TITLE" desc="Title of the toggle for downloading the Helium bangs list.">
+   Allow downloading the !bangs list
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_SERVICES_BANGS_DESC" desc="Description of the toggle for downloading the Helium bangs list.">
+-  Helium will fetch a list of bangs that help you browse the Internet faster, such as !w or !gh. When disabled, bangs will not work.
++  Loka fetches Helium's list of bangs, shortcuts like !w or !gh that search a site directly. When this is off, bangs don't work.
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_SERVICES_EXTENSIONS_TITLE" desc="Title of the toggle for proxying extension downloads and updates.">
+   Proxy extension downloads and updates
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_SERVICES_EXTENSIONS_DESC" desc="Description of the toggle for proxying extension downloads and updates.">
+-  When enabled, Helium will proxy extension downloads and updates to protect your privacy. When disabled, downloading and updating extensions will not work.
++  Extension downloads and updates go through Helium's proxy to protect your privacy. When this is off, installing and updating extensions doesn't work.
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_SERVICES_UBLOCK_TITLE" desc="Title of the toggle for downloading uBlock Origin filter lists.">
+   Allow downloading filter lists for uBlock Origin
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_SERVICES_UBLOCK_DESC" desc="Description of the toggle for downloading uBlock Origin filter lists.">
+-  Helium will fetch fresh filter lists for uBlock Origin. All requests to lists are proxied to protect your privacy. When disabled, default filter lists will be loaded from local storage, which are only updated along with Helium. Optional filter lists will be requested without proxying.
+-</message>
+-<message name="IDS_HELIUM_ONBOARDING_SERVICES_AUTOUPDATES_TITLE" desc="Title of the toggle for automatic browser updates on platforms where Helium updates the browser.">
+-  Allow automatic browser updates
+-</message>
+-<message name="IDS_HELIUM_ONBOARDING_SERVICES_AUTOUPDATES_DESC" desc="Description of the toggle for automatic browser updates on platforms where Helium updates the browser.">
+-  Helium will automatically check for updates and install them. This includes browser and component updates. We recommend keeping this setting enabled to ensure you get the latest features and security updates.
++  Loka fetches fresh uBlock Origin filter lists through Helium's proxy. When this is off, the default lists load from disk and only update with the browser. Optional lists are requested without the proxy.
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SERVICES_AUTOUPDATES_TITLE" desc="Title of the toggle for automatic browser updates on platforms where the browser updates itself.">
++  Allow automatic updates
++</message>
++<message name="IDS_HELIUM_ONBOARDING_SERVICES_AUTOUPDATES_DESC" desc="Description of the toggle for automatic browser updates on platforms where the browser updates itself.">
++  Loka checks Helium's update service and installs updates, including browser components. Keep this on to get security fixes.
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_SERVICES_AUTOUPDATES_TITLE_LINUX" desc="Title of the toggle for automatic component updates on Linux.">
+   Allow automatic component updates
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_SERVICES_AUTOUPDATES_DESC_LINUX" desc="Description of the toggle for automatic component updates on Linux.">
+-  Helium will automatically check for component updates and install them. We recommend keeping this setting enabled. On Linux, browser updates are handled by your distro's package manager. Please check for Helium package updates at least every week.
++  Loka checks Helium's update service for component updates and installs them. On Linux, browser updates come from your distro's package manager, so check it at least once a week.
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_SERVICES_SPELLCHECK_TITLE" desc="Title of the toggle for downloading spell check dictionary files.">
+-  Allow downloading dictionary files for spell checking
++  Allow downloading dictionaries for spell check
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_SERVICES_SPELLCHECK_DESC" desc="Description of the toggle for downloading spell check dictionary files.">
+-  Helium will fetch dictionary files used for spell checking when requested. When disabled, spell checking will not work.
++  Loka fetches spell check dictionaries from Helium when you need them. When this is off, spell check doesn't work.
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_SERVICES_INSTANCE_TITLE" desc="Title of the option describing custom Helium services instances.">
+-  Use your own instance of Helium services
++  Use your own Helium services server
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_SERVICES_INSTANCE_DESC" desc="Description of the option describing custom Helium services instances.">
+-  You can host your own instance of Helium services and use it in your browser instead of the pre-hosted server. If you have one, you can set it in Helium settings.
++  You can host your own instance of Helium services and point Loka at it in Settings.
+ </message>
+ 
+ <message name="IDS_HELIUM_ONBOARDING_SEARCH_TITLE" desc="Title of the onboarding screen for selecting a default search engine.">
+   Choose a search engine
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_SEARCH_SUBTITLE" desc="Subtitle for the onboarding screen for selecting a default search engine.">
+-  You can change your choice later in Settings. Search engines are sorted by privacy.
++  Sorted by privacy. You can change it later in Settings.
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_SEARCH_CATEGORIES_PRIVATE" desc="Description for privacy-first search engines in onboarding.">
+   A privacy-first search engine which doesn't profile or track you.
+@@ -117,8 +227,8 @@
+ <message name="IDS_HELIUM_ONBOARDING_SEARCH_CATEGORIES_MAINSTREAM" desc="Description for mainstream search engines in onboarding.">
+   A mainstream search engine which collects extensive personal data.
+ </message>
+-<message name="IDS_HELIUM_ONBOARDING_SEARCH_CATEGORIES_CUSTOM" desc="Description for a custom search engine in onboarding.">
+-  A custom search engine. Its privacy wasn't verified by Helium.
++<message name="IDS_HELIUM_ONBOARDING_SEARCH_CATEGORIES_CUSTOM" desc="Description for a custom search engine in onboarding. The privacy ratings come from Helium, which Loka is built on.">
++  A custom search engine. Helium hasn't checked its privacy.
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_SEARCH_ENGINES_DUCKDUCKGO" desc="Onboarding description of DuckDuckGo as a search engine option.">
+   Privacy-focused. Relies on Bing for results. Promises not to track or profile you.
+@@ -145,30 +255,45 @@
+   Privacy-focused. Doesn't use Google or Bing. Promises not to track or profile you. May show promotions related to Brave services.
+ </message>
+ 
+-<message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_TITLE" desc="Title of the onboarding screen asking whether Helium should be the default browser.">
+-  Ready to switch to Helium?
+-</message>
+-<message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_SUBTITLE" desc="Subtitle of the onboarding screen asking whether Helium should be the default browser.">
+-  Better privacy, speed, and comfort. All in one click. Wanna make links open in Helium by default?
+-</message>
+-<message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_YES" desc="Label for the option to make Helium the default browser.">
++<message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_TITLE" desc="Title of the onboarding screen asking whether Loka should be the default browser.">
++  Make Loka your default browser?
++</message>
++<message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_SUBTITLE" desc="Subtitle of the onboarding screen asking whether Loka should be the default browser.">
++  Links you open from other apps will open in Loka.
++</message>
++<message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_YES" desc="Label for the option to make Loka the default browser.">
+   Yes
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_NO" desc="Label for the option to keep the current default browser.">
+-  No
+-</message>
+-<message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_YES_DESC" desc="Description for the option to make Helium the default browser.">
+-  Make Helium my default browser.
++  Not now
++</message>
++<message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_YES_DESC" desc="Description for the option to make Loka the default browser.">
++  Make Loka my default browser.
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_NO_DESC" desc="Description for the option to keep the current default browser.">
+-  Just trying Helium for now.
++  I'm just trying Loka for now.
+ </message>
+ 
+ <message name="IDS_HELIUM_ONBOARDING_DATA_IMPORT_TITLE" desc="Title of the onboarding screen for importing browser data.">
+-  Take your stuff with you
++  Bring your browser along
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_DATA_IMPORT_SUBTITLE" desc="Subtitle of the onboarding screen for importing browser data.">
+-  Transfer your most important bookmarks, history, and extensions from other browsers.
++  Copy bookmarks, history and extensions from other browsers on this computer. Nothing is removed from them.
++</message>
++<message name="IDS_HELIUM_ONBOARDING_DATA_IMPORT_ARC_TITLE" desc="Title of the highlighted import option for the Arc browser. Arc's spaces are brought over as bookmark folders.">
++  Bring your spaces from Arc
++</message>
++<message name="IDS_HELIUM_ONBOARDING_DATA_IMPORT_ARC_DESC" desc="Explains exactly what importing from Arc brings over.">
++  Each Arc space's pinned tabs and folders come over as a bookmarks folder, and your Favorites go in the bookmarks bar.
++</message>
++<message name="IDS_HELIUM_ONBOARDING_DATA_IMPORT_ZEN_TITLE" desc="Title of the highlighted import option for the Zen browser.">
++  Coming from Zen?
++</message>
++<message name="IDS_HELIUM_ONBOARDING_DATA_IMPORT_ZEN_DESC" desc="Explains exactly what importing from Zen brings over, and that Zen workspaces are not imported.">
++  Your bookmarks and history come over. Zen's workspaces stay in Zen, so make them as spaces in the sidebar.
++</message>
++<message name="IDS_HELIUM_ONBOARDING_DATA_IMPORT_OTHER_BROWSERS" desc="Heading above the list of other browsers that data can be imported from.">
++  Other browsers
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_DATA_IMPORT_BOOKMARKS" desc="Label for bookmarks as an importable data type.">
+   Bookmarks
+@@ -184,7 +309,7 @@
+   Password manager
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_PASSWORD_SUBTITLE" desc="Subtitle of the onboarding screen for choosing a password manager.">
+-  Helium doesn't have a built-in password manager. Would you like to install one from the Web Store?
++  Loka doesn't have a built-in password manager. Want to install one from the Web Store?
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_PASSWORD_IMPORT_GUIDE" desc="Link label linking to a password manager import guide. Short title for a guide.">
+   Import
+@@ -212,7 +337,7 @@
+   Secure and the most popular open-source password manager. Offers data storage in Europe or US. Free with an optional paid plan. Can be self-hosted.
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_PASSWORD_MANAGERS_ONE_PASSWORD" desc="Onboarding description of 1Password as a password manager option.">
+-  Popular, paid, and closed-source password manager. Offers data storage in Europe or US. May not work correctly with Helium without extra configuration.
++  Popular, paid, and closed-source password manager. Offers data storage in Europe or US. May not work correctly with Loka without extra configuration.
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_PASSWORD_MANAGERS_DASHLANE" desc="Onboarding description of Dashlane as a password manager option.">
+   Popular, paid, and closed-source password manager. Stores data in Europe. Known for aggressive upselling tactics.
+--- a/components/helium_onboarding/index.html
++++ b/components/helium_onboarding/index.html
+@@ -3,9 +3,14 @@
+ 
+ <head>
+     <meta charset="UTF-8" />
+-    <link rel="icon" type="image/png" href="/favicon.png" />
++    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+-    <title>Helium Setup</title>
++    <meta name="color-scheme" content="dark" />
++    <title>Welcome to Loka</title>
++    <style>
++        /* The sky's darkest color, so nothing flashes white before the app draws. */
++        html { background: #05090c; }
++    </style>
+ </head>
+ 
+ <body>
+--- /dev/null
++++ b/components/helium_onboarding/public/favicon.svg
+@@ -0,0 +1,8 @@
++<svg width="256" height="256" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
++<defs><linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#16344a"/><stop offset="1" stop-color="#091018"/></linearGradient>
++<clipPath id="b"><circle cx="30" cy="34" r="22"/></clipPath></defs>
++<rect width="64" height="64" rx="15" fill="url(#s)"/>
++<circle cx="30" cy="34" r="22" fill="#224859"/>
++<circle cx="20" cy="25" r="27" fill="#78cdf5" clip-path="url(#b)"/>
++<circle cx="51" cy="12.5" r="4.5" fill="#78cdf5"/>
++</svg>
+--- a/components/helium_onboarding/src/App.svelte
++++ b/components/helium_onboarding/src/App.svelte
+@@ -1,32 +1,49 @@
+ <script lang="ts">
+-    import { onMount } from "svelte";
+     import { SvelteSet } from "svelte/reactivity";
+-    import { GradientShimmer } from "@imput/helium-prism";
+     import * as pages from "./pages";
+     import * as Browser from "./lib/browser";
+     import {
+         currentPage,
++        direction,
+         flow,
+-        hasSeenIntro,
+-        ONBOARDING_INTRO_DELAY_MS,
++        pageIndex,
++        type Page,
+     } from "./lib/onboarding-flow";
++    import { skyHue, starterSpaces } from "./lib/spaces";
+ 
+     import PageNavigation from "./components/PageNavigation.svelte";
++    import Sky from "./components/Sky.svelte";
++    import LokaMark from "./components/LokaMark.svelte";
++    import SoundToggle from "./components/SoundToggle.svelte";
++    import StepDots from "./components/StepDots.svelte";
+ 
+     const OUT_ANIMATION_DURATION = 200;
+ 
+-    type Page = typeof flow[number];
+-
+     Browser.setup();
+ 
+-    let gradientShimmer = $state<{ emphasize: () => void }>();
+-    let introStarted = $state($hasSeenIntro);
+     const mountedPages = new SvelteSet<Page>([$currentPage]);
+     let previousPage = $currentPage;
+ 
+-    const shimmerDimmed = $derived(
+-        $currentPage !== "Welcome" && $currentPage !== "Finish"
++    // The Spaces step colors the sky with the space being made. After it, the rest of setup takes the color of
++    // the first space, the way the browser takes the color of the space you're in.
++    const hue = $derived(
++        $currentPage === "Spaces"
++            ? $skyHue
++            : ($currentPage === "Welcome" ? 200 : $starterSpaces[0]?.hue ?? 200)
+     );
++
++    const horizon = $derived(
++        $currentPage === "Welcome" || $currentPage === "Finish" ? "high" : "low"
++    );
++    let risen = $state(false);
++
++    $effect(() => {
++        document.documentElement.style.setProperty("--hue", String(hue));
++    });
++
++    $effect(() => {
++        document.documentElement.classList.toggle("going-back", $direction === -1);
++    });
+ 
+     $effect(() => {
+         const page = $currentPage;
+@@ -39,10 +56,6 @@
+         mountedPages.add(page);
+         previousPage = page;
+ 
+-        if (flow.indexOf(page) > flow.indexOf(leavingPage)) {
+-            gradientShimmer?.emphasize();
+-        }
+-
+         window.setTimeout(() => {
+             if ($currentPage !== leavingPage) {
+                 mountedPages.delete(leavingPage);
+@@ -50,30 +63,33 @@
+         }, OUT_ANIMATION_DURATION);
+     });
+ 
+-    onMount(() => {
+-        if (introStarted) {
+-            return;
+-        }
+-
+-        const timer = window.setTimeout(() => {
+-            introStarted = true;
+-        }, ONBOARDING_INTRO_DELAY_MS);
+-
+-        return () => {
+-            window.clearTimeout(timer);
+-        };
++    // The planet rises on the first frame after the page draws, so the welcome opens on it coming up.
++    $effect(() => {
++        const frame = requestAnimationFrame(() => {
++            risen = true;
++        });
++        return () => cancelAnimationFrame(frame);
+     });
+ </script>
+ 
+-<main
+-    class:dimmed={shimmerDimmed}
+-    style:--onboarding-intro-delay={`${ONBOARDING_INTRO_DELAY_MS}ms`}
+->
+-    {#if introStarted}
+-        <div class="shimmer-layer" class:dimmed={shimmerDimmed}>
+-            <GradientShimmer bind:this={gradientShimmer} />
++<Sky travel={$pageIndex} horizon={risen ? horizon : "below"} />
++
++<main>
++    <header class="top-bar">
++        <div class="corner">
++            {#if $currentPage !== "Welcome"}
++                <span class="wordmark-in">
++                    <LokaMark size={22} wordmark />
++                </span>
++            {/if}
+         </div>
+-    {/if}
++        <div>
++            <StepDots />
++        </div>
++        <div class="corner end">
++            <SoundToggle />
++        </div>
++    </header>
+ 
+     <!-- Keep navigation mounted on Finish so it can animate out. -->
+     {#if $currentPage !== "Welcome"}
+@@ -95,44 +111,48 @@
+         justify-content: center;
+         width: 100vw;
+         min-height: 100vh;
+-        background: var(--bg-gradient-start);
+-
+-        &::before {
+-            content: "";
+-            position: fixed;
+-            inset: 0;
+-            z-index: 0;
+-            background: var(--intro-gradient);
+-            opacity: 0;
+-            pointer-events: none;
+-            transition: opacity 1s;
+-        }
+ 
+         & :global(.onboarding-page) {
+             z-index: 1;
+         }
+     }
+ 
+-    .shimmer-layer {
++    .top-bar {
+         position: fixed;
+-        inset: 0;
+-        z-index: 0;
+-        opacity: 1;
++        z-index: 10;
++        top: 0;
++        left: 0;
++        right: 0;
++        display: grid;
++        grid-template-columns: 1fr auto 1fr;
++        align-items: center;
++        height: var(--top-bar);
++        padding-inline: 24px;
+         pointer-events: none;
+-        transition: opacity 1s;
+ 
+-        &.dimmed {
+-            opacity: 0.5;
++        & > * {
++            pointer-events: auto;
+         }
+     }
+ 
+-    @media (prefers-color-scheme: dark) {
+-        main.dimmed::before {
+-            opacity: 1;
++    .corner {
++        display: flex;
++        align-items: center;
++        min-width: 0;
++
++        &.end {
++            justify-content: flex-end;
+         }
++    }
+ 
+-        .shimmer-layer.dimmed {
+-            opacity: 0.3;
++    .wordmark-in {
++        display: inline-flex;
++        animation: wordmark-in 400ms var(--ease-out) 200ms backwards;
++    }
++
++    @keyframes wordmark-in {
++        from {
++            opacity: 0;
+         }
+     }
+ </style>
+--- a/components/helium_onboarding/src/app.css
++++ b/components/helium_onboarding/src/app.css
+@@ -1,31 +1,195 @@
++/* Loka's look over Helium's components (@imput/helium-prism): the night sky, one hue per space, the system face.
++   Every color takes --hue, which the page sets to the space being shown (lib/spaces.ts skyHue).
++   Values follow the site's direction note (site/.critly/direction.md). */
++
++/* Registered so the whole page can ease from one space's color to the next. */
++@property --hue {
++    syntax: "<number>";
++    inherits: true;
++    initial-value: 200;
++}
++
+ :root {
+-    --page-scroll-gradient-mask: linear-gradient(
+-        to bottom,
+-        rgba(0, 0, 0, 1) 90%,
+-        rgba(0, 0, 0, 0) 100%
+-    );
++    --hue: 200;
++    color-scheme: dark;
++
++    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
++    --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
++
++    --ease: cubic-bezier(0.2, 0, 0, 1);
++    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
++    --ease-in: cubic-bezier(0.4, 0, 1, 1);
++
++    /* Roles, mapped onto prism's names so its components follow. */
++    --primary: #ececf1;
++    --secondary: #a7a8b4;
++    --tertiary: #8c8e9b;
++    /* prism draws text on its accent with --white: here that's the accent's dark ink. */
++    --white: hsl(var(--hue) 50% 10%);
++
++    --helium-blue: hsl(var(--hue) 85% 72%);
++    --helium-blue-hover: hsl(var(--hue) 90% 80%);
++    --helium-blue-press: hsl(var(--hue) 78% 66%);
++
++    --bg-surface: hsl(var(--hue) 38% 4%);
++    --bg-gradient-start: var(--bg-surface);
++    --background: var(--bg-surface);
++
++    --helium-elevated: hsl(var(--hue) 40% 85%);
++    --ring: hsl(var(--hue) 40% 80% / 0.14);
++    --shadow: 0 12px 32px #0008;
++
++    --tooltip-bg: hsl(var(--hue) 22% 13%);
++    --tooltip-shadow: #0008;
++    --glass-filter: blur(12px);
++
++    --top-bar: 76px;
++
++    font-family: var(--font);
++    font-weight: 400;
++    letter-spacing: 0;
++    line-height: 1.45;
++    transition: --hue 420ms var(--ease);
++}
++
++html {
++    background: var(--bg-surface);
+ }
+ 
+ body {
+     display: flex;
+     justify-content: center;
+     min-height: 100vh;
+-    background: var(--bg-gradient-start);
++    background: var(--bg-surface);
+     overflow: hidden;
+     user-select: none;
++    -webkit-font-smoothing: antialiased;
++}
++
++::selection {
++    background-color: hsl(var(--hue) 85% 72% / 0.35);
+ }
+ 
+ h1, h2, p {
+     white-space: pre-line;
+ }
+ 
++h1,
++h2,
++h3 {
++    font-family: var(--font-display);
++    font-weight: 650;
++    color: var(--primary);
++    text-wrap: balance;
++}
++
+ h1 {
+-    font-size: 38px;
++    font-size: clamp(44px, 1.5rem + 3vw, 76px);
++    line-height: 1.04;
++    letter-spacing: -0.03em;
+ }
+ 
+ h2 {
+-    font-size: 30px;
+-}
++    font-size: clamp(30px, 1.25rem + 1.3vw, 40px);
++    line-height: 1.1;
++    letter-spacing: -0.02em;
++}
++
++h4 {
++    font-weight: 600;
++    font-size: 17px;
++    color: var(--primary);
++}
++
++p, a, li {
++    line-height: 1.45;
++    text-wrap: pretty;
++}
++
++/* ---- prism's controls in Loka's shape: 44px targets, the space's accent, instant hovers, a quick press ---- */
++
++#app button,
++#app .button {
++    --size: 44px;
++    font-size: 16px;
++    font-weight: 500;
++    transition:
++        background-color 120ms var(--ease),
++        color 120ms var(--ease),
++        box-shadow 120ms var(--ease),
++        opacity 200ms var(--ease),
++        transform 100ms var(--ease);
++}
++
++#app .button.primary {
++    font-weight: 600;
++}
++
++/* prism's cards: Button card, CardLink and Toggle (which is "toggle-button card", without .button). */
++#app .card {
++    border-radius: 12px;
++    padding: 16px 18px;
++    box-shadow: inset 0 0 0 1px var(--ring);
++    background-color: hsl(var(--hue) 30% 80% / 0.05);
++}
++
++/* Descriptions inside cards read as body text, not as part of the button label. */
++#app .card p {
++    font-weight: 400;
++    font-size: 15px;
++}
++
++@media (hover: hover) {
++    #app .card:hover {
++        background-color: hsl(var(--hue) 30% 80% / 0.09);
++    }
++}
++
++#app .card:active {
++    transform: scale(0.99);
++}
++
++#app .button.selected {
++    background-color: hsl(var(--hue) 70% 60% / 0.12);
++    box-shadow:
++        inset 0 0 0 1.5px var(--helium-blue),
++        0 0 24px -8px hsl(var(--hue) 85% 60% / 0.5);
++}
++
++#app button:focus-visible,
++#app .button:focus-visible,
++#app a:focus-visible {
++    outline: 2px solid var(--helium-blue);
++    outline-offset: 3px;
++}
++
++/* prism's switch: a light runner when off, the accent's ink on the accent when on. */
++#app .toggle-button .toggle {
++    background-color: hsl(var(--hue) 30% 80% / 0.2);
++
++    & .runner {
++        background-color: var(--primary);
++        transition: translate 160ms var(--ease-out), background-color 160ms var(--ease);
++    }
++
++    &.enabled {
++        background-color: var(--helium-blue);
++
++        & .runner {
++            background-color: var(--white);
++        }
++    }
++}
++
++#app input:checked + .checkbox-control {
++    color: var(--white);
++}
++
++#app .checkbox-control {
++    box-shadow: inset 0 0 0 1.5px hsl(var(--hue) 40% 85% / 0.3);
++}
++
++/* ---- pages ---- */
+ 
+ .onboarding-page {
+     display: flex;
+@@ -37,51 +201,60 @@
+     height: 100%;
+     left: 0;
+     position: absolute;
++    padding-top: var(--top-bar);
+     visibility: hidden;
++
++    /* Forward: the next page rises from below and the last one leaves upward. Back reverses it. */
++    --enter-from: 0 28px;
++    --leave-to: 0 -18px;
++}
++
++:root.going-back .onboarding-page {
++    --enter-from: 0 -28px;
++    --leave-to: 0 18px;
+ }
+ 
+ .onboarding-page.visible {
+     visibility: visible;
+-    animation: page-in 0.3s;
+-    animation-delay: var(--page-in-delay, 0.05s);
+-    animation-fill-mode: backwards;
++    animation: page-in 460ms var(--ease-out) backwards;
++    animation-delay: var(--page-in-delay, 60ms);
++}
++
++/* What's on the page arrives a beat after its heading. */
++.onboarding-page.visible .page-content {
++    animation: page-in 520ms var(--ease-out) backwards;
++    animation-delay: calc(var(--page-in-delay, 60ms) + 90ms);
+ }
+ 
+ .onboarding-page:not(.visible) {
+-    animation: page-out 0.2s;
+-    animation-fill-mode: forwards;
++    animation: page-out 180ms var(--ease-in) forwards;
+ }
+ 
+ .scrollable-page {
+     width: 100%;
+-    max-width: 600px;
+-    overflow-x: scroll;
+-    overflow-y: visible;
+-    /* accommodation for outline */
++    max-width: 640px;
++    overflow-x: hidden;
++    overflow-y: auto;
++    /* room for focus rings */
+     padding: 6px;
+     padding-top: 0;
+-    /* accommodation for navigation buttons */
+-    padding-bottom: 96px;
+-    mask-image: var(--page-scroll-gradient-mask);
++    /* room for the navigation buttons */
++    padding-bottom: 112px;
++    mask-image: linear-gradient(to bottom, #000 calc(100% - 64px), transparent);
+ }
+ 
+ .page-content {
+     display: flex;
+     flex-direction: column;
+     gap: var(--gap-3);
+-    margin-top: 24px;
++    margin-top: 28px;
+     align-items: center;
+ }
+ 
+ @keyframes page-in {
+     from {
+-        translate: 0 30px;
+-        filter: blur(8px);
+         opacity: 0;
+-    }
+-    to {
+-        opacity: 1;
+-        filter: none;
++        translate: var(--enter-from);
+     }
+ }
+ 
+@@ -93,29 +266,23 @@
+     to {
+         opacity: 0;
+         visibility: hidden;
+-        translate: 0 -30px;
+-        filter: blur(8px);
++        translate: var(--leave-to);
+     }
+ }
+ 
+ @media (prefers-reduced-motion: reduce) {
+-    @keyframes page-in {
+-        from {
+-            opacity: 0;
+-        }
+-        to {
+-            opacity: 1;
+-        }
+-    }
+-
+-    @keyframes page-out {
+-        from {
+-            opacity: 1;
+-            visibility: visible;
+-        }
+-        to {
+-            visibility: hidden;
+-            opacity: 0;
+-        }
+-    }
+-}
++    .onboarding-page {
++        --enter-from: 0 0;
++        --leave-to: 0 0;
++    }
++
++    :root.going-back .onboarding-page {
++        --enter-from: 0 0;
++        --leave-to: 0 0;
++    }
++
++    #app button:active,
++    #app .button:active {
++        transform: none;
++    }
++}
+--- /dev/null
++++ b/components/helium_onboarding/src/components/LokaMark.svelte
+@@ -0,0 +1,106 @@
++<script lang="ts">
++    // Loka's mark: a lit planet and its moon, in the color of the space the page is showing (site/app/planet.tsx).
++    // With `intro`, light sweeps across the dark disc and the moon swings into place.
++    type Props = {
++        size: number;
++        intro?: boolean;
++        wordmark?: boolean;
++    };
++
++    const { size, intro = false, wordmark = false }: Props = $props();
++    const id = $props.id();
++</script>
++
++<span class="mark" class:intro style:--size="{size}px">
++    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
++        <clipPath id="{id}-disk">
++            <circle cx="30" cy="34" r="25" />
++        </clipPath>
++        <circle class="shade" cx="30" cy="34" r="25" />
++        <g clip-path="url(#{id}-disk)">
++            <circle class="lit" cx="19" cy="24" r="31" />
++        </g>
++        <g class="orbit">
++            <circle class="moon" cx="55" cy="10" r="4.5" />
++        </g>
++    </svg>
++    {#if wordmark}
++        <span class="wordmark">loka</span>
++    {/if}
++</span>
++
++<style>
++    .mark {
++        display: inline-flex;
++        align-items: center;
++        gap: calc(var(--size) * 0.3);
++        color: var(--primary);
++    }
++
++    svg {
++        display: block;
++        overflow: visible;
++    }
++
++    .shade {
++        fill: hsl(var(--hue) 45% 24%);
++    }
++
++    .lit,
++    .moon {
++        fill: hsl(var(--hue) 85% 72%);
++    }
++
++    .wordmark {
++        font: 650 calc(var(--size) * 0.9) / 1 var(--font-display);
++        letter-spacing: -0.03em;
++    }
++
++    .orbit,
++    .lit {
++        transform-box: view-box;
++    }
++
++    .orbit {
++        transform-origin: 30px 34px;
++    }
++
++    .intro .shade {
++        animation: mark-fade 500ms var(--ease) both;
++    }
++
++    .intro .lit {
++        animation: mark-light 1100ms var(--ease-out) 250ms both;
++    }
++
++    .intro .orbit {
++        animation: mark-moon 1000ms var(--ease-out) 650ms both;
++    }
++
++    @keyframes mark-fade {
++        from {
++            opacity: 0;
++        }
++    }
++
++    /* The lit side starts round the far side of the planet and turns toward us. */
++    @keyframes mark-light {
++        from {
++            transform: translate(34px, 30px);
++        }
++    }
++
++    @keyframes mark-moon {
++        from {
++            opacity: 0;
++            transform: rotate(-70deg);
++        }
++    }
++
++    @media (prefers-reduced-motion: reduce) {
++        .intro .lit,
++        .intro .orbit {
++            animation-name: mark-fade;
++        }
++    }
++</style>
+--- a/components/helium_onboarding/src/components/PageHeader.svelte
++++ b/components/helium_onboarding/src/components/PageHeader.svelte
+@@ -48,7 +48,8 @@
+ 
+         & p {
+             font-size: 18px;
+-            max-width: 450px;
++            max-width: 32em;
++            color: var(--secondary);
+             text-wrap: pretty;
+         }
+ 
+@@ -62,6 +63,8 @@
+                 display: flex;
+                 height: 32px;
+                 width: 32px;
++                color: var(--helium-blue);
++                filter: drop-shadow(0 0 12px hsl(var(--hue) 85% 60% / 0.45));
+             }
+ 
+             & .header-icon :global(svg) {
+--- a/components/helium_onboarding/src/components/PageNavigation.svelte
++++ b/components/helium_onboarding/src/components/PageNavigation.svelte
+@@ -5,9 +5,12 @@
+         IconArrowRight,
+         Spinner,
+     } from "@imput/helium-prism";
++    import { get } from "svelte/store";
+     import { s } from "../lib/strings";
+     import { SvelteSet } from "svelte/reactivity";
+     import { acceptLatestSchema, askToBeDefault, importProfile, setPref } from "../lib/browser";
++    import { pendingDraft, saveStarterSpaces, starterSpaces } from "../lib/spaces";
++    import { play } from "../lib/sound";
+     import {
+         nextPage,
+         previousPage,
+@@ -25,6 +28,17 @@
+ 
+     const doNext = async () => {
+         switch ($currentPage) {
++        case "Spaces": {
++            // A space someone named but didn't press Create on still counts: they meant to make it.
++            const draft = get(pendingDraft);
++            if (draft) {
++                starterSpaces.update(spaces => [...spaces, draft]);
++                pendingDraft.set(null);
++            }
++            await saveStarterSpaces(get(starterSpaces));
++            break;
++        }
++
+         case "HeliumServices":
+             // if the user pressed "next" on the HeliumServices page,
+             // then we mark consent (having seen the page) as true
+@@ -66,17 +80,18 @@
+             .finally(() => {
+                 working = false;
+                 nextPage();
++                play($currentPage === "Finish" ? "finish" : "next");
+             });
+     }
+ </script>
+ 
+ <div class="glass-children">
+     <div id="setup-buttons" class="action-buttons" class:visible>
+-        <Button disabled={working} onclick={previousPage}>
++        <Button disabled={working} onclick={previousPage} data-sound="back">
+             <IconArrowLeft />
+             {s.button.back}
+         </Button>
+-        <Button disabled={working} primary onclick={next}>
++        <Button disabled={working} primary onclick={next} data-sound="none">
+             {#if working}
+                 <Spinner size={18} />
+             {:else}
+@@ -105,9 +120,12 @@
+ 
+         &.visible {
+             visibility: visible;
+-            animation: slide-in 0.35s;
+-            animation-delay: 0.4s;
+-            animation-fill-mode: backwards;
++            animation: slide-in 420ms var(--ease-out) 300ms backwards;
++        }
++
++        & > :global(.button) {
++            min-width: 112px;
++            justify-content: center;
+         }
+     }
+ 
+@@ -122,13 +140,16 @@
+ 
+     @keyframes slide-in {
+         from {
+-            translate: 0 80px;
++            opacity: 0;
++            translate: 0 40px;
+         }
+     }
+ 
+-    @media (prefers-reduced-motion) {
+-        #setup-buttons.visible {
+-            animation: none;
++    @media (prefers-reduced-motion: reduce) {
++        @keyframes slide-in {
++            from {
++                opacity: 0;
++            }
+         }
+     }
+ </style>
+--- a/components/helium_onboarding/src/components/PasswordManagerOption.svelte
++++ b/components/helium_onboarding/src/components/PasswordManagerOption.svelte
+@@ -104,8 +104,9 @@
+                 )}
+             </div>
+         </div>
++        <!-- A tinted button, not a solid one: six of them share the screen with Next. -->
+         <Button
+-            primary={!installed && !error}
++            class={["install", { ready: !installed && !error }]}
+             disabled={installed || !!error || working}
+             onclick={install}
+         >
+@@ -141,6 +142,18 @@
+         background-color: var(--helium-elevated-5);
+     }
+ 
++    :global(#app .button.install.ready) {
++        color: var(--helium-blue);
++        background-color: hsl(var(--hue) 70% 60% / 0.12);
++        box-shadow: inset 0 0 0 1px hsl(var(--hue) 70% 70% / 0.3);
++    }
++
++    @media (hover: hover) {
++        :global(#app .button.install.ready:hover) {
++            background-color: hsl(var(--hue) 70% 60% / 0.2);
++        }
++    }
++
+     .pm-top {
+         display: flex;
+         gap: var(--gap-3);
+--- /dev/null
++++ b/components/helium_onboarding/src/components/Planet.svelte
+@@ -0,0 +1,176 @@
++<script lang="ts">
++    import type { PlanetKind } from "../lib/spaces";
++
++    // Loka's planet, drawn as the sidebar draws it (prototype/src/features/sidebar/planet.ts): a 100x100 box, body
++    // radius 46, lit from the top left. Colors are set as styles so a hue change eases instead of jumping, and the
++    // ring sweeps in whenever it appears.
++    type Props = {
++        kind: PlanetKind;
++        hue: number;
++        size: number;
++        /** Play the ring sweep when the ring first appears. Off for planets that are just sitting there. */
++        sweep?: boolean;
++    };
++
++    const { kind, hue, size, sweep = true }: Props = $props();
++    const id = $props.id();
++
++    const CRATERS: [number, number, number][] = [
++        [32, 38, 8],
++        [61, 28, 5],
++        [62, 61, 10],
++        [38, 70, 4.5],
++        [78, 46, 3.5],
++        [22, 58, 3],
++    ];
++
++    const ringed = $derived(kind === "ringed");
++    const banded = $derived(kind === "banded" || kind === "ringed");
++</script>
++
++{#snippet ring(front: boolean)}
++    <g
++        class="ring"
++        class:sweep
++        transform="rotate(-16 50 50)"
++        clip-path={front ? `url(#${id}-front)` : `url(#${id}-back)`}
++    >
++        <ellipse
++            cx="50" cy="50" rx="76" ry="15"
++            pathLength="1"
++            style:stroke="hsl({hue + 30} 70% 82% / 0.7)"
++            stroke-width="5"
++        />
++        <ellipse
++            cx="50" cy="50" rx="66" ry="13"
++            pathLength="1"
++            style:stroke="hsl({hue + 30} 60% 75% / 0.45)"
++            stroke-width="2"
++        />
++    </g>
++{/snippet}
++
++<svg
++    class="planet"
++    width={size}
++    height={size}
++    viewBox="0 0 100 100"
++    overflow="visible"
++    aria-hidden="true"
++>
++    <defs>
++        <clipPath id="{id}-body"><circle cx="50" cy="50" r="46" /></clipPath>
++        <clipPath id="{id}-front" clipPathUnits="userSpaceOnUse">
++            <rect x="-60" y="50" width="220" height="120" />
++        </clipPath>
++        <clipPath id="{id}-back" clipPathUnits="userSpaceOnUse">
++            <rect x="-60" y="-60" width="220" height="110" />
++        </clipPath>
++        <radialGradient id="{id}-lit" cx="0.35" cy="0.28" r="0.85">
++            <stop offset="0" style:stop-color="hsl({hue} 90% 82%)" />
++            <stop offset="0.38" style:stop-color="hsl({hue} 62% 55%)" />
++            <stop offset="1" style:stop-color="hsl({hue} 55% 18%)" />
++        </radialGradient>
++        <radialGradient id="{id}-shade" cx="0.3" cy="0.24" r="0.95">
++            <stop offset="0.5" stop-color="#000" stop-opacity="0" />
++            <stop offset="1" stop-color="#000" stop-opacity="0.7" />
++        </radialGradient>
++    </defs>
++
++    {#if ringed}
++        {@render ring(false)}
++    {/if}
++    <circle cx="50" cy="50" r="46" fill="url(#{id}-lit)" />
++    {#key kind}
++        <g class="surface" clip-path="url(#{id}-body)">
++            {#if banded}
++                <g transform="rotate(-14 50 50)">
++                    <rect x="-10" y="18" width="120" height="6" style:fill="hsl({hue + 20} 75% 80% / 0.32)" />
++                    <rect x="-10" y="31" width="120" height="9" style:fill="hsl({hue - 15} 60% 28% / 0.38)" />
++                    <rect x="-10" y="47" width="120" height="5" style:fill="hsl({hue + 20} 75% 80% / 0.32)" />
++                    <rect x="-10" y="58" width="120" height="11" style:fill="hsl({hue - 15} 60% 28% / 0.38)" />
++                    <rect x="-10" y="76" width="120" height="6" style:fill="hsl({hue + 20} 75% 80% / 0.32)" />
++                    {#if kind === "banded"}
++                        <ellipse cx="64" cy="62" rx="8" ry="4" style:fill="hsl({hue + 35} 85% 82% / 0.55)" />
++                    {/if}
++                </g>
++            {:else if kind === "cratered"}
++                {#each CRATERS as [x, y, r] (`${x}-${y}`)}
++                    <circle
++                        cx={x} cy={y} r={r}
++                        style:fill="hsl({hue} 45% 22% / 0.42)"
++                        style:stroke="hsl({hue} 85% 86% / 0.28)"
++                        stroke-width="1"
++                    />
++                {/each}
++            {:else}
++                <!-- Ocean world: the space's color is the sea, with land in a neighbouring hue and a few clouds. -->
++                <path d="M18 36 C26 24 44 26 46 38 S36 58 26 54 S12 46 18 36 Z" style:fill="hsl({hue + 70} 45% 46% / 0.75)" />
++                <path d="M57 55 C65 47 82 51 80 63 S66 80 58 72 S51 62 57 55 Z" style:fill="hsl({hue + 70} 45% 46% / 0.75)" />
++                <path d="M60 18 C66 14 77 19 72 27 S59 29 60 18 Z" style:fill="hsl({hue + 70} 45% 46% / 0.75)" />
++                <g transform="rotate(-10 50 50)" fill="#fff" fill-opacity="0.5">
++                    <ellipse cx="42" cy="30" rx="17" ry="2.6" />
++                    <ellipse cx="66" cy="47" rx="12" ry="2.2" />
++                    <ellipse cx="34" cy="65" rx="15" ry="2.4" />
++                </g>
++            {/if}
++        </g>
++    {/key}
++    <circle cx="50" cy="50" r="46" fill="url(#{id}-shade)" />
++    <circle cx="50" cy="50" r="45.5" fill="none" style:stroke="hsl({hue} 90% 88% / 0.3)" stroke-width="1" />
++    {#if ringed}
++        {@render ring(true)}
++    {/if}
++</svg>
++
++<style>
++    .planet {
++        display: block;
++        flex: none;
++        stroke: none;
++        fill: none;
++    }
++
++    /* Color is not movement, so hue changes ease even with reduced motion. */
++    .planet :is(stop, rect, ellipse, circle, path) {
++        transition:
++            stop-color 420ms var(--ease),
++            fill 420ms var(--ease),
++            stroke 420ms var(--ease);
++    }
++
++    .ring ellipse {
++        fill: none;
++    }
++
++    .surface {
++        animation: surface-in 260ms var(--ease) both;
++    }
++
++    @media (prefers-reduced-motion: no-preference) {
++        /* The ring draws itself around the planet, starting from the far side. */
++        .ring.sweep ellipse {
++            stroke-dasharray: 1;
++            animation: ring-sweep 720ms var(--ease-out) both;
++        }
++
++        .ring.sweep ellipse + ellipse {
++            animation-delay: 80ms;
++        }
++    }
++
++    @keyframes ring-sweep {
++        from {
++            stroke-dashoffset: 1;
++        }
++        to {
++            stroke-dashoffset: 0;
++        }
++    }
++
++    @keyframes surface-in {
++        from {
++            opacity: 0;
++        }
++    }
++</style>
+--- a/components/helium_onboarding/src/components/ProfileImportOption.svelte
++++ b/components/helium_onboarding/src/components/ProfileImportOption.svelte
+@@ -73,7 +73,8 @@
+     }
+ 
+     :global(label.checkbox.profile-option.selected) {
+-        box-shadow: 0 0 0 1px var(--primary) inset, 0 0 0 1px var(--primary);
++        box-shadow: inset 0 0 0 1.5px var(--helium-blue);
++        background-color: hsl(var(--hue) 70% 60% / 0.12);
+     }
+ 
+     .text {
+--- /dev/null
++++ b/components/helium_onboarding/src/components/Sky.svelte
+@@ -0,0 +1,357 @@
++<script lang="ts">
++    import { onMount } from "svelte";
++    import { reducedMotion } from "../lib/motion";
++
++    // Loka's night sky behind every page: the sidebar's tinted glows and band of light (prototype/src/app/sky.ts),
++    // a star field on a canvas, and the space's planet as a horizon at the bottom, as under the sidebar.
++    // `travel` is the page number: moving between pages drifts the stars, nearer ones further, like the camera
++    // moving through the sky. `horizon` is how far the planet has risen.
++    type Props = {
++        travel: number;
++        horizon: "below" | "low" | "high";
++    };
++
++    const { travel, horizon }: Props = $props();
++
++    let canvas = $state<HTMLCanvasElement>();
++    let targetTravel = 0;
++
++    $effect(() => {
++        targetTravel = travel;
++    });
++
++    type Star = {
++        x: number;
++        y: number;
++        r: number;
++        alpha: number;
++        color: string;
++        layer: number;
++        phase: number;
++        speed: number;
++    };
++
++    // How far each depth layer moves per page, in CSS px: far stars barely move, near ones most.
++    const DRIFT = [18, 38, 70];
++    // The sky is never still, like the sidebar's: it cruises sideways this many pages a second, so far stars creep
++    // about 1 px/s and near ones about 4 px/s.
++    const CRUISE = 0.06;
++    const FRAME_MS = 1000 / 30;
++
++    onMount(() => {
++        if (!canvas) return;
++        const context = canvas.getContext("2d");
++        if (!context) return;
++        const ctx = context;
++        const el = canvas;
++
++        let width = 0;
++        let height = 0;
++        let dpr = 1;
++        let layers: HTMLCanvasElement[] = [];
++        let twinklers: Star[] = [];
++        let offset = targetTravel;
++        let raf = 0;
++        let last = 0;
++        let start = performance.now();
++        let meteor: { x: number; y: number; t0: number; angle: number; length: number } | null = null;
++        let nextMeteor = start + 3500 + Math.random() * 4000;
++        let reduce = false;
++
++        // Seeded like the sidebar's sky, so the same stars come back every time.
++        const seeded = (seed: number) => () => {
++            seed = (seed * 16807) % 2147483647;
++            return seed / 2147483647;
++        };
++
++        const build = () => {
++            dpr = Math.min(window.devicePixelRatio || 1, 1.5);
++            width = window.innerWidth;
++            height = window.innerHeight;
++            el.width = Math.round(width * dpr);
++            el.height = Math.round(height * dpr);
++
++            const rand = seeded(7919);
++            const count = Math.round(Math.min(560, Math.max(140, (width * height) / 5200)));
++            layers = DRIFT.map(() => {
++                const layer = document.createElement("canvas");
++                layer.width = el.width;
++                layer.height = el.height;
++                return layer;
++            });
++            twinklers = [];
++
++            for (let i = 0; i < count; i++) {
++                const bright = rand() > 0.92;
++                const star: Star = {
++                    x: rand() * width,
++                    y: rand() * height,
++                    r: bright ? 1 + rand() * 0.8 : 0.35 + rand() * 0.6,
++                    color: rand() > 0.8 ? "hsl(200 90% 88%)" : "#fff",
++                    alpha: 0.25 + rand() * 0.65,
++                    layer: 0,
++                    phase: rand() * Math.PI * 2,
++                    speed: 0.5 + rand() * 1.3,
++                };
++                star.layer = bright ? 2 : rand() > 0.5 ? 1 : 0;
++
++                if (rand() < 0.16) {
++                    twinklers.push(star);
++                    continue;
++                }
++
++                const layerCtx = layers[star.layer]?.getContext("2d");
++                if (!layerCtx) continue;
++                layerCtx.globalAlpha = star.alpha;
++                layerCtx.fillStyle = star.color;
++                layerCtx.beginPath();
++                layerCtx.arc(star.x * dpr, star.y * dpr, star.r * dpr, 0, Math.PI * 2);
++                layerCtx.fill();
++            }
++        };
++
++        const wrap = (value: number, size: number) => ((value % size) + size) % size;
++
++        const draw = (now: number) => {
++            const t = (now - start) / 1000;
++            const appear = reduce ? 1 : Math.min(1, t / 1.2);
++            const shift = reduce ? 0 : offset + t * CRUISE;
++
++            ctx.setTransform(1, 0, 0, 1, 0, 0);
++            ctx.clearRect(0, 0, el.width, el.height);
++            ctx.globalAlpha = appear;
++
++            layers.forEach((layer, i) => {
++                const dx = wrap(shift * (DRIFT[i] ?? 0), width) * dpr;
++                ctx.drawImage(layer, -dx, 0);
++                ctx.drawImage(layer, el.width - dx, 0);
++            });
++
++            for (const star of twinklers) {
++                const x = wrap(star.x - shift * (DRIFT[star.layer] ?? 0), width);
++                const shimmer = reduce ? 0.8 : 0.55 + 0.45 * Math.sin(star.phase + t * star.speed);
++                ctx.globalAlpha = appear * star.alpha * shimmer;
++                ctx.fillStyle = star.color;
++                ctx.beginPath();
++                ctx.arc(x * dpr, star.y * dpr, star.r * dpr, 0, Math.PI * 2);
++                ctx.fill();
++            }
++
++            if (meteor) {
++                const p = (now - meteor.t0) / 700;
++                if (p >= 1) {
++                    meteor = null;
++                } else {
++                    const head = meteor.length * Math.min(1, p * 1.6);
++                    const x = meteor.x + Math.cos(meteor.angle) * head;
++                    const y = meteor.y + Math.sin(meteor.angle) * head;
++                    const tail = 90;
++                    const gradient = ctx.createLinearGradient(
++                        x * dpr, y * dpr,
++                        (x - Math.cos(meteor.angle) * tail) * dpr,
++                        (y - Math.sin(meteor.angle) * tail) * dpr,
++                    );
++                    gradient.addColorStop(0, "rgb(255 255 255 / 0.7)");
++                    gradient.addColorStop(1, "rgb(255 255 255 / 0)");
++                    ctx.globalAlpha = Math.sin(p * Math.PI) * 0.8;
++                    ctx.strokeStyle = gradient;
++                    ctx.lineWidth = 1.2 * dpr;
++                    ctx.beginPath();
++                    ctx.moveTo(x * dpr, y * dpr);
++                    ctx.lineTo((x - Math.cos(meteor.angle) * tail) * dpr, (y - Math.sin(meteor.angle) * tail) * dpr);
++                    ctx.stroke();
++                }
++            }
++        };
++
++        const frame = (now: number) => {
++            raf = requestAnimationFrame(frame);
++            const moving = Math.abs(targetTravel - offset) > 0.0005;
++
++            // The slow cruise and twinkling run at 30fps; a page change or a meteor gets every frame.
++            if (!moving && !meteor && now - last < FRAME_MS && now - start > 1200) return;
++            const dt = Math.min(0.05, (now - last) / 1000);
++            last = now;
++
++            // Ease toward the page we're on; a new page while drifting just changes where it heads.
++            offset += (targetTravel - offset) * Math.min(1, dt * 3.4);
++
++            if (!meteor && now > nextMeteor) {
++                meteor = {
++                    x: width * (0.15 + Math.random() * 0.6),
++                    y: height * (0.05 + Math.random() * 0.3),
++                    t0: now,
++                    angle: Math.PI * (0.12 + Math.random() * 0.12),
++                    length: 160 + Math.random() * 120,
++                };
++                nextMeteor = now + 7000 + Math.random() * 9000;
++            }
++
++            draw(now);
++        };
++
++        const run = () => {
++            cancelAnimationFrame(raf);
++            if (reduce) {
++                draw(performance.now());
++                return;
++            }
++            last = performance.now();
++            raf = requestAnimationFrame(frame);
++        };
++
++        const onVisibility = () => {
++            if (document.hidden) {
++                cancelAnimationFrame(raf);
++            } else {
++                run();
++            }
++        };
++
++        let resizeTimer = 0;
++        const onResize = () => {
++            window.clearTimeout(resizeTimer);
++            resizeTimer = window.setTimeout(() => {
++                build();
++                draw(performance.now());
++            }, 120);
++        };
++
++        build();
++        // Runs at once with the current setting, then again whenever it changes.
++        const stopReduce = reducedMotion.subscribe((value) => {
++            reduce = value;
++            run();
++        });
++        document.addEventListener("visibilitychange", onVisibility);
++        window.addEventListener("resize", onResize);
++
++        return () => {
++            cancelAnimationFrame(raf);
++            stopReduce();
++            document.removeEventListener("visibilitychange", onVisibility);
++            window.removeEventListener("resize", onResize);
++        };
++    });
++</script>
++
++<div class="sky" aria-hidden="true">
++    <div class="nebula"></div>
++    <canvas bind:this={canvas}></canvas>
++    <div class="horizon {horizon}"></div>
++</div>
++
++<style>
++    .sky {
++        position: fixed;
++        inset: 0;
++        z-index: 0;
++        pointer-events: none;
++        overflow: hidden;
++        background:
++            radial-gradient(60% 50% at 6% 0%, hsl(var(--hue) 58% 34% / 0.45), transparent 70%),
++            radial-gradient(38% 34% at 26% 58%, hsl(calc(var(--hue) + 40) 45% 32% / 0.18), transparent 70%),
++            radial-gradient(55% 55% at 100% 100%, hsl(calc(var(--hue) - 35) 42% 26% / 0.28), transparent 70%),
++            linear-gradient(165deg, hsl(var(--hue) 32% 8%), hsl(var(--hue) 38% 4%));
++    }
++
++    /* The faint band of light across the sky. */
++    .sky::after {
++        content: "";
++        position: absolute;
++        inset: 0;
++        background: linear-gradient(
++            118deg,
++            transparent 38%,
++            hsl(var(--hue) 70% 85% / 0.06) 47%,
++            hsl(calc(var(--hue) + 30) 70% 85% / 0.08) 52%,
++            transparent 62%
++        );
++    }
++
++    /* Slow clouds of the space's color drifting behind the stars, like the sidebar's nebula. Transform and opacity
++       only, so it costs the compositor, not the page. */
++    .nebula {
++        position: absolute;
++        inset: -20%;
++        background:
++            radial-gradient(28% 22% at 30% 40%, hsl(var(--hue) 70% 55% / 0.16), transparent 70%),
++            radial-gradient(24% 30% at 70% 30%, hsl(calc(var(--hue) + 50) 60% 55% / 0.12), transparent 70%),
++            radial-gradient(30% 20% at 55% 75%, hsl(calc(var(--hue) - 40) 60% 50% / 0.1), transparent 70%);
++        filter: blur(18px);
++        animation: nebula-drift 90s ease-in-out infinite alternate;
++        will-change: transform;
++    }
++
++    @keyframes nebula-drift {
++        from {
++            transform: translate3d(-3%, -2%, 0) rotate(-4deg) scale(1);
++            opacity: 0.8;
++        }
++        to {
++            transform: translate3d(4%, 3%, 0) rotate(5deg) scale(1.08);
++            opacity: 1;
++        }
++    }
++
++    canvas {
++        position: absolute;
++        inset: 0;
++        width: 100%;
++        height: 100%;
++    }
++
++    /* The space's planet seen from just above it: a circle far wider than the window, drawn as a gradient so it
++       stays in its box. A dark body, a lit band inside the edge, a thin bright rim and a glow above. Its rim sits
++       120px below the top of the box. */
++    .horizon {
++        --r: max(1600px, 110vw);
++
++        position: absolute;
++        left: 0;
++        right: 0;
++        bottom: 0;
++        height: 420px;
++        background: radial-gradient(
++            circle var(--r) at 50% calc(var(--r) + 120px),
++            hsl(var(--hue) 45% 6%) 0,
++            hsl(var(--hue) 50% 9%) calc(var(--r) - 160px),
++            hsl(var(--hue) 55% 20%) calc(var(--r) - 12px),
++            hsl(var(--hue) 85% 78% / 0.75) calc(var(--r) - 1px),
++            hsl(var(--hue) 85% 65% / 0.28) calc(var(--r) + 2px),
++            hsl(var(--hue) 85% 60% / 0.08) calc(var(--r) + 60px),
++            transparent calc(var(--r) + 140px)
++        );
++        transform: translateY(var(--horizon-y));
++        transition: transform 1600ms var(--ease-out);
++        will-change: transform;
++
++        &.below {
++            --horizon-y: 100%;
++        }
++
++        /* Rim at three quarters of the window's height, whatever its height. */
++        &.high {
++            --horizon-y: calc(300px - 25vh);
++        }
++
++        &.low {
++            --horizon-y: 280px;
++        }
++    }
++
++    @media (prefers-reduced-motion: reduce) {
++        .nebula {
++            animation: none;
++        }
++
++        .horizon {
++            transition: opacity 600ms var(--ease);
++        }
++
++        .horizon.below {
++            opacity: 0;
++            --horizon-y: calc(300px - 25vh);
++        }
++    }
++</style>
+--- /dev/null
++++ b/components/helium_onboarding/src/components/SoundToggle.svelte
+@@ -0,0 +1,66 @@
++<script lang="ts">
++    import { s } from "../lib/strings";
++    import { muted, play } from "../lib/sound";
++
++    const label = $derived($muted ? s.sound.unmute : s.sound.mute);
++
++    const toggle = () => {
++        $muted = !$muted;
++        // Confirms sound is back, at the same quiet level as everything else.
++        if (!$muted) play("toggleOn");
++    };
++</script>
++
++<button
++    class="sound-toggle button circle transparent"
++    aria-label={label}
++    title={label}
++    aria-pressed={$muted}
++    data-sound="none"
++    onclick={toggle}
++>
++    <svg viewBox="0 0 24 24" aria-hidden="true">
++        <path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" />
++        {#if $muted}
++            <path d="m16 9.5 5 5m0-5-5 5" />
++        {:else}
++            <path class="wave" d="M15.5 9a4 4 0 0 1 0 6" />
++            <path class="wave far" d="M18.2 6.5a7.5 7.5 0 0 1 0 11" />
++        {/if}
++    </svg>
++</button>
++
++<style>
++    .sound-toggle {
++        --size: 44px;
++        color: var(--secondary);
++
++        &:hover {
++            color: var(--primary);
++        }
++    }
++
++    svg {
++        width: 20px;
++        height: 20px;
++        fill: none;
++        stroke: currentColor;
++        stroke-width: 1.8;
++        stroke-linecap: round;
++        stroke-linejoin: round;
++    }
++
++    .wave {
++        animation: wave-in 240ms var(--ease-out) both;
++    }
++
++    .far {
++        animation-delay: 60ms;
++    }
++
++    @keyframes wave-in {
++        from {
++            opacity: 0;
++        }
++    }
++</style>
+--- /dev/null
++++ b/components/helium_onboarding/src/components/StepDots.svelte
+@@ -0,0 +1,48 @@
++<script lang="ts">
++    import { s } from "../lib/strings";
++    import { substituteLocalizedString } from "../lib/i18n";
++    import { steps } from "../lib/onboarding-flow";
++
++    const label = $derived(
++        substituteLocalizedString(s.steps.progress, {
++            current: $steps.current + 1,
++            total: $steps.shown.length,
++        }),
++    );
++</script>
++
++{#if $steps.current >= 0}
++    <div class="dots" role="img" aria-label={label}>
++        {#each $steps.shown as page, i (page)}
++            <span class:done={i < $steps.current} class:on={i === $steps.current}></span>
++        {/each}
++    </div>
++{/if}
++
++<style>
++    .dots {
++        display: flex;
++        align-items: center;
++        gap: 6px;
++        height: 44px;
++    }
++
++    span {
++        width: 6px;
++        height: 6px;
++        border-radius: 3px;
++        background: hsl(var(--hue) 30% 85% / 0.22);
++        transition:
++            width 320ms var(--ease-out),
++            background-color 320ms var(--ease);
++
++        &.done {
++            background: hsl(var(--hue) 70% 75% / 0.55);
++        }
++
++        &.on {
++            width: 22px;
++            background: var(--helium-blue);
++        }
++    }
++</style>
+--- a/components/helium_onboarding/src/lib/browser/prefs.ts
++++ b/components/helium_onboarding/src/lib/browser/prefs.ts
+@@ -11,6 +11,9 @@
+     'services.spellcheck_files': boolean,
+     'services.browser_updates': boolean,
+     'services.ublock_assets': boolean,
++    // Loka's starter spaces as JSON (see lib/spaces.ts). Registered by Loka's C++ side as
++    // helium.loka.onboarding_spaces, since the handler prefixes every name with "helium.".
++    'loka.onboarding_spaces': string,
+ };
+ 
+ export type PrefKey = keyof Preferences;
+--- a/components/helium_onboarding/src/lib/chrome-send-polyfill.ts
++++ b/components/helium_onboarding/src/lib/chrome-send-polyfill.ts
+@@ -29,6 +29,7 @@
+     'services.spellcheck_files': true,
+     'services.browser_updates': true,
+     'services.ublock_assets': true,
++    'loka.onboarding_spaces': '',
+ };
+ 
+ const searchEngineTemplate: SearchEngine = {
+@@ -121,7 +122,7 @@
+     [ "Opera", "lalala", chrome_has_favs ],
+     [ "Yandex", "Бла бла бла", chrome_has_favs ],
+     [ "NAVER Whale", "Work", chrome_has ],
+-    [ "Arc", "Person 1", chrome_has ],
++    [ "Arc", "Person 1", chrome_has_favs ],
+     [ "Dia", "Person 1", chrome_has ],
+     [ "Microsoft Edge", "Profile 1", chrome_has ],
+     [ "Microsoft Edge", "Bill Gates", chrome_has ],
+--- /dev/null
++++ b/components/helium_onboarding/src/lib/motion.ts
+@@ -0,0 +1,11 @@
++import { readable } from "svelte/store";
++
++const query = "(prefers-reduced-motion: reduce)";
++
++/** True when the system asks for less movement. Fades and color changes stay; travel, scale and drift go. */
++export const reducedMotion = readable(matchMedia(query).matches, (set) => {
++    const media = matchMedia(query);
++    const onChange = (event: MediaQueryListEvent) => set(event.matches);
++    media.addEventListener("change", onChange);
++    return () => media.removeEventListener("change", onChange);
++});
+--- a/components/helium_onboarding/src/lib/onboarding-flow.ts
++++ b/components/helium_onboarding/src/lib/onboarding-flow.ts
+@@ -1,11 +1,12 @@
+ import { SvelteSet } from "svelte/reactivity";
+-import { derived, get, writable } from "svelte/store";
++import { derived, get, readonly, writable } from "svelte/store";
+ 
+ import { preferences } from "../lib/browser";
+ import { canBeDefaultBrowser, importableProfiles, isDefaultBrowser } from "./browser";
+ 
+ export const flow = [
+     "Welcome",
++    "Spaces",
+     "HeliumServices",
+     "SearchEngine",
+     "DataImport",
+@@ -14,14 +15,20 @@
+     "Finish"
+ ] as const;
+ 
++export type Page = typeof flow[number];
++
+ const index = writable(0);
++/** Which way the last move went: 1 forward, -1 back. Transitions and the sky's drift follow it. */
++const _direction = writable<1 | -1>(1);
+ 
+ export const currentPage = derived(
+     index,
+     $index => flow[$index]
+ );
++export const pageIndex = readonly(index);
++export const direction = readonly(_direction);
+ 
+-const shouldSkip = (page: typeof flow[number]): boolean => {
++const shouldSkip = (page: Page): boolean => {
+     switch (page) {
+         case 'DataImport':
+             // skip if nothing to import
+@@ -53,14 +60,27 @@
+ }
+ 
+ export const nextPage = () => {
++    _direction.set(1);
+     index.update((current) => getPageNumber(current));
+ }
+ 
+ export const previousPage = () => {
++    _direction.set(-1);
+     index.update((current) => getPageNumber(current, -1));
+ }
+ 
+-export const ONBOARDING_INTRO_DELAY_MS = 800;
++/** The steps between Welcome and Finish that will be shown, for the progress dots. */
++export const steps = derived(
++    [index, importableProfiles, preferences, isDefaultBrowser],
++    ([$index]) => {
++        const shown = flow.filter(
++            page => page !== "Welcome" && page !== "Finish" && !shouldSkip(page)
++        );
++        return { shown, current: shown.indexOf(flow[$index] as typeof shown[number]) };
++    }
++);
++
++export const ONBOARDING_INTRO_DELAY_MS = 300;
+ 
+ export const hasSeenIntro = writable(false);
+ export const markIntroSeen = () => {
+--- /dev/null
++++ b/components/helium_onboarding/src/lib/sound.ts
+@@ -0,0 +1,319 @@
++import { get, writable } from "svelte/store";
++import { SPACE_HUES } from "./spaces";
++
++// Onboarding's sounds, synthesized with WebAudio so there are no audio files and nothing to license.
++// Every cue confirms something already visible on screen; with sound muted the page says the same thing.
++// The AudioContext is only made inside the first click or key press, so nothing plays before a gesture.
++
++export type Cue =
++    | "tap"
++    | "select"
++    | "toggleOn"
++    | "toggleOff"
++    | "next"
++    | "back"
++    | "kind"
++    | "remove"
++    | "nope"
++    | "create"
++    | "finish"
++    | `hue:${number}`;
++
++const MUTE_KEY = "loka-onboarding-muted";
++
++const readMuted = (): boolean => {
++    try {
++        return localStorage.getItem(MUTE_KEY) === "1";
++    } catch {
++        return false;
++    }
++};
++
++export const muted = writable(readMuted());
++muted.subscribe((value) => {
++    try {
++        localStorage.setItem(MUTE_KEY, value ? "1" : "0");
++    } catch {
++        // Storage can be unavailable; muting still works for this visit.
++    }
++});
++
++let ctx: AudioContext | undefined;
++let out: GainNode | undefined;
++let space: GainNode | undefined;
++let noiseBuffer: AudioBuffer | undefined;
++let gestureSeen = false;
++
++/** Built inside a user gesture: a soft low-pass on the way out, and a damped echo that gives cues a sense of space. */
++const startAudio = () => {
++    if (ctx) {
++        if (ctx.state === "suspended") void ctx.resume();
++        return;
++    }
++
++    try {
++        ctx = new AudioContext({ latencyHint: "interactive" });
++    } catch {
++        return;
++    }
++
++    const soften = ctx.createBiquadFilter();
++    soften.type = "lowpass";
++    soften.frequency.value = 5200;
++    soften.connect(ctx.destination);
++
++    out = ctx.createGain();
++    // The cues are written quiet; this sets how loud the whole set is.
++    out.gain.value = 2.2;
++    out.connect(soften);
++
++    const delay = ctx.createDelay(1);
++    delay.delayTime.value = 0.24;
++    const feedback = ctx.createGain();
++    feedback.gain.value = 0.34;
++    const damp = ctx.createBiquadFilter();
++    damp.type = "lowpass";
++    damp.frequency.value = 1800;
++
++    space = ctx.createGain();
++    space.gain.value = 0.5;
++    space.connect(delay);
++    delay.connect(damp);
++    damp.connect(feedback);
++    feedback.connect(delay);
++    damp.connect(out);
++
++    noiseBuffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
++    const data = noiseBuffer.getChannelData(0);
++    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
++};
++
++type Envelope = {
++    at?: number;
++    attack?: number;
++    decay: number;
++    gain: number;
++    /** How much goes to the echo, 0 to 1. */
++    send?: number;
++};
++
++const envelope = (c: AudioContext, node: AudioNode, e: Envelope) => {
++    const start = c.currentTime + (e.at ?? 0);
++    const attack = e.attack ?? 0.004;
++    const g = c.createGain();
++    g.gain.setValueAtTime(0.0001, start);
++    g.gain.exponentialRampToValueAtTime(e.gain, start + attack);
++    g.gain.exponentialRampToValueAtTime(0.0001, start + attack + e.decay);
++    node.connect(g);
++    if (out) g.connect(out);
++    if (e.send && space) {
++        const send = c.createGain();
++        send.gain.value = e.send;
++        g.connect(send);
++        send.connect(space);
++    }
++    return { start, end: start + attack + e.decay + 0.05 };
++};
++
++const tone = (
++    t: Envelope & { freq: number; to?: number; type?: OscillatorType },
++) => {
++    if (!ctx) return;
++    const osc = ctx.createOscillator();
++    osc.type = t.type ?? "sine";
++    const { start, end } = envelope(ctx, osc, t);
++    osc.frequency.setValueAtTime(t.freq, start);
++    if (t.to) {
++        osc.frequency.exponentialRampToValueAtTime(t.to, start + (t.attack ?? 0.004) + t.decay);
++    }
++    osc.start(start);
++    osc.stop(end);
++};
++
++const noise = (
++    n: Envelope & { freq: number; to?: number; q?: number; filter?: BiquadFilterType },
++) => {
++    if (!ctx || !noiseBuffer) return;
++    const source = ctx.createBufferSource();
++    source.buffer = noiseBuffer;
++    const filter = ctx.createBiquadFilter();
++    filter.type = n.filter ?? "bandpass";
++    filter.Q.value = n.q ?? 1.2;
++    source.connect(filter);
++    const { start, end } = envelope(ctx, filter, n);
++    filter.frequency.setValueAtTime(n.freq, start);
++    if (n.to) {
++        filter.frequency.exponentialRampToValueAtTime(n.to, start + (n.attack ?? 0.004) + n.decay);
++    }
++    source.start(start, Math.random() * 0.5);
++    source.stop(end);
++};
++
++// A major pentatonic, so any two cues that overlap still sound good together.
++const NOTES = [440, 493.9, 554.4, 659.3, 740, 880, 987.8, 1108.7];
++
++const CUES: Record<Exclude<Cue, `hue:${number}`>, () => void> = {
++    tap: () => {
++        noise({ freq: 2600, q: 1.4, decay: 0.014, gain: 0.03 });
++        tone({ freq: 880, to: 740, decay: 0.045, gain: 0.022 });
++    },
++    select: () => {
++        tone({ type: "triangle", freq: 740, decay: 0.12, gain: 0.032, send: 0.3 });
++        tone({ freq: 1480, at: 0.02, decay: 0.1, gain: 0.01, send: 0.3 });
++    },
++    toggleOn: () => {
++        tone({ freq: 659.3, decay: 0.06, gain: 0.03, send: 0.2 });
++        tone({ freq: 987.8, at: 0.045, decay: 0.08, gain: 0.03, send: 0.2 });
++    },
++    toggleOff: () => {
++        tone({ freq: 987.8, decay: 0.06, gain: 0.026, send: 0.15 });
++        tone({ freq: 659.3, at: 0.045, decay: 0.08, gain: 0.026, send: 0.15 });
++    },
++    next: () => {
++        noise({ freq: 380, to: 1900, q: 0.9, attack: 0.06, decay: 0.26, gain: 0.02, send: 0.4 });
++        tone({ freq: 554.4, to: 830, attack: 0.02, decay: 0.22, gain: 0.018, send: 0.45 });
++    },
++    back: () => {
++        noise({ freq: 1600, to: 480, q: 0.9, attack: 0.05, decay: 0.22, gain: 0.015, send: 0.3 });
++        tone({ freq: 740, to: 494, attack: 0.02, decay: 0.18, gain: 0.014, send: 0.3 });
++    },
++    kind: () => {
++        tone({ freq: 300, to: 540, decay: 0.09, gain: 0.04, send: 0.25 });
++        noise({ freq: 1200, q: 2, decay: 0.02, gain: 0.012 });
++    },
++    remove: () => {
++        tone({ freq: 659.3, to: 330, decay: 0.16, gain: 0.03, send: 0.3 });
++    },
++    nope: () => {
++        tone({ type: "triangle", freq: 392, decay: 0.08, gain: 0.03 });
++        tone({ type: "triangle", freq: 349.2, at: 0.09, decay: 0.1, gain: 0.03 });
++    },
++    // The one big moment: a low swell as the planet gathers, a rising arpeggio as it lights, a shimmer as the ring
++    // sweeps in. About a second with its echo, because it happens three times at most.
++    create: () => {
++        tone({ freq: 110, to: 220, attack: 0.18, decay: 0.7, gain: 0.05, send: 0.3 });
++        [440, 554.4, 659.3, 880, 1318.5].forEach((freq, i) => {
++            tone({ type: i % 2 ? "sine" : "triangle", freq, at: 0.12 + i * 0.07, decay: 0.34, gain: 0.032 - i * 0.003, send: 0.55 });
++        });
++        noise({ freq: 7000, filter: "highpass", q: 0.7, at: 0.3, attack: 0.08, decay: 0.5, gain: 0.008, send: 0.6 });
++    },
++    finish: () => {
++        [220, 329.6, 440, 554.4, 659.3].forEach((freq, i) => {
++            tone({ freq, at: i * 0.05, attack: 0.25, decay: 1.5, gain: 0.018, send: 0.6 });
++        });
++        [880, 1108.7, 1318.5].forEach((freq, i) => {
++            tone({ type: "triangle", freq, at: 0.5 + i * 0.08, decay: 0.3, gain: 0.014, send: 0.6 });
++        });
++    },
++};
++
++// A barely-there drone under the whole flow: two soft low notes a fifth apart, breathing slowly. It starts with the
++// first click or key press, fades out when muted or hidden, and never plays on its own.
++let ambience: { gain: GainNode; stop: () => void } | undefined;
++
++const startAmbience = () => {
++    if (!ctx || !out || ambience) return;
++    const gain = ctx.createGain();
++    gain.gain.value = 0.0001;
++    const filter = ctx.createBiquadFilter();
++    filter.type = "lowpass";
++    filter.frequency.value = 520;
++    gain.connect(filter);
++    filter.connect(out);
++    const oscillators = [110, 164.8, 220.4].map((freq, i) => {
++        const osc = ctx!.createOscillator();
++        osc.type = i === 2 ? "triangle" : "sine";
++        osc.frequency.value = freq;
++        osc.detune.value = (i - 1) * 6;
++        const level = ctx!.createGain();
++        level.gain.value = i === 2 ? 0.25 : 1;
++        osc.connect(level);
++        level.connect(gain);
++        osc.start();
++        return osc;
++    });
++    // A slow swell, every eleven seconds or so.
++    const lfo = ctx.createOscillator();
++    lfo.frequency.value = 0.09;
++    const depth = ctx.createGain();
++    depth.gain.value = 0.0035;
++    lfo.connect(depth);
++    depth.connect(gain.gain);
++    lfo.start();
++    gain.gain.setTargetAtTime(0.006, ctx.currentTime, 2.5);
++    ambience = {
++        gain,
++        stop: () => {
++            const now = ctx!.currentTime;
++            gain.gain.cancelScheduledValues(now);
++            gain.gain.setTargetAtTime(0.0001, now, 0.4);
++            for (const osc of [...oscillators, lfo]) osc.stop(now + 2);
++            ambience = undefined;
++        },
++    };
++};
++
++const updateAmbience = () => {
++    if (get(muted) || document.hidden || !gestureSeen) ambience?.stop();
++    else startAmbience();
++};
++
++export const play = (cue: Cue) => {
++    if (get(muted) || !gestureSeen || document.hidden) return;
++    startAudio();
++    if (!ctx) return;
++
++    try {
++        if (cue.startsWith("hue:")) {
++            // Each color has its own note, so changing color sounds like moving along a scale.
++            const index = SPACE_HUES.indexOf(Number(cue.slice(4)) as typeof SPACE_HUES[number]);
++            const freq = NOTES[Math.max(0, index) % NOTES.length];
++            tone({ freq, decay: 0.16, gain: 0.03, send: 0.45 });
++            tone({ type: "triangle", freq: freq * 2, at: 0.015, decay: 0.12, gain: 0.008, send: 0.45 });
++            return;
++        }
++        CUES[cue as keyof typeof CUES]();
++    } catch {
++        // No audio available. The visual change still happens.
++    }
++};
++
++/**
++ * Plays a cue for every control without touching Helium's components: a switch gets the two-note flip, a card a
++ * soft chime, any other button a tap. A control can name its own cue with data-sound, or opt out with
++ * data-sound="none" when it plays one itself.
++ */
++export const installSoundCues = () => {
++    const markGesture = () => {
++        gestureSeen = true;
++        if (!get(muted)) startAudio();
++        updateAmbience();
++    };
++    muted.subscribe(() => updateAmbience());
++    document.addEventListener("visibilitychange", updateAmbience);
++    window.addEventListener("pointerdown", markGesture, { capture: true });
++    window.addEventListener("keydown", markGesture, { capture: true });
++
++    document.addEventListener("click", (event) => {
++        const target = event.target instanceof Element ? event.target : null;
++        const control = target?.closest<HTMLElement>("[data-sound], button, a.button");
++        if (!control || control.matches(":disabled, [aria-disabled='true']")) return;
++
++        const named = control.dataset.sound;
++        if (named === "none") return;
++        if (named) return play(named as Cue);
++
++        if (control.getAttribute("role") === "switch") {
++            // Capture phase: aria-checked still holds the state before this click.
++            return play(control.getAttribute("aria-checked") === "true" ? "toggleOff" : "toggleOn");
++        }
++        play(control.classList.contains("card") ? "select" : "tap");
++    }, { capture: true });
++
++    document.addEventListener("change", (event) => {
++        const input = event.target;
++        if (input instanceof HTMLInputElement && input.type === "checkbox") {
++            play(input.checked ? "toggleOn" : "toggleOff");
++        }
++    });
++};
+--- /dev/null
++++ b/components/helium_onboarding/src/lib/spaces.ts
+@@ -0,0 +1,70 @@
++import { writable } from "svelte/store";
++import { s } from "./strings";
++import { setPref } from "./browser";
++
++// The same kinds, hues and order as Loka's sidebar (prototype/src/features/sidebar/planet.ts and sidebar.logic.ts),
++// so a space made here looks the same once it's in the sidebar.
++export type PlanetKind = "banded" | "ringed" | "cratered" | "ocean";
++export const PLANET_KINDS: PlanetKind[] = ["ringed", "banded", "ocean", "cratered"];
++
++/** The colors a space can take, in the order new spaces get them. */
++export const SPACE_HUES = [200, 30, 150, 330, 260, 175, 0, 90] as const;
++
++/** The shape of a space in Loka's sidebar model (`SpaceLook`), so the browser can pass each one to createSpace. */
++export type StarterSpace = {
++    name: string;
++    hue: number;
++    planet: PlanetKind;
++};
++
++export const MAX_STARTER_SPACES = 3;
++export const SPACE_NAME_MAX_LENGTH = 24;
++
++export const kindName = (kind: PlanetKind): string => ({
++    ringed: s.spaces.kindRinged,
++    banded: s.spaces.kindBanded,
++    ocean: s.spaces.kindOcean,
++    cratered: s.spaces.kindCratered,
++})[kind];
++
++export const hueName = (hue: number): string => ({
++    200: s.spaces.hueBlue,
++    30: s.spaces.hueAmber,
++    150: s.spaces.hueGreen,
++    330: s.spaces.huePink,
++    260: s.spaces.hueViolet,
++    175: s.spaces.hueTeal,
++    0: s.spaces.hueRed,
++    90: s.spaces.hueLime,
++} as Record<number, string>)[hue] ?? String(hue);
++
++/** What each new draft starts as: the sidebar's three seed spaces, then two more. */
++export const draftDefaults = (): StarterSpace[] => [
++    { name: s.spaces.suggestWork, hue: 200, planet: "ringed" },
++    { name: s.spaces.suggestSchool, hue: 30, planet: "banded" },
++    { name: s.spaces.suggestHome, hue: 150, planet: "ocean" },
++    { name: s.spaces.suggestPersonal, hue: 330, planet: "cratered" },
++    { name: s.spaces.suggestProjects, hue: 260, planet: "ringed" },
++];
++
++export const starterSpaces = writable<StarterSpace[]>([]);
++
++/** A space the user has started changing on the Spaces step but not created yet. Next creates it. */
++export const pendingDraft = writable<StarterSpace | null>(null);
++
++/** The hue the whole page's sky takes. The Spaces step moves it to the space being made. */
++export const skyHue = writable(200);
++
++/**
++ * Stored as JSON in `loka.onboarding_spaces`: {"version":1,"spaces":[{"name","hue","planet"}, ...]}, in the order
++ * they were made. An empty list means the user went past the step without making one.
++ * The pref may not be registered yet in a browser build; onboarding carries on without it.
++ */
++export const saveStarterSpaces = async (spaces: StarterSpace[]): Promise<void> => {
++    const value = JSON.stringify({ version: 1, spaces });
++    try {
++        await setPref("loka.onboarding_spaces", value);
++    } catch (error) {
++        console.error("Could not save loka.onboarding_spaces:", error);
++    }
++};
+--- a/components/helium_onboarding/src/main.ts
++++ b/components/helium_onboarding/src/main.ts
+@@ -1,13 +1,14 @@
+ import { mount } from 'svelte'
+ import './lib/chrome-send-polyfill';
+ 
+-import "@fontsource-variable/instrument-sans/index.css";
+ import "@imput/helium-prism/styles.css";
+ import './app.css'
+ import { initStrings, s } from './lib/strings';
++import { installSoundCues } from './lib/sound';
+ 
+ await initStrings();
+ document.title = s.page.title;
++installSoundCues();
+ const { default: App } = await import('./App.svelte');
+ 
+ const app = mount(App, {
+--- a/components/helium_onboarding/src/pages/DataImport.svelte
++++ b/components/helium_onboarding/src/pages/DataImport.svelte
+@@ -13,8 +13,17 @@
+ 
+     const visible = $derived($currentPage === "DataImport");
+ 
+-    const sorted = $derived.by(() => {
+-        const grouped = $importableProfiles.reduce(
++    // People moving from Arc or Zen are who Loka is for, so those two lead when they're on this computer.
++    // What each brings is exactly what Helium's importer does: Arc's spaces become bookmark folders, and Zen
++    // gives bookmarks and history (its workspaces aren't read).
++    const FEATURED = ["Arc", "Zen"] as const;
++    const featuredText = {
++        Arc: { title: () => s.dataImport.arcTitle, desc: () => s.dataImport.arcDesc },
++        Zen: { title: () => s.dataImport.zenTitle, desc: () => s.dataImport.zenDesc },
++    };
++
++    const grouped = $derived.by(() => {
++        const groups = $importableProfiles.reduce(
+             (acc, profile) => {
+                 (acc[profile.name] ??= []).push(profile);
+                 return acc;
+@@ -22,8 +31,15 @@
+             {} as Record<string, BrowserProfile[]>
+         );
+ 
+-        return Object.entries(grouped)
++        const featured = FEATURED.flatMap(name => {
++            const profiles = groups[name];
++            return profiles ? [[name, profiles] as const] : [];
++        });
++        const others = Object.entries(groups)
++            .filter(([name]) => !(FEATURED as readonly string[]).includes(name))
+             .sort(([a], [b]) => a.localeCompare(b));
++
++        return { featured, others };
+     });
+ 
+     const browserIconMap = {
+@@ -46,7 +62,23 @@
+         "NAVER Whale": "whale",
+         "Perplexity Comet": "comet",
+     } as const;
++
++    const iconUrl = (browser: string) => {
++        const icon = browserIconMap[browser as keyof typeof browserIconMap];
++        return icon && browserIcons[icon];
++    };
+ </script>
++
++{#snippet browserIcon(browser: string, size: number)}
++    {@const url = iconUrl(browser)}
++    <div class="browser-icon" style:--icon-size="{size}px">
++        {#if url}
++            <img src={url} alt="" width={size} height={size} />
++        {:else}
++            <IconWorld />
++        {/if}
++    </div>
++{/snippet}
+ 
+ <div id="data-import-page" class="onboarding-page" class:visible>
+     <div id="data-import-container" class="scrollable-page">
+@@ -56,21 +88,34 @@
+             Icon={IconTransferIn}
+         />
+         <div class="page-content">
+-            {#each sorted as [browser, profiles]}
+-                {@const icon = browserIconMap[browser as keyof typeof browserIconMap]}
+-                {@const url = icon && browserIcons[icon]}
++            {#each grouped.featured as [browser, profiles] (browser)}
++                <section class="featured" aria-labelledby="import-{browser}">
++                    <div class="featured-head">
++                        {@render browserIcon(browser, 40)}
++                        <div class="featured-text">
++                            <h3 id="import-{browser}">{featuredText[browser].title()}</h3>
++                            <p>{featuredText[browser].desc()}</p>
++                        </div>
++                    </div>
++                    <div class="browser-profiles">
++                        {#each profiles as profile (profile.index)}
++                            <ProfileImportOption {profile} />
++                        {/each}
++                    </div>
++                </section>
++            {/each}
++
++            {#if grouped.featured.length && grouped.others.length}
++                <h3 class="others-title">{s.dataImport.otherBrowsers}</h3>
++            {/if}
++
++            {#each grouped.others as [browser, profiles] (browser)}
+                 <div class="browser-header">
+-                    <div class="browser-icon">
+-                        {#if url}
+-                            <img src={url} alt="{browser} icon" />
+-                        {:else}
+-                            <IconWorld />
+-                        {/if}
+-                    </div>
++                    {@render browserIcon(browser, 28)}
+                     <h4>{browser}</h4>
+                 </div>
+                 <div class="browser-profiles">
+-                    {#each profiles as profile}
++                    {#each profiles as profile (profile.index)}
+                         <ProfileImportOption {profile} />
+                     {/each}
+                 </div>
+@@ -80,35 +125,88 @@
+ </div>
+ 
+ <style>
+-    #data-import-container {
+-        max-width: 600px;
+-    }
+-
+     .page-content {
+         gap: var(--gap-3);
+     }
+ 
++    .featured {
++        display: flex;
++        flex-direction: column;
++        gap: 16px;
++        width: 100%;
++        padding: 20px;
++        border-radius: 16px;
++        text-align: left;
++        background:
++            radial-gradient(120% 140% at 0% 0%, hsl(var(--hue) 70% 50% / 0.16), transparent 60%),
++            hsl(var(--hue) 30% 80% / 0.05);
++        box-shadow: inset 0 0 0 1px hsl(var(--hue) 60% 80% / 0.2);
++
++        & + .featured {
++            margin-top: 4px;
++        }
++
++        /* Inside the card, the profiles sit on the card's own tone instead of a box of their own. */
++        & :global(label.checkbox.profile-option) {
++            background-color: hsl(var(--hue) 30% 80% / 0.06);
++        }
++    }
++
++    /* 40px icon + 22px gap puts the title on the same edge as the profile names below it (18 + 28 + 16). */
++    .featured-head {
++        display: flex;
++        align-items: flex-start;
++        gap: 22px;
++    }
++
++    .featured-text {
++        display: flex;
++        flex-direction: column;
++        gap: 4px;
++
++        & h3 {
++            font-size: 20px;
++            letter-spacing: -0.01em;
++        }
++
++        & p {
++            font-size: 15px;
++            color: var(--secondary);
++        }
++    }
++
++    .others-title {
++        align-self: flex-start;
++        margin-top: 20px;
++        font-size: 15px;
++        font-weight: 600;
++        letter-spacing: 0.01em;
++        color: var(--secondary);
++    }
++
+     .browser-header {
+         display: flex;
+         width: 100%;
+         align-items: center;
+-        gap: 8px;
+-
+-        & .browser-icon {
+-            width: 28px;
+-            height: 28px;
+-            display: flex;
+-            justify-content: center;
+-            align-items: center;
+-
+-            & img {
+-                width: 28px;
+-                height: 28px;
+-            }
+-        }
++        gap: 10px;
++        margin-top: 8px;
+ 
+         & > h4 {
+             line-height: 1;
++        }
++    }
++
++    .browser-icon {
++        width: var(--icon-size);
++        height: var(--icon-size);
++        flex: none;
++        display: flex;
++        justify-content: center;
++        align-items: center;
++
++        & img {
++            width: var(--icon-size);
++            height: var(--icon-size);
+         }
+     }
+ 
+--- a/components/helium_onboarding/src/pages/Finish.svelte
++++ b/components/helium_onboarding/src/pages/Finish.svelte
+@@ -1,13 +1,16 @@
+ <script lang="ts">
+     import {
+         Button,
+-        HeliumLogo,
+         IconArrowLeft,
+-        IconCheck,
++        IconArrowRight,
+     } from "@imput/helium-prism";
+     import { s } from "../lib/strings";
+     import { setPref } from "../lib/browser";
+     import { currentPage, previousPage } from "../lib/onboarding-flow";
++    import { starterSpaces } from "../lib/spaces";
++
++    import LokaMark from "../components/LokaMark.svelte";
++    import Planet from "../components/Planet.svelte";
+ 
+     const done = async () => {
+         await setPref('completed_onboarding', true);
+@@ -15,6 +18,7 @@
+     }
+ 
+     const visible = $derived($currentPage === "Finish");
++    const made = $derived($starterSpaces.length > 0);
+ </script>
+ 
+ <div
+@@ -22,66 +26,165 @@
+     class="onboarding-page"
+     class:visible
+ >
+-    <div id="finish-page-container">
+-        <div id="finish-top">
+-            <div id="finish-logo-text">
+-                <div id="finish-logo">
+-                    <HeliumLogo height="64px" />
+-                </div>
+-                <div id="finish-text">
+-                    <h1>{s.finish.title}</h1>
+-                    <p>{s.finish.body}</p>
+-                </div>
++    <div class="finish">
++        {#if made}
++            <ul class="worlds" aria-label={s.finish.title}>
++                {#each $starterSpaces as space, i (`${space.name}-${i}`)}
++                    <li style:--i={i}>
++                        <span class="bob" style:animation-delay="{-i * 2.1}s">
++                            <Planet kind={space.planet} hue={space.hue} size={i === 0 ? 112 : 88} />
++                        </span>
++                        <span class="name">{space.name}</span>
++                    </li>
++                {/each}
++            </ul>
++        {:else}
++            <div class="mark">
++                <LokaMark size={88} />
+             </div>
+-            <div class="action-buttons">
+-                <Button onclick={previousPage}>
+-                    <IconArrowLeft />
+-                    {s.button.back}
+-                </Button>
+-                <Button primary onclick={done}>
+-                    <IconCheck />
+-                    {s.button.letsGo}
+-                </Button>
+-            </div>
++        {/if}
++
++        <h1 class="rise">{made ? s.finish.title : s.finish.titleNoSpaces}</h1>
++        <p class="lead rise">{made ? s.finish.body : s.finish.bodyNoSpaces}</p>
++
++        <div class="action-buttons rise">
++            <Button onclick={previousPage} data-sound="back">
++                <IconArrowLeft />
++                {s.button.back}
++            </Button>
++            <Button primary onclick={done}>
++                {s.button.letsGo}
++                <IconArrowRight />
++            </Button>
+         </div>
+     </div>
+ </div>
+ 
+ <style>
+     #finish-page {
+-        --page-in-delay: 0.15s;
++        --page-in-delay: 0ms;
++        padding-bottom: 18vh;
+     }
+ 
+-    #finish-top,
+-    #finish-text,
+-    #finish-logo-text {
++    .finish {
+         display: flex;
+         flex-direction: column;
++        align-items: center;
++        width: 100%;
++        max-width: 640px;
++        padding-inline: 24px;
+     }
+ 
+-    #finish-page-container {
+-        max-width: 500px;
++    .worlds {
++        display: flex;
++        align-items: flex-end;
++        justify-content: center;
++        gap: clamp(24px, 4vw, 56px);
++        margin: 0 0 36px;
++        padding: 0;
++        list-style: none;
++
++        & li {
++            display: flex;
++            flex-direction: column;
++            align-items: center;
++            gap: 12px;
++        }
+     }
+ 
+-    #finish-top,
+-    #finish-logo-text {
+-        height: 100%;
+-        gap: 32px;
+-        justify-content: center;
+-        align-items: center;
++    .name {
++        max-width: 140px;
++        overflow: hidden;
++        text-overflow: ellipsis;
++        white-space: nowrap;
++        font-size: 15px;
++        font-weight: 600;
++        color: var(--secondary);
+     }
+ 
+-    #finish-logo-text,
+-    #finish-text {
+-        gap: 16px
++    .bob {
++        display: block;
+     }
+ 
+-    #finish-logo {
++    .mark {
+         display: flex;
+-        align-items: center;
++        margin-bottom: 28px;
++        filter: drop-shadow(0 0 32px hsl(var(--hue) 85% 60% / 0.35));
+     }
+ 
+-    #finish-text p {
+-        font-size: 20px;
++    .lead {
++        margin-top: 16px;
++        max-width: 32em;
++        font-size: 19px;
++        color: var(--secondary);
++    }
++
++    .action-buttons {
++        margin-top: 36px;
++        gap: 12px;
++
++        & > :global(.button) {
++            min-height: 48px;
++            padding-inline: 22px;
++            font-size: 17px;
++        }
++    }
++
++    /* The worlds come up over the horizon one after another, then the words. */
++    .visible .worlds li {
++        animation: world-up 900ms var(--ease-out) backwards;
++        animation-delay: calc(120ms + var(--i) * 110ms);
++    }
++
++    .visible .rise {
++        animation: rise 640ms var(--ease-out) backwards;
++    }
++
++    .visible h1.rise { animation-delay: 380ms; }
++    .visible .lead.rise { animation-delay: 480ms; }
++    .visible .action-buttons.rise { animation-delay: 580ms; }
++
++    @media (prefers-reduced-motion: no-preference) {
++        .bob {
++            animation: bob 8s ease-in-out infinite alternate;
++        }
++    }
++
++    @keyframes world-up {
++        from {
++            opacity: 0;
++            translate: 0 80px;
++            scale: 0.85;
++        }
++    }
++
++    @keyframes rise {
++        from {
++            opacity: 0;
++            translate: 0 16px;
++        }
++    }
++
++    @keyframes bob {
++        from {
++            transform: translateY(-4px);
++        }
++        to {
++            transform: translateY(4px);
++        }
++    }
++
++    @media (prefers-reduced-motion: reduce) {
++        @keyframes world-up {
++            from {
++                opacity: 0;
++            }
++        }
++
++        @keyframes rise {
++            from {
++                opacity: 0;
++            }
++        }
+     }
+ </style>
+--- /dev/null
++++ b/components/helium_onboarding/src/pages/Spaces.svelte
+@@ -0,0 +1,1114 @@
++<script lang="ts">
++    import { tick } from "svelte";
++    import { Button } from "@imput/helium-prism";
++    import { s } from "../lib/strings";
++    import { substituteLocalizedString } from "../lib/i18n";
++    import { currentPage } from "../lib/onboarding-flow";
++    import { play } from "../lib/sound";
++    import { reducedMotion } from "../lib/motion";
++    import {
++        MAX_STARTER_SPACES,
++        PLANET_KINDS,
++        SPACE_HUES,
++        SPACE_NAME_MAX_LENGTH,
++        draftDefaults,
++        hueName,
++        kindName,
++        pendingDraft,
++        skyHue,
++        starterSpaces,
++        type PlanetKind,
++        type StarterSpace,
++    } from "../lib/spaces";
++
++    import Planet from "../components/Planet.svelte";
++
++    const visible = $derived($currentPage === "Spaces");
++
++    // ---- the system: the world being made sits at the center, the made ones on three orbits around it ----
++
++    // The orrery is drawn in a 680x460 box that scales with the column; slots and sizes are in its units.
++    const BOX = { w: 680, h: 460 };
++    const CENTER = { x: 340, y: 230, size: 176 };
++    const ORBITS = [
++        { rx: 190, ry: 64 },
++        { rx: 262, ry: 98 },
++        { rx: 318, ry: 140 },
++    ];
++    // Where each made space sits: which orbit, and how far round it.
++    const SLOT_ANGLES = [195, 340, 105];
++    const SLOT_SIZE = 76;
++    const slots = ORBITS.map((orbit, i) => {
++        const a = ((SLOT_ANGLES[i] ?? 0) * Math.PI) / 180;
++        return { x: CENTER.x + orbit.rx * Math.cos(a), y: CENTER.y + orbit.ry * Math.sin(a) };
++    });
++    const pctX = (x: number) => `${(x / BOX.w) * 100}%`;
++    const pctY = (y: number) => `${(y / BOX.h) * 100}%`;
++
++    // Dust that gathers into each new planet: evenly round, a little uneven in distance and timing.
++    const DUST = Array.from({ length: 18 }, (_, i) => ({
++        a: i * 20 + ((i * 37) % 11),
++        d: 110 + ((i * 53) % 70),
++        t: (i * 29) % 160,
++        s: 2 + ((i * 7) % 3),
++    }));
++
++    type World = StarterSpace & { id: number };
++
++    let nextId = 1;
++    let worlds = $state<World[]>($starterSpaces.map((space) => ({ ...space, id: nextId++ })));
++
++    const saveWorlds = () => {
++        starterSpaces.set(worlds.map(({ name, hue, planet }) => ({ name, hue, planet })));
++    };
++
++    const freshDraft = (): StarterSpace => {
++        const names = new Set(worlds.map((w) => w.name.toLowerCase()));
++        const hues = new Set(worlds.map((w) => w.hue));
++        const defaults = draftDefaults();
++        const pick =
++            defaults.find((d) => !names.has(d.name.toLowerCase()) && !hues.has(d.hue)) ??
++            defaults.find((d) => !names.has(d.name.toLowerCase())) ??
++            defaults[0];
++        const hue = hues.has(pick.hue) ? (SPACE_HUES.find((h) => !hues.has(h)) ?? pick.hue) : pick.hue;
++        return { ...pick, hue };
++    };
++
++    let draft = $state<StarterSpace>(freshDraft());
++    let touched = $state(false);
++    let editing = $state<number | null>(null);
++    let set_aside: { draft: StarterSpace; touched: boolean } | null = null;
++
++    let busy = $state(false);
++    let igniting = $state(false);
++    let removing = $state(false);
++    let formKey = $state(0);
++    // The ring of light thrown off by Create. Only there for its own animation, so nothing else replays it.
++    let shockwave = $state(false);
++    let shockTimer = 0;
++    let hint = $state("");
++    let announcement = $state("");
++    let shaking = $state(false);
++
++    let nameInput = $state<HTMLInputElement>();
++    let centerEl = $state<HTMLElement>();
++    const worldEls: Record<number, HTMLElement> = $state({});
++
++    const full = $derived(worlds.length >= MAX_STARTER_SPACES && editing === null);
++
++    const suggestions = $derived.by(() => {
++        const names = new Set(worlds.map((w) => w.name.toLowerCase()));
++        names.add(draft.name.trim().toLowerCase());
++        return draftDefaults()
++            .map((d) => d.name)
++            .filter((name) => !names.has(name.toLowerCase()))
++            .slice(0, 3);
++    });
++
++    // The sky takes the color of the world being made.
++    $effect(() => {
++        if (!visible) return;
++        skyHue.set(full ? (worlds[0]?.hue ?? 200) : draft.hue);
++    });
++
++    // A changed but uncreated space still counts when the user presses Next (PageNavigation).
++    $effect(() => {
++        const name = draft.name.trim();
++        pendingDraft.set(
++            touched && editing === null && !full && name ? { ...draft, name } : null,
++        );
++    });
++
++    // ---- motion ----
++
++    const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
++
++    /** Moves `el` from where `from` was to where it is now, in a slight arc, so one planet travels instead of two swapping. */
++    const flip = (el: HTMLElement | undefined, from: DOMRect, duration = 760) => {
++        if (!el) return;
++        const to = el.getBoundingClientRect();
++        if (!to.width || !from.width) return;
++
++        if ($reducedMotion) {
++            el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: "ease-out" });
++            return;
++        }
++
++        const dx = from.left + from.width / 2 - (to.left + to.width / 2);
++        const dy = from.top + from.height / 2 - (to.top + to.height / 2);
++        const scale = from.width / to.width;
++        const lift = Math.min(60, Math.hypot(dx, dy) * 0.18);
++        el.animate(
++            [
++                { transform: `translate(${dx}px, ${dy}px) scale(${scale})` },
++                {
++                    transform: `translate(${dx * 0.42}px, ${dy * 0.42 - lift}px) scale(${1 + (scale - 1) * 0.4})`,
++                    offset: 0.45,
++                },
++                { transform: "none" },
++            ],
++            { duration, easing: "cubic-bezier(0.32, 0.72, 0, 1)" },
++        );
++    };
++
++    const rects = () =>
++        new Map(worlds.map((w) => [w.id, worldEls[w.id]?.getBoundingClientRect()] as const));
++
++    // ---- actions ----
++
++    const rejectEmptyName = (): boolean => {
++        if (draft.name.trim()) return false;
++        hint = s.spaces.nameMissing;
++        play("nope");
++        shaking = false;
++        requestAnimationFrame(() => {
++            shaking = true;
++        });
++        nameInput?.focus();
++        return true;
++    };
++
++    const create = async () => {
++        if (busy || full || rejectEmptyName()) return;
++        busy = true;
++        hint = "";
++        const space: StarterSpace = { ...draft, name: draft.name.trim() };
++
++        // The planet gathers itself and lights up...
++        play("create");
++        igniting = true;
++        shockwave = true;
++        window.clearTimeout(shockTimer);
++        shockTimer = window.setTimeout(() => (shockwave = false), 1600);
++        await wait($reducedMotion ? 120 : 620);
++
++        // ...then leaves the center for its orbit, and a new one starts forming where it was.
++        const from = centerEl?.getBoundingClientRect();
++        const world = { ...space, id: nextId++ };
++        worlds = [...worlds, world];
++        saveWorlds();
++        igniting = false;
++        touched = false;
++        draft = freshDraft();
++        formKey++;
++        announcement = substituteLocalizedString(s.spaces.created, { name: space.name });
++        await tick();
++        if (from) flip(worldEls[world.id], from);
++
++        await wait($reducedMotion ? 0 : 300);
++        busy = false;
++    };
++
++    const edit = async (id: number) => {
++        if (busy || editing === id) return;
++        const world = worlds.find((w) => w.id === id);
++        const from = worldEls[id]?.getBoundingClientRect();
++        if (!world) return;
++
++        play("select");
++        if (editing === null) set_aside = { draft, touched };
++        editing = id;
++        draft = { name: world.name, hue: world.hue, planet: world.planet };
++        touched = false;
++        hint = "";
++        await tick();
++        if (from && centerEl) flip(centerEl, from, 620);
++    };
++
++    /** Sends the world back to its orbit, with the changes when `apply` is set. */
++    const finishEditing = async (apply: boolean) => {
++        const id = editing;
++        if (id === null || busy) return;
++        if (apply && rejectEmptyName()) return;
++
++        const from = centerEl?.getBoundingClientRect();
++        if (apply) {
++            worlds = worlds.map((w) => (w.id === id ? { ...draft, name: draft.name.trim(), id } : w));
++            saveWorlds();
++        }
++        play("select");
++        editing = null;
++        draft = set_aside?.draft ?? freshDraft();
++        touched = set_aside?.touched ?? false;
++        set_aside = null;
++        hint = "";
++        formKey++;
++        await tick();
++        if (from) flip(worldEls[id], from, 620);
++    };
++
++    const remove = async () => {
++        const id = editing;
++        if (id === null || busy) return;
++        busy = true;
++        play("remove");
++        removing = true;
++        await wait($reducedMotion ? 120 : 240);
++
++        const before = rects();
++        worlds = worlds.filter((w) => w.id !== id);
++        saveWorlds();
++        removing = false;
++        editing = null;
++        draft = set_aside?.draft ?? freshDraft();
++        touched = set_aside?.touched ?? false;
++        set_aside = null;
++        formKey++;
++        await tick();
++        // The others close up toward the center.
++        for (const w of worlds) {
++            const from = before.get(w.id);
++            if (from) flip(worldEls[w.id], from, 560);
++        }
++        busy = false;
++    };
++
++    const submit = (event: SubmitEvent) => {
++        event.preventDefault();
++        if (editing !== null) {
++            void finishEditing(true);
++        } else {
++            void create();
++        }
++    };
++
++    const setKind = (planet: PlanetKind) => {
++        if (planet === draft.planet) return;
++        draft.planet = planet;
++        touched = true;
++        play("kind");
++    };
++
++    const setHue = (hue: number) => {
++        if (hue === draft.hue) return;
++        draft.hue = hue;
++        touched = true;
++        play(`hue:${hue}`);
++    };
++
++    /** Arrow keys move through a radio group, as they do in native ones. */
++    const radioKeys = <T,>(event: KeyboardEvent, values: readonly T[], current: T, choose: (value: T) => void) => {
++        const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
++        if (!step) return;
++        event.preventDefault();
++        const i = (values.indexOf(current) + step + values.length) % values.length;
++        const value = values[i];
++        if (value === undefined) return;
++        choose(value);
++        const group = (event.currentTarget as HTMLElement).closest("[role=radiogroup]");
++        group?.querySelectorAll<HTMLElement>("[role=radio]")[i]?.focus();
++    };
++
++    const onKeydown = (event: KeyboardEvent) => {
++        if (visible && event.key === "Escape" && editing !== null) {
++            event.preventDefault();
++            void finishEditing(false);
++        }
++    };
++</script>
++
++<svelte:window onkeydown={onKeydown} />
++
++<div id="spaces-page" class="onboarding-page" class:visible>
++    <div class="spaces-layout">
++        <div class="orrery-column">
++            <div class="orrery" style:--box-w={BOX.w}>
++                <svg class="orbits" viewBox="0 0 {BOX.w} {BOX.h}" aria-hidden="true">
++                    {#each ORBITS as orbit, i}
++                        {@const owner = worlds[i]}
++                        <ellipse
++                            cx={CENTER.x}
++                            cy={CENTER.y}
++                            rx={orbit.rx}
++                            ry={orbit.ry}
++                            class:owned={!!owner}
++                            style:--orbit-hue={owner?.hue ?? "var(--hue)"}
++                        />
++                    {/each}
++                </svg>
++
++                {#if worlds.length === 0}
++                    <p class="orrery-empty">{s.spaces.empty}</p>
++                {/if}
++
++                {#if !full && editing === null}
++                    {@const slot = slots[worlds.length]}
++                    {#if slot}
++                        <span
++                            class="next-slot"
++                            style:left={pctX(slot.x)}
++                            style:top={pctY(slot.y)}
++                            style:width={pctX(SLOT_SIZE)}
++                            aria-hidden="true"
++                        ></span>
++                    {/if}
++                {/if}
++
++                <div
++                    class="center"
++                    bind:this={centerEl}
++                    style:left={pctX(CENTER.x)}
++                    style:top={pctY(CENTER.y)}
++                    style:width={pctX(CENTER.size)}
++                    aria-hidden="true"
++                >
++                    {#if full}
++                        <div class="sun"></div>
++                    {:else}
++                        {#key formKey}
++                            <div class="forming" class:igniting class:removing>
++                                <div class="dust">
++                                    {#each DUST as d}
++                                        <i style:--a="{d.a}deg" style:--d="{(d.d / BOX.w) * 100}cqi" style:--t="{d.t}ms" style:--s="{d.s}px"></i>
++                                    {/each}
++                                </div>
++                                <div class="bob">
++                                    <Planet kind={draft.planet} hue={draft.hue} size={CENTER.size} />
++                                </div>
++                            </div>
++                        {/key}
++                        {#if shockwave}
++                            <span class="shock"></span>
++                            <span class="shock late"></span>
++                        {/if}
++                    {/if}
++                </div>
++
++                {#each worlds as world, i (world.id)}
++                    {@const slot = slots[i]}
++                    {#if slot}
++                        <button
++                            class="world"
++                            class:away={editing === world.id}
++                            style:left={pctX(slot.x)}
++                            style:top={pctY(slot.y)}
++                            style:width={pctX(SLOT_SIZE)}
++                            style:--world-hue={world.hue}
++                            aria-label={substituteLocalizedString(s.spaces.edit, { name: world.name })}
++                            aria-pressed={editing === world.id}
++                            data-sound="none"
++                            onclick={() => edit(world.id)}
++                        >
++                            <span class="world-planet" bind:this={worldEls[world.id]}>
++                                <span class="bob" style:animation-delay="{-i * 2.3}s">
++                                    <Planet kind={world.planet} hue={world.hue} size={SLOT_SIZE} />
++                                </span>
++                            </span>
++                            <span class="world-name">{world.name}</span>
++                        </button>
++                    {/if}
++                {/each}
++            </div>
++        </div>
++
++        <div class="panel">
++            <h2>{s.spaces.title}</h2>
++            <p class="subtitle">{s.spaces.subtitle}</p>
++
++            {#if full}
++                <p class="full-note">{s.spaces.full}</p>
++            {:else}
++                <form class="forge" onsubmit={submit}>
++                    <label class="field" class:shaking>
++                        <span class="label">{s.spaces.nameLabel}</span>
++                        <input
++                            bind:this={nameInput}
++                            bind:value={draft.name}
++                            oninput={() => {
++                                touched = true;
++                                hint = "";
++                            }}
++                            onfocus={(e) => e.currentTarget.select()}
++                            onanimationend={() => (shaking = false)}
++                            maxlength={SPACE_NAME_MAX_LENGTH}
++                            autocomplete="off"
++                            spellcheck="false"
++                            enterkeyhint="done"
++                            aria-describedby="spaces-hint"
++                        />
++                    </label>
++
++                    {#if suggestions.length && editing === null}
++                        <div class="chips" role="group" aria-label={s.spaces.suggestionsLabel}>
++                            {#each suggestions as name (name)}
++                                <button
++                                    type="button"
++                                    class="chip"
++                                    onclick={() => {
++                                        draft.name = name;
++                                        touched = true;
++                                        hint = "";
++                                    }}
++                                >
++                                    {name}
++                                </button>
++                            {/each}
++                        </div>
++                    {/if}
++
++                    <div class="choice">
++                        <span class="label" id="spaces-kind-label">{s.spaces.kindLabel}</span>
++                        <div class="kinds" role="radiogroup" aria-labelledby="spaces-kind-label">
++                            {#each PLANET_KINDS as kind (kind)}
++                                <button
++                                    type="button"
++                                    class="kind"
++                                    role="radio"
++                                    aria-checked={draft.planet === kind}
++                                    aria-label={kindName(kind)}
++                                    title={kindName(kind)}
++                                    tabindex={draft.planet === kind ? 0 : -1}
++                                    data-sound="none"
++                                    onclick={() => setKind(kind)}
++                                    onkeydown={(e) => radioKeys(e, PLANET_KINDS, draft.planet, setKind)}
++                                >
++                                    <Planet {kind} hue={draft.hue} size={36} sweep={false} />
++                                </button>
++                            {/each}
++                        </div>
++                    </div>
++
++                    <div class="choice">
++                        <span class="label" id="spaces-hue-label">{s.spaces.hueLabel}</span>
++                        <div class="hues" role="radiogroup" aria-labelledby="spaces-hue-label">
++                            {#each SPACE_HUES as hue (hue)}
++                                <button
++                                    type="button"
++                                    class="hue"
++                                    role="radio"
++                                    style:--swatch={hue}
++                                    aria-checked={draft.hue === hue}
++                                    aria-label={hueName(hue)}
++                                    title={hueName(hue)}
++                                    tabindex={draft.hue === hue ? 0 : -1}
++                                    data-sound="none"
++                                    onclick={() => setHue(hue)}
++                                    onkeydown={(e) => radioKeys(e, SPACE_HUES, draft.hue as typeof SPACE_HUES[number], setHue)}
++                                ></button>
++                            {/each}
++                        </div>
++                    </div>
++
++                    <div class="forge-actions">
++                        {#if editing !== null}
++                            <Button primary type="submit" data-sound="none">{s.spaces.save}</Button>
++                            <Button onclick={remove} data-sound="none">{s.spaces.remove}</Button>
++                        {:else}
++                            <Button primary type="submit" aria-disabled={busy} data-sound="none">
++                                <svg class="spark" viewBox="0 0 24 24" aria-hidden="true">
++                                    <circle cx="12" cy="12" r="5" />
++                                    <path d="M3.5 13.5c3-1.6 13-4.2 17-3" />
++                                </svg>
++                                {s.spaces.create}
++                            </Button>
++                        {/if}
++                    </div>
++                    <p class="hint" id="spaces-hint" aria-live="polite">{hint}</p>
++                </form>
++            {/if}
++            <p class="sr-only" aria-live="polite">{announcement}</p>
++        </div>
++    </div>
++</div>
++
++<style>
++    #spaces-page {
++        --page-in-delay: 60ms;
++        padding-bottom: 104px;
++    }
++
++    .spaces-layout {
++        display: grid;
++        grid-template-columns: minmax(0, 1.5fr) minmax(320px, 420px);
++        align-items: center;
++        gap: clamp(24px, 4vw, 96px);
++        width: 100%;
++        max-width: 1720px;
++        max-height: 100%;
++        padding-inline: clamp(24px, 4vw, 64px);
++        overflow-y: auto;
++    }
++
++    /* ---- the orrery ---- */
++
++    .orrery-column {
++        display: flex;
++        justify-content: center;
++        min-width: 0;
++    }
++
++    .orrery {
++        position: relative;
++        /* As wide as the column allows, but never taller than the space between the bars, so the planets stay
++           on their orbits. */
++        width: min(100%, 1040px, (100vh - var(--top-bar) - 150px) * 680 / 460);
++        aspect-ratio: 680 / 460;
++        container-type: inline-size;
++    }
++
++    .orbits {
++        position: absolute;
++        inset: 0;
++        width: 100%;
++        height: 100%;
++        overflow: visible;
++
++        & ellipse {
++            fill: none;
++            stroke: hsl(var(--hue) 40% 80% / 0.14);
++            stroke-width: 1;
++            vector-effect: non-scaling-stroke;
++            transition: stroke 420ms var(--ease);
++
++            &.owned {
++                stroke: hsl(var(--orbit-hue) 70% 75% / 0.32);
++            }
++        }
++    }
++
++    .orrery-empty {
++        position: absolute;
++        left: 0;
++        right: 0;
++        bottom: 0;
++        font-size: 14px;
++        color: var(--tertiary);
++    }
++
++    .center,
++    .world,
++    .next-slot {
++        position: absolute;
++        translate: -50% -50%;
++    }
++
++    .center {
++        aspect-ratio: 1;
++
++        & :global(svg.planet) {
++            width: 100%;
++            height: 100%;
++        }
++    }
++
++    .forming {
++        position: relative;
++        width: 100%;
++        height: 100%;
++    }
++
++    .bob {
++        display: block;
++        width: 100%;
++        height: 100%;
++    }
++
++    .sun {
++        position: absolute;
++        inset: 18%;
++        border-radius: 50%;
++        background: radial-gradient(circle, hsl(var(--hue) 90% 92%) 0, hsl(var(--hue) 90% 75% / 0.5) 22%, hsl(var(--hue) 85% 60% / 0.12) 52%, transparent 70%);
++        animation: sun-in 900ms var(--ease-out) both;
++    }
++
++    .dust {
++        position: absolute;
++        inset: 0;
++
++        & i {
++            position: absolute;
++            left: 50%;
++            top: 50%;
++            width: var(--s);
++            height: var(--s);
++            margin: calc(var(--s) / -2);
++            border-radius: 50%;
++            background: hsl(var(--hue) 80% 85%);
++            box-shadow: 0 0 6px hsl(var(--hue) 90% 75%);
++            opacity: 0;
++        }
++    }
++
++    .next-slot {
++        aspect-ratio: 1;
++        border-radius: 50%;
++        border: 1.5px dashed hsl(var(--hue) 60% 80% / 0.35);
++    }
++
++    .world {
++        display: flex;
++        flex-direction: column;
++        align-items: center;
++        gap: 8px;
++        min-height: 0;
++        padding: 0;
++        border-radius: 999px;
++        background: none;
++        /* The planet is centered on the slot; the 26px name hangs under it. */
++        translate: -50% calc(-50% + 13px);
++
++        &:not(.transparent) {
++            background-color: transparent;
++        }
++
++        & :global(svg.planet) {
++            width: 100%;
++            height: 100%;
++        }
++
++        &.away {
++            opacity: 0.22;
++        }
++    }
++
++    .world-planet {
++        display: block;
++        width: 100%;
++        aspect-ratio: 1;
++    }
++
++    .world-name {
++        max-width: 18cqi;
++        overflow: hidden;
++        text-overflow: ellipsis;
++        white-space: nowrap;
++        font-size: 14px;
++        font-weight: 600;
++        color: var(--secondary);
++        line-height: 18px;
++        transition: color 120ms var(--ease);
++    }
++
++    @media (hover: hover) {
++        :global(#app) .world:hover {
++            background-color: transparent;
++        }
++
++        .world:hover .world-name {
++            color: var(--primary);
++        }
++
++        .world:hover :global(svg.planet) {
++            filter: brightness(1.12);
++        }
++    }
++
++    :global(#app) .world:focus-visible {
++        outline: none;
++
++        & .world-planet {
++            border-radius: 50%;
++            outline: 2px solid hsl(var(--world-hue) 85% 72%);
++            outline-offset: 6px;
++        }
++    }
++
++    /* ---- the panel ---- */
++
++    .panel {
++        display: flex;
++        flex-direction: column;
++        align-items: flex-start;
++        text-align: left;
++        min-width: 0;
++    }
++
++    .subtitle {
++        margin-top: 12px;
++        font-size: 17px;
++        color: var(--secondary);
++    }
++
++    .full-note {
++        margin-top: 28px;
++        padding: 16px 18px;
++        border-radius: 12px;
++        background: hsl(var(--hue) 30% 80% / 0.06);
++        box-shadow: inset 0 0 0 1px var(--ring);
++        color: var(--primary);
++        font-size: 16px;
++    }
++
++    .forge {
++        display: flex;
++        flex-direction: column;
++        gap: 18px;
++        width: 100%;
++        margin-top: 28px;
++    }
++
++    .label {
++        display: block;
++        margin-bottom: 8px;
++        font-size: 13px;
++        font-weight: 600;
++        letter-spacing: 0.02em;
++        color: var(--secondary);
++    }
++
++    .field input {
++        width: 100%;
++        height: 52px;
++        padding: 0 16px;
++        border: 0;
++        border-radius: 12px;
++        background: hsl(var(--hue) 24% 10% / 0.92);
++        box-shadow: inset 0 0 0 1px var(--ring);
++        color: var(--primary);
++        font: 600 20px / 1 var(--font-display);
++        letter-spacing: -0.01em;
++        outline: none;
++        user-select: text;
++        transition: box-shadow 120ms var(--ease), background-color 120ms var(--ease);
++
++        &:hover {
++            background: hsl(var(--hue) 24% 13% / 0.92);
++        }
++
++        &:focus-visible {
++            box-shadow: inset 0 0 0 2px var(--helium-blue);
++        }
++    }
++
++    .field.shaking input {
++        animation: shake 320ms var(--ease);
++    }
++
++    .chips {
++        display: flex;
++        flex-wrap: wrap;
++        gap: 8px;
++        margin-top: -8px;
++    }
++
++    :global(#app) .chip {
++        min-height: 36px;
++        padding: 0 14px;
++        border-radius: 999px;
++        font-size: 14px;
++        color: var(--secondary);
++        position: relative;
++
++        /* A 44px target around the 36px chip. */
++        &::after {
++            content: "";
++            position: absolute;
++            inset: -4px 0;
++        }
++
++        &:hover {
++            color: var(--primary);
++        }
++    }
++
++    .kinds,
++    .hues {
++        display: flex;
++        flex-wrap: wrap;
++        gap: 6px;
++    }
++
++    :global(#app) .kind {
++        width: 60px;
++        height: 60px;
++        padding: 0;
++        justify-content: center;
++        border-radius: 14px;
++        background-color: hsl(var(--hue) 22% 10% / 0.9);
++
++        &:hover {
++            background-color: hsl(var(--hue) 22% 14% / 0.9);
++        }
++
++        &[aria-checked="true"] {
++            background-color: hsl(var(--hue) 45% 18% / 0.92);
++            box-shadow: inset 0 0 0 1.5px var(--helium-blue);
++        }
++
++        & :global(svg.planet) {
++            width: 36px;
++            height: 36px;
++        }
++    }
++
++    :global(#app) .hue {
++        width: 44px;
++        height: 44px;
++        padding: 0;
++        justify-content: center;
++        border-radius: 50%;
++        background: transparent;
++
++        &::before {
++            content: "";
++            width: 26px;
++            height: 26px;
++            border-radius: 50%;
++            background: radial-gradient(circle at 35% 30%, hsl(var(--swatch) 90% 80%), hsl(var(--swatch) 65% 52%) 60%);
++            transition: scale 160ms var(--ease-out), box-shadow 160ms var(--ease);
++        }
++
++        &:hover::before {
++            scale: 1.08;
++        }
++
++        &[aria-checked="true"]::before {
++            box-shadow:
++                0 0 0 3px hsl(var(--hue) 38% 6%),
++                0 0 0 5px hsl(var(--swatch) 85% 75%);
++        }
++    }
++
++    .forge-actions {
++        display: flex;
++        gap: 10px;
++        margin-top: 6px;
++
++        & > :global(.button) {
++            min-height: 48px;
++            padding-inline: 22px;
++            font-size: 17px;
++        }
++    }
++
++    .spark {
++        width: 20px;
++        height: 20px;
++        fill: none;
++        stroke: currentColor;
++        stroke-width: 1.8;
++        stroke-linecap: round;
++    }
++
++    .hint {
++        min-height: 20px;
++        margin-top: -8px;
++        font-size: 14px;
++        color: hsl(20 90% 75%);
++    }
++
++    .sr-only {
++        position: absolute;
++        width: 1px;
++        height: 1px;
++        overflow: hidden;
++        clip-path: inset(50%);
++        white-space: nowrap;
++    }
++
++    /* ---- motion: forming, the create moment, removing ---- */
++
++    @media (prefers-reduced-motion: no-preference) {
++        .bob {
++            animation: bob 7s ease-in-out infinite alternate;
++        }
++
++        .world .bob {
++            animation-duration: 9s;
++        }
++
++        .next-slot {
++            animation: slot-breathe 2.6s ease-in-out infinite alternate;
++        }
++
++        /* A new world gathers out of dust. */
++        .forming {
++            animation: form 820ms var(--ease-out) 120ms both;
++        }
++
++        .dust i {
++            animation: gather 700ms var(--ease-in) var(--t) both;
++        }
++
++        /* Pressing Create: it draws in, flares and throws off a ring of light. */
++        .forming.igniting .bob {
++            animation: ignite 620ms var(--ease) both;
++        }
++
++        .shock {
++            position: absolute;
++            inset: -4%;
++            border-radius: 50%;
++            border: 2px solid hsl(var(--hue) 90% 85% / 0.9);
++            box-shadow: 0 0 24px hsl(var(--hue) 90% 70% / 0.6), inset 0 0 24px hsl(var(--hue) 90% 70% / 0.4);
++            animation: shock 900ms var(--ease-out) 260ms both;
++            pointer-events: none;
++
++            &.late {
++                border-width: 1px;
++                animation-delay: 380ms;
++                animation-duration: 1100ms;
++            }
++        }
++
++        .forming.removing {
++            animation: remove 240ms var(--ease-in) both;
++        }
++    }
++
++    @media (prefers-reduced-motion: reduce) {
++        .forming {
++            animation: fade-in 300ms var(--ease) both;
++        }
++
++        .forming.removing {
++            animation: fade-out 120ms var(--ease) both;
++        }
++
++        .dust,
++        .shock {
++            display: none;
++        }
++    }
++
++    @keyframes bob {
++        from {
++            transform: translateY(-4px);
++        }
++        to {
++            transform: translateY(4px);
++        }
++    }
++
++    @keyframes slot-breathe {
++        from {
++            opacity: 0.45;
++        }
++        to {
++            opacity: 1;
++        }
++    }
++
++    @keyframes form {
++        from {
++            opacity: 0;
++            transform: scale(0.55);
++            filter: brightness(2.2) blur(6px);
++        }
++        60% {
++            filter: brightness(1.25) blur(0);
++        }
++        to {
++            opacity: 1;
++            transform: none;
++            filter: none;
++        }
++    }
++
++    @keyframes gather {
++        from {
++            opacity: 0;
++            transform: rotate(var(--a)) translateX(var(--d));
++        }
++        30% {
++            opacity: 0.9;
++        }
++        to {
++            opacity: 0;
++            transform: rotate(var(--a)) translateX(0);
++        }
++    }
++
++    @keyframes ignite {
++        0% {
++            transform: none;
++            filter: none;
++        }
++        35% {
++            transform: scale(0.93);
++            filter: brightness(1.1);
++        }
++        70% {
++            transform: scale(1.07);
++            filter: brightness(1.6) saturate(1.2);
++        }
++        100% {
++            transform: scale(1.02);
++            filter: brightness(1.3);
++        }
++    }
++
++    @keyframes shock {
++        from {
++            opacity: 1;
++            transform: scale(0.85);
++        }
++        to {
++            opacity: 0;
++            transform: scale(2.1);
++        }
++    }
++
++    @keyframes remove {
++        to {
++            opacity: 0;
++            transform: scale(0.5);
++        }
++    }
++
++    @keyframes sun-in {
++        from {
++            opacity: 0;
++            transform: scale(0.6);
++        }
++    }
++
++    @keyframes fade-in {
++        from {
++            opacity: 0;
++        }
++    }
++
++    @keyframes fade-out {
++        to {
++            opacity: 0;
++        }
++    }
++
++    @keyframes shake {
++        0%, 100% { translate: 0; }
++        25% { translate: -6px 0; }
++        50% { translate: 5px 0; }
++        75% { translate: -3px 0; }
++    }
++
++    @media (max-width: 1100px) {
++        .spaces-layout {
++            grid-template-columns: minmax(0, 1fr) 340px;
++        }
++    }
++
++    /* ---- narrow frames: the system on top, the panel under it ---- */
++
++    @media (max-width: 860px) {
++        .spaces-layout {
++            grid-template-columns: minmax(0, 1fr);
++            align-items: start;
++            gap: 8px;
++            padding-bottom: 24px;
++        }
++
++        .orrery {
++            max-width: 520px;
++        }
++
++        .panel {
++            align-items: center;
++            text-align: center;
++            width: 100%;
++            max-width: 440px;
++            justify-self: center;
++        }
++
++        .forge {
++            align-items: center;
++        }
++
++        .chips,
++        .kinds,
++        .hues,
++        .forge-actions {
++            justify-content: center;
++        }
++    }
++</style>
+--- a/components/helium_onboarding/src/pages/Welcome.svelte
++++ b/components/helium_onboarding/src/pages/Welcome.svelte
+@@ -1,22 +1,23 @@
+ <script lang="ts">
+-    import { flushSync, onMount } from "svelte";
++    import { onMount } from "svelte";
+     import {
+         Button,
+-        HeliumLogo,
+         IconArrowRight,
+-        IconCheck,
+         Link,
+     } from "@imput/helium-prism";
+     import { s } from "../lib/strings";
+     import { parseLocalizedString } from "../lib/i18n";
+     import { setPref, acceptLatestSchema } from "../lib/browser";
++    import { play } from "../lib/sound";
+     import {
+         currentPage,
+         hasSeenIntro,
+         markIntroSeen,
+         nextPage,
+-        ONBOARDING_INTRO_DELAY_MS,
+     } from "../lib/onboarding-flow";
++
++    import LokaMark from "../components/LokaMark.svelte";
++    import Planet from "../components/Planet.svelte";
+ 
+     const useDefaults = async () => {
+         acceptLatestSchema();
+@@ -27,316 +28,268 @@
+ 
+     const visible = $derived($currentPage === "Welcome");
+ 
++    // Loka runs on Helium's services, so these are Helium's policies.
+     const privacyUrl = "https://helium.computer/privacy";
+     const termsUrl = "https://helium.computer/terms";
+-    const LOGO_TRANSITION_DELAY_MS = ONBOARDING_INTRO_DELAY_MS + 1600;
+     const termsParts = parseLocalizedString(s.welcome.terms);
+ 
+-    let introLogoVisible = $state(!$hasSeenIntro);
+-    let introAnimating = $state(!$hasSeenIntro);
+-    const finalLogoVisible = $derived(!introLogoVisible);
++    // The intro plays once. Any click or key finishes it at once, so nobody waits on it.
++    const intro = !$hasSeenIntro;
++    let skipped = $state(false);
+ 
+     const next = () => {
+         markIntroSeen();
++        play("next");
+         nextPage();
+     }
+ 
+-    const transitionIntroLogo = async () => {
+-        const transition = document.startViewTransition(() => {
+-            flushSync(() => {
+-                introLogoVisible = false;
+-            });
+-        });
+-
+-        await transition.finished;
+-        introAnimating = false;
+-    }
+-
+     onMount(() => {
+-        if ($hasSeenIntro) {
+-            return;
+-        }
+-
+-        const timer = window.setTimeout(
+-            transitionIntroLogo,
+-            LOGO_TRANSITION_DELAY_MS
+-        );
++        if (!intro) return;
++
++        const skip = () => {
++            skipped = true;
++        };
++        window.addEventListener("pointerdown", skip, { capture: true, once: true });
++        window.addEventListener("keydown", skip, { capture: true, once: true });
++        const done = window.setTimeout(markIntroSeen, 2400);
+ 
+         return () => {
+-            window.clearTimeout(timer);
+-        }
++            window.removeEventListener("pointerdown", skip, { capture: true });
++            window.removeEventListener("keydown", skip, { capture: true });
++            window.clearTimeout(done);
++        };
+     });
+ </script>
+-
+-{#if introLogoVisible}
+-    <div id="welcome-logo-intro">
+-        <HeliumLogo height="84px" />
+-    </div>
+-{/if}
+ 
+ <div
+     id="welcome-page"
+     class="onboarding-page"
+     class:visible
+-    class:intro={!$hasSeenIntro}
+-    inert={introAnimating}
++    class:intro
++    class:skipped
+ >
+-    <div id="welcome-page-container">
+-        <div id="welcome-top">
+-            <div id="welcome-logo-text">
+-                <div id="welcome-logo" class:visible={finalLogoVisible}>
+-                    <HeliumLogo height="48px" />
+-                </div>
+-                <div id="welcome-text">
+-                    <h1>
+-                        {s.welcome.greeting}
+-                    </h1>
+-                    <p>
+-                        {s.welcome.body}
+-                    </p>
+-                </div>
+-            </div>
+-            <div id="welcome-buttons" class="action-buttons">
+-                <Button onclick={useDefaults}>
+-                    <IconCheck />
+-                    {s.button.useDefaults}
+-                </Button>
+-                <Button primary onclick={next}>
+-                    <IconArrowRight />
+-                    {s.button.configure}
+-                </Button>
+-            </div>
+-
+-            <div id="welcome-footer">
+-                <p>
+-                    {#each termsParts as part}
+-                        {#if part.kind === "linkPrivacy"}
+-                            <Link href={privacyUrl}>{part.text}</Link>
+-                        {:else if part.kind === "linkTerms"}
+-                            <Link href={termsUrl}>{part.text}</Link>
+-                        {:else}
+-                            {part.text}
+-                        {/if}
+-                    {/each}
+-                </p>
+-
+-                <p>{s.welcome.footer}</p>
+-            </div>
++    <!-- Three worlds at the edges of the sky: the sidebar's seed spaces, Build, School and Home. -->
++    <div class="worlds" aria-hidden="true">
++        <div class="world w1"><div class="float"><Planet kind="ringed" hue={200} size={150} /></div></div>
++        <div class="world w2"><div class="float"><Planet kind="banded" hue={30} size={96} /></div></div>
++        <div class="world w3"><div class="float"><Planet kind="ocean" hue={150} size={124} /></div></div>
++    </div>
++
++    <div class="welcome">
++        <div class="mark">
++            <LokaMark size={92} intro={intro} />
++        </div>
++        <h1 class="rise r1">{s.welcome.greeting}</h1>
++        <p class="lead rise r2">{s.welcome.body}</p>
++
++        <div class="action-buttons rise r3">
++            <Button onclick={useDefaults}>
++                {s.button.useDefaults}
++            </Button>
++            <Button primary onclick={next} data-sound="none">
++                {s.button.configure}
++                <IconArrowRight />
++            </Button>
++        </div>
++
++        <div class="legal rise r4">
++            <p>
++                {#each termsParts as part}
++                    {#if part.kind === "linkPrivacy"}
++                        <Link href={privacyUrl}>{part.text}</Link>
++                    {:else if part.kind === "linkTerms"}
++                        <Link href={termsUrl}>{part.text}</Link>
++                    {:else}
++                        {part.text}
++                    {/if}
++                {/each}
++            </p>
++            <p>{s.welcome.footer}</p>
+         </div>
+     </div>
+ </div>
+ 
+ <style>
+     #welcome-page {
+-        --page-in-delay: 0.1s;
+-    }
+-
+-    #welcome-top,
+-    #welcome-text,
+-    #welcome-logo-text {
++        --page-in-delay: 0ms;
++        /* The horizon's rim sits about here; keep the column above it. */
++        padding-bottom: 18vh;
++    }
++
++    .welcome {
++        position: relative;
+         display: flex;
+         flex-direction: column;
+-        align-items: flex-start;
+-        text-align: left;
+-    }
+-
+-    #welcome-page-container {
++        align-items: center;
+         width: 100%;
+-        max-width: 548px;
++        max-width: 640px;
+         padding-inline: 24px;
+     }
+ 
+-    #welcome-top,
+-    #welcome-logo-text {
+-        height: 100%;
+-        gap: 32px;
+-        justify-content: center;
+-    }
+-
+-    #welcome-logo-text,
+-    #welcome-text {
+-        gap: 14px;
+-    }
+-
+-    #welcome-logo {
++    .mark {
+         display: flex;
+-        opacity: 0;
+-
+-        &.visible {
+-            opacity: 1;
+-            view-transition-name: welcome-logo;
+-        }
+-    }
+-
+-    #welcome-text p {
+-        font-size: 21px;
+-        max-width: 500px;
+-    }
+-
+-    #welcome-footer {
++        margin-bottom: 28px;
++        filter: drop-shadow(0 0 32px hsl(var(--hue) 85% 60% / 0.35));
++    }
++
++    .lead {
++        margin-top: 18px;
++        max-width: 34em;
++        font-size: 19px;
++        color: var(--secondary);
++    }
++
++    .action-buttons {
++        margin-top: 36px;
++        gap: 12px;
++
++        & > :global(.button) {
++            min-height: 48px;
++            padding-inline: 22px;
++            font-size: 17px;
++        }
++
++        & > :global(.button.primary) {
++            padding-inline: 24px 20px;
++        }
++    }
++
++    .legal {
+         display: flex;
+         flex-direction: column;
+-        width: 100%;
+-
+-        p {
+-            font-size: 13px;
+-        }
+-
+-        :global(a) {
++        gap: 4px;
++        margin-top: 40px;
++        max-width: 44em;
++
++        & p {
++            font-size: 13.5px;
++            color: var(--tertiary);
++        }
++
++        & :global(a) {
+             font-size: inherit;
+             line-height: inherit;
+-        }
+-    }
+-
+-    #welcome-logo-intro {
+-        display: flex;
++            color: var(--secondary);
++        }
++    }
++
++    /* ---- the worlds at the edges, only where there's room for them ---- */
++
++    .worlds {
+         position: absolute;
+-        z-index: 1;
+-        top: 50%;
+-        translate: 0 -50%;
+-
+-        animation:
+-            intro-logo-center
+-            1.7s
+-            cubic-bezier(0.16, 1, 0.3, 1)
+-            calc(var(--onboarding-intro-delay) + 0.85s)
+-            both;
+-        view-transition-name: welcome-logo;
+-        will-change: transform, filter, opacity;
+-    }
+-
+-    #welcome-page.visible.intro {
++        inset: 0;
++        pointer-events: none;
++    }
++
++    .world {
++        position: absolute;
++        display: none;
++    }
++
++    .w1 {
++        left: 9%;
++        top: 22%;
++        opacity: 0.9;
++    }
++
++    .w2 {
++        right: 12%;
++        top: 16%;
++        opacity: 0.75;
++    }
++
++    .w3 {
++        right: 8%;
++        top: 52%;
++        opacity: 0.85;
++    }
++
++    @media (min-width: 1180px) and (min-height: 640px) {
++        .world {
++            display: block;
++        }
++    }
++
++    @media (prefers-reduced-motion: no-preference) {
++        .float {
++            animation: float 9s ease-in-out infinite alternate;
++        }
++
++        .w2 .float {
++            animation-duration: 11s;
++            animation-delay: -4s;
++        }
++
++        .w3 .float {
++            animation-duration: 13s;
++            animation-delay: -7s;
++        }
++    }
++
++    @keyframes float {
++        from {
++            transform: translateY(-6px);
++        }
++        to {
++            transform: translateY(6px);
++        }
++    }
++
++    /* ---- the intro: stars fade in, the planet rises, the mark lights up, then the words ---- */
++
++    .intro.visible {
+         animation: none;
+ 
+-        #welcome-text,
+-        #welcome-buttons,
+-        #welcome-footer {
+-            opacity: 0;
+-            animation:
+-                page-in
+-                0.35s
+-                forwards
+-                calc(var(--onboarding-intro-delay) + 1.8s);
+-        }
+-    }
+-
+-    :global(::view-transition-group(welcome-logo)) {
+-        animation-duration: 0.72s;
+-        animation-timing-function: cubic-bezier(0.32, 1, 0.4, 1);
+-    }
+-
+-    :global(::view-transition-image-pair(welcome-logo)) {
+-        animation: intro-logo-arc 0.72s;
+-    }
+-
+-    :global(::view-transition-old(welcome-logo)),
+-    :global(::view-transition-new(welcome-logo)) {
+-        animation: none;
+-        filter: none;
+-        height: 100%;
+-        object-fit: contain;
+-        width: 100%;
+-    }
+-
+-    @keyframes intro-logo-center {
++        & .rise {
++            animation: rise 700ms var(--ease-out) backwards;
++        }
++
++        & .r1 { animation-delay: 650ms; }
++        & .r2 { animation-delay: 780ms; }
++        & .r3 { animation-delay: 900ms; }
++        & .r4 { animation-delay: 1050ms; }
++
++        & .world {
++            animation: world-in 1600ms var(--ease-out) backwards;
++        }
++
++        & .w1 { animation-delay: 500ms; --from: -60px 30px; }
++        & .w2 { animation-delay: 700ms; --from: 50px 20px; }
++        & .w3 { animation-delay: 850ms; --from: 70px 40px; }
++    }
++
++    .intro.skipped :is(.rise, .world),
++    .intro.skipped .mark :global(*) {
++        animation-duration: 1ms !important;
++        animation-delay: 0ms !important;
++    }
++
++    @keyframes rise {
+         from {
+             opacity: 0;
+-            transform: translateY(360px);
+-            filter: blur(10px);
+-        }
+-
+-        90% {
+-            filter: none;
+-        }
+-
+-        to {
+-            opacity: 1;
+-            transform: none;
+-            filter: none;
+-        }
+-    }
+-
+-    @keyframes intro-logo-arc {
+-        from,
+-        to {
+-            translate: 0 0;
+-        }
+-
+-        20% {
+-            translate: 0 -40px;
++            translate: 0 18px;
++        }
++    }
++
++    @keyframes world-in {
++        from {
++            opacity: 0;
++            translate: var(--from);
++            scale: 0.92;
+         }
+     }
+ 
+     @media (prefers-reduced-motion: reduce) {
+-        #welcome-page.visible.intro {
+-            opacity: 0;
+-            animation:
+-                intro-state-fade-in
+-                0.5s
+-                calc(var(--onboarding-intro-delay) + 1.6s)
+-                both;
+-
+-            #welcome-text,
+-            #welcome-buttons,
+-            #welcome-footer {
+-                opacity: 1;
+-                animation: none;
+-            }
+-        }
+-
+-        #welcome-logo-intro {
+-            animation:
+-                intro-logo-center
+-                0.5s
+-                calc(var(--onboarding-intro-delay) + 0.2s)
+-                both;
+-        }
+-
+-        #welcome-logo.visible {
+-            view-transition-name: none;
+-        }
+-
+-        :global(::view-transition-group(welcome-logo)),
+-        :global(::view-transition-image-pair(welcome-logo)) {
+-            animation: none;
+-        }
+-
+-        :global(::view-transition-old(welcome-logo)) {
+-            animation: intro-logo-fade-out 0.5s both;
+-        }
+-
+-        :global(::view-transition-new(welcome-logo)) {
+-            display: none;
+-        }
+-
+-        @keyframes intro-logo-center {
++        @keyframes rise {
+             from {
+                 opacity: 0;
+             }
+-
+-            to {
+-                opacity: 1;
+-            }
+-        }
+-
+-        @keyframes intro-logo-fade-out {
+-            from {
+-                opacity: 1;
+-            }
+-
+-            to {
+-                opacity: 0;
+-            }
+-        }
+-
+-        @keyframes intro-state-fade-in {
++        }
++
++        @keyframes world-in {
+             from {
+                 opacity: 0;
+             }
+-
+-            to {
+-                opacity: 1;
+-            }
+         }
+     }
+ </style>
+--- a/components/helium_onboarding/src/pages/index.ts
++++ b/components/helium_onboarding/src/pages/index.ts
+@@ -1,4 +1,5 @@
+ export { default as Welcome } from "./Welcome.svelte";
++export { default as Spaces } from "./Spaces.svelte";
+ export { default as HeliumServices } from "./HeliumServices.svelte";
+ export { default as SearchEngine } from "./SearchEngine.svelte";
+ export { default as DataImport } from "./DataImport.svelte";

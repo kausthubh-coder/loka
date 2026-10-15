@@ -1,10 +1,10 @@
 // Packages the built browser as the portable Windows alpha:
 //
-//   bun run webui:build && bun run browser:build && node scripts/alpha/package_alpha.mjs
+//   bun run browser:package
 //
 // makes <build checkout>\dist\Loka-<version>-windows-x64.zip and its .sha256. Inside: Loka.exe (the launcher),
-// app\ (the browser's runtime files, with the Loka sidebar built in, and first-run defaults) and README.txt. Nothing is
-// installed: unzip anywhere and run Loka.exe. The profile lives in %LOCALAPPDATA%\Loka\User Data.
+// app\ (the browser's runtime files, with the Loka sidebar built in, and first-run defaults) and README.txt. Nothing
+// is installed: unzip anywhere and run Loka.exe. The profile lives in %LOCALAPPDATA%\Loka\User Data.
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -74,8 +74,8 @@ This is an early alpha:
   then "Run anyway".
 - It doesn't update itself. New builds come from the GitHub releases page.
 - Some menus and pages still say Helium or Chromium; Loka is built on Helium.
-- The Loka sidebar is the side panel on the left. If it's closed, click the
-  Loka button in the toolbar or press Alt+L. Ctrl+K opens the command bar.
+- The Loka sidebar is the left column of every window. Ctrl+K opens the
+  command bar.
 
 Your profile (tabs, spaces, settings) is in %LOCALAPPDATA%\\Loka\\User Data,
 separate from Helium, Chrome or Edge. Loka is free software under GPL-3.0.

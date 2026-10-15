@@ -8,7 +8,6 @@
 //    change that landed in between (from another window's sidebar) is never written over.
 
 import { archiveStale, type BrowserState } from "../../prototype/src/features/sidebar/sidebar.logic";
-import { browser, type NativeTab } from "./bridge";
 import {
 	adoptTabs,
 	type BrowserTab,
@@ -19,7 +18,8 @@ import {
 	tabCreated,
 	tabRemoved,
 	tabUpdated,
-} from "./live.logic";
+} from "../../prototype/src/features/tabs/live.logic";
+import { browser, type NativeTab } from "./bridge";
 import { type Groups, readState, readUi, writeSession, writeState } from "./store";
 
 let live: LiveMap = {};

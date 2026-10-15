@@ -4,8 +4,8 @@
 
 import { DEFAULT_UI, parseUiPrefs, type UiPrefs } from "../../prototype/src/app/ui-prefs.logic";
 import { type BrowserState, importState } from "../../prototype/src/features/sidebar/sidebar.logic";
+import { firstState, type GroupRecord, type LiveMap } from "../../prototype/src/features/tabs/live.logic";
 import { browser } from "./bridge";
-import { firstState, type GroupRecord, type LiveMap } from "./live.logic";
 
 export const STATE_KEY = "state.v1";
 export const UI_KEY = "ui.v1";

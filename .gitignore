@@ -11,6 +11,11 @@ prototype/dist
 *.log
 .claude/skills
 
+# The build checkout (C:\src\loka) is a worktree of this repo: its private key, throwaway profiles and build status
+/keys/
+/profile-*/
+/build-status.json
+
 # verification evidence (kept out of git, survives cleanup)
 .agents/verify-runs
 

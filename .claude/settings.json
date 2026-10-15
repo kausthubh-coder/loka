@@ -1,0 +1,30 @@
+{
+	"$schema": "https://json.schemastore.org/claude-code-settings.json",
+	"permissions": {
+		"deny": [
+			"Bash(gh release *)",
+			"Bash(gh workflow run *)",
+			"Bash(git push origin main)",
+			"Bash(git push * main)",
+			"Bash(git push * *:main)",
+			"Bash(*User Data*)",
+			"Bash(*.studi*)",
+			"Bash(*.pem*)",
+			"PowerShell(gh release *)",
+			"PowerShell(gh workflow run *)",
+			"PowerShell(git push origin main)",
+			"PowerShell(git push * main)",
+			"PowerShell(*User Data*)",
+			"PowerShell(*.studi*)",
+			"PowerShell(*.pem*)",
+			"Read(//c/**/User Data/**)",
+			"Edit(//c/**/User Data/**)",
+			"Read(~/.studi/**)",
+			"Edit(~/.studi/**)",
+			"Read(//c/**/*.pem)",
+			"Edit(//c/**/*.pem)",
+			"Read(**/*.pem)",
+			"Edit(**/*.pem)"
+		]
+	}
+}

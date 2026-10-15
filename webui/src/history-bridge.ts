@@ -12,7 +12,9 @@ declare global {
 	}
 }
 
-const send = (message: string, args: unknown[]) =>
+import type { HistoryEvent, HistoryMessage } from "./messages";
+
+const send = (message: HistoryMessage, args: unknown[]) =>
 	(globalThis as unknown as { chrome: { send(message: string, args: unknown[]): void } }).chrome.send(message, args);
 
 /** One visit to a page, as the browser's history keeps it. */
@@ -43,7 +45,7 @@ window.cr = {
 	},
 };
 
-function ask<T>(message: string, ...args: unknown[]): Promise<T> {
+function ask<T>(message: HistoryMessage, ...args: unknown[]): Promise<T> {
 	const id = `loka-history-${nextId++}`;
 	return new Promise((resolve) => {
 		pending.set(id, resolve as (value: unknown) => void);
@@ -51,11 +53,11 @@ function ask<T>(message: string, ...args: unknown[]): Promise<T> {
 	});
 }
 
-function tell(message: string, ...args: unknown[]) {
+function tell(message: HistoryMessage, ...args: unknown[]) {
 	send(message, args);
 }
 
-function on(event: string, listener: (...args: unknown[]) => void): () => void {
+function on(event: HistoryEvent, listener: (...args: unknown[]) => void): () => void {
 	const set = listeners.get(event) ?? new Set();
 	listeners.set(event, set);
 	set.add(listener);

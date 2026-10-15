@@ -1,0 +1,175 @@
+<template id="f02-intro-template">
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <style>
+    @font-face {
+      font-family: "Segoe UI Variable Display";
+      src: local("Segoe UI Variable Display"), local("Segoe UI");
+      font-weight: 300 800;
+    }
+    @font-face {
+      font-family: "Segoe UI Variable Text";
+      src: local("Segoe UI Variable Text"), local("Segoe UI");
+      font-weight: 300 800;
+    }
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      color: #ececf1;
+      font-family: "Segoe UI Variable Text", sans-serif;
+    }
+
+    /* sky component, space hue H = 200 (Build) */
+    #f02-intro-sky {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background:
+        radial-gradient(60% 50% at 6% 0%, hsl(200 58% 34% / 0.45), transparent 70%),
+        radial-gradient(38% 34% at 26% 58%, hsl(240 45% 32% / 0.18), transparent 70%),
+        radial-gradient(55% 55% at 100% 100%, hsl(165 42% 26% / 0.28), transparent 70%),
+        linear-gradient(165deg, hsl(200 32% 8%), hsl(200 38% 4%));
+    }
+    #f02-intro-stars {
+      position: absolute;
+      left: -16px;
+      top: -16px;
+      width: 1952px;
+      height: 1112px;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* 3D stage for the window's tilt-to-flat arrival */
+    #f02-intro-stage {
+      position: absolute;
+      inset: 0;
+      perspective: 1800px;
+      perspective-origin: 960px 540px;
+    }
+
+    /* window component */
+    #f02-intro-window {
+      position: absolute;
+      left: 400px;
+      top: 190px;
+      width: 1120px;
+      height: 700px;
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 40px 120px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(196, 222, 240, 0.16);
+      transform-origin: 50% 100%;
+      will-change: transform, opacity;
+    }
+    #f02-intro-window img {
+      display: block;
+      width: 1120px;
+      height: 700px;
+    }
+
+    /* h2 headline, centered at y ~ 90 */
+    #f02-intro-headline {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 58px;
+      height: 65px;
+      display: flex;
+      justify-content: center;
+      gap: 0.26em;
+      font-family: "Segoe UI Variable Display", sans-serif;
+      font-size: 60px;
+      font-weight: 650;
+      line-height: 1.08;
+      letter-spacing: -0.025em;
+      color: #ececf1;
+      white-space: nowrap;
+    }
+    #f02-intro-headline span {
+      display: inline-block;
+      will-change: transform, opacity, filter;
+    }
+  </style>
+
+  <div id="root" data-composition-id="02-intro" data-width="1920" data-height="1080">
+    <div id="f02-intro-sky" class="clip" data-start="0" data-duration="5" data-track-index="0">
+      <img id="f02-intro-stars" src="assets/stars.svg" alt="" />
+    </div>
+
+    <div id="f02-intro-stage" class="clip" data-start="0" data-duration="5" data-track-index="1">
+      <div id="f02-intro-window">
+        <img src="assets/build.png" alt="loka in the Build space" width="1120" height="700" />
+      </div>
+    </div>
+
+    <div id="f02-intro-headline">
+      <span>An</span><span>Arc-style</span><span>browser</span><span>for</span><span>Windows</span>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      window.__timelines = window.__timelines || {};
+      var root = document.querySelector('[data-composition-id="02-intro"]');
+      var q = function (id) {
+        return root.querySelector('[id="' + id + '"]');
+      };
+      var stars = q("f02-intro-stars");
+      var win = q("f02-intro-window");
+      var words = Array.prototype.slice.call(q("f02-intro-headline").querySelectorAll("span"));
+
+      var tl = gsap.timeline({ paused: true });
+
+      // Stars: the ground, drifting a few px across the whole frame.
+      tl.fromTo(stars, { x: 0, y: 0 }, { x: -10, y: -4, duration: 5, ease: "none" }, 0);
+
+      // Scene 1 (0.0-1.4s): window rises 80px, tilts from rotateX 14 to flat, fades in.
+      // spring-pop-entrance, calm settle: power3.out long tail, no overshoot.
+      // Lands exactly on the handoff: x=400 y=190 1120x700, scale 1, opacity 1, flat.
+      tl.fromTo(
+        win,
+        { y: 80, rotationX: 14, scale: 0.94, opacity: 0 },
+        { y: 0, rotationX: 0, scale: 1, opacity: 1, duration: 1.4, ease: "power3.out" },
+        0
+      );
+
+      // Scene 2 (1.4-2.6s): headline word by word (dynamic-content-sequencing).
+      // Each word's window is BASE + chars * SEC_PER_CHAR, pre-computed once and
+      // scaled so the last word starts at 2.1s and lands by 2.6s.
+      var BASE = 0.1;
+      var SEC_PER_CHAR = 0.02;
+      var WORD_DUR = 0.5;
+      var SEQ_START = 1.4;
+      var LAST_START = 2.6 - WORD_DUR;
+      var weights = words.map(function (el) {
+        return BASE + el.textContent.length * SEC_PER_CHAR;
+      });
+      var leadSum = 0;
+      for (var i = 0; i < weights.length - 1; i++) leadSum += weights[i];
+      var k = (LAST_START - SEQ_START) / leadSum;
+      var cumulative = SEQ_START;
+      var starts = weights.map(function (w) {
+        var s = cumulative;
+        cumulative += w * k;
+        return s;
+      });
+
+      words.forEach(function (el, idx) {
+        tl.fromTo(
+          el,
+          { opacity: 0, y: 26, filter: "blur(6px)" },
+          { opacity: 1, y: 0, filter: "blur(0px)", duration: WORD_DUR, ease: "power3.out" },
+          starts[idx]
+        );
+      });
+
+      // Scene 3 (2.6-5.0s): hold. Window stays exactly at its handoff state.
+      tl.set(win, { y: 0, rotationX: 0, scale: 1, opacity: 1 }, 2.6);
+
+      window.__timelines["02-intro"] = tl;
+    })();
+  </script>
+</template>

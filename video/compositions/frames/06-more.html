@@ -1,0 +1,150 @@
+<template id="f06-more-template">
+  <div id="root" data-composition-id="06-more" data-width="1920" data-height="1080" data-duration="5.5">
+    <style>
+      @font-face {
+        font-family: "Segoe UI Variable Display";
+        src: local("Segoe UI Variable Display"), local("Segoe UI");
+        font-weight: 300 800;
+      }
+      @font-face {
+        font-family: "Segoe UI Variable Text";
+        src: local("Segoe UI Variable Text"), local("Segoe UI");
+        font-weight: 300 800;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #f06-more-sky {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        background:
+          radial-gradient(60% 50% at 6% 0%, hsl(200 58% 34% / .45), transparent 70%),
+          radial-gradient(38% 34% at 26% 58%, hsl(240 45% 32% / .18), transparent 70%),
+          radial-gradient(55% 55% at 100% 100%, hsl(165 42% 26% / .28), transparent 70%),
+          linear-gradient(165deg, hsl(200 32% 8%), hsl(200 38% 4%));
+      }
+      #f06-more-stars {
+        position: absolute;
+        top: 0;
+        left: -12px;
+        width: calc(100% + 24px);
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      #f06-more-cam {
+        position: absolute;
+        inset: 0;
+        transform-origin: 50% 42%;
+      }
+      .f06-more-col {
+        position: absolute;
+        top: 220px;
+      }
+      .f06-more-card {
+        position: relative;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 24px 64px rgba(0, 0, 0, .55), 0 0 0 1px rgba(196, 222, 240, 0.16);
+        opacity: 0;
+      }
+      .f06-more-card img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+      .f06-more-label {
+        margin-top: 30px;
+        font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+        font-size: 34px;
+        font-weight: 600;
+        line-height: 1.2;
+        color: #ececf1;
+        opacity: 0;
+      }
+    </style>
+
+    <!-- Sky ground: full-duration background clip -->
+    <div id="f06-more-sky" class="clip" data-start="0" data-duration="5.5" data-track-index="0">
+      <img id="f06-more-stars" src="assets/stars.svg" alt="">
+    </div>
+
+    <!-- Triptych layer -->
+    <div id="f06-more-cam" class="clip" data-start="0" data-duration="5.5" data-track-index="1">
+      <!-- archive: 272x250 at 1.4x = 380 wide -->
+      <div id="f06-more-col-archive" class="f06-more-col" style="left: 140px; width: 380px;">
+        <div id="f06-more-card-archive" class="f06-more-card" style="width: 380px;">
+          <img src="assets/archive.png" alt="">
+        </div>
+        <div id="f06-more-label-archive" class="f06-more-label" style="width: 470px;">Old tabs put themselves away</div>
+      </div>
+      <!-- media: 544x400 (2x) at 380 wide -->
+      <div id="f06-more-col-media" class="f06-more-col" style="left: 640px; width: 380px;">
+        <div id="f06-more-card-media" class="f06-more-card" style="width: 380px;">
+          <img src="assets/media.png" alt="">
+        </div>
+        <div id="f06-more-label-media" class="f06-more-label" style="width: 380px;">Music from any space</div>
+      </div>
+      <!-- import (focal): 1280x800 at 640 wide -->
+      <div id="f06-more-col-import" class="f06-more-col" style="left: 1140px; width: 640px;">
+        <div id="f06-more-card-import" class="f06-more-card" style="width: 640px;">
+          <img src="assets/import.png" alt="">
+        </div>
+        <div id="f06-more-label-import" class="f06-more-label" style="width: 640px;">Bring Chrome, Edge and Arc along</div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var byId = function (id) { return document.getElementById(id); };
+
+        var stars = byId("f06-more-stars");
+        var cam = byId("f06-more-cam");
+        var cards = [byId("f06-more-card-archive"), byId("f06-more-card-media"), byId("f06-more-card-import")];
+        var labels = [byId("f06-more-label-archive"), byId("f06-more-label-media"), byId("f06-more-label-import")];
+
+        gsap.set(cards, { opacity: 0, y: 0 });
+        gsap.set(labels, { opacity: 0, y: 0 });
+
+        var tl = gsap.timeline({ paused: true });
+
+        // Scene 1 (0.0-0.6s): sky only; stars drift a few px for the whole shot.
+        tl.fromTo(stars, { x: 0 }, { x: -10, duration: 5, ease: "none" }, 0);
+
+        // Scene 2 (0.6-3.4s): waterfall-entry cascade, left to right, smooth.
+        // Binary opacity via tl.set, then a long-tail glide up into the slot.
+        // Gaps shrink (0.55s, 0.50s); each card starts before the previous settles.
+        // The focal import card is the heaviest: furthest travel, longest settle.
+        var beats = [
+          { t: 0.60, y: 60, d: 0.85 },
+          { t: 1.15, y: 60, d: 0.85 },
+          { t: 1.65, y: 90, d: 1.00 }
+        ];
+        for (var i = 0; i < 3; i++) {
+          var b = beats[i];
+          tl.set(cards[i], { opacity: 1, y: b.y }, b.t);
+          tl.to(cards[i], { y: 0, duration: b.d, ease: "power4.out" }, b.t);
+          // Label fades in under its card a beat later.
+          tl.fromTo(labels[i],
+            { opacity: 0, y: 18 },
+            { opacity: 1, y: 0, duration: 0.6, ease: "power3.out", immediateRender: false },
+            b.t + 0.4);
+        }
+
+        // Scene 2-3: slow camera push-in under the assembled triptych, into the hold (to 5.0s).
+        tl.fromTo(cam, { scale: 1 }, { scale: 1.025, duration: 4.4, ease: "none" }, 0.6);
+
+        // Pin the timeline to the full frame length.
+        tl.set({}, {}, 5);
+
+        window.__timelines["06-more"] = tl;
+      })();
+    </script>
+  </div>
+</template>

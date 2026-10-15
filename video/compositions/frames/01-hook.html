@@ -1,0 +1,220 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Segoe UI Variable Display";
+      src: local("Segoe UI Variable Display"), local("Segoe UI");
+      font-weight: 300 800;
+    }
+    @font-face {
+      font-family: "Segoe UI Variable Text";
+      src: local("Segoe UI Variable Text"), local("Segoe UI");
+      font-weight: 300 800;
+    }
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      color: #ececf1;
+      font-family: "Segoe UI Variable Text", sans-serif;
+    }
+
+    /* sky component, H = 200 (Build) */
+    #f01-hook-sky {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(60% 50% at 6% 0%, hsl(200 58% 34% / .45), transparent 70%),
+        radial-gradient(38% 34% at 26% 58%, hsl(240 45% 32% / .18), transparent 70%),
+        radial-gradient(55% 55% at 100% 100%, hsl(165 42% 26% / .28), transparent 70%),
+        linear-gradient(165deg, hsl(200 32% 8%), hsl(200 38% 4%));
+    }
+
+    #f01-hook-stars {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* planet stage: glow behind, planet in front; the whole stage rises */
+    #f01-hook-stage {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+    }
+
+    /* glow: 1500px circle centered on the planet center (960, 1030) */
+    #f01-hook-glow {
+      position: absolute;
+      left: 210px;
+      top: 280px;
+      width: 1500px;
+      height: 1500px;
+      z-index: 1;
+    }
+    #f01-hook-glow-core {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: radial-gradient(
+        closest-side,
+        hsl(200 90% 50%) 0%,
+        hsl(200 90% 48%) 56%,
+        hsl(204 86% 40% / .55) 70%,
+        hsl(210 80% 32% / 0) 100%
+      );
+    }
+
+    /* planet: body r=46 of a 160-unit viewBox -> body 900px means a 1565px image.
+       Center (960, 1030): body top at y=580, top third above y=880. */
+    #f01-hook-planet {
+      position: absolute;
+      left: 177.5px;
+      top: 247.5px;
+      width: 1565px;
+      height: 1565px;
+      z-index: 2;
+      display: block;
+    }
+
+    /* headline: display type, centered, upper third */
+    #f01-hook-title {
+      position: absolute;
+      left: 120px;
+      right: 120px;
+      top: 196px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      font-family: "Segoe UI Variable Display", sans-serif;
+      font-size: 112px;
+      font-weight: 700;
+      line-height: 1.0;
+      letter-spacing: -0.035em;
+      color: #ececf1;
+      text-align: center;
+      white-space: nowrap;
+    }
+    #f01-hook-title .f01-hook-line {
+      display: flex;
+      justify-content: center;
+      gap: 0.25em;
+      min-height: 112px;
+    }
+    #f01-hook-title .f01-hook-word {
+      display: inline-block;
+    }
+    #f01-hook-title .f01-hook-accent {
+      color: #7fd0f5;
+    }
+  </style>
+
+  <div id="root" data-composition-id="01-hook" data-width="1920" data-height="1080" data-duration="5">
+    <div id="f01-hook-sky" class="clip" data-start="0" data-duration="5" data-track-index="0"></div>
+
+    <img id="f01-hook-stars" class="clip" src="assets/stars.svg" alt=""
+         data-start="0" data-duration="5" data-track-index="1" />
+
+    <div id="f01-hook-stage" class="clip" data-start="0" data-duration="5" data-track-index="2">
+      <div id="f01-hook-glow"><div id="f01-hook-glow-core"></div></div>
+      <img id="f01-hook-planet" src="assets/planet-build.svg" alt="" />
+    </div>
+
+    <div id="f01-hook-title" class="clip" data-start="0" data-duration="5" data-track-index="3">
+      <div class="f01-hook-line" data-line="0">
+        <span class="f01-hook-word">Every</span>
+        <span class="f01-hook-word">space</span>
+      </div>
+      <div class="f01-hook-line" data-line="1">
+        <span class="f01-hook-word">is</span>
+        <span class="f01-hook-word">its</span>
+        <span class="f01-hook-word">own</span>
+        <span class="f01-hook-word f01-hook-accent">world.</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (function () {
+      const FRAME_ID = "01-hook";
+      const tl = gsap.timeline({ paused: true });
+
+      const stage = document.getElementById("f01-hook-stage");
+      const glow = document.getElementById("f01-hook-glow");
+      const glowCore = document.getElementById("f01-hook-glow-core");
+      const title = document.getElementById("f01-hook-title");
+
+      // ── Scene 1 (0.0–1.7s): the planet rises from below the frame edge on one long power3 settle.
+      const RISE_DUR = 1.7;
+      tl.fromTo(stage, { y: 760 }, { y: 0, duration: RISE_DUR, ease: "power3.out" }, 0);
+
+      // ambient-glow-bloom, hero form: bloom lands on the planet's settle (one beat).
+      const GLOW_PEAK = 0.3;
+      const BLOOM_START = 0.55;
+      const BLOOM_DUR = RISE_DUR - BLOOM_START;
+      tl.fromTo(
+        glow,
+        { opacity: 0, scale: 0.85 },
+        { opacity: GLOW_PEAK, scale: 1, duration: BLOOM_DUR, ease: "power2.out" },
+        BLOOM_START
+      );
+
+      // Bounded breathe on the inner core (one finite phase tween, no yoyo).
+      // sin(0) = 0, so the core sits at its rest state (opacity 1, scale 1) at the seam.
+      const BREATHE_START = BLOOM_START + BLOOM_DUR;
+      const BREATHE_DUR = 4.5 - BREATHE_START;
+      const OPACITY_AMP = 0.08; // relative to the 0.30 peak -> about +/-0.024 absolute
+      const SCALE_AMP = 0.015;
+      const phase = { p: 0 };
+      tl.to(
+        phase,
+        {
+          p: Math.PI * 2,
+          duration: BREATHE_DUR,
+          ease: "none",
+          onUpdate: function () {
+            const s = Math.sin(phase.p);
+            glowCore.style.opacity = String(1 - OPACITY_AMP * 0.5 + s * OPACITY_AMP * 0.5);
+            glowCore.style.transform = "scale(" + (1 + s * SCALE_AMP) + ")";
+          },
+        },
+        BREATHE_START
+      );
+
+      // ── Scenes 2–3: per-word reveal, start times pre-computed once from word length.
+      const LINE_STARTS = [1.6, 2.8];
+      const BASE = 0.14;
+      const SEC_PER_CHAR = 0.035;
+      const lines = title.querySelectorAll('.f01-hook-line');
+      const SEQUENCE = [];
+      lines.forEach(function (line, li) {
+        let t = LINE_STARTS[li];
+        line.querySelectorAll('.f01-hook-word').forEach(function (el) {
+          SEQUENCE.push({ el: el, start: t });
+          t += BASE + el.textContent.trim().length * SEC_PER_CHAR;
+        });
+      });
+
+      SEQUENCE.forEach(function (item) {
+        tl.fromTo(
+          item.el,
+          { opacity: 0, y: 34, filter: "blur(8px)" },
+          { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.62, ease: "power3.out" },
+          item.start
+        );
+      });
+
+      // Hold still to the end of the frame.
+      window.__timelines = window.__timelines || {};
+      window.__timelines[FRAME_ID] = tl;
+    })();
+  </script>
+</template>

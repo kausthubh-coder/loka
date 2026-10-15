@@ -5,7 +5,16 @@ import { faviconBackground, faviconInner, hostOf, type LiveTabs } from "../sideb
 import { planet } from "../sidebar/planet";
 import type { BrowserState, TabId } from "../sidebar/sidebar.logic";
 import { playCue } from "../sound/sound";
-import { type CommandMode, type CommandResult, commandResults, dotCom } from "./command-bar.logic";
+import {
+	type CommandMode,
+	type CommandResult,
+	commandResults,
+	continueAnswer,
+	dotCom,
+	inlineCompletion,
+	keepAnswer,
+	type SuggestionAnswer,
+} from "./command-bar.logic";
 
 /**
  * The command bar: open an address or search, jump to any tab in any space, switch space, or run a command. Results
@@ -28,6 +37,7 @@ export class LokaCommandBar extends LitElement {
 		query: { state: true },
 		selected: { state: true },
 		suggestions: { state: true },
+		inlineOff: { state: true },
 	};
 
 	declare state: BrowserState;
@@ -41,17 +51,22 @@ export class LokaCommandBar extends LitElement {
 	layout: "embedded" | "page" = "embedded";
 	/** Filled in and selected when the bar opens: the current address, for Ctrl+L. */
 	initialQuery = "";
+	/** What the person typed. The field shows it with the completion after it, selected. */
 	query = "";
 	selected = 0;
-	suggestions: { for: string; list: NativeSuggestion[] } = { for: "", list: [] };
+	suggestions: SuggestionAnswer = { for: "", list: [] };
+	/** Set by a deletion, cleared by the next character typed: see ResultContext.inlineOff. */
+	inlineOff = false;
+	/** The completion the last render showed, which the next keystroke may continue. */
+	private shownInline = "";
 	private stopSuggestions = () => {};
 
 	override connectedCallback() {
 		super.connectedCallback();
 		this.query = this.initialQuery;
 		this.stopSuggestions =
-			this.browser?.onSuggestions((query, list) => {
-				this.suggestions = { for: query, list };
+			this.browser?.onSuggestions((query, list: NativeSuggestion[]) => {
+				this.suggestions = keepAnswer(this.suggestions, { for: query, list }, this.query);
 			}) ?? (() => {});
 		if (this.query.trim()) this.browser?.suggest(this.query);
 	}
@@ -104,7 +119,18 @@ export class LokaCommandBar extends LitElement {
 		}
 	}
 
-	private onInput(value: string) {
+	/**
+	 * Typing over the selected completion replaces it, so the field's text is what was typed. A deletion turns
+	 * completing off until the next character; a character that continues the completion keeps it right away.
+	 */
+	private onInput(e: InputEvent) {
+		const input = e.target as HTMLInputElement;
+		const value = input.value;
+		// Typing in the middle of the text isn't the start of an address either, as in Chrome's address bar.
+		const stopCompleting = e.inputType.startsWith("delete") || input.selectionEnd !== value.length;
+		const continued = !stopCompleting && this.shownInline ? continueAnswer(this.suggestions, value) : null;
+		if (continued) this.suggestions = continued;
+		this.inlineOff = stopCompleting;
 		this.query = value;
 		this.selected = 0;
 		if (value.trim()) this.browser?.suggest(value);
@@ -112,13 +138,23 @@ export class LokaCommandBar extends LitElement {
 
 	protected override firstUpdated() {
 		const input = this.renderRoot.querySelector("input");
-		input?.focus();
-		input?.select();
+		if (!input) return;
+		input.value = this.query;
+		input.focus();
+		input.select();
 	}
 
 	protected override updated(changed: Map<string, unknown>) {
 		if (changed.has("selected")) {
 			this.renderRoot.querySelector(".result.on")?.scrollIntoView({ block: "nearest" });
+		}
+		// The field is set here rather than bound, so the completion can follow the caret, selected, and so a render
+		// that changes nothing leaves the caret where the person put it.
+		const input = this.renderRoot.querySelector("input");
+		const shown = this.query + this.shownInline;
+		if (input && input.value !== shown) {
+			input.value = shown;
+			input.setSelectionRange(this.query.length, shown.length);
 		}
 	}
 
@@ -148,17 +184,21 @@ export class LokaCommandBar extends LitElement {
 		// Ctrl+L starts with the address on screen: until it's edited, Enter goes there again and the list below is
 		// the same as an empty bar's.
 		const untouched = this.initialQuery !== "" && this.query === this.initialQuery;
-		const results = commandResults(this.state, untouched ? "" : this.query, {
+		const query = untouched ? "" : this.query;
+		const context = {
 			suggestions: this.suggestions.list,
 			suggestionsFor: this.suggestions.for,
 			links: this.links,
 			pinned: this.pinned,
-		});
+			inlineOff: this.inlineOff,
+		};
+		const results = commandResults(this.state, query, context);
 		if (untouched) {
 			const url = this.initialQuery;
 			results.unshift({ kind: "go", url, icon: "globe", label: `Go to ${hostOf(url)}`, detail: url, group: "" });
 		}
 		const selected = Math.min(this.selected, results.length - 1);
+		this.shownInline = inlineCompletion(this.state, query, context, selected);
 		let lastGroup = "";
 		return html`
 			<div class="scrim" @click=${() => void this.close()}></div>
@@ -174,8 +214,7 @@ export class LokaCommandBar extends LitElement {
 						aria-activedescendant="result-${selected}"
 						autocomplete="off"
 						spellcheck="false"
-						.value=${this.query}
-						@input=${(e: Event) => this.onInput((e.target as HTMLInputElement).value)}
+						@input=${(e: InputEvent) => this.onInput(e)}
 						@keydown=${(e: KeyboardEvent) => this.onKey(e, results)}
 					/>
 					<span class="mode" title=${this.mode === "focus-location" ? "Addresses open in this tab" : "Addresses open in a new tab"}>

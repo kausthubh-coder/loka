@@ -9,6 +9,15 @@ a transparent window over the browser window); in the prototype it's drawn over 
 
 - `command-go`: the first row is what Enter does with the text: "Search with <engine>" or "Go to <address>". Once
   the browser's autocomplete answers (`suggest` / `suggestions`) its first answer takes that row.
+- `command-pick`: like Chrome's and Zen's address bar, the start of a site goes there instead of searching. If a
+  Loka tab's site starts with what was typed ("youtu" with YouTube open), or the browser's pick (`default: true` on
+  its first suggestion) is an open tab, row 0 is that tab ("Switch to tab"). Else if the browser's pick is a page it
+  knows (history, bookmark), row 0 is "Go to youtube.com" with the page's title. The search moves to row 1. Plain
+  words (the browser's pick is a search, or it sends no pick) keep the search first.
+- `command-inline`: while row 0 is a pick and selected, the field shows its completion selected after the caret
+  ("youtu" + selected "be.com", from the suggestion's `inline` or the tab's site). Backspace or Delete removes it
+  and keeps it off for the same words until a character is typed; typing the next character of the completion
+  keeps it with no wait; arrowing to another row puts back exactly what was typed.
 - `command-tabs`: matching tabs from every space (never new tab pages), with the space's planet and name; the
   browser's open-tab suggestions join them.
 - `command-history`, `command-bookmarks`: the browser's other suggestions, in their own sections.
@@ -25,8 +34,14 @@ a transparent window over the browser window); in the prototype it's drawn over 
 
 Preconditions: seed data. The fake browser (`prototype/src/demo/`) answers `suggest` from a seeded history.
 
-- **Tab in another space.** Ctrl+K, fill the `combobox` "Search or enter address" with `canvas`, ArrowDown, Enter.
-  `outline()` gives `space: "School"`, `activeTab: "Canvas: CSC 281"`.
+- **Tab in another space.** Ctrl+K, fill the `combobox` "Search or enter address" with `canvas`, Enter (the
+  Canvas tab's site starts with "canvas", so it's row 0). `outline()` gives `space: "School"`,
+  `activeTab: "Canvas: CSC 281"`.
+- **Completion.** Ctrl+K, `keyboard.type("youtu")`: the field's value is `youtube.com` with `be.com` selected
+  (read `value`, `selectionStart`, `selectionEnd` on the combobox), row 0 is YouTube "Switch to tab". Backspace:
+  `youtu`, nothing selected, row 0 is the search. Type `b`: `youtube.com` with `e.com` selected. Enter:
+  `activeTab: "YouTube"`. For the browser's history pick, type `redd` (reddit is only in the fake's history).
+  "how to cook rice" stays a search first.
 - **Command by a related word.** Fill `preferences`, ArrowDown, Enter. `activeTab` is `Settings`.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs command-bar`.
 - **The floating page.** `.agents/verify-runs/native-ui/native.mjs` (not committed; see the PR) loads the built
@@ -35,7 +50,15 @@ Preconditions: seed data. The fake browser (`prototype/src/demo/`) answers `sugg
 ## Gotchas
 
 - The input is a `combobox`, not a `textbox`.
-- Row 0 is the search or address whenever the bar has text, so the first tab or command is ArrowDown once.
+- Row 0 is the search or address whenever the bar has text, so the first tab or command is ArrowDown once,
+  except when what was typed starts an open tab's site or the browser picks a page: then that's row 0 and the
+  search is row 1.
+- The field's value includes the selected completion; what was typed is the part before the selection. Type with
+  `keyboard.type`, not `fill`, when a test cares about completion: deletion is told apart by the input event's
+  `inputType`.
+- The fake browser (`prototype/src/demo/fake-browser.ts`) sends `default` and `inline` the way the handler's
+  OnResultChanged does. Browser builds from before those fields send neither, and the bar then searches first as
+  it always did (YouTube still switches to an open Loka tab: that rule is Loka's own).
 - The bar doesn't act itself: it sends `loka-pick` with a `CommandPick` and the window runs it (the floating page
   runs what the browser can do and hands the rest to the sidebar with `commandPicked`).
 - Results come from `commandResults` in `command-bar.logic.ts`, which is unit tested; the recipe proves the keyboard

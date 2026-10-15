@@ -192,11 +192,41 @@ const recipes = {
 		await loka.page.keyboard.press("Control+k");
 		await bar.fill("canvas");
 		await loka.proof("01-results-for-canvas");
-		// Result 0 is the search; result 1 is the Canvas tab in School.
-		await loka.page.keyboard.press("ArrowDown");
+		// "canvas" starts the Canvas tab's site, so result 0 switches to it (in School) and the search is result 1.
 		await loka.page.keyboard.press("Enter");
 		let o = await loka.outline();
 		assert.deepEqual([o.space, o.activeTab], ["School", "Canvas: CSC 281"], "jumped to a tab in another space");
+
+		// The start of an open tab's site: its row first, and the field completes the address, selected.
+		const field = () =>
+			bar.evaluate((/** @type {HTMLInputElement} */ el) => [
+				el.value,
+				el.value.slice(el.selectionStart ?? 0, el.selectionEnd ?? 0),
+			]);
+		await loka.page.keyboard.press("Control+k");
+		await loka.page.keyboard.type("youtu", { delay: 50 });
+		await loka.page.waitForTimeout(200);
+		assert.deepEqual(await field(), ["youtube.com", "be.com"], "youtu is completed to youtube.com");
+		assert.match(await loka.page.locator("#result-0").innerText(), /YouTube[\s\S]*Switch to tab/);
+		await loka.proof("02-youtu-completed");
+		// Backspace takes the completion away, and the browser's next answer doesn't bring it back.
+		await loka.page.keyboard.press("Backspace");
+		await loka.page.waitForTimeout(200);
+		assert.deepEqual(await field(), ["youtu", ""], "Backspace removed the completion");
+		assert.match(await loka.page.locator("#result-0").innerText(), /youtu[\s\S]*Search with/);
+		// The next character turns completing back on, and Enter switches to the tab.
+		await loka.page.keyboard.type("b");
+		assert.deepEqual(await field(), ["youtube.com", "e.com"], "typing on continued the completion");
+		await loka.page.keyboard.press("Enter");
+		assert.equal((await loka.outline()).activeTab, "YouTube", "Enter switched to the YouTube tab");
+
+		// Plain words still search first, with nothing completed.
+		await loka.page.keyboard.press("Control+k");
+		await loka.page.keyboard.type("how to cook rice", { delay: 10 });
+		await loka.page.waitForTimeout(200);
+		assert.deepEqual(await field(), ["how to cook rice", ""]);
+		assert.match(await loka.page.locator("#result-0").innerText(), /how to cook rice[\s\S]*Search with/);
+		await loka.page.keyboard.press("Escape");
 
 		await loka.page.keyboard.press("Control+k");
 		await bar.fill("preferences");
@@ -205,7 +235,7 @@ const recipes = {
 		o = await loka.outline();
 		assert.equal(o.activeTab, "Settings", "a command found by a related word opened Settings");
 		await loka.page.locator("loka-settings").getByRole("heading", { name: "Settings" }).waitFor();
-		await loka.proof("02-settings-from-command");
+		await loka.proof("03-settings-from-command");
 	},
 
 	async "space-editor"(loka) {

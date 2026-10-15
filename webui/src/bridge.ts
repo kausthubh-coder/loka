@@ -92,6 +92,13 @@ export interface NativeSuggestion {
 	url: string;
 	/** The open tab it switches to, for kind "tab". */
 	tabId?: number;
+	/**
+	 * The browser's pick for Enter, as its own address bar would choose: only ever on the first suggestion. Builds
+	 * before this field leave it out, which reads as no pick.
+	 */
+	default?: boolean;
+	/** What the address bar would complete the typed text with ("be.com" after "youtu"); "" or left out for none. */
+	inline?: string;
 }
 
 export type ColorScheme = "light" | "dark" | "system";

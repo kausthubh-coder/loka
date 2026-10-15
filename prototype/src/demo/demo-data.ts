@@ -164,6 +164,7 @@ export const DEMO_PLAYLIST: Omit<NativeMedia, "tabId" | "playing">[] = [
 ];
 
 export const DEMO_HISTORY: NativeSuggestion[] = [
+	{ kind: "history", title: "YouTube", url: "https://www.youtube.com/" },
 	{ kind: "bookmark", title: "Zen Browser", url: "https://zen-browser.app/" },
 	{
 		kind: "history",

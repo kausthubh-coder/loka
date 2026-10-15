@@ -46,7 +46,8 @@ Each feature file has an H1, one paragraph on the user-visible behavior, then fo
   remove; the one-time hint.
 - [Export and import](./export-import.md): JSON export, import, reset, rejecting bad files.
 - [Command bar](./command-bar.md): Ctrl+T, Ctrl+K, Ctrl+L and the address field: addresses, searches with the
-  browser's suggestions, tabs, spaces and commands; the floating `command.html`.
+  browser's suggestions, going to an open tab or known site with the address completed, tabs, spaces and commands;
+  the floating `command.html`.
 - [Space editor](./space-editor.md): create or change a space's name, color, planet and light or dark.
 - [Light and dark](./theme.md): each space's scheme, the crossfade, and `setColorScheme`.
 - [Window layout and pages](./layout.md): resize, right side, hide and pin back (the top row's button, Ctrl+S),

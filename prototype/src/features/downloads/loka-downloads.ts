@@ -4,47 +4,51 @@ interface Download {
 	id: string;
 	name: string;
 	size: string;
-	when: "Today" | "Yesterday";
+	when: string;
 	status: "running" | "done" | "failed";
 	progress: number;
 }
 
-// Sample files: the prototype has no network, so this page shows the states a real download goes through.
-const SAMPLE: Download[] = [
+// Sample files: the prototype has no network, so this panel shows the states a real download goes through.
+// Kept outside the element so closing and reopening the panel doesn't reset them.
+let items: Download[] = [
 	{
 		id: "d1",
 		name: "helium_0.19.2.1_x64-installer.exe",
 		size: "148 MB",
-		when: "Today",
+		when: "now",
 		status: "running",
 		progress: 0.38,
 	},
-	{ id: "d2", name: "CSC281-GDD-v3.pdf", size: "2.1 MB", when: "Today", status: "done", progress: 1 },
-	{ id: "d3", name: "lofi-cover.png", size: "840 KB", when: "Today", status: "failed", progress: 0.2 },
+	{ id: "d2", name: "CSC281-GDD-v3.pdf", size: "2.1 MB", when: "10:42", status: "done", progress: 1 },
+	{ id: "d3", name: "lofi-cover.png", size: "840 KB", when: "10:15", status: "failed", progress: 0.2 },
 	{ id: "d4", name: "loka-spaces.json", size: "6 KB", when: "Yesterday", status: "done", progress: 1 },
-	{ id: "d5", name: "chromium-windows-build.md", size: "18 KB", when: "Yesterday", status: "done", progress: 1 },
 ];
 
-/** loka://downloads: files grouped by day, with progress, a retry for failures, and open / show in folder. */
+/** The sidebar's Downloads panel, opened from the toolbar like Extensions: recent files, progress, retry. */
 export class LokaDownloads extends LitElement {
-	static override properties = {
-		items: { state: true },
-		filter: { state: true },
-	};
+	static override properties = { items: { state: true } };
 
-	items = SAMPLE.map((d) => ({ ...d }));
-	filter = "";
+	items = items;
 	private timer = 0;
+
+	private set(next: Download[]) {
+		items = next;
+		this.items = next;
+	}
 
 	override connectedCallback() {
 		super.connectedCallback();
-		// Moves the running sample along so the progress bar can be seen working; stops when nothing is running.
+		this.items = items;
+		// Moves a running sample along so the progress can be seen working; stops when nothing is running.
 		this.timer = window.setInterval(() => {
 			if (!this.items.some((d) => d.status === "running")) return;
-			this.items = this.items.map((d) =>
-				d.status === "running"
-					? { ...d, progress: Math.min(1, d.progress + 0.04), status: d.progress + 0.04 >= 1 ? "done" : "running" }
-					: d,
+			this.set(
+				this.items.map((d) => {
+					if (d.status !== "running") return d;
+					const progress = Math.min(1, d.progress + 0.03);
+					return { ...d, progress, status: progress >= 1 ? "done" : "running" };
+				}),
 			);
 		}, 400);
 	}
@@ -54,142 +58,88 @@ export class LokaDownloads extends LitElement {
 		super.disconnectedCallback();
 	}
 
-	private changeItem(id: string, change: Partial<Download>) {
-		this.items = this.items.map((d) => (d.id === id ? { ...d, ...change } : d));
-	}
-
-	private icon(name: string) {
-		const ext = name.split(".").pop() ?? "";
-		const hue = { exe: 200, pdf: 0, png: 150, json: 40, md: 260 }[ext] ?? 220;
-		return html`<span class="file" style="--f: ${hue}" aria-hidden="true">${ext.toUpperCase().slice(0, 4)}</span>`;
+	private change(id: string, change: Partial<Download>) {
+		this.set(this.items.map((d) => (d.id === id ? { ...d, ...change } : d)));
 	}
 
 	override render() {
-		const shown = this.items.filter((d) => d.name.toLowerCase().includes(this.filter.toLowerCase()));
-		const groups = (["Today", "Yesterday"] as const).map(
-			(when) => [when, shown.filter((d) => d.when === when)] as const,
-		);
 		return html`
-			<div class="page">
-				<header>
-					<h1>Downloads</h1>
-					<input
-						type="search"
-						placeholder="Search downloads"
-						aria-label="Search downloads"
-						@input=${(e: Event) => {
-							this.filter = (e.target as HTMLInputElement).value;
-						}}
-					/>
-					<button class="quiet" @click=${() => (this.items = this.items.filter((d) => d.status === "running"))}>
-						Clear all
-					</button>
-				</header>
-				${groups.map(([when, list]) =>
-					list.length
-						? html`<h2>${when}</h2>
-								<ul>
-									${list.map(
-										(d) => html`<li class=${d.status}>
-											${this.icon(d.name)}
-											<div class="info">
-												<b>${d.name}</b>
-												${
-													d.status === "running"
-														? html`<div class="bar" role="progressbar" aria-label="${d.name} progress" aria-valuenow=${Math.round(d.progress * 100)}>
-																<span style="width: ${d.progress * 100}%"></span>
-															</div>
-															<small>${Math.round(d.progress * 100)}% of ${d.size}</small>`
-														: d.status === "failed"
-															? html`<small class="error">Failed: network error</small>`
-															: html`<small>${d.size}</small>`
-												}
-											</div>
-											<div class="actions">
-												${
-													d.status === "failed"
-														? html`<button @click=${() => this.changeItem(d.id, { status: "running", progress: 0 })}>Retry</button>`
-														: d.status === "done"
-															? html`<button>Open</button><button>Show in folder</button>`
-															: html`<button @click=${() => this.changeItem(d.id, { status: "failed" })}>Cancel</button>`
-												}
-												<button
-													class="remove"
-													aria-label="Remove ${d.name} from the list"
-													@click=${() => (this.items = this.items.filter((x) => x.id !== d.id))}
-												>
-													<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 4.5 7 7m0-7-7 7" /></svg>
-												</button>
-											</div>
-										</li>`,
-									)}
-								</ul>`
-						: null,
-				)}
-				${shown.length === 0 ? html`<p class="empty">No downloads${this.filter ? " match" : " yet"}.</p>` : null}
-			</div>
+			<header>
+				<b>Downloads</b>
+				<button class="quiet" @click=${() => this.set(this.items.filter((d) => d.status === "running"))}>Clear</button>
+			</header>
+			<ul>
+				${this.items.map((d) => {
+					const ext = d.name.split(".").pop() ?? "";
+					const hue = { exe: 200, pdf: 0, png: 150, json: 40 }[ext] ?? 220;
+					return html`<li class=${d.status}>
+						<span class="file" style="--f: ${hue}" aria-hidden="true">${ext.toUpperCase().slice(0, 4)}</span>
+						<span class="text">
+							<span class="name">${d.name}</span>
+							${
+								d.status === "running"
+									? html`<span class="bar" role="progressbar" aria-label="${d.name} progress" aria-valuenow=${Math.round(d.progress * 100)}>
+											<span style="width: ${d.progress * 100}%"></span>
+										</span>`
+									: null
+							}
+							<small class=${d.status === "failed" ? "error" : ""}>
+								${
+									d.status === "running"
+										? `${Math.round(d.progress * 100)}% of ${d.size}`
+										: d.status === "failed"
+											? "Failed: network error"
+											: `${d.size}, ${d.when}`
+								}
+							</small>
+						</span>
+						${
+							d.status === "failed"
+								? html`<button class="act" @click=${() => this.change(d.id, { status: "running", progress: 0 })}>Retry</button>`
+								: d.status === "done"
+									? html`<button class="act icon" aria-label="Show ${d.name} in folder" title="Show in folder">
+											<svg viewBox="0 0 16 16"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.5h5A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5z" /></svg>
+										</button>`
+									: html`<button class="act icon" aria-label="Cancel ${d.name}" title="Cancel" @click=${() => this.change(d.id, { status: "failed" })}>
+											<svg viewBox="0 0 16 16"><path d="m4.5 4.5 7 7m0-7-7 7" /></svg>
+										</button>`
+						}
+					</li>`;
+				})}
+			</ul>
+			${this.items.length === 0 ? html`<p class="empty">No downloads yet.</p>` : null}
+			<button class="all">Open the Downloads folder</button>
 		`;
 	}
 
 	static override styles = css`
 		:host {
 			display: block;
-			height: 100%;
-			overflow-y: auto;
-			color: #e6e7ee;
-			font: 14px/1.45 system-ui, "Segoe UI", sans-serif;
-		}
-		.page {
-			max-width: 680px;
-			margin: 0 auto;
-			padding: 48px 32px 80px;
+			color: #ececf1;
+			font: 14px/1.4 system-ui, "Segoe UI", sans-serif;
 		}
 		header {
 			display: flex;
 			align-items: center;
-			gap: 12px;
-			margin-bottom: 20px;
-		}
-		h1 {
-			flex: 1;
-			margin: 0;
-			font-size: 28px;
-			font-weight: 650;
-		}
-		h2 {
-			margin: 24px 0 6px;
-			font-size: 13px;
-			font-weight: 600;
-			color: #a3a5b2;
-		}
-		input {
-			width: 200px;
-			height: 34px;
-			padding: 0 12px;
-			font: inherit;
-			color: inherit;
-			border: 0;
-			border-radius: 9px;
-			background: hsl(var(--hue) 30% 85% / 0.08);
-			outline: none;
-		}
-		input:focus {
-			box-shadow: inset 0 0 0 1.5px hsl(var(--hue) 85% 72%);
+			justify-content: space-between;
+			margin: 4px 6px 8px;
 		}
 		button {
 			font: inherit;
 			color: inherit;
 			border: 0;
 			background: none;
-			height: 30px;
-			padding: 0 10px;
-			border-radius: 7px;
-		}
-		button:hover {
-			background: hsl(var(--hue) 30% 85% / 0.1);
 		}
 		.quiet {
-			color: #c2c4cf;
+			color: #a7a8b4;
+			padding: 2px 6px;
+			border-radius: 6px;
+		}
+		.quiet:hover,
+		.act:hover,
+		.all:hover {
+			color: #fff;
+			background: hsl(var(--hue) 30% 80% / 0.1);
 		}
 		ul {
 			list-style: none;
@@ -199,88 +149,95 @@ export class LokaDownloads extends LitElement {
 		li {
 			display: flex;
 			align-items: center;
-			gap: 14px;
-			padding: 10px 8px;
-			border-radius: 10px;
+			gap: 10px;
+			padding: 7px 8px;
+			border-radius: 8px;
 		}
 		li:hover {
-			background: hsl(var(--hue) 30% 85% / 0.05);
+			background: hsl(var(--hue) 30% 80% / 0.06);
 		}
 		.file {
+			flex: none;
 			display: grid;
 			place-items: center;
-			flex: none;
-			width: 38px;
-			height: 44px;
-			border-radius: 6px;
+			width: 28px;
+			height: 34px;
+			border-radius: 5px;
 			background: hsl(var(--f) 45% 30%);
 			color: hsl(var(--f) 80% 88%);
-			font-size: 10px;
+			font-size: 9px;
 			font-weight: 700;
 		}
-		.info {
+		.text {
 			flex: 1;
-			min-width: 0;
 			display: grid;
 			gap: 3px;
+			min-width: 0;
 		}
-		.info b {
-			font-weight: 550;
+		.name {
 			overflow: hidden;
 			white-space: nowrap;
 			text-overflow: ellipsis;
 		}
 		small {
-			color: #a3a5b2;
-			font-size: 13px;
+			color: #a7a8b4;
+			font-size: 12px;
 			font-variant-numeric: tabular-nums;
 		}
 		.error {
 			color: #ff9b8f;
 		}
-		.failed b {
-			color: #b9bac4;
-		}
 		.bar {
-			height: 4px;
+			display: block;
+			height: 3px;
 			border-radius: 2px;
-			background: hsl(var(--hue) 30% 85% / 0.12);
+			background: hsl(var(--hue) 30% 85% / 0.14);
 			overflow: hidden;
 		}
 		.bar span {
 			display: block;
 			height: 100%;
-			border-radius: 2px;
 			background: hsl(var(--hue) 80% 68%);
-			transition: width 400ms linear;
 		}
-		.actions {
-			display: flex;
-			align-items: center;
-			gap: 2px;
+		.act {
+			flex: none;
+			height: 28px;
+			padding: 0 8px;
+			border-radius: 7px;
 			color: #d6d7df;
 		}
-		.remove {
+		.act.icon {
 			display: grid;
 			place-items: center;
-			width: 30px;
+			width: 28px;
 			padding: 0;
-			color: #a3a5b2;
 		}
 		svg {
-			width: 14px;
-			height: 14px;
+			width: 15px;
+			height: 15px;
 			fill: none;
 			stroke: currentColor;
 			stroke-width: 1.5;
 			stroke-linecap: round;
+			stroke-linejoin: round;
+		}
+		.all {
+			width: 100%;
+			margin-top: 6px;
+			padding: 8px;
+			border-radius: 8px;
+			color: #a7a8b4;
+			text-align: left;
 		}
 		.empty {
-			color: #a3a5b2;
+			margin: 8px;
+			color: #b4b6c2;
+			font-size: 13px;
 		}
-		:focus-visible {
-			outline: 2px solid hsl(var(--hue) 85% 72%);
-			outline-offset: 2px;
+		@media (prefers-reduced-motion: no-preference) {
+			.bar span {
+				transition: width 400ms linear;
+			}
 		}
 	`;
 }

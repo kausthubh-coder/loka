@@ -1,6 +1,16 @@
 import { css, html, LitElement } from "lit";
+import type { Update } from "../../app/loka-app";
 import { SIDEBAR_MAX, SIDEBAR_MIN, type UiPrefs } from "../../app/ui-prefs.logic";
-import { planet } from "../sidebar/planet";
+import { ARCHIVE_CHOICES } from "../archive/archive.logic";
+import {
+	addArcSpaces,
+	addImportedFolder,
+	countImported,
+	parseArcSidebar,
+	parseChromeBookmarks,
+} from "../import/import.logic";
+import { IMPORT_SOURCES, type ImportSource, pickFile } from "../import/pick-file";
+import { planet, SPACE_HUES } from "../sidebar/planet";
 import { type BrowserState, countTabs } from "../sidebar/sidebar.logic";
 
 export type SetUi = (change: Partial<UiPrefs>) => void;
@@ -10,6 +20,9 @@ const SHORTCUTS: [string, string][] = [
 	["Ctrl 1 to 9", "Go to a space"],
 	["Ctrl S", "Hide or show the sidebar"],
 	["Ctrl E", "Close the tab (Ctrl W in the real browser)"],
+	["Ctrl Alt ↓ / ↑", "Next or previous tab in sidebar order (also Ctrl Tab in the real browser)"],
+	["Ctrl Shift F", "Search the sidebar"],
+	["↑ ↓ ← →", "Move through the sidebar; right opens a folder, left closes it"],
 	["Swipe sideways", "Next or previous space"],
 ];
 
@@ -20,17 +33,46 @@ const SHORTCUTS: [string, string][] = [
 export class LokaSettings extends LitElement {
 	static override properties = {
 		state: { attribute: false },
+		apply: { attribute: false },
 		ui: { attribute: false },
+		imported: { state: true },
 		setUi: { attribute: false },
 		privacy: { state: true },
 		engine: { state: true },
 	};
 
 	declare state: BrowserState;
+	declare apply: Update;
 	declare ui: UiPrefs;
+	/** The last import's result, shown under the buttons. */
+	imported = "";
 	declare setUi: SetUi;
 	privacy = { ads: true, clearOnExit: false };
 	engine = "DuckDuckGo";
+
+	private async importFrom(source: ImportSource) {
+		const text = await pickFile();
+		if (text === null) return;
+		const { name, file } = IMPORT_SOURCES[source];
+		if (source === "arc") {
+			const arc = parseArcSidebar(text);
+			if (!arc) {
+				this.imported = `That isn't ${name}'s ${file} file.`;
+				return;
+			}
+			this.apply((s) => addArcSpaces(s, arc, SPACE_HUES));
+			const tabs = arc.spaces.reduce((n, s) => n + countImported(s.pinned), 0);
+			this.imported = `Added ${arc.spaces.length} spaces with ${tabs} pinned tabs, and ${arc.favorites.length} Favorites.`;
+			return;
+		}
+		const nodes = parseChromeBookmarks(text);
+		if (!nodes) {
+			this.imported = `That isn't ${name}'s ${file} file.`;
+			return;
+		}
+		this.apply((s) => addImportedFolder(s, s.activeSpaceId, `${name} bookmarks`, nodes));
+		this.imported = `Added ${countImported(nodes)} bookmarks as a folder in this space.`;
+	}
 
 	private editSpace(spaceId: string) {
 		this.dispatchEvent(new CustomEvent("loka-edit-space", { detail: spaceId, bubbles: true, composed: true }));
@@ -105,6 +147,76 @@ export class LokaSettings extends LitElement {
 					>
 						New space
 					</button>
+				</section>
+
+				<section aria-labelledby="tabs">
+					<h2 id="tabs">Tabs</h2>
+					<div class="row">
+						<div>
+							<b>Archive open tabs</b>
+							<small>Open tabs you haven't looked at move to Archived tabs. Pinned tabs and Essentials never do.</small>
+						</div>
+						<select
+							aria-label="Archive open tabs"
+							@change=${(e: Event) => {
+								const value = (e.target as HTMLSelectElement).value;
+								this.setUi({ archiveAfterHours: value ? Number(value) : null });
+							}}
+						>
+							${ARCHIVE_CHOICES.map(
+								(c) =>
+									html`<option value=${c.hours ?? ""} ?selected=${c.hours === ui.archiveAfterHours}>${c.label}</option>`,
+							)}
+						</select>
+					</div>
+					<div class="row">
+						<div>
+							<b>Archived tabs</b>
+							<small>${this.state.archive.length} archived. Find them in the sidebar's menu or with Ctrl+K.</small>
+						</div>
+						<button
+							class="button"
+							@click=${() => this.dispatchEvent(new CustomEvent("loka-action", { detail: "archive", bubbles: true, composed: true }))}
+						>
+							Show
+						</button>
+					</div>
+				</section>
+
+				<section aria-labelledby="sync">
+					<h2 id="sync">Sync</h2>
+					<div class="row">
+						<div>
+							<b>Sync spaces between your computers</b>
+							<small>
+								Spaces, folders and pinned tabs, end-to-end encrypted with a passphrase, kept in a folder you choose
+								(OneDrive, Dropbox, a USB drive). No Loka account and no Loka server.
+							</small>
+						</div>
+						<span class="tag">First release</span>
+					</div>
+				</section>
+
+				<section aria-labelledby="import">
+					<h2 id="import">Import</h2>
+					${(Object.keys(IMPORT_SOURCES) as ImportSource[]).map((source) => {
+						const { name, file, where } = IMPORT_SOURCES[source];
+						return html`<div class="row">
+							<div>
+								<b>From ${name}</b>
+								<small class="path">${file} in ${where}</small>
+							</div>
+							<button class="button" @click=${() => this.importFrom(source)}>Choose file</button>
+						</div>`;
+					})}
+					<div class="row">
+						<div>
+							<b>Passwords</b>
+							<small>Export them from Chrome or Edge as a CSV file (their password settings), then import it here.</small>
+						</div>
+						<span class="tag">First release</span>
+					</div>
+					${this.imported ? html`<p class="note" role="status">${this.imported}</p>` : null}
 				</section>
 
 				<section aria-labelledby="privacy">
@@ -196,7 +308,8 @@ export class LokaSettings extends LitElement {
 			padding: 8px 0;
 			border-bottom: 1px solid hsl(var(--hue) 30% 85% / 0.08);
 		}
-		.row > div {
+		/* The label column; the controls on the right (like the Left / Right switch) keep their own layout. */
+		.row > div:not(.segmented) {
 			flex: 1;
 			display: grid;
 		}
@@ -279,6 +392,21 @@ export class LokaSettings extends LitElement {
 		}
 		.button.add {
 			margin-top: 12px;
+		}
+		.path {
+			overflow-wrap: anywhere;
+		}
+		.note {
+			margin: 10px 0 0;
+			color: hsl(150 60% 72%);
+		}
+		.tag {
+			flex: none;
+			padding: 3px 9px;
+			border-radius: 999px;
+			font-size: 12px;
+			color: hsl(var(--hue) 85% 80%);
+			background: hsl(var(--hue) 60% 50% / 0.16);
 		}
 		.space svg {
 			flex: none;

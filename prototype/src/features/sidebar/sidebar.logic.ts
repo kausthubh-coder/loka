@@ -8,6 +8,15 @@ export interface Tab {
 	id: TabId;
 	title: string;
 	url: string;
+	/** When the tab was last shown (ms since 1970). Open tabs without one are never archived. */
+	lastActiveAt?: number;
+}
+
+/** An open tab the archive took away, kept so it can be found and brought back. */
+export interface ArchivedTab {
+	tab: Tab;
+	spaceId: string;
+	archivedAt: number;
 }
 
 export interface FolderNode {
@@ -46,6 +55,8 @@ export interface BrowserState {
 	essentials: TabId[];
 	spaces: Space[];
 	activeSpaceId: string;
+	/** Newest first. Only open tabs are ever archived; pinned tabs and Essentials stay. */
+	archive: ArchivedTab[];
 }
 
 /** Where a dragged tab or folder lands. `index` counts positions before the move. */
@@ -221,16 +232,18 @@ export function moveItem(state: BrowserState, id: string, to: Place): BrowserSta
 	return replaceSpace(next, to.spaceId, (s) => ({ ...s, pinned }));
 }
 
-export function openTab(state: BrowserState, url: string, title = url): BrowserState {
+export function openTab(state: BrowserState, url: string, title = url, now = Date.now()): BrowserState {
 	const id = newId();
 	const spaceId = state.activeSpaceId;
-	const withTab = { ...state, tabs: { ...state.tabs, [id]: { id, url, title } } };
+	const withTab = { ...state, tabs: { ...state.tabs, [id]: { id, url, title, lastActiveAt: now } } };
 	return replaceSpace(withTab, spaceId, (s) => ({ ...s, open: [id, ...s.open], activeTabId: id }));
 }
 
-export function activateTab(state: BrowserState, tabId: TabId): BrowserState {
-	if (!state.tabs[tabId]) return state;
-	return replaceSpace(state, state.activeSpaceId, (s) => ({ ...s, activeTabId: tabId }));
+export function activateTab(state: BrowserState, tabId: TabId, now = Date.now()): BrowserState {
+	const tab = state.tabs[tabId];
+	if (!tab) return state;
+	const shown = { ...state, tabs: { ...state.tabs, [tabId]: { ...tab, lastActiveAt: now } } };
+	return replaceSpace(shown, state.activeSpaceId, (s) => ({ ...s, activeTabId: tabId }));
 }
 
 /**
@@ -341,6 +354,142 @@ export function ungroupFolder(state: BrowserState, folderId: string): BrowserSta
 	return replaceSpace(detached.state, from.spaceId, (s) => ({ ...s, pinned: result }));
 }
 
+/**
+ * Drops one tab onto another to make a folder holding both, the way two app icons make a folder on a phone.
+ * The folder takes the target's place when the target is pinned; an open target moves both into a new folder at the
+ * end of that space's pinned tabs. Essentials can't be grouped. Returns the new folder's id, or null when refused.
+ */
+export function groupIntoFolder(
+	state: BrowserState,
+	targetId: TabId,
+	draggedId: TabId,
+	name: string,
+): [BrowserState, string | null] {
+	if (targetId === draggedId || !state.tabs[targetId] || !state.tabs[draggedId]) return [state, null];
+	if (state.essentials.includes(targetId)) return [state, null];
+	const dragged = detach(state, draggedId);
+	const target = dragged && detach(dragged.state, targetId);
+	if (!dragged || !target || target.from.area === "essentials") return [state, null];
+	const id = newId();
+	const folder: FolderNode = { kind: "folder", id, name, open: true, children: [target.node, dragged.node] };
+	const from = target.from;
+	const space = target.state.spaces.find((s) => s.id === from.spaceId);
+	if (!space) return [state, null];
+	const pinned =
+		from.area === "pinned"
+			? insertPinned(space.pinned, from.parentId, from.index, folder)
+			: insertPinned(space.pinned, null, space.pinned.length, folder);
+	if (!pinned) return [state, null];
+	return [replaceSpace(target.state, space.id, (s) => ({ ...s, pinned })), id];
+}
+
+export const ARCHIVE_LIMIT = 200;
+
+/**
+ * Archives open tabs not shown for longer than `maxAgeMs`. The tab a space is showing is never archived, nor is any
+ * pinned tab or Essential. Archived tabs leave the space and go to the front of `archive`.
+ */
+export function archiveStale(state: BrowserState, now: number, maxAgeMs: number): BrowserState {
+	const archived: ArchivedTab[] = [];
+	const spaces = state.spaces.map((space) => {
+		const stale = space.open.filter((id) => {
+			const tab = state.tabs[id];
+			return id !== space.activeTabId && tab?.lastActiveAt !== undefined && now - tab.lastActiveAt > maxAgeMs;
+		});
+		for (const id of stale) {
+			const tab = state.tabs[id];
+			if (tab) archived.push({ tab, spaceId: space.id, archivedAt: now });
+		}
+		return stale.length ? { ...space, open: space.open.filter((id) => !stale.includes(id)) } : space;
+	});
+	if (!archived.length) return state;
+	const gone = new Set(archived.map((a) => a.tab.id));
+	const tabs = Object.fromEntries(Object.entries(state.tabs).filter(([id]) => !gone.has(id)));
+	return { ...state, tabs, spaces, archive: [...archived, ...state.archive].slice(0, ARCHIVE_LIMIT) };
+}
+
+/** Brings an archived tab back to the top of its space's open tabs (or the current space, if that one is gone). */
+export function restoreArchived(state: BrowserState, tabId: TabId, now = Date.now()): BrowserState {
+	const entry = state.archive.find((a) => a.tab.id === tabId);
+	if (!entry) return state;
+	const spaceId = state.spaces.some((s) => s.id === entry.spaceId) ? entry.spaceId : state.activeSpaceId;
+	const restored = {
+		...state,
+		tabs: { ...state.tabs, [tabId]: { ...entry.tab, lastActiveAt: now } },
+		archive: state.archive.filter((a) => a.tab.id !== tabId),
+		activeSpaceId: spaceId,
+	};
+	return replaceSpace(restored, spaceId, (s) => ({ ...s, open: [tabId, ...s.open], activeTabId: tabId }));
+}
+
+export interface SidebarMatch {
+	tabId: TabId;
+	spaceId: string;
+	/** Where the tab sits: "Essentials", "Open", or the folder names above it (empty at the top of pinned). */
+	path: string[];
+}
+
+/** Every tab in the sidebar, in any space or folder, whose title or address contains the query. */
+export function searchSidebar(state: BrowserState, query: string): SidebarMatch[] {
+	const q = query.trim().toLowerCase();
+	if (!q) return [];
+	const hit = (id: TabId) => {
+		const tab = state.tabs[id];
+		return !!tab && (tab.title.toLowerCase().includes(q) || tab.url.toLowerCase().includes(q));
+	};
+	const matches: SidebarMatch[] = state.essentials
+		.filter(hit)
+		.map((tabId) => ({ tabId, spaceId: state.activeSpaceId, path: ["Essentials"] }));
+	const walk = (nodes: PinnedNode[], spaceId: string, path: string[]) => {
+		for (const node of nodes) {
+			if (node.kind === "folder") walk(node.children, spaceId, [...path, node.name]);
+			else if (hit(node.id)) matches.push({ tabId: node.id, spaceId, path });
+		}
+	};
+	for (const space of state.spaces) {
+		walk(space.pinned, space.id, []);
+		for (const id of space.open.filter(hit)) matches.push({ tabId: id, spaceId: space.id, path: ["Open"] });
+	}
+	return matches;
+}
+
+/** Goes to a tab wherever it is: switches to its space, opens every folder above it, and shows it. */
+export function revealTab(state: BrowserState, tabId: TabId, now = Date.now()): BrowserState {
+	if (!state.tabs[tabId]) return state;
+	if (state.essentials.includes(tabId)) return activateTab(state, tabId, now);
+	const holding = (nodes: PinnedNode[]): string[] =>
+		nodes.flatMap((n) => (n.kind === "folder" && folderHolds(n, tabId) ? [n.id, ...holding(n.children)] : []));
+	const space = state.spaces.find((s) => s.open.includes(tabId) || pinnedTabIds(s.pinned).includes(tabId));
+	if (!space) return state;
+	const toOpen = new Set(holding(space.pinned));
+	const opened = {
+		...state,
+		spaces: state.spaces.map((s) =>
+			s.id === space.id
+				? { ...s, pinned: mapFolders(s.pinned, (f) => (toOpen.has(f.id) ? { ...f, open: true } : f)) }
+				: s,
+		),
+	};
+	return activateTab(switchSpace(opened, space.id), tabId, now);
+}
+
+/** The tabs of the current space in the order the sidebar shows them: Essentials, visible pinned tabs, open tabs. */
+export function visibleTabOrder(state: BrowserState): TabId[] {
+	const space = activeSpace(state);
+	const pinned = pinnedRows(space.pinned).flatMap((r) => (r.node.kind === "tab" ? [r.node.id] : []));
+	return [...state.essentials, ...pinned, ...space.open];
+}
+
+/** Moves to the next (1) or previous (-1) tab in sidebar order, wrapping around. */
+export function stepTab(state: BrowserState, step: 1 | -1, now = Date.now()): BrowserState {
+	const order = visibleTabOrder(state);
+	if (!order.length) return state;
+	const current = order.indexOf(activeSpace(state).activeTabId ?? "");
+	const next = current === -1 ? (step === 1 ? 0 : order.length - 1) : (current + step + order.length) % order.length;
+	const id = order[next];
+	return id ? activateTab(state, id, now) : state;
+}
+
 export interface PinnedRow {
 	node: PinnedNode;
 	depth: number;
@@ -384,8 +533,12 @@ export function importState(json: string): BrowserState | null {
 	if (placed.length !== new Set(placed).size) return null;
 	if (placed.length !== tabIds.length || !placed.every((id) => data.tabs[id])) return null;
 	if (!data.spaces.some((s) => s.id === data.activeSpaceId)) return null;
-	// Exports from before planets existed have none; give them the first style.
-	return { ...data, spaces: data.spaces.map((s) => ({ ...s, planet: s.planet ?? "banded" })) };
+	// Exports from before planets and the archive existed have neither: give them the first style and an empty one.
+	return {
+		...data,
+		archive: data.archive ?? [],
+		spaces: data.spaces.map((s) => ({ ...s, planet: s.planet ?? "banded" })),
+	};
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -408,12 +561,29 @@ function isPinnedNode(value: unknown): value is PinnedNode {
 	);
 }
 
+function isTab(value: unknown, id?: string): value is Tab {
+	return (
+		isRecord(value) &&
+		typeof value.id === "string" &&
+		(id === undefined || value.id === id) &&
+		typeof value.title === "string" &&
+		typeof value.url === "string" &&
+		(value.lastActiveAt === undefined || typeof value.lastActiveAt === "number")
+	);
+}
+
+function isArchivedTab(value: unknown): value is ArchivedTab {
+	return (
+		isRecord(value) && isTab(value.tab) && typeof value.spaceId === "string" && typeof value.archivedAt === "number"
+	);
+}
+
 function isBrowserState(value: unknown): value is BrowserState {
 	if (!isRecord(value) || value.version !== 1 || typeof value.activeSpaceId !== "string") return false;
 	if (!isStringArray(value.essentials) || !isRecord(value.tabs) || !Array.isArray(value.spaces)) return false;
-	const tabsOk = Object.entries(value.tabs).every(
-		([id, tab]) => isRecord(tab) && tab.id === id && typeof tab.title === "string" && typeof tab.url === "string",
-	);
+	if (value.archive !== undefined && !(Array.isArray(value.archive) && value.archive.every(isArchivedTab)))
+		return false;
+	const tabsOk = Object.entries(value.tabs).every(([id, tab]) => isTab(tab, id));
 	const spacesOk = value.spaces.every(
 		(s) =>
 			isRecord(s) &&

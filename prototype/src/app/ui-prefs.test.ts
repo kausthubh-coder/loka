@@ -19,4 +19,10 @@ describe("window preferences", () => {
 		});
 		expect(parseUiPrefs("{ broken")).toEqual(DEFAULT_UI);
 	});
+
+	test("archiving is off unless a positive number of hours was saved", () => {
+		expect(parseUiPrefs(null).archiveAfterHours).toBeNull();
+		expect(parseUiPrefs('{"archiveAfterHours": 24}').archiveAfterHours).toBe(24);
+		expect(parseUiPrefs('{"archiveAfterHours": -5}').archiveAfterHours).toBeNull();
+	});
 });

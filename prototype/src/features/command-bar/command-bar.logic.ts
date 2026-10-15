@@ -22,6 +22,8 @@ export type ActionId =
 	| "toggle-sidebar"
 	| "settings"
 	| "downloads"
+	| "search-sidebar"
+	| "archive"
 	| "onboarding";
 
 export type CommandResult =
@@ -40,7 +42,9 @@ const ACTIONS: { action: ActionId; label: string; detail: string; words: string 
 	{ action: "new-folder", label: "New folder", detail: "In this space's pinned tabs", words: "create group" },
 	{ action: "toggle-sidebar", label: "Hide or show the sidebar", detail: "Ctrl+S", words: "toggle collapse" },
 	{ action: "settings", label: "Settings", detail: "loka://settings", words: "preferences options" },
-	{ action: "downloads", label: "Downloads", detail: "loka://downloads", words: "files" },
+	{ action: "downloads", label: "Downloads", detail: "Recent files", words: "files" },
+	{ action: "search-sidebar", label: "Search the sidebar", detail: "Ctrl+Shift+F", words: "find tabs everywhere" },
+	{ action: "archive", label: "Archived tabs", detail: "Bring back an archived tab", words: "old closed restore" },
 	{ action: "onboarding", label: "Show the welcome tour", detail: "Onboarding", words: "intro welcome tour" },
 ];
 

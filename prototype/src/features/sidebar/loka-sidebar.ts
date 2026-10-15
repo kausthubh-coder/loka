@@ -4,6 +4,11 @@ import { repeat } from "lit/directives/repeat.js";
 import type { Update } from "../../app/loka-app";
 import type { ActionId } from "../command-bar/command-bar.logic";
 import { faviconColor, faviconLetter, hostOf } from "./favicon";
+import "../archive/loka-archive-panel";
+import "../downloads/loka-downloads";
+import "../media/loka-media-card";
+import type { Media } from "../media/loka-media-card";
+import "../search/loka-sidebar-search";
 import { planet } from "./planet";
 import {
 	activateTab,
@@ -14,6 +19,7 @@ import {
 	createFolder,
 	exportState,
 	folderHolds,
+	groupIntoFolder,
 	importState,
 	moveItem,
 	type PinnedRow,
@@ -32,11 +38,22 @@ interface Drop {
 	key: string;
 	mode: DropMode;
 	place: Place;
+	/** Dropping into the middle of a tab row makes a folder of both tabs; this is that tab. */
+	groupWith?: TabId;
 }
+
+export type Panel = "extensions" | "downloads" | "archive" | "search";
 interface MenuItem {
 	label: string;
 	run: () => void;
 }
+
+const PANEL_NAMES: Record<Panel, string> = {
+	extensions: "Extensions",
+	downloads: "Downloads",
+	archive: "Archived tabs",
+	search: "Search the sidebar",
+};
 
 /** Stand-ins for installed extensions. Helium ships uBlock Origin; the others show how a user's own would sit. */
 const EXTENSIONS = [
@@ -55,8 +72,9 @@ export class LokaSidebar extends LitElement {
 		menu: { state: true },
 		renamingId: { state: true },
 		swipe: { state: true },
-		extensionsOpen: { state: true },
+		panel: { state: true },
 		pinnedExtensions: { state: true },
+		media: { attribute: false },
 	};
 
 	declare state: BrowserState;
@@ -67,8 +85,33 @@ export class LokaSidebar extends LitElement {
 	renamingId: string | null = null;
 	/** Sideways swipe distance so far, in wheel pixels (negative is towards the previous space). */
 	swipe = 0;
-	extensionsOpen = false;
+	/** The popover open under the toolbar, if any. */
+	panel: Panel | null = null;
 	pinnedExtensions = new Set(["ublock"]);
+	declare media: Media | null;
+
+	/** Opens a panel from outside (Ctrl+Shift+F, the command bar). */
+	openPanel(panel: Panel) {
+		this.menu = null;
+		this.panel = panel;
+	}
+
+	// Escape closes a panel or menu wherever focus is: a click inside a panel can re-render the button that had it.
+	private onEscape = (e: KeyboardEvent) => {
+		if (e.key !== "Escape" || (!this.panel && !this.menu)) return;
+		this.panel = null;
+		this.menu = null;
+	};
+
+	override connectedCallback() {
+		super.connectedCallback();
+		window.addEventListener("keydown", this.onEscape);
+	}
+
+	override disconnectedCallback() {
+		window.removeEventListener("keydown", this.onEscape);
+		super.disconnectedCallback();
+	}
 
 	// ---- drag and drop -------------------------------------------------------
 
@@ -83,22 +126,29 @@ export class LokaSidebar extends LitElement {
 		this.drop = null;
 	}
 
+	/**
+	 * Works out where a drag over a row would land. `into` says what the middle of the row does: on a folder it puts
+	 * the item inside; on a tab, when a tab is being dragged, it makes a new folder of the two.
+	 */
 	private over(
 		e: DragEvent,
 		key: string,
 		place: (mode: DropMode) => Place | null,
-		canInto = false,
+		into: "folder" | "tab" | null = null,
 		axis: "x" | "y" = "y",
 	) {
 		if (!this.dragId || this.dragId === key) return;
 		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		const ratio = axis === "y" ? (e.clientY - rect.top) / rect.height : (e.clientX - rect.left) / rect.width;
 		let mode: DropMode = ratio < 0.5 ? "before" : "after";
-		if (canInto && ratio > 0.25 && ratio < 0.75) mode = "into";
-		const target = place(mode);
+		const grouping = into === "tab" && this.state.tabs[this.dragId] !== undefined && ratio > 0.3 && ratio < 0.7;
+		if ((into === "folder" && ratio > 0.25 && ratio < 0.75) || grouping) mode = "into";
+		const target = grouping ? place("before") : place(mode);
 		if (!target) return;
 		e.preventDefault();
-		if (this.drop?.key !== key || this.drop.mode !== mode) this.drop = { key, mode, place: target };
+		if (this.drop?.key !== key || this.drop.mode !== mode) {
+			this.drop = { key, mode, place: target, groupWith: grouping ? key : undefined };
+		}
 	}
 
 	private dropHere(e: DragEvent) {
@@ -106,7 +156,15 @@ export class LokaSidebar extends LitElement {
 		const id = this.dragId;
 		const drop = this.drop;
 		this.endDrag();
-		if (id && drop) this.apply((s) => moveItem(s, id, drop.place));
+		if (!id || !drop) return;
+		if (drop.groupWith) {
+			const [next, folderId] = groupIntoFolder(this.state, drop.groupWith, id, "New folder");
+			if (!folderId) return;
+			this.apply(() => next);
+			this.renamingId = folderId;
+			return;
+		}
+		this.apply((s) => moveItem(s, id, drop.place));
 	}
 
 	private dropClass(key: string): string {
@@ -162,8 +220,46 @@ export class LokaSidebar extends LitElement {
 				run: () => this.apply((s) => moveItem(s, tabId, { area: "open", spaceId: other.id, index: 0 })),
 			});
 		}
+		if (!isEssential) {
+			items.push({
+				label: "New folder with this tab",
+				run: () => {
+					const [made, folderId] = createFolder(this.state, space.id, null, "New folder");
+					this.apply(() => moveItem(made, tabId, { area: "pinned", spaceId: space.id, parentId: folderId, index: 0 }));
+					this.renamingId = folderId;
+				},
+			});
+		}
 		items.push({ label: isOpen ? "Close tab" : "Unload tab", run: () => this.apply((s) => closeTab(s, tabId)) });
 		return items;
+	}
+
+	/** Right-click on empty sidebar space. Folders are made here, from a tab's menu, or by dropping a tab on a tab. */
+	private emptyMenu(): MenuItem[] {
+		return [
+			{ label: "New folder", run: () => this.newFolder(null) },
+			{
+				label: "New tab",
+				run: () => this.dispatchEvent(new CustomEvent("loka-command", { bubbles: true, composed: true })),
+			},
+		];
+	}
+
+	/**
+	 * Keys on a sidebar row, following the tree pattern: Up and Down move between rows, Enter runs the row, Right
+	 * opens a closed folder and Left closes an open one.
+	 */
+	private rowKey(e: KeyboardEvent, run: () => void, folderOpen?: boolean) {
+		if (e.key === "Enter") run();
+		else if (e.key === "ArrowRight" && folderOpen === false) run();
+		else if (e.key === "ArrowLeft" && folderOpen === true) run();
+		else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+			e.preventDefault();
+			const rows = [...this.renderRoot.querySelectorAll<HTMLElement>('[role="treeitem"]')];
+			const at = rows.indexOf(e.currentTarget as HTMLElement);
+			rows[at + (e.key === "ArrowDown" ? 1 : -1)]?.focus();
+		} else return;
+		e.preventDefault();
 	}
 
 	private folderMenu(folderId: string): MenuItem[] {
@@ -280,8 +376,9 @@ export class LokaSidebar extends LitElement {
 	private moreMenu(e: MouseEvent) {
 		this.openMenu(e, [
 			{ label: "New space", run: () => this.action("new-space") },
+			{ label: "Search the sidebar", run: () => this.openPanel("search") },
+			{ label: `Archived tabs (${this.state.archive.length})`, run: () => this.openPanel("archive") },
 			{ label: "Settings", run: () => this.action("settings") },
-			{ label: "Downloads", run: () => this.action("downloads") },
 			{ label: "Show the welcome tour", run: () => this.action("onboarding") },
 			{ label: "Export spaces (JSON)", run: () => this.exportFile() },
 			{ label: "Import spaces (JSON)", run: () => this.importFile() },
@@ -315,7 +412,7 @@ export class LokaSidebar extends LitElement {
 
 	// ---- rendering -----------------------------------------------------------
 
-	private favicon(url: string, size = 16): TemplateResult {
+	private favicon(url: string, size = 18): TemplateResult {
 		return html`<span class="fav" aria-hidden="true" style="--fav: ${faviconColor(url)}; --size: ${size}px">${faviconLetter(url)}</span>`;
 	}
 
@@ -339,10 +436,10 @@ export class LokaSidebar extends LitElement {
 				draggable="true"
 				@dragstart=${(e: DragEvent) => this.startDrag(e, tabId)}
 				@dragend=${() => this.endDrag()}
-				@dragover=${(e: DragEvent) => this.over(e, tabId, place)}
+				@dragover=${(e: DragEvent) => this.over(e, tabId, place, "tab")}
 				@drop=${(e: DragEvent) => this.dropHere(e)}
 				@click=${() => this.apply((s) => activateTab(s, tabId))}
-				@keydown=${(e: KeyboardEvent) => e.key === "Enter" && this.apply((s) => activateTab(s, tabId))}
+				@keydown=${(e: KeyboardEvent) => this.rowKey(e, () => this.apply((s) => activateTab(s, tabId)))}
 				@contextmenu=${(e: MouseEvent) => this.openMenu(e, this.tabMenu(tabId))}
 			>
 				${this.favicon(tab.url)}
@@ -395,11 +492,12 @@ export class LokaSidebar extends LitElement {
 				draggable=${renaming ? "false" : "true"}
 				@dragstart=${(e: DragEvent) => this.startDrag(e, node.id)}
 				@dragend=${() => this.endDrag()}
-				@dragover=${(e: DragEvent) => this.over(e, node.id, folderPlace, true)}
+				@dragover=${(e: DragEvent) => this.over(e, node.id, folderPlace, "folder")}
 				@drop=${(e: DragEvent) => this.dropHere(e)}
 				@click=${() => !renaming && this.apply((s) => toggleFolder(s, node.id))}
 				@dblclick=${() => (this.renamingId = node.id)}
-				@keydown=${(e: KeyboardEvent) => e.key === "Enter" && !renaming && this.apply((s) => toggleFolder(s, node.id))}
+				@keydown=${(e: KeyboardEvent) =>
+					!renaming && this.rowKey(e, () => this.apply((s) => toggleFolder(s, node.id)), node.open)}
 				@contextmenu=${(e: MouseEvent) => this.openMenu(e, this.folderMenu(node.id))}
 			>
 				${
@@ -457,7 +555,10 @@ export class LokaSidebar extends LitElement {
 			<aside
 				@click=${() => {
 					this.closeMenu();
-					this.extensionsOpen = false;
+					this.panel = null;
+				}}
+				@loka-close-panel=${() => {
+					this.panel = null;
 				}}
 				@wheel=${this.onWheel} @contextmenu=${(e: MouseEvent) => e.target === e.currentTarget && e.preventDefault()}>
 				<div class="toolbar">
@@ -470,21 +571,16 @@ export class LokaSidebar extends LitElement {
 							<span class="ext-tile" style="--x: ${x.color}">${x.letter}</span>
 						</button>`,
 					)}
-					<button
-						class="icon"
-						aria-label="Extensions"
-						aria-expanded=${this.extensionsOpen}
-						title="Extensions"
-						@click=${(e: Event) => {
-							e.stopPropagation();
-							this.extensionsOpen = !this.extensionsOpen;
-						}}
-					>
-						<svg viewBox="0 0 16 16"><path d="M6.5 2.5h3v2a1 1 0 0 0 2 0v-.5h2v3.5h-.5a1 1 0 0 0 0 2h.5v4h-4v-.5a1 1 0 0 0-2 0v.5h-5v-4h.5a1 1 0 0 0 0-2h-.5v-3.5h4z" /></svg>
-					</button>
-					<button class="icon" aria-label="New folder" title="New folder" @click=${() => this.newFolder(null)}>
-						<svg viewBox="0 0 16 16"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.5h5A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5zM8 7v4M6 9h4" /></svg>
-					</button>
+					${this.panelButton(
+						"downloads",
+						"Downloads",
+						html`<svg viewBox="0 0 16 16"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10" /></svg>`,
+					)}
+					${this.panelButton(
+						"extensions",
+						"Extensions",
+						html`<svg viewBox="0 0 16 16"><path d="M6.5 2.5h3v2a1 1 0 0 0 2 0v-.5h2v3.5h-.5a1 1 0 0 0 0 2h.5v4h-4v-.5a1 1 0 0 0-2 0v.5h-5v-4h.5a1 1 0 0 0 0-2h-.5v-3.5h4z" /></svg>`,
+					)}
 					<button class="icon" aria-label="More" @click=${(e: MouseEvent) => this.moreMenu(e)}>
 						<svg viewBox="0 0 16 16"><path d="M4 8h.01M8 8h.01M12 8h.01" /></svg>
 					</button>
@@ -519,14 +615,14 @@ export class LokaSidebar extends LitElement {
 											e,
 											id,
 											(mode) => ({ area: "essentials", index: mode === "before" ? index : index + 1 }),
-											false,
+											null,
 											"x",
 										)}
 									@drop=${(e: DragEvent) => this.dropHere(e)}
 									@click=${() => this.apply((s) => activateTab(s, id))}
 									@contextmenu=${(e: MouseEvent) => this.openMenu(e, this.tabMenu(id))}
 								>
-									${this.favicon(tab.url, 20)}
+									${this.favicon(tab.url, 22)}
 								</button>
 							`;
 						},
@@ -552,6 +648,7 @@ export class LokaSidebar extends LitElement {
 					html`<div
 				class="scroll ${this.slideFrom ? `from-${this.slideFrom}` : ""} ${this.swipe ? "swiping" : ""}"
 				style="translate: ${-this.swipe * 0.5}px 0; opacity: ${1 - Math.abs(this.swipe) / 180}"
+				@contextmenu=${(e: MouseEvent) => this.openMenu(e, this.emptyMenu())}
 			>
 					<div class="pinned" role="tree" aria-label="Pinned in ${space.name}">
 						${repeat(
@@ -612,6 +709,11 @@ export class LokaSidebar extends LitElement {
 				</div>`,
 				)}
 
+				${
+					this.media && this.media.tabId !== space.activeTabId && state.tabs[this.media.tabId]
+						? html`<loka-media-card class="media" .media=${this.media} .state=${state}></loka-media-card>`
+						: nothing
+				}
 				<nav class="horizon" aria-label="Spaces">
 					${this.neighbour(this.neighbourAt(-1), "left")}
 					${keyed(
@@ -631,28 +733,17 @@ export class LokaSidebar extends LitElement {
 				</nav>
 
 				${
-					this.extensionsOpen
-						? html`<div class="extensions" role="dialog" aria-label="Extensions" @click=${(e: Event) => e.stopPropagation()}>
-								<p class="ext-head">Extensions</p>
-								${EXTENSIONS.map(
-									(x) => html`<div class="ext-row">
-										<span class="ext-tile big" style="--x: ${x.color}" aria-hidden="true">${x.letter}</span>
-										<span class="ext-name">${x.name}<small>${x.detail}</small></span>
-										<button
-											class="icon pin ${this.pinnedExtensions.has(x.id) ? "on" : ""}"
-											aria-label="${this.pinnedExtensions.has(x.id) ? "Unpin" : "Pin"} ${x.name}"
-											aria-pressed=${this.pinnedExtensions.has(x.id)}
-											@click=${() => {
-												const next = new Set(this.pinnedExtensions);
-												if (!next.delete(x.id)) next.add(x.id);
-												this.pinnedExtensions = next;
-											}}
-										>
-											<svg viewBox="0 0 16 16"><path d="M9.5 2.5 13.5 6.5 11 7.5 8.5 10l-.5 3L3 8l3-.5L8.5 5z" /><path d="M5.5 10.5 2.5 13.5" /></svg>
-										</button>
-									</div>`,
-								)}
-								<button class="ext-more">Get more extensions</button>
+					this.panel
+						? html`<div
+								class="panel"
+								role="dialog"
+								aria-label=${PANEL_NAMES[this.panel]}
+								@click=${(e: Event) => e.stopPropagation()}
+								@keydown=${(e: KeyboardEvent) => {
+									if (e.key === "Escape") this.panel = null;
+								}}
+							>
+								${this.panelBody(this.panel)}
 							</div>`
 						: nothing
 				}
@@ -683,10 +774,55 @@ export class LokaSidebar extends LitElement {
 		`;
 	}
 
+	private panelButton(panel: Panel, label: string, icon: TemplateResult): TemplateResult {
+		return html`<button
+			class="icon ${this.panel === panel ? "on" : ""}"
+			aria-label=${label}
+			aria-expanded=${this.panel === panel}
+			title=${label}
+			@click=${(e: Event) => {
+				e.stopPropagation();
+				this.menu = null;
+				this.panel = this.panel === panel ? null : panel;
+			}}
+		>
+			${icon}
+		</button>`;
+	}
+
+	private panelBody(panel: Panel): TemplateResult {
+		if (panel === "downloads") return html`<loka-downloads></loka-downloads>`;
+		if (panel === "archive")
+			return html`<loka-archive-panel .state=${this.state} .apply=${this.apply}></loka-archive-panel>`;
+		if (panel === "search")
+			return html`<loka-sidebar-search .state=${this.state} .apply=${this.apply}></loka-sidebar-search>`;
+		return html`<p class="ext-head">Extensions</p>
+								${EXTENSIONS.map(
+									(x) => html`<div class="ext-row">
+										<span class="ext-tile big" style="--x: ${x.color}" aria-hidden="true">${x.letter}</span>
+										<span class="ext-name">${x.name}<small>${x.detail}</small></span>
+										<button
+											class="icon pin ${this.pinnedExtensions.has(x.id) ? "on" : ""}"
+											aria-label="${this.pinnedExtensions.has(x.id) ? "Unpin" : "Pin"} ${x.name}"
+											aria-pressed=${this.pinnedExtensions.has(x.id)}
+											@click=${() => {
+												const next = new Set(this.pinnedExtensions);
+												if (!next.delete(x.id)) next.add(x.id);
+												this.pinnedExtensions = next;
+											}}
+										>
+											<svg viewBox="0 0 16 16"><path d="M9.5 2.5 13.5 6.5 11 7.5 8.5 10l-.5 3L3 8l3-.5L8.5 5z" /><path d="M5.5 10.5 2.5 13.5" /></svg>
+										</button>
+									</div>`,
+								)}
+								<button class="ext-more">Get more extensions</button>`;
+	}
+
 	static override styles = css`
 		:host {
 			display: block;
 			min-height: 0;
+			font-size: 14px;
 			--text: #ececf1;
 			--muted: #a7a8b4;
 			--row-hover: hsl(var(--hue) 30% 80% / 0.08);
@@ -744,6 +880,14 @@ export class LokaSidebar extends LitElement {
 		.push {
 			margin-left: auto;
 		}
+		.icon.on {
+			background: var(--row-active);
+			color: var(--text);
+		}
+		.media {
+			flex: none;
+			margin: 0 -2px -4px;
+		}
 		.ext-tile {
 			display: grid;
 			place-items: center;
@@ -761,12 +905,14 @@ export class LokaSidebar extends LitElement {
 			border-radius: 7px;
 			font-size: 14px;
 		}
-		.extensions {
+		.panel {
 			position: absolute;
 			z-index: 10;
 			top: 44px;
 			left: 6px;
 			right: 6px;
+			max-height: calc(100% - 210px);
+			overflow-y: auto;
 			padding: 8px;
 			border-radius: 12px;
 			background: hsl(var(--hue) 22% 13% / 0.97);
@@ -843,7 +989,7 @@ export class LokaSidebar extends LitElement {
 		.essential {
 			display: grid;
 			place-items: center;
-			height: 44px;
+			height: 50px;
 			border-radius: 10px;
 			background: hsl(var(--hue) 30% 85% / 0.07);
 			position: relative;
@@ -898,11 +1044,11 @@ export class LokaSidebar extends LitElement {
 			position: relative;
 			display: flex;
 			align-items: center;
-			gap: 8px;
+			gap: 10px;
 			width: 100%;
 			box-sizing: border-box;
-			height: 32px;
-			padding: 0 6px 0 calc(8px + var(--depth, 0) * 16px);
+			height: 36px;
+			padding: 0 6px 0 calc(9px + var(--depth, 0) * 18px);
 			border-radius: 8px;
 			color: var(--text);
 		}
@@ -920,7 +1066,7 @@ export class LokaSidebar extends LitElement {
 		.row.drop-after::after {
 			content: "";
 			position: absolute;
-			left: calc(8px + var(--depth, 0) * 16px);
+			left: calc(9px + var(--depth, 0) * 18px);
 			right: 6px;
 			height: 2px;
 			border-radius: 1px;
@@ -960,8 +1106,8 @@ export class LokaSidebar extends LitElement {
 		/* No arrow: the icon itself is the open or closed state. */
 		.folder-icon {
 			flex: none;
-			width: 19px;
-			height: 19px;
+			width: 21px;
+			height: 21px;
 			margin: 0 -1px 0 -2px;
 			color: var(--accent);
 			stroke-width: 1.2;
@@ -1077,14 +1223,15 @@ export class LokaSidebar extends LitElement {
 		.horizon {
 			position: relative;
 			flex: none;
-			height: 116px;
-			margin: 0 -10px -8px -12px;
+			/* Tall enough above the planet for a ring's arc and its glow, which would otherwise be cut off flat. */
+			height: 140px;
+			margin: -24px -10px -8px -12px;
 			overflow: hidden;
 		}
 		.world {
 			position: absolute;
 			left: 50%;
-			top: 32px;
+			top: 56px;
 			width: 400px;
 			height: 400px;
 			margin-left: -200px;
@@ -1109,7 +1256,7 @@ export class LokaSidebar extends LitElement {
 			position: absolute;
 			left: 0;
 			right: 0;
-			top: 66px;
+			top: 90px;
 			text-align: center;
 			font-size: 14px;
 			font-weight: 650;
@@ -1121,7 +1268,9 @@ export class LokaSidebar extends LitElement {
 		}
 		.neighbour {
 			position: absolute;
-			top: 20px;
+			/* Above the big planet, so a ring arcing behind it passes behind these too. */
+			z-index: 1;
+			top: 44px;
 			width: 30px;
 			height: 30px;
 			padding: 0;

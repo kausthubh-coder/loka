@@ -1,6 +1,6 @@
 import { css, html, LitElement } from "lit";
+import type { Update } from "../../app/loka-app";
 import type { UiPrefs } from "../../app/ui-prefs.logic";
-import "../downloads/loka-downloads";
 import "../settings/loka-settings";
 import type { SetUi } from "../settings/loka-settings";
 import { faviconColor, faviconLetter, hostOf } from "../sidebar/favicon";
@@ -12,6 +12,7 @@ export class LokaPage extends LitElement {
 		tab: { attribute: false },
 		spaceName: { attribute: false },
 		state: { attribute: false },
+		apply: { attribute: false },
 		ui: { attribute: false },
 		setUi: { attribute: false },
 	};
@@ -19,6 +20,7 @@ export class LokaPage extends LitElement {
 	declare tab: Tab | null;
 	declare spaceName: string;
 	declare state: BrowserState;
+	declare apply: Update;
 	declare ui: UiPrefs;
 	declare setUi: SetUi;
 
@@ -26,12 +28,10 @@ export class LokaPage extends LitElement {
 		const tab = this.tab;
 		if (tab?.url === "loka://settings") {
 			return html`<section class="frame inside">
-				<loka-settings .state=${this.state} .ui=${this.ui} .setUi=${this.setUi}></loka-settings>
+				<loka-settings .state=${this.state} .apply=${this.apply} .ui=${this.ui} .setUi=${this.setUi}></loka-settings>
 			</section>`;
 		}
-		if (tab?.url === "loka://downloads") {
-			return html`<section class="frame inside"><loka-downloads></loka-downloads></section>`;
-		}
+
 		if (!tab) {
 			return html`<section class="frame empty">
 				<p class="hint">Nothing open in ${this.spaceName}.</p>

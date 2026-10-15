@@ -1,0 +1,30 @@
+# Media controls
+
+When a tab is playing and isn't the one on screen, a now-playing card sits above the horizon: artwork (with a moving
+equalizer while playing), title and artist, previous, play or pause, next, and mute. Clicking the art or title goes to
+the playing tab, in whatever space it is.
+
+## Sub-features
+
+- `media-card` shows only while the playing tab is off screen.
+- `media-controls`: play/pause and mute change state; previous and next go to the page's own media session in the
+  real browser (the sample has one track).
+- `media-go` reveals the playing tab.
+
+## How to get to it (user POV)
+
+- Play something, then switch to another tab or space.
+
+## Driving it with loka.mjs
+
+Preconditions: seed data. The prototype starts with `Lo-fi beats` (Home) playing, so the card shows in Build.
+
+- **Controls.** In `getByRole("region", { name: "Now playing: Lo-fi beats" })`, click `Pause` (it becomes `Play`) and
+  `Mute` (it becomes `Unmute`).
+- **Go.** Click `Go to Lo-fi beats`: `space` is `Home`, `activeTab` is `Lo-fi beats`, and the card is gone.
+- **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs media`.
+
+## Gotchas
+
+- Media state is runtime only, never saved. The real browser reads it from Chromium's media sessions
+  (AudioFocusManager and MediaController) through a Loka mojo handler.

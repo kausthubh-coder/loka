@@ -6,7 +6,9 @@ saved and survives a reload.
 
 ## Sub-features
 
-- `folder-new` creates a folder at the end of the pinned list (the `New folder` button in the top toolbar).
+- `folder-new` creates a folder at the end of the pinned list: right-click empty sidebar space > `New folder`.
+- `folder-from-tabs`: drop a tab on the middle of another tab to make a folder of both (pinned: in the target's
+  place; open: at the end of pinned), or a tab's menu > `New folder with this tab`. Both start in rename mode.
 - `folder-new-inside` creates a folder inside another one (right-click > `New folder inside`).
 - `folder-rename` renames with an inline box (double-click, or right-click > `Rename`). Enter saves, Escape cancels.
 - `folder-toggle` opens and closes by clicking. There is no arrow: the icon is an open or a closed folder. A closed
@@ -19,7 +21,7 @@ saved and survives a reload.
 
 ## How to get to it (user POV)
 
-- The `New folder` icon button in the toolbar at the top of the sidebar.
+- Right-click empty space in the sidebar, a tab's menu, or drop a tab on a tab. There is no toolbar button.
 - Right-click a folder: `Rename`, `New folder inside`, `Ungroup (keep tabs)`.
 - Double-click a folder name to rename it.
 - Drag any tab row or folder row onto a folder row.
@@ -40,7 +42,9 @@ Preconditions: seed data, `Build` space active.
 - **Ungroup.** Right-click `Docs`, then `Ungroup (keep tabs)`. No `Docs` line remains, and `1:Lit docs` and
   `1:Patches` sit where it was.
 - **Persistence.** `page.reload()`, then `pinned` equals the line list from before the reload.
-- **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs folders`.
+- **Tab on tab.** `loka.drag(loka.row("Zen Browser"), loka.row("Arc: what we learned"), "into")`, type a name,
+  Enter. `pinned` ends with the folder holding both, and `open` lost them.
+- **Recipes.** `node .agents/skills/verify-loka/scripts/run.mjs folders` and `make-folders`.
 
 ## Gotchas
 

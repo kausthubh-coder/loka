@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "checksum": "sample",
+  "roots": {
+    "bookmark_bar": {
+      "type": "folder",
+      "name": "Bookmarks bar",
+      "children": [
+        {
+          "type": "url",
+          "name": "Lit",
+          "url": "https://lit.dev/"
+        },
+        {
+          "type": "folder",
+          "name": "School",
+          "children": [
+            {
+              "type": "url",
+              "name": "Canvas",
+              "url": "https://canvas.example.edu/"
+            },
+            {
+              "type": "folder",
+              "name": "Labs",
+              "children": [
+                {
+                  "type": "url",
+                  "name": "Lab 3",
+                  "url": "https://lab.example.edu/3"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "other": {
+      "type": "folder",
+      "name": "Other",
+      "children": [
+        {
+          "type": "url",
+          "name": "Hacker News",
+          "url": "https://news.ycombinator.com/"
+        }
+      ]
+    },
+    "synced": {
+      "type": "folder",
+      "name": "Mobile",
+      "children": []
+    }
+  }
+}

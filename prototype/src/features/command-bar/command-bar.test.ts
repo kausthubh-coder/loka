@@ -40,5 +40,5 @@ test("an empty bar lists this space's open tabs and every command, with nothing 
 		"tab:Zen Browser (Build)",
 	]);
 	expect(empty.filter((l) => l.startsWith("go:"))).toEqual([]);
-	expect(empty.filter((l) => l.startsWith("action:")).length).toBe(7);
+	expect(empty.filter((l) => l.startsWith("action:")).length).toBe(9);
 });

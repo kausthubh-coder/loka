@@ -1,5 +1,5 @@
 // Runs the mapped feature recipes against the running prototype and saves evidence.
-//   node .agents/skills/verify-loka/scripts/run.mjs <folders|spaces|tabs|essentials|export-import|command-bar|space-editor|layout|onboarding|all>
+//   node .agents/skills/verify-loka/scripts/run.mjs <folders|spaces|tabs|essentials|export-import|command-bar|space-editor|layout|make-folders|archive|search-and-keys|import|media|onboarding|all>
 // Each recipe starts from fresh seed data, drives the UI the way a user does, asserts the saved state,
 // and writes screenshots, ARIA snapshots and outlines to .agents/verify-runs/<time>-<feature>/.
 
@@ -271,14 +271,159 @@ const recipes = {
 		await loka.proof("04-peek");
 		await loka.page.keyboard.press("Control+s");
 
-		await loka.page.keyboard.press("Control+k");
-		await loka.page.getByRole("combobox", { name: "Search or enter address" }).fill("downloads");
-		await loka.page.keyboard.press("ArrowDown");
-		await loka.page.keyboard.press("Enter");
-		const downloads = loka.page.locator("loka-downloads");
+		// Downloads is a toolbar panel, like Extensions.
+		await loka.sidebar.getByRole("button", { name: "Downloads", exact: true }).click();
+		const downloads = loka.sidebar.getByRole("dialog", { name: "Downloads" });
 		await downloads.getByRole("button", { name: "Retry" }).click();
 		assert.equal(await downloads.getByRole("progressbar").count(), 2, "retrying a failed download restarts it");
 		await loka.proof("05-downloads");
+		await loka.page.keyboard.press("Escape");
+		assert.equal(await downloads.count(), 0, "Escape closes the panel");
+	},
+
+	async "make-folders"(loka) {
+		// Drop one open tab on the middle of another: a folder of the two, named by typing.
+		await loka.drag(loka.row("Zen Browser"), loka.row("Arc: what we learned"), "into");
+		await loka.page.keyboard.type("Browsers");
+		await loka.page.keyboard.press("Enter");
+		let o = await loka.outline();
+		assert.deepEqual(o.pinned.slice(-3), ["0:Browsers", "1:Arc: what we learned", "1:Zen Browser"]);
+		assert.deepEqual(o.open, ["Hacker News"], "both left the open tabs");
+		await loka.proof("01-tab-on-tab");
+
+		// Right-click empty sidebar space for a new folder; there is no toolbar button for it.
+		assert.equal(await loka.sidebar.getByRole("button", { name: "New folder", exact: true }).count(), 0);
+		const empty = await loka.sidebar.locator(".scroll").boundingBox();
+		if (!empty) throw new Error("no sidebar list");
+		await loka.page.mouse.click(empty.x + 120, empty.y + empty.height - 12, { button: "right" });
+		await loka.menuItem("New folder").click();
+		await loka.page.keyboard.type("Later");
+		await loka.page.keyboard.press("Enter");
+		assert.ok((await loka.outline()).pinned.includes("0:Later"), "right-click made a folder");
+
+		// A tab's own menu can start a folder around it.
+		await loka.row("Hacker News").click({ button: "right" });
+		await loka.menuItem("New folder with this tab").click();
+		await loka.page.keyboard.type("News");
+		await loka.page.keyboard.press("Enter");
+		o = await loka.outline();
+		assert.deepEqual(o.pinned.slice(-2), ["0:News", "1:Hacker News"]);
+		await loka.proof("02-folders-made");
+	},
+
+	async archive(loka) {
+		assert.ok((await loka.outline()).open.includes("Arc: what we learned"), "archiving is off by default");
+		await loka.sidebar.getByRole("button", { name: "More" }).click();
+		await loka.menuItem("Settings").click();
+		await loka.page
+			.locator("loka-settings")
+			.getByRole("combobox", { name: "Archive open tabs" })
+			.selectOption({ label: "After a day" });
+		// Seed: Arc was last shown 3 days ago and Zen 26 hours ago; Hacker News 2 hours ago.
+		const o = await loka.outline();
+		assert.ok(!o.open.includes("Arc: what we learned") && !o.open.includes("Zen Browser"), "old open tabs archived");
+		assert.ok(o.open.includes("Hacker News"), "a recent one stays");
+		assert.deepEqual(
+			(await loka.state()).archive.map((/** @type {any} */ a) => a.tab.title),
+			["Arc: what we learned", "Zen Browser"],
+		);
+
+		await loka.sidebar.getByRole("button", { name: "More" }).click();
+		await loka.menuItem("Archived tabs (2)").click();
+		const panel = loka.sidebar.getByRole("dialog", { name: "Archived tabs" });
+		await loka.proof("01-archive-panel");
+		await panel.getByRole("button", { name: /Zen Browser/ }).click();
+		const back = await loka.outline();
+		assert.deepEqual([back.open[0], back.activeTab], ["Zen Browser", "Zen Browser"], "restored to the top and shown");
+
+		await loka.page.keyboard.press("Control+k");
+		await loka.page.getByRole("combobox", { name: "Search or enter address" }).fill("archived");
+		await loka.page.keyboard.press("ArrowDown");
+		await loka.page.keyboard.press("Enter");
+		await panel.getByRole("button", { name: /Arc: what we learned/ }).waitFor();
+		await loka.proof("02-archive-from-command-bar");
+	},
+
+	async "search-and-keys"(loka) {
+		await loka.page.keyboard.press("Control+Shift+F");
+		const search = loka.sidebar.getByRole("combobox", { name: "Search the sidebar" });
+		await search.fill("minecraft");
+		await loka.proof("01-search");
+		await loka.page.keyboard.press("Enter");
+		const o = await loka.outline();
+		assert.deepEqual([o.space, o.activeTab], ["School", "Minecraft farm designs"], "went to the tab in another space");
+		assert.ok(o.pinned.includes("2:Minecraft farm designs"), "and opened the closed folder above it");
+
+		await loka.page.keyboard.press("Control+1");
+		await loka.page.keyboard.press("Control+Alt+ArrowDown");
+		assert.equal((await loka.outline()).activeTab, "Chromium: Windows build guide", "next tab in sidebar order");
+		await loka.page.keyboard.press("Control+Alt+ArrowUp");
+		await loka.page.keyboard.press("Control+Alt+ArrowUp");
+		assert.equal((await loka.outline()).activeTab, "YouTube", "previous tab reaches Essentials");
+
+		// Arrow keys move through the tree; Left closes a folder, Right opens it.
+		await loka.row("Loka").focus();
+		await loka.page.keyboard.press("ArrowLeft");
+		assert.ok((await loka.outline()).pinned.includes("0:Loka (closed)"));
+		await loka.page.keyboard.press("ArrowRight");
+		await loka.page.keyboard.press("ArrowDown");
+		await loka.page.keyboard.press("Enter");
+		assert.equal((await loka.outline()).activeTab, "imputnet/helium-windows", "Down then Enter opened the next row");
+	},
+
+	async import(loka) {
+		await loka.sidebar.getByRole("button", { name: "More" }).click();
+		await loka.menuItem("Settings").click();
+		const settings = loka.page.locator("loka-settings");
+		const rows = settings.locator(".row");
+		await choose(
+			loka,
+			rows.filter({ hasText: "From Chrome" }).getByRole("button", { name: "Choose file" }),
+			"Bookmarks",
+		);
+		await settings.getByText("Added 4 bookmarks as a folder in this space.").waitFor();
+		assert.ok((await loka.outline()).pinned.includes("0:Chrome bookmarks (closed)"));
+		await choose(
+			loka,
+			rows.filter({ hasText: "From Arc" }).getByRole("button", { name: "Choose file" }),
+			"StorableSidebar.json",
+		);
+		await settings.getByText("Added 2 spaces with 3 pinned tabs, and 1 Favorites.").waitFor();
+		const s = await loka.state();
+		const research = s.spaces.find((/** @type {{ name: string }} */ x) => x.name === "Research");
+		assert.ok(research, "Arc's Research space was added");
+		assert.equal(
+			s.essentials.map((/** @type {string} */ id) => s.tabs[id].title).at(-1),
+			"Mail",
+			"Arc's Favorite joined Essentials",
+		);
+		await choose(
+			loka,
+			rows.filter({ hasText: "From Edge" }).getByRole("button", { name: "Choose file" }),
+			"StorableSidebar.json",
+		);
+		await settings.getByText("That isn't Edge's Bookmarks file.").waitFor();
+		await loka.proof("01-imported");
+		await loka.page.keyboard.press("Control+4");
+		await loka.page.waitForTimeout(500);
+		await loka.proof("02-research-space");
+	},
+
+	async media(loka) {
+		// Lo-fi beats plays in Home, so its card shows in Build.
+		const card = loka.sidebar.getByRole("region", { name: "Now playing: Lo-fi beats" });
+		await card.waitFor();
+		await loka.proof("01-card");
+		await card.getByRole("button", { name: "Pause" }).click();
+		await card.getByRole("button", { name: "Play" }).waitFor();
+		await card.getByRole("button", { name: "Mute" }).click();
+		await card.getByRole("button", { name: "Unmute" }).waitFor();
+		await card.getByRole("button", { name: "Go to Lo-fi beats" }).first().click();
+		const o = await loka.outline();
+		assert.deepEqual([o.space, o.activeTab], ["Home", "Lo-fi beats"], "the card took us to the playing tab");
+		assert.equal(await card.count(), 0, "no card while the playing tab is on screen");
+		await loka.page.keyboard.press("Control+1");
+		await card.waitFor();
 	},
 };
 
@@ -290,6 +435,19 @@ async function settled(loka) {
 	});
 }
 
+const FIXTURES = join(import.meta.dirname, "..", "fixtures");
+
+/** Clicks a button that opens a file picker and gives it one of the sample files in ../fixtures. */
+async function choose(
+	/** @type {Loka} */ loka,
+	/** @type {import("playwright").Locator} */ button,
+	/** @type {string} */ file,
+) {
+	const [chooser] = await Promise.all([loka.page.waitForEvent("filechooser"), button.click()]);
+	await chooser.setFiles(join(FIXTURES, file));
+	await loka.page.waitForTimeout(200);
+}
+
 /** Run with the first-run tour showing, which the other recipes skip. */
 const tourRecipes = {
 	async onboarding(/** @type {Loka} */ loka) {
@@ -298,7 +456,10 @@ const tourRecipes = {
 		await settled(loka);
 		await loka.proof("01-welcome");
 		await tour.getByRole("button", { name: "Get started" }).click();
-		await tour.getByRole("checkbox", { name: /Arc/ }).click();
+		await choose(loka, tour.getByRole("button", { name: "Import from Chrome" }), "Bookmarks");
+		await choose(loka, tour.getByRole("button", { name: "Import from Arc" }), "StorableSidebar.json");
+		await tour.getByText("Ready: 4 bookmarks").waitFor();
+		await tour.getByText("Ready: 2 spaces, 3 pinned tabs").waitFor();
 		await settled(loka);
 		await loka.proof("02-import");
 		await tour.getByRole("button", { name: "Import from 2 browsers" }).click();
@@ -327,7 +488,14 @@ const tourRecipes = {
 			["Code", 260, "cratered"],
 			"the tour edited the first space",
 		);
-		assert.equal((await loka.outline()).space, "Code");
+		const o = await loka.outline();
+		assert.equal(o.space, "Code");
+		assert.ok(
+			o.pinned.includes("0:Chrome bookmarks (closed)"),
+			"Chrome's bookmarks became a folder in the first space",
+		);
+		const names = (await loka.state()).spaces.map((/** @type {{ name: string }} */ s) => s.name);
+		assert.deepEqual(names.slice(-2), ["Research", "Fun"], "Arc's spaces became Loka spaces");
 		assert.equal((await loka.ui()).onboarded, true);
 		await loka.page.reload({ waitUntil: "networkidle" });
 		assert.equal(await loka.page.locator("loka-onboarding").count(), 0, "the tour doesn't come back after a reload");

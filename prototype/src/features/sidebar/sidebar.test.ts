@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
+	activateTab,
 	activeTab,
+	archiveStale,
 	closeTab,
 	countTabs,
 	createFolder,
@@ -9,13 +11,19 @@ import {
 	findFolder,
 	focusOrOpen,
 	folderHolds,
+	groupIntoFolder,
 	importState,
 	moveItem,
 	openTab,
 	pinnedRows,
+	restoreArchived,
+	revealTab,
+	searchSidebar,
+	stepTab,
 	switchSpace,
 	ungroupFolder,
 	updateSpace,
+	visibleTabOrder,
 } from "./sidebar.logic";
 import { seedState } from "./sidebar.seed";
 
@@ -196,5 +204,111 @@ describe("export and import", () => {
 
 	test("a file that isn't JSON is rejected", () => {
 		expect(importState("{ not json")).toBeNull();
+	});
+
+	test("archived tabs survive an export and import", () => {
+		const now = Date.now();
+		const state = archiveStale(seedState(now), now, 24 * HOUR);
+		expect(importState(exportState(state))?.archive).toEqual(state.archive);
+	});
+});
+
+const HOUR = 60 * 60 * 1000;
+
+describe("folders made by dropping a tab on a tab", () => {
+	test("two pinned tabs become a folder in the target's place", () => {
+		const [state, id] = groupIntoFolder(seedState(), "t-lit", "t-chromium", "Reading");
+		expect(id).not.toBeNull();
+		expect(outline(state, "s-build")).toEqual([
+			"0:Loka",
+			"1:imputnet/helium-windows",
+			"1:Docs",
+			"2:Reading",
+			"3:Lit docs",
+			"3:Chromium: Windows build guide",
+		]);
+	});
+
+	test("two open tabs become a folder at the end of pinned", () => {
+		const [state] = groupIntoFolder(seedState(), "t-arc", "t-zen", "Browsers");
+		expect(space(state, "s-build").open).toEqual(["t-hn"]);
+		expect(outline(state, "s-build").slice(-3)).toEqual(["0:Browsers", "1:Arc: what we learned", "1:Zen Browser"]);
+	});
+
+	test("a tab can't be grouped with itself or with an Essential", () => {
+		const before = seedState();
+		expect(groupIntoFolder(before, "t-hn", "t-hn", "x")).toEqual([before, null]);
+		expect(groupIntoFolder(before, "t-mail", "t-hn", "x")).toEqual([before, null]);
+	});
+});
+
+describe("the archive", () => {
+	test("open tabs not shown for longer than the limit are archived; others stay", () => {
+		const now = Date.now();
+		// Seed: Arc tab last shown 3 days ago, Zen 26 hours ago, Hacker News 2 hours ago.
+		const state = archiveStale(seedState(now), now, 24 * HOUR);
+		expect(space(state, "s-build").open).toEqual(["t-hn"]);
+		expect(state.archive.map((a) => a.tab.title)).toEqual(["Arc: what we learned", "Zen Browser"]);
+		expect(state.tabs["t-arc"]).toBeUndefined();
+	});
+
+	test("pinned tabs, Essentials and the tab being shown are never archived", () => {
+		const now = Date.now();
+		const old = Object.fromEntries(
+			Object.entries(seedState(now).tabs).map(([id, t]) => [id, { ...t, lastActiveAt: now - 90 * 24 * HOUR }]),
+		);
+		const start = { ...seedState(now), tabs: old };
+		const showing = {
+			...start,
+			spaces: start.spaces.map((s) => (s.id === "s-build" ? { ...s, activeTabId: "t-hn" } : s)),
+		};
+		const state = archiveStale(showing, now, HOUR);
+		expect(space(state, "s-build").open).toEqual(["t-hn"]);
+		expect(outline(state, "s-build")).toEqual(outline(seedState(), "s-build"));
+		expect(state.essentials).toEqual(seedState().essentials);
+	});
+
+	test("a restored tab comes back to the top of its own space and is shown", () => {
+		const now = Date.now();
+		const archived = switchSpace(archiveStale(seedState(now), now, 24 * HOUR), "s-home");
+		const state = restoreArchived(archived, "t-zen", now);
+		expect([state.activeSpaceId, space(state, "s-build").open[0], activeTab(state)?.title]).toEqual([
+			"s-build",
+			"t-zen",
+			"Zen Browser",
+		]);
+		expect(state.archive.map((a) => a.tab.id)).toEqual(["t-arc"]);
+	});
+});
+
+describe("search and keyboard", () => {
+	test("sidebar search finds tabs in every space and says where they sit", () => {
+		const found = searchSidebar(seedState(), "minecraft").map((m) => [m.spaceId, m.path]);
+		expect(found).toEqual([["s-school", ["CSC 281", "Game project"]]]);
+		expect(searchSidebar(seedState(), "   ")).toEqual([]);
+	});
+
+	test("revealing a tab in a closed folder opens the folders above it and goes there", () => {
+		const state = revealTab(seedState(), "t-ref");
+		expect(state.activeSpaceId).toBe("s-school");
+		expect(activeTab(state)?.title).toBe("Minecraft farm designs");
+		expect(outline(state, "s-school")).toContain("2:Minecraft farm designs");
+	});
+
+	test("next and previous tab follow the sidebar's order and wrap around", () => {
+		const start = seedState();
+		expect(visibleTabOrder(start)).toEqual([
+			...start.essentials,
+			"t-helium",
+			"t-chromium",
+			"t-lit",
+			"t-hn",
+			"t-arc",
+			"t-zen",
+		]);
+		// Build shows imputnet/helium-windows, the first pinned tab, so the previous tab is the last Essential.
+		expect(activeTab(stepTab(start, -1))?.title).toBe("YouTube");
+		expect(activeTab(stepTab(start, 1))?.title).toBe("Chromium: Windows build guide");
+		expect(activeTab(stepTab(activateTab(start, "t-zen"), 1))?.title).toBe("Inbox");
 	});
 });

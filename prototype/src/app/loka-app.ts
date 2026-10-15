@@ -5,17 +5,24 @@ import "../features/command-bar/loka-command-bar";
 import "../features/spaces/loka-space-editor";
 import "../features/onboarding/loka-onboarding";
 import type { ActionId } from "../features/command-bar/command-bar.logic";
+import { addArcSpaces, addImportedFolder } from "../features/import/import.logic";
+import type { Media, MediaAction } from "../features/media/loka-media-card";
+import type { TourResult } from "../features/onboarding/loka-onboarding";
+import type { LokaSidebar, Panel } from "../features/sidebar/loka-sidebar";
 import { SPACE_HUES } from "../features/sidebar/planet";
 import {
 	activeSpace,
 	activeTab,
+	archiveStale,
 	type BrowserState,
 	closeTab,
 	createFolder,
 	createSpace,
 	focusOrOpen,
 	importState,
+	revealTab,
 	type SpaceLook,
+	stepTab,
 	switchSpace,
 	updateSpace,
 } from "../features/sidebar/sidebar.logic";
@@ -63,6 +70,7 @@ export class LokaApp extends LitElement {
 		tourOpen: { state: true },
 		previewHue: { state: true },
 		peek: { state: true },
+		media: { state: true },
 	};
 
 	state: BrowserState = loadState();
@@ -78,6 +86,14 @@ export class LokaApp extends LitElement {
 	previewHue: number | null = null;
 	/** The hidden sidebar is sliding in over the page. */
 	peek = false;
+	/**
+	 * What's playing. The real browser reads this from Chromium's media sessions; the prototype starts with the
+	 * Lo-fi tab in Home playing, so the card shows in the other spaces.
+	 */
+	media: Media | null = this.state.tabs["t-music"]
+		? { tabId: "t-music", artist: "Lofi Girl", playing: true, muted: false }
+		: null;
+	private archiveTimer = 0;
 
 	apply: Update = (change) => {
 		this.state = change(this.state);
@@ -87,6 +103,7 @@ export class LokaApp extends LitElement {
 	setUi = (change: Partial<UiPrefs>) => {
 		this.ui = { ...this.ui, ...change, sidebarWidth: clampWidth(change.sidebarWidth ?? this.ui.sidebarWidth) };
 		localStorage.setItem(UI_KEY, JSON.stringify(this.ui));
+		if ("archiveAfterHours" in change) this.archiveNow();
 	};
 
 	private run(action: ActionId) {
@@ -104,11 +121,39 @@ export class LokaApp extends LitElement {
 		} else if (action === "settings") {
 			this.apply((s) => focusOrOpen(s, "loka://settings", "Settings"));
 		} else if (action === "downloads") {
-			this.apply((s) => focusOrOpen(s, "loka://downloads", "Downloads"));
+			this.showPanel("downloads");
+		} else if (action === "search-sidebar") {
+			this.showPanel("search");
+		} else if (action === "archive") {
+			this.showPanel("archive");
 		} else if (action === "onboarding") {
 			this.tourOpen = true;
 		}
 	}
+
+	/** Opens a sidebar panel, sliding a hidden sidebar in first so the panel can be seen. */
+	private showPanel(panel: Panel) {
+		if (this.ui.sidebarHidden) this.peek = true;
+		this.renderRoot.querySelector<LokaSidebar>("loka-sidebar")?.openPanel(panel);
+	}
+
+	private onMedia(action: MediaAction) {
+		const media = this.media;
+		if (!media) return;
+		if (action === "go") this.apply((s) => revealTab(s, media.tabId));
+		else if (action === "toggle") this.media = { ...media, playing: !media.playing };
+		else if (action === "mute") this.media = { ...media, muted: !media.muted };
+		else if (action === "stop") this.media = null;
+		// previous and next go to the page's own media session in the real browser; the sample has one track.
+	}
+
+	/** Runs the opt-in archive now and every minute after, using the setting in Settings > Tabs. */
+	private archiveNow = () => {
+		const hours = this.ui.archiveAfterHours;
+		if (!hours) return;
+		const next = archiveStale(this.state, Date.now(), hours * 60 * 60 * 1000);
+		if (next !== this.state) this.apply(() => next);
+	};
 
 	private editSpace(spaceId: string) {
 		const s = this.state.spaces.find((x) => x.id === spaceId);
@@ -124,8 +169,11 @@ export class LokaApp extends LitElement {
 		this.previewHue = null;
 	}
 
-	/** The tour's spaces replace the first ones in order; extra ones are added. Spaces it didn't list are kept. */
-	private finishTour(worlds: SpaceLook[]) {
+	/**
+	 * The tour's spaces replace the first ones in order; extra ones are added; spaces it didn't list are kept.
+	 * Imported bookmarks go into the first space as closed folders, and Arc's spaces become new spaces.
+	 */
+	private finishTour({ worlds, bookmarks, arc }: TourResult) {
 		const firstId = this.state.spaces[0]?.id;
 		this.apply((start) =>
 			worlds.reduce((s, look, i) => {
@@ -133,7 +181,11 @@ export class LokaApp extends LitElement {
 				return existing ? updateSpace(s, existing.id, look) : createSpace(s, look)[0];
 			}, start),
 		);
-		if (firstId) this.apply((s) => switchSpace(s, firstId));
+		if (firstId) {
+			this.apply((s) => switchSpace(s, firstId));
+			for (const b of bookmarks) this.apply((s) => addImportedFolder(s, firstId, b.name, b.nodes));
+		}
+		if (arc) this.apply((s) => addArcSpaces(s, arc, SPACE_HUES));
 		this.closeTour();
 	}
 
@@ -145,6 +197,17 @@ export class LokaApp extends LitElement {
 
 	private onKey = (e: KeyboardEvent) => {
 		if (this.tourOpen || this.editing || !(e.ctrlKey || e.metaKey)) return;
+		// Next and previous tab in sidebar order. Arc's keys; the real browser also maps Ctrl+Tab and Ctrl+PgDn here.
+		if (e.altKey && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+			e.preventDefault();
+			this.apply((s) => stepTab(s, e.key === "ArrowDown" ? 1 : -1));
+			return;
+		}
+		if (e.shiftKey && e.key.toLowerCase() === "f") {
+			e.preventDefault();
+			this.showPanel("search");
+			return;
+		}
 		if (e.key === "k" || e.key === "l") {
 			e.preventDefault();
 			this.commandOpen = true;
@@ -190,10 +253,13 @@ export class LokaApp extends LitElement {
 		// Save what was loaded, so a first visit stores the seed data and an invalid save gets replaced.
 		localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
 		window.addEventListener("keydown", this.onKey);
+		this.archiveNow();
+		this.archiveTimer = window.setInterval(this.archiveNow, 60_000);
 	}
 
 	override disconnectedCallback() {
 		window.removeEventListener("keydown", this.onKey);
+		window.clearInterval(this.archiveTimer);
 		super.disconnectedCallback();
 	}
 
@@ -233,6 +299,8 @@ export class LokaApp extends LitElement {
 				<loka-sidebar
 					.state=${this.state}
 					.apply=${this.apply}
+					.media=${this.media}
+					@loka-media=${(e: CustomEvent<MediaAction>) => this.onMedia(e.detail)}
 					@pointerleave=${() => (this.peek = false)}
 					@loka-command=${() => {
 						this.commandOpen = true;
@@ -243,6 +311,7 @@ export class LokaApp extends LitElement {
 					.tab=${activeTab(this.state)}
 					.spaceName=${space.name}
 					.state=${this.state}
+					.apply=${this.apply}
 					.ui=${this.ui}
 					.setUi=${this.setUi}
 				></loka-page>
@@ -274,7 +343,7 @@ export class LokaApp extends LitElement {
 					this.tourOpen
 						? html`<loka-onboarding
 								.spaces=${this.state.spaces.slice(0, 3).map((s) => ({ name: s.name, hue: s.hue, planet: s.planet }))}
-								@loka-finish=${(e: CustomEvent<SpaceLook[]>) => this.finishTour(e.detail)}
+								@loka-finish=${(e: CustomEvent<TourResult>) => this.finishTour(e.detail)}
 								@loka-skip=${() => this.closeTour()}
 							></loka-onboarding>`
 						: null

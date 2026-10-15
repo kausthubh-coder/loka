@@ -3,19 +3,28 @@ import type { PlanetKind } from "./sidebar.logic";
 
 /**
  * A space's planet, drawn in a 100x100 box (body radius 46) and lit from the top left.
- * `horizon` is the large planet at the bottom of the sidebar: only its top shows, so its ring is tilted towards the
- * viewer to stay visible. IDs repeat for the same kind and hue, which is fine: their contents are identical.
+ * `horizon` is the large planet at the bottom of the sidebar, of which only the top fifth shows. There the surface is
+ * squeezed into that cap, the way detail foreshortens near a planet's edge, and a ring is seen from just above its
+ * plane: only its far side shows, as an arc behind the planet. IDs repeat for the same kind and hue, which is fine:
+ * their contents are identical.
  */
 export function planet(kind: PlanetKind, hue: number, size: number, horizon = false): TemplateResult {
 	const id = `pl-${kind}-${hue}${horizon ? "-h" : ""}`;
-	const ringRy = horizon ? 40 : 15;
-	const ring = (front: boolean) =>
-		kind === "ringed"
-			? svg`<g transform="rotate(-16 50 50)" clip-path=${front ? `url(#${id}-front)` : nothing}>
-					<ellipse cx="50" cy="50" rx="76" ry=${ringRy} fill="none" stroke="hsl(${hue + 30} 70% 82% / 0.7)" stroke-width="5" />
-					<ellipse cx="50" cy="50" rx="66" ry=${ringRy * 0.86} fill="none" stroke="hsl(${hue + 30} 60% 75% / 0.45)" stroke-width="2" />
-				</g>`
-			: null;
+	const ring = (front: boolean) => {
+		if (kind !== "ringed") return null;
+		if (horizon) {
+			return front
+				? null
+				: svg`<g clip-path="url(#${id}-back)">
+						<ellipse cx="50" cy="50" rx="78" ry="53" fill="none" stroke="hsl(${hue + 30} 70% 82% / 0.6)" stroke-width="2.4" />
+						<ellipse cx="50" cy="50" rx="72" ry="49.5" fill="none" stroke="hsl(${hue + 30} 60% 75% / 0.4)" stroke-width="1" />
+					</g>`;
+		}
+		return svg`<g transform="rotate(-16 50 50)" clip-path=${front ? `url(#${id}-front)` : nothing}>
+				<ellipse cx="50" cy="50" rx="76" ry="15" fill="none" stroke="hsl(${hue + 30} 70% 82% / 0.7)" stroke-width="5" />
+				<ellipse cx="50" cy="50" rx="66" ry="13" fill="none" stroke="hsl(${hue + 30} 60% 75% / 0.45)" stroke-width="2" />
+			</g>`;
+	};
 
 	// Inline size and stroke, so a component's own icon styles (svg { width: 16px; stroke: ... }) can't shrink or outline it.
 	return html`<svg
@@ -28,6 +37,7 @@ export function planet(kind: PlanetKind, hue: number, size: number, horizon = fa
 		<defs>
 			<clipPath id="${id}-body"><circle cx="50" cy="50" r="46" /></clipPath>
 			<clipPath id="${id}-front" clipPathUnits="userSpaceOnUse"><rect x="-60" y="50" width="220" height="120" /></clipPath>
+			<clipPath id="${id}-back" clipPathUnits="userSpaceOnUse"><rect x="-60" y="-60" width="220" height="110" /></clipPath>
 			<radialGradient id="${id}-lit" cx="0.35" cy="0.28" r="0.85">
 				<stop offset="0" stop-color="hsl(${hue} 90% 82%)" />
 				<stop offset="0.38" stop-color="hsl(${hue} 62% 55%)" />
@@ -40,7 +50,9 @@ export function planet(kind: PlanetKind, hue: number, size: number, horizon = fa
 		</defs>
 		${ring(false)}
 		<circle cx="50" cy="50" r="46" fill="url(#${id}-lit)" />
-		<g clip-path="url(#${id}-body)">${surface(kind, hue)}</g>
+		<g clip-path="url(#${id}-body)">
+			${horizon ? svg`<g transform="translate(0 4) scale(1 0.2) translate(0 -4)">${surface(kind, hue)}</g>` : surface(kind, hue)}
+		</g>
 		<circle cx="50" cy="50" r="46" fill="url(#${id}-shade)" />
 		<circle cx="50" cy="50" r="45.5" fill="none" stroke="hsl(${hue} 90% 88% / 0.3)" stroke-width="1" />
 		${ring(true)}

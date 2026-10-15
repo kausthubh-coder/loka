@@ -1,14 +1,24 @@
 import { css, html, LitElement, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
-
+import {
+	type ArcImport,
+	countImported,
+	type ImportNode,
+	parseArcSidebar,
+	parseChromeBookmarks,
+} from "../import/import.logic";
+import { IMPORT_SOURCES, type ImportSource, pickFile } from "../import/pick-file";
 import { planet, SPACE_HUES } from "../sidebar/planet";
 import { PLANET_KINDS, type SpaceLook } from "../sidebar/sidebar.logic";
 
-const BROWSERS = [
-	{ id: "chrome", name: "Chrome", detail: "Bookmarks, history and passwords" },
-	{ id: "arc", name: "Arc", detail: "Spaces, folders and pinned tabs" },
-	{ id: "edge", name: "Edge", detail: "Bookmarks and history" },
-];
+/** What the tour hands the window when it finishes. */
+export interface TourResult {
+	worlds: SpaceLook[];
+	bookmarks: { name: string; nodes: ImportNode[] }[];
+	arc: ArcImport | null;
+}
+
+type Picked = { summary: string; bookmarks?: ImportNode[]; arc?: ArcImport };
 
 /**
  * The first-run tour: welcome, import, make your spaces, three things to know.
@@ -19,7 +29,8 @@ export class LokaOnboarding extends LitElement {
 		spaces: { attribute: false },
 		worlds: { state: true },
 		step: { state: true },
-		imports: { state: true },
+		picked: { state: true },
+		importError: { state: true },
 		tried: { state: true },
 	};
 
@@ -30,7 +41,8 @@ export class LokaOnboarding extends LitElement {
 	declare spaces: SpaceLook[];
 	declare worlds: SpaceLook[];
 	step = 0;
-	imports = new Set(["chrome"]);
+	picked: Partial<Record<ImportSource, Picked>> = {};
+	importError = "";
 	tried = false;
 
 	private onKey = (e: KeyboardEvent) => {
@@ -70,8 +82,40 @@ export class LokaOnboarding extends LitElement {
 	}
 
 	private finish() {
-		const worlds = this.worlds.filter((w) => w.name.trim());
-		this.dispatchEvent(new CustomEvent("loka-finish", { detail: worlds, bubbles: true, composed: true }));
+		const result: TourResult = {
+			worlds: this.worlds.filter((w) => w.name.trim()),
+			bookmarks: (["chrome", "edge"] as const).flatMap((source) => {
+				const nodes = this.picked[source]?.bookmarks;
+				return nodes ? [{ name: `${IMPORT_SOURCES[source].name} bookmarks`, nodes }] : [];
+			}),
+			arc: this.picked.arc?.arc ?? null,
+		};
+		this.dispatchEvent(new CustomEvent("loka-finish", { detail: result, bubbles: true, composed: true }));
+	}
+
+	/** The prototype asks for the file; Loka itself finds it, with Helium's importer. */
+	private async choose(source: ImportSource) {
+		const text = await pickFile();
+		if (text === null) return;
+		const { name, file } = IMPORT_SOURCES[source];
+		const bad = `That isn't ${name}'s ${file} file.`;
+		if (source === "arc") {
+			const arc = parseArcSidebar(text);
+			if (!arc) {
+				this.importError = bad;
+				return;
+			}
+			const tabs = arc.spaces.reduce((n, s) => n + countImported(s.pinned), 0);
+			this.picked = { ...this.picked, arc: { arc, summary: `${arc.spaces.length} spaces, ${tabs} pinned tabs` } };
+		} else {
+			const bookmarks = parseChromeBookmarks(text);
+			if (!bookmarks) {
+				this.importError = bad;
+				return;
+			}
+			this.picked = { ...this.picked, [source]: { bookmarks, summary: `${countImported(bookmarks)} bookmarks` } };
+		}
+		this.importError = "";
 	}
 
 	private stepWelcome() {
@@ -85,29 +129,36 @@ export class LokaOnboarding extends LitElement {
 	}
 
 	private stepImport() {
-		const count = this.imports.size;
+		const count = Object.keys(this.picked).length;
+		const what = {
+			chrome: "Bookmarks and folders",
+			edge: "Bookmarks and folders",
+			arc: "Spaces, folders and Favorites",
+		};
 		return html`
 			<h1>Bring your browser along</h1>
-			<p>Only browsers found on this PC are listed.</p>
+			<p>Pick each browser's file. Loka itself finds them for you.</p>
 			<div class="list" role="group" aria-label="Browsers to import from">
-				${BROWSERS.map(
-					(b) => html`<button
-						class="option ${this.imports.has(b.id) ? "on" : ""}"
-						role="checkbox"
-						aria-checked=${this.imports.has(b.id)}
-						@click=${() => {
-							const next = new Set(this.imports);
-							if (!next.delete(b.id)) next.add(b.id);
-							this.imports = next;
-						}}
+				${(Object.keys(IMPORT_SOURCES) as ImportSource[]).map((source) => {
+					const { name, file, where } = IMPORT_SOURCES[source];
+					const picked = this.picked[source];
+					return html`<button
+						class="option ${picked ? "on" : ""}"
+						aria-label="Import from ${name}"
+						@click=${() => this.choose(source)}
 					>
 						<span class="box" aria-hidden="true">
 							<svg viewBox="0 0 16 16"><path d="m3.5 8.5 3 3 6-7" /></svg>
 						</span>
-						<span><b>${b.name}</b><small>${b.detail}</small></span>
-					</button>`,
-				)}
+						<span>
+							<b>${name}</b>
+							<small>${picked ? `Ready: ${picked.summary}` : `${what[source]}. ${file} in ${where}`}</small>
+						</span>
+					</button>`;
+				})}
 			</div>
+			${this.importError ? html`<p class="error" role="alert">${this.importError}</p>` : nothing}
+			<p class="quiet">Passwords: export them from the other browser as a CSV, then import that in Settings.</p>
 			<button class="primary" @click=${() => this.go(2)}>
 				${count === 0 ? "Continue without importing" : `Import from ${count} browser${count > 1 ? "s" : ""}`}
 			</button>
@@ -350,6 +401,13 @@ export class LokaOnboarding extends LitElement {
 		.option b,
 		.option small {
 			display: block;
+		}
+		.option small {
+			overflow-wrap: anywhere;
+		}
+		.error {
+			color: #ff9b8f;
+			font-size: 15px;
 		}
 		.option small {
 			color: #a7a9b6;

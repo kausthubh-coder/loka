@@ -47,4 +47,8 @@ Each feature file has an H1, one paragraph on the user-visible behavior, then fo
 - [Space editor](./space-editor.md): create or change a space's name, color and planet.
 - [Window layout and pages](./layout.md): resize, right side, hide and peek; Settings, Downloads, extensions.
 - [Onboarding](./onboarding.md): the first-run tour.
+- [Archive](./archive.md): opt-in archiving of old open tabs, and bringing them back.
+- [Sidebar search and keyboard](./search-and-keys.md): Ctrl+Shift+F, next/previous tab, arrow keys in the tree.
+- [Import](./import.md): Chrome and Edge bookmarks, Arc spaces and Favorites.
+- [Media controls](./media.md): the now-playing card.
 - [Browser build](./browser-build.md): the real Helium-based browser. Launch only; no Loka patches yet.

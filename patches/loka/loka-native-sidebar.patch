@@ -34,6 +34,39 @@
        "//chrome/browser/ui/webui/organizer_panel",
        "//chrome/browser/ui/webui/page_action_internals",
        "//chrome/browser/ui/webui/settings",
+--- a/chrome/browser/ui/browser_command_controller.cc
++++ b/chrome/browser/ui/browser_command_controller.cc
+@@ -3,6 +3,8 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/ui/browser_command_controller.h"
++
++#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h"
+ 
+ #include <stddef.h>
+ 
+@@ -771,6 +773,10 @@
+       CloseWindow(browser_);
+       break;
+     case IDC_NEW_TAB: {
++      // Loka: Ctrl+T opens the command bar; picking a result opens the tab.
++      if (LokaSidebarHandler::DispatchCommand(browser_, "new-tab")) {
++        break;
++      }
+       NewTab(browser_, NewTabTypes::kNewTabCommand);
+       break;
+     }
+@@ -1137,6 +1143,10 @@
+       FocusToolbar(browser_);
+       break;
+     case IDC_FOCUS_LOCATION:
++      // Loka: the address field is the sidebar's command bar.
++      if (LokaSidebarHandler::DispatchCommand(browser_, "focus-location")) {
++        break;
++      }
+       if (!window()->IsLocationBarVisible()) {
+         break;
+       }
 --- a/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc
 +++ b/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc
 @@ -77,6 +77,12 @@
@@ -123,7 +156,7 @@
    map.AddWebUIConfig(std::make_unique<SigninErrorUIConfig>());
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/BUILD.gn
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,50 @@
 +# Copyright 2026 The Loka Authors
 +# You can use, redistribute, and/or modify this source code under
 +# the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -132,6 +165,7 @@
 +  sources = [
 +    "loka_sidebar_handler.cc",
 +    "loka_sidebar_handler.h",
++    "loka_sidebar_handler_features.cc",
 +    "loka_sidebar_ui.cc",
 +    "loka_sidebar_ui.h",
 +  ]
@@ -143,6 +177,14 @@
 +
 +  deps = [
 +    "//base",
++    "//chrome/browser/autocomplete",
++    "//chrome/browser/extensions",
++    "//chrome/browser/themes",
++    "//components/download/content/public",
++    "//components/omnibox/browser",
++    "//content/public/browser",
++    "//extensions/browser",
++    "//extensions/common",
 +    "//chrome/browser/profiles:profile",
 +    "//chrome/browser/search_engines",
 +    "//chrome/browser/ui/tabs:tab_enums",
@@ -167,7 +209,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.cc
-@@ -0,0 +1,588 @@
+@@ -0,0 +1,616 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -254,6 +296,7 @@
 +LokaSidebarHandler::LokaSidebarHandler() = default;
 +
 +LokaSidebarHandler::~LokaSidebarHandler() {
++  StopObservingFeatures();
 +  if (observed_) {
 +    observed_->RemoveObserver(this);
 +  }
@@ -285,19 +328,36 @@
 +  add("openPage", &LokaSidebarHandler::HandleOpenPage);
 +  add("windowAction", &LokaSidebarHandler::HandleWindowAction);
 +  add("startWindowDrag", &LokaSidebarHandler::HandleStartWindowDrag);
++  add("getExtensions", &LokaSidebarHandler::HandleGetExtensions);
++  add("runExtension", &LokaSidebarHandler::HandleRunExtension);
++  add("setExtensionPinned", &LokaSidebarHandler::HandleSetExtensionPinned);
++  add("getDownloads", &LokaSidebarHandler::HandleGetDownloads);
++  add("downloadAction", &LokaSidebarHandler::HandleDownloadAction);
++  add("getMedia", &LokaSidebarHandler::HandleGetMedia);
++  add("mediaAction", &LokaSidebarHandler::HandleMediaAction);
++  add("suggest", &LokaSidebarHandler::HandleSuggest);
++  add("setSidebarPinned", &LokaSidebarHandler::HandleSetSidebarPinned);
++  add("getSidebarPinned", &LokaSidebarHandler::HandleGetSidebarPinned);
++  add("setColorScheme", &LokaSidebarHandler::HandleSetColorScheme);
 +}
 +
 +void LokaSidebarHandler::OnJavascriptAllowed() {
 +  StartObserving();
++  StartObservingFeatures();
 +  Profile* profile = Profile::FromWebUI(web_ui());
 +  pref_change_registrar_.Init(profile->GetPrefs());
 +  pref_change_registrar_.Add(
 +      kLokaSidebarStorePref,
 +      base::BindRepeating(&LokaSidebarHandler::OnStoreChanged,
 +                          base::Unretained(this)));
++  pref_change_registrar_.Add(
++      kLokaOnboardingSpacesPref,
++      base::BindRepeating(&LokaSidebarHandler::OnStoreChanged,
++                          base::Unretained(this)));
 +}
 +
 +void LokaSidebarHandler::OnJavascriptDisallowed() {
++  StopObservingFeatures();
 +  pref_change_registrar_.RemoveAll();
 +  if (observed_) {
 +    observed_->RemoveObserver(this);
@@ -456,7 +516,15 @@
 +
 +base::DictValue LokaSidebarHandler::StoreValue() {
 +  Profile* profile = Profile::FromWebUI(web_ui());
-+  return profile->GetPrefs()->GetDict(kLokaSidebarStorePref).Clone();
++  base::DictValue store =
++      profile->GetPrefs()->GetDict(kLokaSidebarStorePref).Clone();
++  // What setup saved rides along, read-only, so the sidebar can take it in.
++  const std::string& onboarding =
++      profile->GetPrefs()->GetString(kLokaOnboardingSpacesPref);
++  if (!onboarding.empty()) {
++    store.Set("onboarding", onboarding);
++  }
++  return store;
 +}
 +
 +void LokaSidebarHandler::OnTabStripModelChanged(
@@ -493,6 +561,8 @@
 +  // The sidebar can be moved to another window's panel; follow it.
 +  StartObserving();
 +  FireWebUIListener("tabs-changed", TabList());
++  // What's playing changes with the tabs' sound.
++  FireWebUIListener("media-changed", MediaList());
 +}
 +
 +void LokaSidebarHandler::OnStoreChanged() {
@@ -758,7 +828,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h
-@@ -0,0 +1,113 @@
+@@ -0,0 +1,194 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -769,10 +839,18 @@
 +#include <map>
 +#include <string>
 +
++#include <memory>
++#include <set>
++
 +#include "base/memory/raw_ptr.h"
 +#include "base/memory/weak_ptr.h"
++#include "base/scoped_observation.h"
 +#include "base/values.h"
++#include "chrome/browser/extensions/extension_action_dispatcher.h"
 +#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
++#include "chrome/browser/ui/toolbar/toolbar_actions_model.h"
++#include "components/download/content/public/all_download_item_notifier.h"
++#include "components/omnibox/browser/autocomplete_controller.h"
 +#include "components/prefs/pref_change_registrar.h"
 +#include "components/tab_groups/tab_group_id.h"
 +#include "content/public/browser/web_ui_message_handler.h"
@@ -796,12 +874,27 @@
 +//   setMuted(id, muted), groupTabs(cb, ids, groupId|-1),
 +//   updateGroup(groupId, title, color, collapsed), ungroupTabs(ids),
 +//   search(query, newTab), openPage(url),
-+//   windowAction("minimize"|"maximize"|"close"), startWindowDrag()
++//   windowAction("minimize"|"maximize"|"close"), startWindowDrag(),
++//   getExtensions(cb), runExtension(id, anchor), setExtensionPinned(id, on),
++//   getDownloads(cb), downloadAction(id, action), getMedia(cb),
++//   mediaAction(tabId, action), suggest(query), setSidebarPinned(on),
++//   getSidebarPinned(cb), setColorScheme("light"|"dark"|"system")
 +// Browser -> page (WebUI listeners):
-+//   "tabs-changed" (tabs), "store-changed" (store)
++//   "tabs-changed" (tabs), "store-changed" (store), "extensions-changed",
++//   "downloads-changed", "media-changed", "suggestions" (query, list),
++//   "command" ("new-tab"|"focus-location")
 +class LokaSidebarHandler : public content::WebUIMessageHandler,
-+                           public TabStripModelObserver {
++                           public TabStripModelObserver,
++                           public ToolbarActionsModel::Observer,
++                           public extensions::ExtensionActionDispatcher::Observer,
++                           public download::AllDownloadItemNotifier::Observer,
++                           public AutocompleteController::Observer {
 + public:
++  // Ctrl+T and Ctrl+L: hands `command` to the sidebar of `browser`'s window
++  // and focuses it. False when that window has no sidebar to take it.
++  static bool DispatchCommand(BrowserWindowInterface* browser,
++                              const std::string& command);
++
 +  LokaSidebarHandler();
 +  LokaSidebarHandler(const LokaSidebarHandler&) = delete;
 +  LokaSidebarHandler& operator=(const LokaSidebarHandler&) = delete;
@@ -820,7 +913,52 @@
 +                      TabChangeType change_type) override;
 +  void OnTabGroupChanged(const TabGroupChange& change) override;
 +
++  // ToolbarActionsModel::Observer:
++  void OnToolbarActionAdded(const ToolbarActionsModel::ActionId& id) override;
++  void OnToolbarActionRemoved(const ToolbarActionsModel::ActionId& id) override;
++  void OnToolbarActionUpdated(const ToolbarActionsModel::ActionId& id) override;
++  void OnToolbarModelInitialized() override;
++  void OnToolbarPinnedActionsChanged() override;
++
++  // extensions::ExtensionActionDispatcher::Observer:
++  void OnExtensionActionUpdated(
++      extensions::ExtensionAction* extension_action,
++      content::WebContents* web_contents,
++      content::BrowserContext* browser_context) override;
++
++  // download::AllDownloadItemNotifier::Observer:
++  void OnDownloadCreated(content::DownloadManager* manager,
++                         download::DownloadItem* item) override;
++  void OnDownloadUpdated(content::DownloadManager* manager,
++                         download::DownloadItem* item) override;
++  void OnDownloadRemoved(content::DownloadManager* manager,
++                         download::DownloadItem* item) override;
++
++  // AutocompleteController::Observer:
++  void OnResultChanged(AutocompleteController* controller,
++                       bool default_match_changed) override;
++
 + private:
++  // The browser features beyond tabs, in loka_sidebar_handler_features.cc.
++  void StartObservingFeatures();
++  void StopObservingFeatures();
++  base::ListValue ExtensionList();
++  base::ListValue DownloadList();
++  base::ListValue MediaList();
++  void ScheduleExtensionsChanged();
++  void ScheduleDownloadsChanged();
++  void HandleGetExtensions(const base::ListValue& args);
++  void HandleRunExtension(const base::ListValue& args);
++  void HandleSetExtensionPinned(const base::ListValue& args);
++  void HandleGetDownloads(const base::ListValue& args);
++  void HandleDownloadAction(const base::ListValue& args);
++  void HandleGetMedia(const base::ListValue& args);
++  void HandleMediaAction(const base::ListValue& args);
++  void HandleSuggest(const base::ListValue& args);
++  void HandleSetSidebarPinned(const base::ListValue& args);
++  void HandleGetSidebarPinned(const base::ListValue& args);
++  void HandleSetColorScheme(const base::ListValue& args);
++
 +  BrowserWindowInterface* GetBrowser();
 +  TabStripModel* GetTabStrip();
 +  // The tab with this id, if it's in this window.
@@ -868,13 +1006,592 @@
 +  // Each tab's last favicon and its data: URL, so unchanged icons aren't
 +  // encoded again on every change.
 +  std::map<int32_t, std::pair<gfx::ImageSkia, std::string>> favicons_;
++
++  base::ScopedObservation<ToolbarActionsModel, ToolbarActionsModel::Observer>
++      toolbar_observation_{this};
++  base::ScopedObservation<extensions::ExtensionActionDispatcher,
++                          extensions::ExtensionActionDispatcher::Observer>
++      action_observation_{this};
++  std::unique_ptr<download::AllDownloadItemNotifier> download_notifier_;
++  std::unique_ptr<AutocompleteController> autocomplete_;
++  std::string suggest_query_;
++  bool extensions_change_pending_ = false;
++  bool downloads_change_pending_ = false;
++  // Tabs whose media the sidebar paused: they're quiet, but still have media.
++  std::set<int32_t> paused_media_;
 +  base::WeakPtrFactory<LokaSidebarHandler> weak_factory_{this};
 +};
 +
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
 --- /dev/null
++++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler_features.cc
+@@ -0,0 +1,563 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++// The sidebar's browser features beyond tabs: extensions, downloads, media,
++// the address field's suggestions, hiding the sidebar, light and dark, and
++// the Ctrl+T / Ctrl+L commands. The tab half is loka_sidebar_handler.cc.
++
++#include <algorithm>
++#include <map>
++#include <utility>
++#include <vector>
++
++#include "base/functional/bind.h"
++#include "base/functional/callback_helpers.h"
++#include "base/location.h"
++#include "base/no_destructor.h"
++#include "base/strings/stringprintf.h"
++#include "base/strings/utf_string_conversions.h"
++#include "base/task/sequenced_task_runner.h"
++#include "chrome/browser/autocomplete/chrome_autocomplete_provider_client.h"
++#include "chrome/browser/autocomplete/chrome_autocomplete_scheme_classifier.h"
++#include "chrome/browser/extensions/extension_action_runner.h"
++#include "chrome/browser/extensions/extension_tab_util.h"
++#include "chrome/browser/extensions/extension_view_host.h"
++#include "chrome/browser/extensions/extension_view_host_factory.h"
++#include "chrome/browser/platform_util.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/themes/theme_service.h"
++#include "chrome/browser/themes/theme_service_factory.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#include "chrome/browser/ui/extensions/extension_popup_types.h"
++#include "chrome/browser/ui/tab_ui_helper.h"
++#include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "chrome/browser/ui/views/extensions/extension_popup.h"
++#include "chrome/browser/ui/views/frame/browser_view.h"
++#include "chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h"
++#include "chrome/browser/ui/webui/extensions/extension_icon_source.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h"
++#include "chrome/common/pref_names.h"
++#include "components/download/public/common/download_item.h"
++#include "components/omnibox/browser/autocomplete_classifier.h"
++#include "components/omnibox/browser/autocomplete_input.h"
++#include "components/omnibox/browser/autocomplete_match.h"
++#include "components/omnibox/browser/autocomplete_result.h"
++#include "components/prefs/pref_service.h"
++#include "components/tabs/public/tab_interface.h"
++#include "content/public/browser/download_manager.h"
++#include "content/public/browser/media_session.h"
++#include "content/public/browser/web_contents.h"
++#include "content/public/browser/web_ui.h"
++#include "extensions/browser/extension_action.h"
++#include "extensions/browser/extension_action_manager.h"
++#include "extensions/browser/extension_registry.h"
++#include "extensions/common/extension.h"
++#include "extensions/common/icons/extension_icon_set.h"
++#include "third_party/metrics_proto/omnibox_event.pb.h"
++#include "third_party/skia/include/core/SkColor.h"
++#include "ui/views/bubble/bubble_anchor.h"
++#include "ui/views/bubble/bubble_border.h"
++
++namespace {
++
++// Which sidebar each window has, so browser shortcuts can reach it.
++std::map<BrowserWindowInterface*, LokaSidebarHandler*>& Sidebars() {
++  static base::NoDestructor<
++      std::map<BrowserWindowInterface*, LokaSidebarHandler*>>
++      sidebars;
++  return *sidebars;
++}
++
++constexpr size_t kMaxDownloads = 30;
++
++std::string CssColor(SkColor color) {
++  if (SkColorGetA(color) == 0) {
++    return std::string();
++  }
++  return base::StringPrintf("rgb(%d %d %d)", SkColorGetR(color),
++                            SkColorGetG(color), SkColorGetB(color));
++}
++
++std::string DownloadState(const download::DownloadItem& item) {
++  switch (item.GetState()) {
++    case download::DownloadItem::IN_PROGRESS:
++      return item.IsPaused() ? "paused" : "running";
++    case download::DownloadItem::COMPLETE:
++      return "complete";
++    case download::DownloadItem::CANCELLED:
++      return "cancelled";
++    case download::DownloadItem::INTERRUPTED:
++    case download::DownloadItem::MAX_DOWNLOAD_STATE:
++      return "failed";
++  }
++  return "failed";
++}
++
++std::string SuggestionKind(const AutocompleteMatch& match) {
++  if (match.has_tab_match.value_or(false) ||
++      match.type == AutocompleteMatchType::OPEN_TAB) {
++    return "tab";
++  }
++  if (AutocompleteMatch::IsSearchType(match.type)) {
++    return "search";
++  }
++  switch (match.type) {
++    case AutocompleteMatchType::BOOKMARK_TITLE:
++      return "bookmark";
++    case AutocompleteMatchType::HISTORY_URL:
++    case AutocompleteMatchType::HISTORY_TITLE:
++    case AutocompleteMatchType::HISTORY_BODY:
++    case AutocompleteMatchType::HISTORY_KEYWORD:
++      return "history";
++    default:
++      return "url";
++  }
++}
++
++}  // namespace
++
++// static
++bool LokaSidebarHandler::DispatchCommand(BrowserWindowInterface* browser,
++                                         const std::string& command) {
++  auto it = Sidebars().find(browser);
++  if (it == Sidebars().end() || !it->second->IsJavascriptAllowed()) {
++    return false;
++  }
++  LokaSidebarHandler* handler = it->second;
++  handler->web_ui()->GetWebContents()->Focus();
++  handler->FireWebUIListener("command", base::Value(command));
++  return true;
++}
++
++void LokaSidebarHandler::StartObservingFeatures() {
++  Profile* profile = Profile::FromWebUI(web_ui());
++  if (BrowserWindowInterface* browser = GetBrowser()) {
++    Sidebars()[browser] = this;
++  }
++  if (auto* model = ToolbarActionsModel::Get(profile);
++      model && !toolbar_observation_.IsObserving()) {
++    toolbar_observation_.Observe(model);
++  }
++  if (auto* dispatcher = extensions::ExtensionActionDispatcher::Get(profile);
++      dispatcher && !action_observation_.IsObserving()) {
++    action_observation_.Observe(dispatcher);
++  }
++  if (!download_notifier_ && profile->GetDownloadManager()) {
++    download_notifier_ = std::make_unique<download::AllDownloadItemNotifier>(
++        profile->GetDownloadManager(), this);
++  }
++}
++
++void LokaSidebarHandler::StopObservingFeatures() {
++  for (auto it = Sidebars().begin(); it != Sidebars().end();) {
++    it = it->second == this ? Sidebars().erase(it) : std::next(it);
++  }
++  toolbar_observation_.Reset();
++  action_observation_.Reset();
++  download_notifier_.reset();
++  autocomplete_.reset();
++  extensions_change_pending_ = false;
++  downloads_change_pending_ = false;
++}
++
++// ---- Extensions -------------------------------------------------------------
++
++base::ListValue LokaSidebarHandler::ExtensionList() {
++  base::ListValue list;
++  Profile* profile = Profile::FromWebUI(web_ui());
++  ToolbarActionsModel* model = ToolbarActionsModel::Get(profile);
++  if (!model) {
++    return list;
++  }
++  auto* registry = extensions::ExtensionRegistry::Get(profile);
++  auto* actions = extensions::ExtensionActionManager::Get(profile);
++  TabStripModel* tab_strip = GetTabStrip();
++  content::WebContents* active =
++      tab_strip ? tab_strip->GetActiveWebContents() : nullptr;
++  const int tab_id =
++      active ? extensions::ExtensionTabUtil::GetTabId(active) : -1;
++  for (const auto& id : model->action_ids()) {
++    const extensions::Extension* extension =
++        registry->enabled_extensions().GetByID(id);
++    if (!extension) {
++      continue;
++    }
++    base::DictValue data;
++    data.Set("id", id);
++    data.Set("name", extension->name());
++    data.Set("icon", extensions::ExtensionIconSource::GetIconURL(
++                         extension, 32, ExtensionIconSet::Match::kBigger,
++                         /*grayscale=*/false)
++                         .spec());
++    std::string badge;
++    std::string badge_color;
++    if (extensions::ExtensionAction* action =
++            actions->GetExtensionAction(*extension)) {
++      badge = action->GetDisplayBadgeText(tab_id);
++      badge_color = CssColor(action->GetBadgeBackgroundColor(tab_id));
++    }
++    data.Set("badge", badge);
++    data.Set("badgeColor", badge_color);
++    data.Set("pinned", model->IsActionPinned(id));
++    list.Append(std::move(data));
++  }
++  return list;
++}
++
++void LokaSidebarHandler::ScheduleExtensionsChanged() {
++  if (extensions_change_pending_ || !IsJavascriptAllowed()) {
++    return;
++  }
++  extensions_change_pending_ = true;
++  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
++      FROM_HERE, base::BindOnce(
++                     [](base::WeakPtr<LokaSidebarHandler> self) {
++                       if (!self || !self->IsJavascriptAllowed()) {
++                         return;
++                       }
++                       self->extensions_change_pending_ = false;
++                       self->FireWebUIListener("extensions-changed",
++                                               self->ExtensionList());
++                     },
++                     weak_factory_.GetWeakPtr()));
++}
++
++void LokaSidebarHandler::OnToolbarActionAdded(
++    const ToolbarActionsModel::ActionId& id) {
++  ScheduleExtensionsChanged();
++}
++void LokaSidebarHandler::OnToolbarActionRemoved(
++    const ToolbarActionsModel::ActionId& id) {
++  ScheduleExtensionsChanged();
++}
++void LokaSidebarHandler::OnToolbarActionUpdated(
++    const ToolbarActionsModel::ActionId& id) {
++  ScheduleExtensionsChanged();
++}
++void LokaSidebarHandler::OnToolbarModelInitialized() {
++  ScheduleExtensionsChanged();
++}
++void LokaSidebarHandler::OnToolbarPinnedActionsChanged() {
++  ScheduleExtensionsChanged();
++}
++
++void LokaSidebarHandler::OnExtensionActionUpdated(
++    extensions::ExtensionAction* extension_action,
++    content::WebContents* web_contents,
++    content::BrowserContext* browser_context) {
++  ScheduleExtensionsChanged();
++}
++
++void LokaSidebarHandler::HandleGetExtensions(const base::ListValue& args) {
++  AllowJavascript();
++  ResolveJavascriptCallback(args[0], ExtensionList());
++}
++
++void LokaSidebarHandler::HandleRunExtension(const base::ListValue& args) {
++  BrowserWindowInterface* browser = GetBrowser();
++  TabStripModel* tab_strip = GetTabStrip();
++  if (!browser || !tab_strip || args.empty() || !args[0].is_string()) {
++    return;
++  }
++  Profile* profile = Profile::FromWebUI(web_ui());
++  const extensions::Extension* extension =
++      extensions::ExtensionRegistry::Get(profile)
++          ->enabled_extensions()
++          .GetByID(args[0].GetString());
++  content::WebContents* active = tab_strip->GetActiveWebContents();
++  if (!extension || !active) {
++    return;
++  }
++  auto* runner = extensions::ExtensionActionRunner::GetForWebContents(active);
++  if (!runner || runner->RunAction(extension, /*grant_tab_permissions=*/true) !=
++                     extensions::ExtensionAction::ShowAction::kShowPopup) {
++    return;
++  }
++  extensions::ExtensionAction* action =
++      extensions::ExtensionActionManager::Get(profile)->GetExtensionAction(
++          *extension);
++  if (!action) {
++    return;
++  }
++  GURL popup_url =
++      action->GetPopupUrl(extensions::ExtensionTabUtil::GetTabId(active));
++  std::unique_ptr<extensions::ExtensionViewHost> host =
++      extensions::ExtensionViewHostFactory::CreatePopupHost(*extension,
++                                                            popup_url, browser);
++  BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser);
++  views::View* anchor =
++      browser_view ? browser_view->vertical_tab_strip_region_view_for_testing()
++                   : nullptr;
++  if (!host || !anchor) {
++    return;
++  }
++  // The popup opens beside the sidebar, level with its top.
++  ExtensionPopup::ShowPopup(browser, std::move(host), views::BubbleAnchor(anchor),
++                            views::BubbleBorder::LEFT_TOP,
++                            PopupShowAction::kShow, base::DoNothing());
++}
++
++void LokaSidebarHandler::HandleSetExtensionPinned(const base::ListValue& args) {
++  if (args.size() < 2 || !args[0].is_string() || !args[1].is_bool()) {
++    return;
++  }
++  if (ToolbarActionsModel* model =
++          ToolbarActionsModel::Get(Profile::FromWebUI(web_ui()))) {
++    model->SetActionVisibility(args[0].GetString(), args[1].GetBool());
++  }
++}
++
++// ---- Downloads --------------------------------------------------------------
++
++base::ListValue LokaSidebarHandler::DownloadList() {
++  base::ListValue list;
++  content::DownloadManager* manager =
++      Profile::FromWebUI(web_ui())->GetDownloadManager();
++  if (!manager) {
++    return list;
++  }
++  download::SimpleDownloadManager::DownloadVector items;
++  manager->GetAllDownloads(&items);
++  std::vector<download::DownloadItem*> shown;
++  for (download::DownloadItem* item : items) {
++    if (!item->IsTransient() && !item->IsTemporary()) {
++      shown.push_back(item);
++    }
++  }
++  std::sort(shown.begin(), shown.end(), [](auto* a, auto* b) {
++    return a->GetStartTime() > b->GetStartTime();
++  });
++  if (shown.size() > kMaxDownloads) {
++    shown.resize(kMaxDownloads);
++  }
++  for (download::DownloadItem* item : shown) {
++    std::string name = item->GetFileNameToReportUser().AsUTF8Unsafe();
++    if (name.empty()) {
++      name = item->GetURL().ExtractFileName();
++    }
++    base::DictValue data;
++    data.Set("id", static_cast<int>(item->GetId()));
++    data.Set("name", name);
++    data.Set("url", item->GetURL().spec());
++    data.Set("state", DownloadState(*item));
++    data.Set("receivedBytes", static_cast<double>(item->GetReceivedBytes()));
++    data.Set("totalBytes", static_cast<double>(item->GetTotalBytes() > 0
++                                                   ? item->GetTotalBytes()
++                                                   : -1));
++    data.Set("startTime",
++             item->GetStartTime().InMillisecondsFSinceUnixEpoch());
++    data.Set("canResume", item->CanResume());
++    list.Append(std::move(data));
++  }
++  return list;
++}
++
++void LokaSidebarHandler::ScheduleDownloadsChanged() {
++  if (downloads_change_pending_ || !IsJavascriptAllowed()) {
++    return;
++  }
++  downloads_change_pending_ = true;
++  // Progress updates come many times a second; a quarter second is plenty.
++  base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
++      FROM_HERE,
++      base::BindOnce(
++          [](base::WeakPtr<LokaSidebarHandler> self) {
++            if (!self || !self->IsJavascriptAllowed()) {
++              return;
++            }
++            self->downloads_change_pending_ = false;
++            self->FireWebUIListener("downloads-changed", self->DownloadList());
++          },
++          weak_factory_.GetWeakPtr()),
++      base::Milliseconds(250));
++}
++
++void LokaSidebarHandler::OnDownloadCreated(content::DownloadManager* manager,
++                                           download::DownloadItem* item) {
++  ScheduleDownloadsChanged();
++}
++void LokaSidebarHandler::OnDownloadUpdated(content::DownloadManager* manager,
++                                           download::DownloadItem* item) {
++  ScheduleDownloadsChanged();
++}
++void LokaSidebarHandler::OnDownloadRemoved(content::DownloadManager* manager,
++                                           download::DownloadItem* item) {
++  ScheduleDownloadsChanged();
++}
++
++void LokaSidebarHandler::HandleGetDownloads(const base::ListValue& args) {
++  AllowJavascript();
++  ResolveJavascriptCallback(args[0], DownloadList());
++}
++
++void LokaSidebarHandler::HandleDownloadAction(const base::ListValue& args) {
++  if (args.size() < 2 || !args[0].is_int() || !args[1].is_string()) {
++    return;
++  }
++  Profile* profile = Profile::FromWebUI(web_ui());
++  content::DownloadManager* manager = profile->GetDownloadManager();
++  download::DownloadItem* item =
++      manager ? manager->GetDownload(static_cast<uint32_t>(args[0].GetInt()))
++              : nullptr;
++  if (!item) {
++    return;
++  }
++  const std::string& action = args[1].GetString();
++  if (action == "open" &&
++      item->GetState() == download::DownloadItem::COMPLETE) {
++    item->OpenDownload();
++  } else if (action == "show") {
++    platform_util::ShowItemInFolder(profile, item->GetTargetFilePath());
++  } else if (action == "pause") {
++    item->Pause();
++  } else if (action == "resume" || action == "retry") {
++    if (item->CanResume()) {
++      item->Resume(/*user_resume=*/true);
++    }
++  } else if (action == "cancel") {
++    item->Cancel(/*user_cancel=*/true);
++  } else if (action == "remove") {
++    item->Remove();
++  }
++}
++
++// ---- Media ------------------------------------------------------------------
++
++base::ListValue LokaSidebarHandler::MediaList() {
++  base::ListValue list;
++  TabStripModel* tab_strip = GetTabStrip();
++  if (!tab_strip) {
++    return list;
++  }
++  for (int i = 0; i < tab_strip->count(); ++i) {
++    tabs::TabInterface* tab = tab_strip->GetTabAtIndex(i);
++    content::WebContents* contents = tab->GetContents();
++    const int32_t id = tab->GetHandle().raw_value();
++    const bool playing = contents->IsCurrentlyAudible();
++    if (!playing && !paused_media_.contains(id)) {
++      continue;
++    }
++    TabUIHelper* helper = TabUIHelper::From(tab);
++    base::DictValue data;
++    data.Set("tabId", id);
++    data.Set("title",
++             helper ? base::UTF16ToUTF8(helper->GetTitle()) : std::string());
++    data.Set("artist", contents->GetLastCommittedURL().host());
++    data.Set("artwork", FaviconDataUrl(tab));
++    data.Set("playing", playing);
++    list.Append(std::move(data));
++  }
++  return list;
++}
++
++void LokaSidebarHandler::HandleGetMedia(const base::ListValue& args) {
++  AllowJavascript();
++  ResolveJavascriptCallback(args[0], MediaList());
++}
++
++void LokaSidebarHandler::HandleMediaAction(const base::ListValue& args) {
++  tabs::TabInterface* tab = args.size() < 2 ? nullptr : FindTab(args[0]);
++  if (!tab || !args[1].is_string()) {
++    return;
++  }
++  content::MediaSession* session =
++      content::MediaSession::Get(tab->GetContents());
++  const int32_t id = tab->GetHandle().raw_value();
++  const std::string& action = args[1].GetString();
++  if (action == "pause") {
++    session->Suspend(content::MediaSession::SuspendType::kUI);
++    paused_media_.insert(id);
++  } else if (action == "play") {
++    session->Resume(content::MediaSession::SuspendType::kUI);
++    paused_media_.erase(id);
++  } else if (action == "next") {
++    session->NextTrack();
++  } else if (action == "previous") {
++    session->PreviousTrack();
++  }
++  ScheduleTabsChanged();
++}
++
++// ---- Address field suggestions ----------------------------------------------
++
++void LokaSidebarHandler::HandleSuggest(const base::ListValue& args) {
++  if (args.empty() || !args[0].is_string()) {
++    return;
++  }
++  AllowJavascript();
++  Profile* profile = Profile::FromWebUI(web_ui());
++  if (!autocomplete_) {
++    autocomplete_ = std::make_unique<AutocompleteController>(
++        std::make_unique<ChromeAutocompleteProviderClient>(profile),
++        AutocompleteControllerConfig{
++            .provider_types =
++                AutocompleteClassifier::DefaultOmniboxProviders()});
++    autocomplete_->AddObserver(this);
++  }
++  suggest_query_ = args[0].GetString();
++  if (suggest_query_.empty()) {
++    autocomplete_->Stop(AutocompleteStopReason::kClobbered);
++    FireWebUIListener("suggestions", base::Value(suggest_query_),
++                      base::ListValue());
++    return;
++  }
++  AutocompleteInput input(base::UTF8ToUTF16(suggest_query_),
++                          metrics::OmniboxEventProto::OTHER,
++                          ChromeAutocompleteSchemeClassifier(profile));
++  autocomplete_->Start(input);
++}
++
++void LokaSidebarHandler::OnResultChanged(AutocompleteController* controller,
++                                         bool default_match_changed) {
++  if (!IsJavascriptAllowed()) {
++    return;
++  }
++  base::ListValue list;
++  for (const AutocompleteMatch& match : controller->result()) {
++    if (!match.destination_url.is_valid()) {
++      continue;
++    }
++    base::DictValue data;
++    data.Set("kind", SuggestionKind(match));
++    const std::u16string& title =
++        match.description.empty() ? match.contents : match.description;
++    data.Set("title", base::UTF16ToUTF8(title));
++    data.Set("url", match.destination_url.spec());
++    list.Append(std::move(data));
++  }
++  FireWebUIListener("suggestions", base::Value(suggest_query_), list);
++}
++
++// ---- Window: hiding the sidebar, light and dark -----------------------------
++
++void LokaSidebarHandler::HandleSetSidebarPinned(const base::ListValue& args) {
++  if (args.empty() || !args[0].is_bool()) {
++    return;
++  }
++  Profile::FromWebUI(web_ui())->GetPrefs()->SetBoolean(
++      prefs::kHeliumZenModeSidebarPinned, args[0].GetBool());
++}
++
++void LokaSidebarHandler::HandleGetSidebarPinned(const base::ListValue& args) {
++  AllowJavascript();
++  ResolveJavascriptCallback(
++      args[0], base::Value(Profile::FromWebUI(web_ui())->GetPrefs()->GetBoolean(
++                   prefs::kHeliumZenModeSidebarPinned)));
++}
++
++void LokaSidebarHandler::HandleSetColorScheme(const base::ListValue& args) {
++  if (args.empty() || !args[0].is_string()) {
++    return;
++  }
++  const std::string& scheme = args[0].GetString();
++  ThemeService::BrowserColorScheme color_scheme =
++      scheme == "light"  ? ThemeService::BrowserColorScheme::kLight
++      : scheme == "dark" ? ThemeService::BrowserColorScheme::kDark
++                         : ThemeService::BrowserColorScheme::kSystem;
++  ThemeService* theme =
++      ThemeServiceFactory::GetForProfile(Profile::FromWebUI(web_ui()));
++  if (theme && theme->GetBrowserColorScheme() != color_scheme) {
++    theme->SetBrowserColorScheme(color_scheme);
++  }
++}
+--- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.cc
-@@ -0,0 +1,65 @@
+@@ -0,0 +1,71 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -882,8 +1599,10 @@
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
 +
 +#include <memory>
++#include <string>
 +
 +#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/webui/extensions/extension_icon_source.h"
 +#include "chrome/browser/ui/webui/favicon_source.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h"
 +#include "chrome/browser/ui/webui/theme_source.h"
@@ -917,7 +1636,8 @@
 +  // Favicons of tabs that aren't loaded come from the browser's favicon cache.
 +  source->OverrideContentSecurityPolicy(
 +      network::mojom::CSPDirectiveName::ImgSrc,
-+      "img-src chrome://favicon2 chrome://theme data: blob: 'self';");
++      "img-src chrome://favicon2 chrome://theme chrome://extension-icon data: "
++      "blob: 'self';");
 +  // Each space's hue is set as an inline style (--hue) on its elements.
 +  source->OverrideContentSecurityPolicy(
 +      network::mojom::CSPDirectiveName::StyleSrc,
@@ -927,6 +1647,8 @@
 +      profile, std::make_unique<FaviconSource>(
 +                   profile, chrome::FaviconUrlFormat::kFavicon2));
 +  content::URLDataSource::Add(profile, std::make_unique<ThemeSource>(profile));
++  content::URLDataSource::Add(
++      profile, std::make_unique<extensions::ExtensionIconSource>(profile));
 +
 +  web_ui->AddMessageHandler(std::make_unique<LokaSidebarHandler>());
 +}
@@ -937,12 +1659,13 @@
 +void LokaSidebarUI::RegisterProfilePrefs(
 +    user_prefs::PrefRegistrySyncable* registry) {
 +  registry->RegisterDictionaryPref(kLokaSidebarStorePref);
++  registry->RegisterStringPref(kLokaOnboardingSpacesPref, std::string());
 +}
 +
 +WEB_UI_CONTROLLER_TYPE_IMPL(LokaSidebarUI)
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,55 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -968,6 +1691,12 @@
 +// Where the sidebar keeps its spaces and settings: a dictionary of strings in
 +// the profile's prefs, shared by every window.
 +inline constexpr char kLokaSidebarStorePref[] = "loka.store";
++
++// The spaces the user made in Loka's setup page (chrome://setup), as JSON. The
++// setup page writes it through Helium's onboarding handler, which only writes
++// prefs named "helium.*".
++inline constexpr char kLokaOnboardingSpacesPref[] =
++    "helium.loka.onboarding_spaces";
 +
 +class LokaSidebarUI;
 +

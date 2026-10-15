@@ -62,12 +62,21 @@ function build() {
 	});
 }
 
-// First-run defaults for a new profile, read by Chromium from `initial_preferences` beside chrome.exe: Loka's
-// sidebar is the side panel, on the left; Helium's own vertical tabs sit on the right, collapsed to a thin strip.
+// First-run defaults for a new profile, read by Chromium from `initial_preferences` beside chrome.exe. Loka's
+// sidebar is the side panel, on the left. Helium's own vertical tabs would list the same tabs again, so they go on
+// the right under Helium's Zen mode, which hides them until the pointer reaches that edge; the toolbar stays pinned.
 const INITIAL_PREFERENCES = {
 	distribution: { skip_first_run_ui: true, suppress_first_run_default_browser_prompt: true },
 	side_panel: { is_right_aligned: false },
-	helium: { browser: { layout: 2, vertical_right_aligned: true } },
+	helium: {
+		browser: {
+			layout: 2,
+			vertical_right_aligned: true,
+			zen_mode: true,
+			zen_mode_sidebar_pinned: false,
+			zen_mode_top_chrome_pinned: true,
+		},
+	},
 	vertical_tabs: { collapsed_state: true },
 };
 

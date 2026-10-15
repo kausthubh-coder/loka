@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+next-env.d.ts
+*.tsbuildinfo
+
+# Clerk keyless mode writes the unclaimed instance's secret key here
+/.clerk/
+
+# env files hold Clerk keys once the instance is claimed
+.env*
+
+# Critly rewrites these on every run
+.critly/taste/

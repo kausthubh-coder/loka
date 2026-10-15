@@ -6,6 +6,9 @@
 			"prototype/**",
 			"scripts/**",
 			".agents/skills/*/scripts/**",
+			"site/**",
+			"!site/.next",
+			"!site/.clerk",
 			"package.json",
 			"tsconfig.json",
 			"biome.json"

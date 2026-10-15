@@ -1,0 +1,650 @@
+/* Registered so the page's color can ease between spaces, the way the browser window does. */
+@property --hue {
+	syntax: "<number>";
+	inherits: true;
+	initial-value: 200;
+}
+
+/* ---- tokens: raw values, then roles. Every color takes the space's hue (.critly/direction.md). ---- */
+:root {
+	--hue: 200;
+
+	--font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+	--font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+
+	/* Type: a persuade scale, fluid between phone and desktop. */
+	--step--1: 0.9375rem;
+	--step-0: clamp(1.0625rem, 1rem + 0.25vw, 1.1875rem);
+	--step-1: clamp(1.25rem, 1.15rem + 0.4vw, 1.5rem);
+	--step-2: clamp(1.875rem, 1.45rem + 1.6vw, 2.75rem);
+	--step-3: clamp(2.5rem, 1.5rem + 3.9vw, 4.375rem);
+
+	--space-1: 4px;
+	--space-2: 8px;
+	--space-3: 12px;
+	--space-4: 16px;
+	--space-5: 24px;
+	--space-6: 32px;
+	--space-7: 48px;
+	--space-8: 64px;
+	--space-9: clamp(64px, 6vw + 32px, 128px);
+
+	--radius-control: 8px;
+	--radius-surface: 12px;
+
+	--ease: cubic-bezier(0.2, 0, 0, 1);
+
+	--bg: hsl(var(--hue) 38% 4%);
+	--text: #ececf1;
+	--text-muted: #a7a8b4;
+	--surface: hsl(var(--hue) 30% 80% / 0.06);
+	--surface-raised: hsl(var(--hue) 22% 11%);
+	--border: hsl(var(--hue) 40% 80% / 0.14);
+	--accent: hsl(var(--hue) 85% 72%);
+	--accent-hover: hsl(var(--hue) 90% 80%);
+	--accent-fg: hsl(var(--hue) 50% 10%);
+	--focus: hsl(var(--hue) 85% 72%);
+	--shadow: 0 12px 32px #0008;
+	--mark-lit: hsl(var(--hue) 85% 72%);
+	--mark-shade: hsl(var(--hue) 45% 24%);
+
+	color-scheme: dark;
+	background: var(--bg);
+	color: var(--text);
+	font: 400 var(--step-0) / 1.55 var(--font);
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	text-rendering: optimizeLegibility;
+	/* Color isn't movement, so the fade between spaces stays even with reduced motion. */
+	transition: --hue 420ms var(--ease);
+}
+
+/* The space picked in the hero colors the whole page. */
+:root:has(#space-school:checked) {
+	--hue: 30;
+}
+:root:has(#space-home:checked) {
+	--hue: 150;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	min-height: 100dvh;
+}
+
+h1,
+h2,
+h3 {
+	font-family: var(--font-display);
+	font-weight: 650;
+	margin: 0;
+	text-wrap: balance;
+}
+
+h1 {
+	font-size: var(--step-3);
+	line-height: 1.04;
+	letter-spacing: -0.03em;
+}
+
+h2 {
+	font-size: var(--step-2);
+	line-height: 1.1;
+	letter-spacing: -0.02em;
+}
+
+h3 {
+	font-size: var(--step-1);
+	line-height: 1.25;
+	letter-spacing: -0.01em;
+}
+
+p {
+	margin: 0;
+	text-wrap: pretty;
+}
+
+a {
+	color: inherit;
+	text-decoration-color: color-mix(in srgb, var(--accent) 70%, transparent);
+	text-underline-offset: 0.2em;
+}
+
+a:hover {
+	text-decoration-color: var(--accent);
+}
+
+:focus-visible {
+	outline: 2px solid var(--focus);
+	outline-offset: 3px;
+	border-radius: 4px;
+}
+
+img {
+	display: block;
+	max-width: 100%;
+	height: auto;
+}
+
+/* ---- the night sky behind everything: a glow top left, a faint band of light, a deep ground, stars ---- */
+.sky {
+	position: fixed;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	background:
+		radial-gradient(60% 50% at 6% 0%, hsl(var(--hue) 58% 34% / 0.45), transparent 70%),
+		radial-gradient(38% 34% at 26% 58%, hsl(calc(var(--hue) + 40) 45% 32% / 0.18), transparent 70%),
+		radial-gradient(55% 55% at 100% 100%, hsl(calc(var(--hue) - 35) 42% 26% / 0.28), transparent 70%),
+		linear-gradient(165deg, hsl(var(--hue) 32% 8%), hsl(var(--hue) 38% 4%));
+}
+
+.sky::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: linear-gradient(
+		118deg,
+		transparent 38%,
+		hsl(var(--hue) 70% 85% / 0.06) 47%,
+		hsl(calc(var(--hue) + 30) 70% 85% / 0.08) 52%,
+		transparent 62%
+	);
+}
+
+.sky svg {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+}
+
+/* ---- controls ---- */
+.button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 48px;
+	padding: 0 var(--space-5);
+	border-radius: var(--radius-control);
+	background: var(--accent);
+	color: var(--accent-fg);
+	font-weight: 600;
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.button:hover {
+	background: var(--accent-hover);
+}
+
+.button.small {
+	min-height: 40px;
+	padding: 0 var(--space-4);
+	font-size: var(--step--1);
+}
+
+.link {
+	display: inline-flex;
+	align-items: center;
+	min-height: 40px;
+	padding: 0 var(--space-3);
+	color: var(--text-muted);
+	text-decoration: none;
+	font-size: var(--step--1);
+}
+
+.link:hover {
+	color: var(--text);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	html {
+		scroll-behavior: smooth;
+	}
+	.button {
+		transition: transform 100ms var(--ease);
+	}
+	.button:active {
+		transform: scale(0.97);
+	}
+}
+
+/* ---- page frame ---- */
+.nav,
+main > section,
+.footer {
+	width: min(100% - 2 * var(--space-4), 1200px);
+	margin-inline: auto;
+}
+
+.nav {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding-block: var(--space-4);
+}
+
+.nav nav {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.wordmark {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-height: 40px;
+	font: 650 1.5rem / 1 var(--font-display);
+	letter-spacing: -0.03em;
+	text-decoration: none;
+}
+
+main > section {
+	padding-block: var(--space-9) 0;
+}
+
+.copy {
+	display: grid;
+	gap: var(--space-4);
+	max-width: 36rem;
+}
+
+.copy p,
+.intro {
+	color: var(--text-muted);
+}
+
+/* ---- hero ---- */
+.hero {
+	display: grid;
+	justify-items: center;
+	text-align: center;
+}
+
+main > .hero {
+	padding-top: var(--space-8);
+}
+
+.hero h1 {
+	max-width: 15ch;
+}
+
+.lead {
+	max-width: 58ch;
+	margin-top: var(--space-5);
+	color: var(--text-muted);
+}
+
+.actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-3) var(--space-4);
+	margin-top: var(--space-6);
+}
+
+.note {
+	color: var(--text-muted);
+	font-size: var(--step--1);
+}
+
+.switcher {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: var(--space-2);
+	margin: var(--space-8) 0 0;
+	padding: 0;
+	border: 0;
+}
+
+.switcher legend {
+	width: 100%;
+	margin-bottom: var(--space-3);
+	padding: 0;
+	color: var(--text-muted);
+	font-size: var(--step--1);
+}
+
+.switcher label {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-height: 44px;
+	padding: 0 var(--space-4) 0 var(--space-3);
+	border-radius: var(--radius-control);
+	background: var(--surface);
+	font-weight: 600;
+	cursor: pointer;
+	user-select: none;
+}
+
+.switcher label:hover {
+	background: hsl(var(--h) 30% 80% / 0.12);
+}
+
+.switcher label:has(:checked) {
+	background: hsl(var(--h) 40% 85% / 0.16);
+	box-shadow: inset 0 0 0 1px hsl(var(--h) 85% 72% / 0.6);
+}
+
+.switcher label:has(:focus-visible) {
+	outline: 2px solid var(--focus);
+	outline-offset: 3px;
+}
+
+/* The radio stays in the page for keyboards and screen readers; the label is what you see. */
+.switcher input {
+	position: absolute;
+	opacity: 0;
+	width: 1px;
+	height: 1px;
+	margin: 0;
+}
+
+.window {
+	width: 100%;
+	margin: var(--space-5) 0 0;
+}
+
+.shots {
+	position: relative;
+	display: grid;
+	border-radius: var(--radius-surface);
+	box-shadow: var(--shadow);
+	overflow: hidden;
+	aspect-ratio: 1280 / 800;
+	background: var(--bg);
+}
+
+/* A faint inner edge painted over the screenshots, so the window's border reads on the dark ground. */
+.shots::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	box-shadow: inset 0 0 0 1px var(--border);
+	pointer-events: none;
+}
+
+.shot {
+	grid-area: 1 / 1;
+	width: 100%;
+	height: auto;
+	opacity: 0;
+	transition: opacity 420ms var(--ease);
+}
+
+.shot-build {
+	opacity: 1;
+}
+
+:root:has(#space-school:checked) .shot-build,
+:root:has(#space-home:checked) .shot-build {
+	opacity: 0;
+}
+
+:root:has(#space-school:checked) .shot-school,
+:root:has(#space-home:checked) .shot-home {
+	opacity: 1;
+}
+
+.window figcaption {
+	margin-top: var(--space-3);
+	color: var(--text-muted);
+	font-size: var(--step--1);
+}
+
+/* ---- video ---- */
+.video {
+	display: grid;
+	gap: var(--space-5);
+}
+
+.video video {
+	width: 100%;
+	height: auto;
+	border-radius: var(--radius-surface);
+	box-shadow: var(--shadow);
+	background: var(--bg);
+}
+
+/* ---- spaces ---- */
+.spaces {
+	display: grid;
+	gap: var(--space-7);
+	align-items: center;
+}
+
+.sidebars {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: var(--space-4);
+	max-width: 840px;
+}
+
+.sidebars img {
+	border-radius: var(--radius-surface);
+	box-shadow: var(--shadow);
+}
+
+@media (min-width: 960px) {
+	.spaces {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+	}
+}
+
+/* ---- split rows: copy and one picture ---- */
+.split {
+	display: grid;
+	gap: var(--space-6);
+	align-items: center;
+}
+
+.crop {
+	border-radius: var(--radius-surface);
+	box-shadow: var(--shadow);
+}
+
+@media (min-width: 900px) {
+	.split {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+		gap: var(--space-8);
+	}
+	.split .crop {
+		justify-self: center;
+	}
+	.split.reverse .copy {
+		order: 2;
+	}
+}
+
+/* The folder tree at 1.5x its real size, so the nesting reads at a glance. */
+.split:not(.reverse) .crop {
+	width: min(100%, 408px);
+}
+
+/* ---- the feature grid ---- */
+.features h2 {
+	margin-bottom: var(--space-7);
+}
+
+.grid {
+	display: grid;
+	gap: var(--space-7) var(--space-6);
+}
+
+@media (min-width: 760px) {
+	.grid {
+		grid-template-columns: 1fr 1fr;
+	}
+}
+
+.grid article {
+	display: grid;
+	align-content: start;
+	gap: var(--space-3);
+}
+
+/* Crops of different shapes sit in slots of one height, centered, so the titles under them line up. */
+.feature-media {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 300px;
+	margin-bottom: var(--space-3);
+}
+
+.feature-media img {
+	max-width: 100%;
+}
+
+.grid p {
+	max-width: 46ch;
+	color: var(--text-muted);
+}
+
+/* ---- why ---- */
+.why h2 {
+	max-width: 22ch;
+}
+
+.why .intro {
+	max-width: 58ch;
+	margin-top: var(--space-4);
+}
+
+.why ul {
+	display: grid;
+	gap: var(--space-6);
+	margin: var(--space-7) 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+@media (min-width: 760px) {
+	.why ul {
+		grid-template-columns: repeat(2, 1fr);
+	}
+}
+
+@media (min-width: 1100px) {
+	.why ul {
+		grid-template-columns: repeat(4, 1fr);
+	}
+}
+
+.why li {
+	display: grid;
+	align-content: start;
+	gap: var(--space-2);
+	padding-top: var(--space-4);
+	border-top: 1px solid var(--border);
+}
+
+.why li p {
+	color: var(--text-muted);
+}
+
+/* ---- the waitlist ---- */
+main > .join {
+	display: grid;
+	gap: var(--space-6);
+	align-items: center;
+	justify-items: center;
+	text-align: center;
+	scroll-margin-top: var(--space-6);
+}
+
+.join .copy {
+	justify-items: center;
+}
+
+.form {
+	display: flex;
+	justify-content: center;
+	width: 100%;
+	min-height: 320px;
+}
+
+/* ---- faq ---- */
+.faq {
+	max-width: 760px;
+}
+
+.faq h2 {
+	margin-bottom: var(--space-5);
+}
+
+.faq details {
+	border-bottom: 1px solid var(--border);
+}
+
+.faq summary {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-4);
+	min-height: 56px;
+	padding-block: var(--space-3);
+	font-weight: 600;
+	cursor: pointer;
+	list-style: none;
+}
+
+.faq summary::-webkit-details-marker {
+	display: none;
+}
+
+.faq summary::after {
+	content: "+";
+	flex: none;
+	color: var(--text-muted);
+	font-size: 1.5rem;
+	font-weight: 400;
+	line-height: 1;
+}
+
+.faq details[open] summary::after {
+	content: "\2212";
+}
+
+.faq details p {
+	max-width: 62ch;
+	padding-bottom: var(--space-5);
+	color: var(--text-muted);
+}
+
+/* ---- footer ---- */
+.footer {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-4);
+	margin-top: var(--space-9);
+	padding-block: var(--space-6);
+	border-top: 1px solid var(--border);
+	color: var(--text-muted);
+	font-size: var(--step--1);
+}
+
+.footer .wordmark {
+	color: var(--text);
+	font-size: 1.25rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.shot {
+		transition-duration: 200ms;
+	}
+}

@@ -81,7 +81,8 @@ const FEATURES: { title: string; body: string; image: StaticImageData; width: nu
 		title: "Old tabs put themselves away",
 		body: "Turn on the archive and open tabs you haven't looked at for a day or a week move out of the way. Search the archive to bring one back.",
 		image: archive,
-		width: 326,
+		// A 1x shot from a verify run, so shown at its real size rather than scaled up.
+		width: 272,
 		alt: "The Archived tabs panel listing two tabs, Arc: what we learned and Zen Browser, with a search field.",
 	},
 	{

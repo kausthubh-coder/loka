@@ -1,6 +1,6 @@
 import { css, html, LitElement } from "lit";
 import type { Update } from "../../app/loka-app";
-import { faviconColor, faviconLetter, hostOf } from "../sidebar/favicon";
+import { faviconBackground, faviconInner, hostOf } from "../sidebar/favicon";
 import { type BrowserState, restoreArchived } from "../sidebar/sidebar.logic";
 import { timeAgo } from "./archive.logic";
 
@@ -60,7 +60,7 @@ export class LokaArchivePanel extends LitElement {
 							title="Bring back ${a.tab.title}"
 							@click=${() => this.apply((s) => restoreArchived(s, a.tab.id))}
 						>
-							<span class="fav" aria-hidden="true" style="--fav: ${faviconColor(a.tab.url)}">${faviconLetter(a.tab.url)}</span>
+							<span class="fav" aria-hidden="true" style="--fav: ${faviconBackground(a.tab.url)}">${faviconInner(a.tab.url)}</span>
 							<span class="text">
 								<span class="title">${a.tab.title}</span>
 								<small>${hostOf(a.tab.url)}, ${spaceName(a.spaceId)}, ${timeAgo(a.archivedAt, now)}</small>

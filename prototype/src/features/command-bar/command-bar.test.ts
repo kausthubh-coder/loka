@@ -42,3 +42,13 @@ test("an empty bar lists this space's open tabs and every command, with nothing 
 	expect(empty.filter((l) => l.startsWith("go:"))).toEqual([]);
 	expect(empty.filter((l) => l.startsWith("action:")).length).toBe(9);
 });
+
+test("new tab pages aren't offered as tabs to go to", () => {
+	const state = seedState();
+	const withBlank = {
+		...state,
+		tabs: { ...state.tabs, blank: { id: "blank", title: "New tab", url: "chrome://newtab/" } },
+		spaces: state.spaces.map((s) => (s.id === "s-build" ? { ...s, open: ["blank", ...s.open] } : s)),
+	};
+	expect(commandResults(withBlank, "").some((r) => r.kind === "tab" && r.tabId === "blank")).toBe(false);
+});

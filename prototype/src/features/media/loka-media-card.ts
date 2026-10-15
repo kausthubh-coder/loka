@@ -1,5 +1,5 @@
 import { css, html, LitElement } from "lit";
-import { faviconColor, faviconLetter, hostOf } from "../sidebar/favicon";
+import { faviconBackground, faviconInner, hostOf } from "../sidebar/favicon";
 import type { BrowserState } from "../sidebar/sidebar.logic";
 
 /** What's playing. In the real browser this comes from Chromium's media sessions; the prototype has one sample. */
@@ -35,8 +35,8 @@ export class LokaMediaCard extends LitElement {
 		const { playing, muted } = this.media;
 		return html`
 			<section aria-label="Now playing: ${tab.title}">
-				<button class="art" style="--fav: ${faviconColor(tab.url)}" title="Go to ${tab.title}" @click=${() => this.send("go")}>
-					<span aria-hidden="true">${faviconLetter(tab.url)}</span>
+				<button class="art" style="--fav: ${faviconBackground(tab.url)}" title="Go to ${tab.title}" @click=${() => this.send("go")}>
+					<span aria-hidden="true">${faviconInner(tab.url)}</span>
 					${playing ? html`<span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>` : null}
 				</button>
 				<button class="info" title="Go to ${tab.title}" @click=${() => this.send("go")}>

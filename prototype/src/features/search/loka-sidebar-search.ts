@@ -1,6 +1,6 @@
 import { css, html, LitElement } from "lit";
 import type { Update } from "../../app/loka-app";
-import { faviconColor, faviconLetter } from "../sidebar/favicon";
+import { faviconBackground, faviconInner } from "../sidebar/favicon";
 import { planet } from "../sidebar/planet";
 import { type BrowserState, revealTab, searchSidebar } from "../sidebar/sidebar.logic";
 
@@ -77,7 +77,7 @@ export class LokaSidebarSearch extends LitElement {
 						}}
 						@click=${() => this.go(m.tabId)}
 					>
-						<span class="fav" aria-hidden="true" style="--fav: ${faviconColor(tab.url)}">${faviconLetter(tab.url)}</span>
+						<span class="fav" aria-hidden="true" style="--fav: ${faviconBackground(tab.url)}">${faviconInner(tab.url)}</span>
 						<span class="text">
 							<span class="title">${tab.title}</span>
 							<small>${m.path[0] === "Essentials" ? null : planet(space.planet, space.hue, 12)}${where}</small>

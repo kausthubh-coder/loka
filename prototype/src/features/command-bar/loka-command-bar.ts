@@ -1,6 +1,6 @@
 import { css, html, LitElement, type TemplateResult } from "lit";
 import type { Update } from "../../app/loka-app";
-import { faviconColor, faviconLetter, hostOf } from "../sidebar/favicon";
+import { faviconBackground, faviconInner, hostOf } from "../sidebar/favicon";
 import { planet } from "../sidebar/planet";
 import { activateTab, type BrowserState, openTab, switchSpace } from "../sidebar/sidebar.logic";
 import { type CommandResult, commandResults, isSearch } from "./command-bar.logic";
@@ -10,12 +10,18 @@ export class LokaCommandBar extends LitElement {
 	static override properties = {
 		state: { attribute: false },
 		apply: { attribute: false },
+		go: { attribute: false },
 		query: { state: true },
 		selected: { state: true },
 	};
 
 	declare state: BrowserState;
 	declare apply: Update;
+	/**
+	 * Set in the real browser, which opens addresses and searches itself (with the user's own search engine, and in
+	 * the same tab on the new tab page). Without it the bar opens a new Loka tab.
+	 */
+	declare go: ((open: { url: string; query: string; search: boolean }) => void) | undefined;
 	query = "";
 	selected = 0;
 
@@ -26,8 +32,9 @@ export class LokaCommandBar extends LitElement {
 	private run(result: CommandResult | undefined) {
 		if (!result) return;
 		if (result.kind === "go") {
-			const title = isSearch(result.url) ? this.query.trim() : hostOf(result.url);
-			this.apply((s) => openTab(s, result.url, title));
+			const search = isSearch(result.url);
+			if (this.go) this.go({ url: result.url, query: this.query.trim(), search });
+			else this.apply((s) => openTab(s, result.url, search ? this.query.trim() : hostOf(result.url)));
 		} else if (result.kind === "tab") {
 			this.apply((s) => activateTab(switchSpace(s, result.spaceId), result.tabId));
 		} else {
@@ -55,7 +62,7 @@ export class LokaCommandBar extends LitElement {
 	private icon(result: CommandResult): TemplateResult {
 		if (result.kind === "tab") {
 			const url = this.state.tabs[result.tabId]?.url ?? "";
-			return html`<span class="fav" style="--fav: ${faviconColor(url)}">${faviconLetter(url)}</span>`;
+			return html`<span class="fav" style="--fav: ${faviconBackground(url)}">${faviconInner(url)}</span>`;
 		}
 		if (result.kind === "go") {
 			return isSearch(result.url)

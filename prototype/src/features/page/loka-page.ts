@@ -3,7 +3,7 @@ import type { Update } from "../../app/loka-app";
 import type { UiPrefs } from "../../app/ui-prefs.logic";
 import "../settings/loka-settings";
 import type { SetUi } from "../settings/loka-settings";
-import { faviconColor, faviconLetter, hostOf } from "../sidebar/favicon";
+import { faviconBackground, faviconInner, hostOf } from "../sidebar/favicon";
 import type { BrowserState, Tab } from "../sidebar/sidebar.logic";
 
 /** Stands in for the web view. In the real browser Chromium renders the page here; loka:// pages are Loka's own. */
@@ -41,7 +41,7 @@ export class LokaPage extends LitElement {
 		return html`
 			<section class="frame">
 				<header>
-					<span class="fav" aria-hidden="true" style="--fav: ${faviconColor(tab.url)}">${faviconLetter(tab.url)}</span>
+					<span class="fav" aria-hidden="true" style="--fav: ${faviconBackground(tab.url)}">${faviconInner(tab.url)}</span>
 					<div>
 						<h1>${tab.title}</h1>
 						<p class="url">${hostOf(tab.url)}</p>

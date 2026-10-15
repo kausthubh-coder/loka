@@ -10,13 +10,7 @@ import {
 import { IMPORT_SOURCES, type ImportSource, pickFile } from "../import/pick-file";
 import { planet, SPACE_HUES } from "../sidebar/planet";
 import { PLANET_KINDS, type SpaceLook } from "../sidebar/sidebar.logic";
-
-/** What the tour hands the window when it finishes. */
-export interface TourResult {
-	worlds: SpaceLook[];
-	bookmarks: { name: string; nodes: ImportNode[] }[];
-	arc: ArcImport | null;
-}
+import type { TourResult } from "./onboarding.logic";
 
 type Picked = { summary: string; bookmarks?: ImportNode[]; arc?: ArcImport };
 

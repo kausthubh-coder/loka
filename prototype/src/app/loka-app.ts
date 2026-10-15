@@ -1,13 +1,12 @@
-import { css, html, LitElement, svg } from "lit";
+import { css, html, LitElement } from "lit";
 import "../features/sidebar/loka-sidebar";
 import "../features/page/loka-page";
 import "../features/command-bar/loka-command-bar";
 import "../features/spaces/loka-space-editor";
 import "../features/onboarding/loka-onboarding";
 import type { ActionId } from "../features/command-bar/command-bar.logic";
-import { addArcSpaces, addImportedFolder } from "../features/import/import.logic";
 import type { Media, MediaAction } from "../features/media/loka-media-card";
-import type { TourResult } from "../features/onboarding/loka-onboarding";
+import { applyTour, type TourResult } from "../features/onboarding/onboarding.logic";
 import type { LokaSidebar, Panel } from "../features/sidebar/loka-sidebar";
 import { SPACE_HUES } from "../features/sidebar/planet";
 import {
@@ -27,29 +26,11 @@ import {
 	updateSpace,
 } from "../features/sidebar/sidebar.logic";
 import { seedState } from "../features/sidebar/sidebar.seed";
+import { skyLayer, skyStyles } from "./sky";
 import { clampWidth, DEFAULT_UI, parseUiPrefs, type UiPrefs } from "./ui-prefs.logic";
 
 const STORAGE_KEY = "loka.state.v1";
 const UI_KEY = "loka.ui.v1";
-
-// The star field: seeded, so the sky is the same every launch. Drawn once in a 1280x800 box that scales to the window.
-const STARS = (() => {
-	let seed = 7919;
-	const rand = () => {
-		seed = (seed * 16807) % 2147483647;
-		return seed / 2147483647;
-	};
-	return Array.from({ length: 160 }, () => {
-		const bright = rand() > 0.92;
-		return {
-			x: (rand() * 1280).toFixed(1),
-			y: (rand() * 800).toFixed(1),
-			r: (bright ? 1 + rand() * 0.8 : 0.35 + rand() * 0.6).toFixed(2),
-			fill: rand() > 0.8 ? "hsl(200 90% 88%)" : "#fff",
-			opacity: (0.25 + rand() * 0.65).toFixed(2),
-		};
-	});
-})();
 
 function loadState(): BrowserState {
 	const saved = localStorage.getItem(STORAGE_KEY);
@@ -173,19 +154,8 @@ export class LokaApp extends LitElement {
 	 * The tour's spaces replace the first ones in order; extra ones are added; spaces it didn't list are kept.
 	 * Imported bookmarks go into the first space as closed folders, and Arc's spaces become new spaces.
 	 */
-	private finishTour({ worlds, bookmarks, arc }: TourResult) {
-		const firstId = this.state.spaces[0]?.id;
-		this.apply((start) =>
-			worlds.reduce((s, look, i) => {
-				const existing = s.spaces[i];
-				return existing ? updateSpace(s, existing.id, look) : createSpace(s, look)[0];
-			}, start),
-		);
-		if (firstId) {
-			this.apply((s) => switchSpace(s, firstId));
-			for (const b of bookmarks) this.apply((s) => addImportedFolder(s, firstId, b.name, b.nodes));
-		}
-		if (arc) this.apply((s) => addArcSpaces(s, arc, SPACE_HUES));
+	private finishTour(result: TourResult) {
+		this.apply((s) => applyTour(s, result));
 		this.closeTour();
 	}
 
@@ -277,11 +247,7 @@ export class LokaApp extends LitElement {
 					this.previewHue = e.detail;
 				}}
 			>
-				<div class="sky" aria-hidden="true">
-					<svg viewBox="0 0 1280 800" preserveAspectRatio="xMidYMid slice">
-						${STARS.map((s) => svg`<circle cx=${s.x} cy=${s.y} r=${s.r} fill=${s.fill} opacity=${s.opacity} />`)}
-					</svg>
-				</div>
+				${skyLayer()}
 				${
 					hidden
 						? html`<div class="edge-zone" aria-hidden="true" @pointerenter=${() => (this.peek = true)}></div>`
@@ -352,7 +318,9 @@ export class LokaApp extends LitElement {
 		`;
 	}
 
-	static override styles = css`
+	static override styles = [
+		skyStyles,
+		css`
 		:host {
 			display: block;
 			height: 100%;
@@ -444,36 +412,7 @@ export class LokaApp extends LitElement {
 		.window.touring > :is(loka-sidebar, loka-page, .resize, .edge-zone) {
 			visibility: hidden;
 		}
-		/* Night sky tinted by the active space: a glow top-left, a faint band of light, a deep ground, stars. */
-		.sky {
-			position: absolute;
-			inset: 0;
-			z-index: -1;
-			pointer-events: none;
-			background:
-				radial-gradient(60% 50% at 6% 0%, hsl(var(--hue) 58% 34% / 0.45), transparent 70%),
-				radial-gradient(38% 34% at 26% 58%, hsl(calc(var(--hue) + 40) 45% 32% / 0.18), transparent 70%),
-				radial-gradient(55% 55% at 100% 100%, hsl(calc(var(--hue) - 35) 42% 26% / 0.28), transparent 70%),
-				linear-gradient(165deg, hsl(var(--hue) 32% 8%), hsl(var(--hue) 38% 4%));
-		}
-		.sky::after {
-			content: "";
-			position: absolute;
-			inset: 0;
-			background: linear-gradient(
-				118deg,
-				transparent 38%,
-				hsl(var(--hue) 70% 85% / 0.06) 47%,
-				hsl(calc(var(--hue) + 30) 70% 85% / 0.08) 52%,
-				transparent 62%
-			);
-		}
-		.sky svg {
-			position: absolute;
-			inset: 0;
-			width: 100%;
-			height: 100%;
-		}
+
 		@media (prefers-reduced-motion: no-preference) {
 			.window {
 				transition: --hue 420ms cubic-bezier(0.2, 0, 0, 1);
@@ -482,7 +421,8 @@ export class LokaApp extends LitElement {
 				transition: translate 220ms cubic-bezier(0.2, 0, 0, 1);
 			}
 		}
-	`;
+	`,
+	];
 }
 
 customElements.define("loka-app", LokaApp);

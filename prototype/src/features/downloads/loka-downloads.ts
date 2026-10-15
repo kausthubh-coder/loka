@@ -1,6 +1,6 @@
 import { css, html, LitElement } from "lit";
 
-interface Download {
+export interface Download {
 	id: string;
 	name: string;
 	size: string;
@@ -9,9 +9,21 @@ interface Download {
 	progress: number;
 }
 
-// Sample files: the prototype has no network, so this panel shows the states a real download goes through.
-// Kept outside the element so closing and reopening the panel doesn't reset them.
-let items: Download[] = [
+/** Where the panel's downloads come from, and what its buttons do. */
+export interface DownloadSource {
+	list(): Download[];
+	/** Calls back whenever the list changes; returns the function that stops it. */
+	watch(changed: () => void): () => void;
+	retry(id: string): void;
+	cancel(id: string): void;
+	show(id: string): void;
+	clear(): void;
+	openFolder(): void;
+}
+
+// Sample files: the prototype has no network, so this shows the states a real download goes through. Module state,
+// so closing and reopening the panel doesn't reset them.
+let samples: Download[] = [
 	{
 		id: "d1",
 		name: "helium_0.19.2.1_x64-installer.exe",
@@ -25,48 +37,72 @@ let items: Download[] = [
 	{ id: "d4", name: "loka-spaces.json", size: "6 KB", when: "Yesterday", status: "done", progress: 1 },
 ];
 
+const sampleSource: DownloadSource = {
+	list: () => samples,
+	watch(changed) {
+		// Moves a running sample along so the progress can be seen working.
+		const timer = window.setInterval(() => {
+			if (!samples.some((d) => d.status === "running")) return;
+			samples = samples.map((d) => {
+				if (d.status !== "running") return d;
+				const progress = Math.min(1, d.progress + 0.03);
+				return { ...d, progress, status: progress >= 1 ? "done" : "running" };
+			});
+			changed();
+		}, 400);
+		return () => window.clearInterval(timer);
+	},
+	retry: (id) => {
+		samples = samples.map((d) => (d.id === id ? { ...d, status: "running", progress: 0 } : d));
+	},
+	cancel: (id) => {
+		samples = samples.map((d) => (d.id === id ? { ...d, status: "failed" } : d));
+	},
+	show: () => {},
+	clear: () => {
+		samples = samples.filter((d) => d.status === "running");
+	},
+	openFolder: () => {},
+};
+
+let source: DownloadSource = sampleSource;
+
+/** The extension swaps in the browser's real downloads. */
+export function setDownloadSource(next: DownloadSource) {
+	source = next;
+}
+
 /** The sidebar's Downloads panel, opened from the toolbar like Extensions: recent files, progress, retry. */
 export class LokaDownloads extends LitElement {
 	static override properties = { items: { state: true } };
 
-	items = items;
-	private timer = 0;
-
-	private set(next: Download[]) {
-		items = next;
-		this.items = next;
-	}
+	items: Download[] = [];
+	private unwatch = () => {};
 
 	override connectedCallback() {
 		super.connectedCallback();
-		this.items = items;
-		// Moves a running sample along so the progress can be seen working; stops when nothing is running.
-		this.timer = window.setInterval(() => {
-			if (!this.items.some((d) => d.status === "running")) return;
-			this.set(
-				this.items.map((d) => {
-					if (d.status !== "running") return d;
-					const progress = Math.min(1, d.progress + 0.03);
-					return { ...d, progress, status: progress >= 1 ? "done" : "running" };
-				}),
-			);
-		}, 400);
+		this.items = source.list();
+		this.unwatch = source.watch(() => {
+			this.items = source.list();
+		});
 	}
 
 	override disconnectedCallback() {
-		window.clearInterval(this.timer);
+		this.unwatch();
 		super.disconnectedCallback();
 	}
 
-	private change(id: string, change: Partial<Download>) {
-		this.set(this.items.map((d) => (d.id === id ? { ...d, ...change } : d)));
+	/** Runs a button's action, then reads the list again so the change shows at once. */
+	private act(run: () => void) {
+		run();
+		this.items = source.list();
 	}
 
 	override render() {
 		return html`
 			<header>
 				<b>Downloads</b>
-				<button class="quiet" @click=${() => this.set(this.items.filter((d) => d.status === "running"))}>Clear</button>
+				<button class="quiet" @click=${() => this.act(() => source.clear())}>Clear</button>
 			</header>
 			<ul>
 				${this.items.map((d) => {
@@ -95,12 +131,12 @@ export class LokaDownloads extends LitElement {
 						</span>
 						${
 							d.status === "failed"
-								? html`<button class="act" @click=${() => this.change(d.id, { status: "running", progress: 0 })}>Retry</button>`
+								? html`<button class="act" @click=${() => this.act(() => source.retry(d.id))}>Retry</button>`
 								: d.status === "done"
-									? html`<button class="act icon" aria-label="Show ${d.name} in folder" title="Show in folder">
+									? html`<button class="act icon" aria-label="Show ${d.name} in folder" title="Show in folder" @click=${() => source.show(d.id)}>
 											<svg viewBox="0 0 16 16"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.5h5A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5z" /></svg>
 										</button>`
-									: html`<button class="act icon" aria-label="Cancel ${d.name}" title="Cancel" @click=${() => this.change(d.id, { status: "failed" })}>
+									: html`<button class="act icon" aria-label="Cancel ${d.name}" title="Cancel" @click=${() => this.act(() => source.cancel(d.id))}>
 											<svg viewBox="0 0 16 16"><path d="m4.5 4.5 7 7m0-7-7 7" /></svg>
 										</button>`
 						}
@@ -108,7 +144,7 @@ export class LokaDownloads extends LitElement {
 				})}
 			</ul>
 			${this.items.length === 0 ? html`<p class="empty">No downloads yet.</p>` : null}
-			<button class="all">Open the Downloads folder</button>
+			<button class="all" @click=${() => source.openFolder()}>Open the Downloads folder</button>
 		`;
 	}
 

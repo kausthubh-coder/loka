@@ -3,7 +3,7 @@ import { keyed } from "lit/directives/keyed.js";
 import { repeat } from "lit/directives/repeat.js";
 import type { Update } from "../../app/loka-app";
 import type { ActionId } from "../command-bar/command-bar.logic";
-import { faviconColor, faviconLetter, hostOf } from "./favicon";
+import { faviconBackground, faviconInner, hostOf } from "./favicon";
 import "../archive/loka-archive-panel";
 import "../downloads/loka-downloads";
 import "../media/loka-media-card";
@@ -55,8 +55,33 @@ const PANEL_NAMES: Record<Panel, string> = {
 	search: "Search the sidebar",
 };
 
+export interface ExtensionInfo {
+	id: string;
+	name: string;
+	letter: string;
+	color: string;
+	detail: string;
+	/** The extension's own icon, when the browser can give it. */
+	icon?: string;
+}
+
+/** Where the Extensions panel's list comes from, and what clicking a pinned icon does. */
+export interface ExtensionSource {
+	list(): Promise<ExtensionInfo[]>;
+	open(id: string): void;
+	manage(): void;
+}
+
+let extensionSource: ExtensionSource | null = null;
+const PINNED_KEY = "loka.pinnedExtensions";
+
+/** The extension swaps in the browser's installed extensions; the prototype shows samples. */
+export function setExtensionSource(source: ExtensionSource) {
+	extensionSource = source;
+}
+
 /** Stand-ins for installed extensions. Helium ships uBlock Origin; the others show how a user's own would sit. */
-const EXTENSIONS = [
+const EXTENSIONS: ExtensionInfo[] = [
 	{ id: "ublock", name: "uBlock Origin", letter: "u", color: "#c74b4b", detail: "12 blocked on this page" },
 	{ id: "bitwarden", name: "Bitwarden", letter: "b", color: "#3f7fdd", detail: "Passwords" },
 	{ id: "darkreader", name: "Dark Reader", letter: "d", color: "#4c4f5c", detail: "Off for this site" },
@@ -74,7 +99,9 @@ export class LokaSidebar extends LitElement {
 		swipe: { state: true },
 		panel: { state: true },
 		pinnedExtensions: { state: true },
+		extensions: { state: true },
 		media: { attribute: false },
+		demo: { type: Boolean },
 	};
 
 	declare state: BrowserState;
@@ -87,13 +114,27 @@ export class LokaSidebar extends LitElement {
 	swipe = 0;
 	/** The popover open under the toolbar, if any. */
 	panel: Panel | null = null;
-	pinnedExtensions = new Set(["ublock"]);
+	pinnedExtensions = new Set<string>(JSON.parse(localStorage.getItem(PINNED_KEY) ?? '["ublock"]'));
+	extensions: ExtensionInfo[] = EXTENSIONS;
 	declare media: Media | null;
+	/** The prototype: shows "Reset demo data". The real browser leaves it out. */
+	demo = true;
 
 	/** Opens a panel from outside (Ctrl+Shift+F, the command bar). */
 	openPanel(panel: Panel) {
 		this.menu = null;
 		this.panel = panel;
+		if (panel === "extensions") void this.loadExtensions();
+	}
+
+	private async loadExtensions() {
+		if (extensionSource) this.extensions = await extensionSource.list();
+	}
+
+	/** Closes a tab, telling the browser too: unloading a pinned tab changes nothing in the spaces, only the browser. */
+	private closeTabFor(tabId: TabId) {
+		this.apply((s) => closeTab(s, tabId));
+		this.dispatchEvent(new CustomEvent("loka-tab-closed", { detail: tabId, bubbles: true, composed: true }));
 	}
 
 	// Escape closes a panel or menu wherever focus is: a click inside a panel can re-render the button that had it.
@@ -230,7 +271,7 @@ export class LokaSidebar extends LitElement {
 				},
 			});
 		}
-		items.push({ label: isOpen ? "Close tab" : "Unload tab", run: () => this.apply((s) => closeTab(s, tabId)) });
+		items.push({ label: isOpen ? "Close tab" : "Unload tab", run: () => this.closeTabFor(tabId) });
 		return items;
 	}
 
@@ -282,6 +323,11 @@ export class LokaSidebar extends LitElement {
 		const [next, id] = createFolder(this.state, activeSpace(this.state).id, parentId, "New folder");
 		this.apply(() => next);
 		this.renamingId = id;
+	}
+
+	/** Back, forward and reload act on the page; the prototype's stand-in page has none, the real browser's does. */
+	private nav(action: "back" | "forward" | "reload") {
+		this.dispatchEvent(new CustomEvent("loka-nav", { detail: action, bubbles: true, composed: true }));
 	}
 
 	/** Commands the window handles (the space editor, pages, the tour) go up as one event, like the command bar's. */
@@ -382,10 +428,14 @@ export class LokaSidebar extends LitElement {
 			{ label: "Show the welcome tour", run: () => this.action("onboarding") },
 			{ label: "Export spaces (JSON)", run: () => this.exportFile() },
 			{ label: "Import spaces (JSON)", run: () => this.importFile() },
-			{
-				label: "Reset demo data",
-				run: () => this.dispatchEvent(new CustomEvent("loka-reset", { bubbles: true, composed: true })),
-			},
+			...(this.demo
+				? [
+						{
+							label: "Reset demo data",
+							run: () => this.dispatchEvent(new CustomEvent("loka-reset", { bubbles: true, composed: true })),
+						},
+					]
+				: []),
 		]);
 	}
 
@@ -413,7 +463,7 @@ export class LokaSidebar extends LitElement {
 	// ---- rendering -----------------------------------------------------------
 
 	private favicon(url: string, size = 18): TemplateResult {
-		return html`<span class="fav" aria-hidden="true" style="--fav: ${faviconColor(url)}; --size: ${size}px">${faviconLetter(url)}</span>`;
+		return html`<span class="fav" aria-hidden="true" style="--fav: ${faviconBackground(url)}; --size: ${size}px">${faviconInner(url)}</span>`;
 	}
 
 	private tabRow(
@@ -451,7 +501,7 @@ export class LokaSidebar extends LitElement {
 								aria-label="Close ${tab.title}"
 								@click=${(e: Event) => {
 									e.stopPropagation();
-									this.apply((s) => closeTab(s, tabId));
+									this.closeTabFor(tabId);
 								}}
 							>
 								<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 4.5 7 7m0-7-7 7" /></svg>
@@ -562,15 +612,22 @@ export class LokaSidebar extends LitElement {
 				}}
 				@wheel=${this.onWheel} @contextmenu=${(e: MouseEvent) => e.target === e.currentTarget && e.preventDefault()}>
 				<div class="toolbar">
-					<button class="icon" aria-label="Back"><svg viewBox="0 0 16 16"><path d="M10 3L5 8l5 5" /></svg></button>
-					<button class="icon" aria-label="Forward"><svg viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" /></svg></button>
-					<button class="icon" aria-label="Reload"><svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 3v2.5h-2.5" /></svg></button>
+					<button class="icon" aria-label="Back" @click=${() => this.nav("back")}><svg viewBox="0 0 16 16"><path d="M10 3L5 8l5 5" /></svg></button>
+					<button class="icon" aria-label="Forward" @click=${() => this.nav("forward")}><svg viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" /></svg></button>
+					<button class="icon" aria-label="Reload" @click=${() => this.nav("reload")}><svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 3v2.5h-2.5" /></svg></button>
 					<span class="push"></span>
-					${EXTENSIONS.filter((x) => this.pinnedExtensions.has(x.id)).map(
-						(x) => html`<button class="icon ext" aria-label=${x.name} title="${x.name}: ${x.detail}">
-							<span class="ext-tile" style="--x: ${x.color}">${x.letter}</span>
+					${this.extensions
+						.filter((x) => this.pinnedExtensions.has(x.id))
+						.map(
+							(x) => html`<button
+							class="icon ext"
+							aria-label=${x.name}
+							title="${x.name}: ${x.detail}"
+							@click=${() => extensionSource?.open(x.id)}
+						>
+							${this.extensionTile(x, false)}
 						</button>`,
-					)}
+						)}
 					${this.panelButton(
 						"downloads",
 						"Downloads",
@@ -589,7 +646,14 @@ export class LokaSidebar extends LitElement {
 					class="url"
 					@click=${() => this.dispatchEvent(new CustomEvent("loka-command", { bubbles: true, composed: true }))}
 				>
-					${current ? hostOf(current.url) : "Search or enter address"}
+					${
+						!current
+							? "Search or enter address"
+							: // Browser and extension pages have no site name worth showing; their title says more.
+								/^(chrome|chrome-extension):/.test(current.url)
+								? current.title
+								: hostOf(current.url)
+					}
 					<kbd>Ctrl K</kbd>
 				</button>
 
@@ -797,9 +861,9 @@ export class LokaSidebar extends LitElement {
 		if (panel === "search")
 			return html`<loka-sidebar-search .state=${this.state} .apply=${this.apply}></loka-sidebar-search>`;
 		return html`<p class="ext-head">Extensions</p>
-								${EXTENSIONS.map(
+								${this.extensions.map(
 									(x) => html`<div class="ext-row">
-										<span class="ext-tile big" style="--x: ${x.color}" aria-hidden="true">${x.letter}</span>
+										${this.extensionTile(x, true)}
 										<span class="ext-name">${x.name}<small>${x.detail}</small></span>
 										<button
 											class="icon pin ${this.pinnedExtensions.has(x.id) ? "on" : ""}"
@@ -809,13 +873,20 @@ export class LokaSidebar extends LitElement {
 												const next = new Set(this.pinnedExtensions);
 												if (!next.delete(x.id)) next.add(x.id);
 												this.pinnedExtensions = next;
+												localStorage.setItem(PINNED_KEY, JSON.stringify([...next]));
 											}}
 										>
 											<svg viewBox="0 0 16 16"><path d="M9.5 2.5 13.5 6.5 11 7.5 8.5 10l-.5 3L3 8l3-.5L8.5 5z" /><path d="M5.5 10.5 2.5 13.5" /></svg>
 										</button>
 									</div>`,
 								)}
-								<button class="ext-more">Get more extensions</button>`;
+								<button class="ext-more" @click=${() => extensionSource?.manage()}>Manage extensions</button>`;
+	}
+
+	private extensionTile(x: ExtensionInfo, big: boolean): TemplateResult {
+		return x.icon
+			? html`<img class="ext-tile ${big ? "big" : ""}" src=${x.icon} alt="" aria-hidden="true" />`
+			: html`<span class="ext-tile ${big ? "big" : ""}" style="--x: ${x.color}" aria-hidden="true">${x.letter}</span>`;
 	}
 
 	static override styles = css`

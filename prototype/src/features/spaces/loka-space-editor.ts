@@ -132,7 +132,8 @@ export class LokaSpaceEditor extends LitElement {
 		}
 		form {
 			position: relative;
-			width: 380px;
+			/* Fits the browser's side panel as well as a full window. */
+			width: min(380px, calc(100vw - 24px));
 			box-sizing: border-box;
 			padding: 28px 28px 22px;
 			border-radius: 18px;

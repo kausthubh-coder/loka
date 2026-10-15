@@ -76,6 +76,8 @@ export function commandResults(state: BrowserState, query: string): CommandResul
 	const tabIds = q ? Object.keys(state.tabs) : (current?.open ?? []);
 	const tabs = tabIds
 		.map((id) => state.tabs[id])
+		// A new tab page is where the bar itself is showing; offering to go there goes nowhere.
+		.filter((tab) => tab && !tab.url.startsWith("chrome://newtab"))
 		.filter((tab) => tab && (!q || tab.title.toLowerCase().includes(q) || hostOf(tab.url).includes(q)))
 		.slice(0, 6);
 	for (const tab of tabs) {

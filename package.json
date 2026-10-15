@@ -7,11 +7,12 @@
 		"dev": "vite prototype",
 		"build": "vite build prototype",
 		"preview": "vite preview prototype",
+		"ext:build": "vite build --config extension/vite.config.ts",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"typecheck": "tsc --noEmit",
-		"test": "bun test prototype scripts",
-		"check": "bun run lint && bun run typecheck && bun run test && bun run build",
+		"test": "bun test prototype extension scripts",
+		"check": "bun run lint && bun run typecheck && bun run test && bun run build && bun run ext:build",
 		"setup": "bun scripts/setup.mjs",
 		"doctor": "bun scripts/doctor.mjs",
 		"worktree:remove": "bun scripts/remove-worktree.mjs",
@@ -25,6 +26,7 @@
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.15",
 		"@types/bun": "^1.4.3",
+		"@types/chrome": "^0.3.5",
 		"playwright": "^1.64.1",
 		"typescript": "^7.0.2",
 		"vite": "^8.3.4"

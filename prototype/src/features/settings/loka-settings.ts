@@ -6,6 +6,7 @@ import {
 	addArcSpaces,
 	addImportedFolder,
 	countImported,
+	type ImportNode,
 	parseArcSidebar,
 	parseChromeBookmarks,
 } from "../import/import.logic";
@@ -14,6 +15,18 @@ import { planet, SPACE_HUES } from "../sidebar/planet";
 import { type BrowserState, countTabs } from "../sidebar/sidebar.logic";
 
 export type SetUi = (change: Partial<UiPrefs>) => void;
+
+export type BrowserSettingsPage = "appearance" | "privacy" | "search" | "passwords" | "shortcuts";
+
+/**
+ * Set when Settings runs inside the real browser. The browser owns the side panel's side and width, privacy and
+ * search, so those rows open its own settings; and its bookmarks (where Helium puts Chrome's and Edge's) can come in.
+ */
+export interface BrowserHooks {
+	openBrowserSettings(page: BrowserSettingsPage): void;
+	bookmarks(): Promise<ImportNode[]>;
+	version: string;
+}
 
 const SHORTCUTS: [string, string][] = [
 	["Ctrl K", "Command bar: open, search, find a tab, run a command"],
@@ -39,6 +52,7 @@ export class LokaSettings extends LitElement {
 		setUi: { attribute: false },
 		privacy: { state: true },
 		engine: { state: true },
+		browser: { attribute: false },
 	};
 
 	declare state: BrowserState;
@@ -49,6 +63,25 @@ export class LokaSettings extends LitElement {
 	declare setUi: SetUi;
 	privacy = { ads: true, clearOnExit: false };
 	engine = "DuckDuckGo";
+	declare browser: BrowserHooks | undefined;
+
+	private async importBookmarks(hooks: BrowserHooks) {
+		const nodes = await hooks.bookmarks();
+		if (!nodes.length) {
+			this.imported = "This browser has no bookmarks yet.";
+			return;
+		}
+		this.apply((s) => addImportedFolder(s, s.activeSpaceId, "Bookmarks", nodes));
+		this.imported = `Added ${countImported(nodes)} bookmarks as a folder in this space.`;
+	}
+
+	/** A row that sends the user to the browser's own settings for something the browser owns. */
+	private browserRow(hooks: BrowserHooks, title: string, detail: string, page: BrowserSettingsPage) {
+		return html`<div class="row">
+			<div><b>${title}</b><small>${detail}</small></div>
+			<button class="button" @click=${() => hooks.openBrowserSettings(page)}>Open</button>
+		</div>`;
+	}
 
 	private async importFrom(source: ImportSource) {
 		const text = await pickFile();
@@ -97,6 +130,15 @@ export class LokaSettings extends LitElement {
 
 				<section aria-labelledby="appearance">
 					<h2 id="appearance">Appearance</h2>
+					${
+						this.browser
+							? this.browserRow(
+									this.browser,
+									"Sidebar side and width",
+									"The browser's side panel: its position setting, and drag its edge",
+									"appearance",
+								)
+							: html`
 					<div class="row">
 						<div><b>Sidebar side</b><small>Where the sidebar sits in the window</small></div>
 						<div class="segmented" role="radiogroup" aria-label="Sidebar side">
@@ -129,7 +171,8 @@ export class LokaSettings extends LitElement {
 					<div class="row">
 						<div><b>Hide the sidebar</b><small>It slides in when the pointer reaches the window's edge. Ctrl+S.</small></div>
 						${this.toggle("Hide the sidebar", ui.sidebarHidden, (on) => this.setUi({ sidebarHidden: on }))}
-					</div>
+					</div>`
+					}
 				</section>
 
 				<section aria-labelledby="spaces">
@@ -199,6 +242,17 @@ export class LokaSettings extends LitElement {
 
 				<section aria-labelledby="import">
 					<h2 id="import">Import</h2>
+					${
+						this.browser
+							? html`<div class="row">
+									<div>
+										<b>From this browser's bookmarks</b>
+										<small>Loka brings Chrome's and Edge's bookmarks in here when it's set up</small>
+									</div>
+									<button class="button" @click=${() => this.browser && this.importBookmarks(this.browser)}>Add</button>
+								</div>`
+							: null
+					}
 					${(Object.keys(IMPORT_SOURCES) as ImportSource[]).map((source) => {
 						const { name, file, where } = IMPORT_SOURCES[source];
 						return html`<div class="row">
@@ -214,11 +268,24 @@ export class LokaSettings extends LitElement {
 							<b>Passwords</b>
 							<small>Export them from Chrome or Edge as a CSV file (their password settings), then import it here.</small>
 						</div>
-						<span class="tag">First release</span>
+						${
+							this.browser
+								? html`<button class="button" @click=${() => this.browser?.openBrowserSettings("passwords")}>Open</button>`
+								: html`<span class="tag">First release</span>`
+						}
 					</div>
 					${this.imported ? html`<p class="note" role="status">${this.imported}</p>` : null}
 				</section>
 
+				${
+					this.browser
+						? html`<section aria-labelledby="privacy">
+								<h2 id="privacy">Privacy and search</h2>
+								${this.browserRow(this.browser, "Privacy and ad blocking", "uBlock Origin and Helium's privacy settings", "privacy")}
+								${this.browserRow(this.browser, "Search engine", "Used by the address bar and the command bar", "search")}
+								${this.browserRow(this.browser, "Sidebar shortcuts", "Change them in the browser's extension shortcuts", "shortcuts")}
+							</section>`
+						: html`
 				<section aria-labelledby="privacy">
 					<h2 id="privacy">Privacy</h2>
 					<div class="row">
@@ -254,7 +321,8 @@ export class LokaSettings extends LitElement {
 							)}
 						</select>
 					</div>
-				</section>
+				</section>`
+				}
 
 				<section aria-labelledby="keys">
 					<h2 id="keys">Keyboard shortcuts</h2>
@@ -265,7 +333,7 @@ export class LokaSettings extends LitElement {
 					<h2 id="about">About</h2>
 					<dl>
 						<dt>Loka</dt>
-						<dd>Prototype, not a release</dd>
+						<dd>${this.browser ? this.browser.version : "Prototype, not a release"}</dd>
 						<dt>Based on</dt>
 						<dd>Helium 0.19.2.1, Chromium 155.0.8059.39</dd>
 						<dt>License</dt>

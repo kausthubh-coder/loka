@@ -7,7 +7,7 @@
 // The build checkout is a git worktree of this repo, so patch work done there is committed like any branch.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 export const BUILD_DIR = resolve(process.env.LOKA_BUILD_DIR ?? "C:\\src\\loka");
@@ -62,15 +62,33 @@ function build() {
 	});
 }
 
+// First-run defaults for a new profile, read by Chromium from `initial_preferences` beside chrome.exe: Loka's
+// sidebar is the side panel, on the left; Helium's own vertical tabs sit on the right, collapsed to a thin strip.
+const INITIAL_PREFERENCES = {
+	distribution: { skip_first_run_ui: true, suppress_first_run_default_browser_prompt: true },
+	side_panel: { is_right_aligned: false },
+	helium: { browser: { layout: 2, vertical_right_aligned: true } },
+	vertical_tabs: { collapsed_state: true },
+};
+
 function launch() {
-	const chrome = join(BUILD_DIR, "build", "src", "out", "Default", "chrome.exe");
+	const out = join(BUILD_DIR, "build", "src", "out", "Default");
+	const chrome = join(out, "chrome.exe");
 	if (!existsSync(chrome)) {
 		console.error(`No build at ${chrome}. Run: bun run browser:build`);
 		process.exit(1);
 	}
+	writeFileSync(join(out, "initial_preferences"), JSON.stringify(INITIAL_PREFERENCES, null, 2));
+	// The Loka sidebar, from this checkout (`bun run ext:build` makes it). Until it's built into the browser as a
+	// component, it loads as an unpacked extension; non-Google Chromium builds allow that.
+	const extension = join(repo, "extension", "dist");
+	if (!existsSync(join(extension, "manifest.json"))) {
+		console.error("The Loka sidebar isn't built yet. Run: bun run ext:build");
+		process.exit(1);
+	}
 	// A throwaway profile next to the build, never anyone's real browser profile.
 	const profile = join(BUILD_DIR, "profile-dev");
-	run(chrome, [`--user-data-dir=${profile}`, "--no-first-run", ...process.argv.slice(3)]);
+	run(chrome, [`--user-data-dir=${profile}`, `--load-extension=${extension}`, ...process.argv.slice(3)]);
 }
 
 if (import.meta.main) {

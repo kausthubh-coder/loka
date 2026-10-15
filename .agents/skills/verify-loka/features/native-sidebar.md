@@ -1,0 +1,55 @@
+# The sidebar in the real browser
+
+The built browser's left column is a built-in page, `chrome://loka-sidebar.top-chrome`, built from `webui/` and
+answered by `LokaSidebarHandler` (C++ in `patches/loka/loka-native-sidebar.patch`). It shows the window's real tabs
+with their own icons and sound, keeps spaces in the profile (`state.v1` in the `loka.store` pref, shared by every
+window), and acts as the title bar. A first run opens Loka's setup (`chrome://setup`) in its own window before any
+browser window. The UI is never delivered as an extension: the old `extension/` sidebar is legacy and proves
+nothing about the browser.
+
+## Sub-features
+
+- `native-first-run`: a fresh profile shows only setup ("Welcome to Loka"); "Use defaults" or Finish opens the normal
+  window with the sidebar. `--no-first-run` skips setup.
+- `native-tabs`: every tab in the window is a row; tabs opened from outside the sidebar join the current space.
+- `native-favicon`: a loaded tab's row shows its page's own icon (a data: URL from `getTabs`); an unloaded one asks
+  the favicon cache (`chrome://favicon2`), which answers the default globe when it knows nothing.
+- `native-sound`: a tab playing sound gets a speaker on its row; it goes about two seconds after the sound stops.
+- `native-window`: window titles end in "- Loka", never Chromium or Helium; no horizontal tab strip or toolbar.
+- `native-messages`: every `chrome.send` name the page uses is in `webui/src/messages.ts`, checked against the
+  handler by `webui/src/messages.test.ts`.
+
+## How to get to it (user POV)
+
+- `bun run browser:run` (profile `C:\src\loka\profile-dev`), or `bun run verify:browser` for a throwaway profile.
+- After changing `webui/`: `bun run webui:build` copies the page into the build checkout; the next
+  `bun run browser:build` packs it.
+
+## Driving it
+
+Preconditions: a built `chrome.exe`. While a build runs, `out\Default` is busy (linking fails on a running binary):
+use the copy `C:\src\loka\dist\snapshot\chrome.exe` through `LOKA_CHROME`. `bun run build:status` says whether a
+build is running.
+
+- **Recipe.** `LOKA_CHROME=C:\src\loka\dist\snapshot\chrome.exe bun run verify:browser` covers `native-first-run`
+  through `native-window`; add `-- --no-first-run` to check setup stays away. It prints `PASS`/`FAIL`/`NOTE` per
+  check and leaves `checks.json`, `startup-targets.json`, `rows.json`, `setup.png`, `sidebar.png`, `window.png` and
+  `chrome.log` in `.agents/verify-runs/<time>-browser/`. It stops only its own process tree and deletes its profile.
+- **Your own drive.** Start chrome.exe with `--user-data-dir` under `C:\src\loka\profile-verify`,
+  `--remote-debugging-port=<free port>` and `--disable-features=CalculateNativeWinOcclusion`. The sidebar target
+  (type `browser_ui`) appears in `/json/list` once the window has a normal tab; connect to its
+  `webSocketDebuggerUrl` and use `Runtime.evaluate`. Playwright's `connectOverCDP` doesn't list it.
+- **Real data from the handler.** In the sidebar, wrap `window.cr.webUIResponse` for one callback id and call
+  `chrome.send("getTabs", [id])`; the `GET_TABS` snippet in `scripts/verify-browser.mjs` does this. Rows are
+  `[role=treeitem]` elements inside the shadow roots of `loka-panel` and `loka-sidebar`.
+- **Whole window.** `powershell -File scripts/window.ps1 -ProcId <pid> -Out <png>` lists the process's window
+  titles and captures one with PrintWindow, which works with the screen off.
+
+## Gotchas
+
+- Until a normal tab exists there is no sidebar target, so a drive that starts on setup must finish setup first.
+- Setup's text credits Helium ("Loka is built on Helium and uses Helium's services"); verify:browser lists it as a
+  NOTE for a person to judge.
+- Each Chromium is about 0.4 GB. On the 16 GB laptop, never drive it while the build is linking.
+- The legacy extension still has `node extension/test/e2e.mjs`. It drives `chrome-extension://` pages in Playwright's
+  Chromium and says nothing about the native sidebar.

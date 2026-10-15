@@ -1,16 +1,19 @@
 ---
 name: verify-loka
-description: Launch and drive Loka to prove a change works, with screenshots, ARIA snapshots and saved state as evidence. Use after any change to the sidebar prototype (spaces, folders, tabs, Essentials, export/import), and for the browser build once one exists.
+description: Launch and drive Loka to prove a change works, with screenshots, ARIA snapshots and saved state as evidence. Use after any change to the sidebar (spaces, folders, tabs, Essentials, export/import), to webui/ or the C++ patches, and before saying the browser does something.
 ---
 
 # Verify Loka
 
-Loka has two surfaces:
+Loka has two surfaces. Only the browser build proves what a user gets.
 
-- **Sidebar prototype** (primary today): a web page served by Vite. Drive it with Playwright through
-  `scripts/loka.mjs`. Every recipe below is for this surface.
-- **Browser build**: Helium plus Loka patches in `C:\src\loka`. It has no Loka patches yet, so there is nothing
-  Loka-specific to drive. See `features/browser-build.md` for the state of that and how to launch it.
+- **Browser build**: Helium plus Loka's patches in `C:\src\loka`. Its sidebar is the built-in page
+  `chrome://loka-sidebar.top-chrome` (from `webui/`, answered by C++). Prove it with `bun run verify:browser`; see
+  `features/native-sidebar.md` and `features/browser-build.md`. A change to `webui/`, the patches or anything the
+  sidebar shows in the browser is done only when this passes on a build that has the change.
+- **Sidebar prototype**: the same sidebar components as a web page served by Vite, with seed data and no browser
+  behind it. Drive it with Playwright through `scripts/loka.mjs`. The recipes below are for this surface; they prove
+  the sidebar's own behavior (folders, drags, menus), never the browser's.
 
 Run every script here with **node**, never bun. Playwright's browser launch hangs under bun on Windows.
 

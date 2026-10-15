@@ -1,12 +1,15 @@
 # Command bar
 
 Ctrl+K opens one bar for everything: type an address or words to open or search, find any tab in any space by its
-title or site, or run a command (new space, edit space, new folder, hide the sidebar, Settings, Downloads, the tour).
+title or site, or run a command (new space, edit space, new folder, hide the sidebar, Settings, Downloads, search the sidebar,
+archived tabs, the tour).
 
 ## Sub-features
 
-- `command-go` opens what was typed: an address, or a DuckDuckGo search. Always the first result when there's text.
-- `command-tabs` lists matching tabs from every space, with the space's planet and name. Choosing one switches there.
+- `command-go` opens what was typed: an address, or a search. Always the first result when there's text. The
+  prototype searches DuckDuckGo; the real browser uses the user's own search engine.
+- `command-tabs` lists up to six matching tabs from every space (never new tab pages), with the space's planet and
+  name. Choosing one switches there.
 - `command-actions` lists commands matched by label or related words ("preferences" finds Settings).
 - `command-empty` with no text lists this space's open tabs and every command.
 - `command-keys`: arrows move the selection, Enter runs it, Escape closes.

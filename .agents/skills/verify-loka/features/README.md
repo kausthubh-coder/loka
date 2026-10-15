@@ -1,9 +1,10 @@
 # Loka verification map
 
 This directory is the maintained source for verifying what a Loka user sees. Read this index, then use the feature
-file as the recipe. Every feature here has a runnable recipe: `node .agents/skills/verify-loka/scripts/run.mjs <id>`.
+file as the recipe. Prototype features run with `node .agents/skills/verify-loka/scripts/run.mjs <id>`; the browser
+features (the last two) with `bun run verify:browser`.
 
-## Baseline preconditions
+## Baseline preconditions (prototype recipes)
 
 - `bun run setup` has run in this checkout and `.env.local` has a `PORT`.
 - `bun run dev` was started by this run, and the doctor (`node .agents/skills/verify-loka/scripts/doctor.mjs`)
@@ -52,5 +53,6 @@ Each feature file has an H1, one paragraph on the user-visible behavior, then fo
 - [Import](./import.md): Chrome and Edge bookmarks, Arc spaces and Favorites.
 - [Media controls](./media.md): the now-playing card.
 - [Sound](./sound.md): interface cues for sidebar actions, the throttle, and Settings > Sound.
-- [The sidebar in the real browser](./extension.md): the extension on real tabs; `node extension/test/e2e.mjs`.
-- [Browser build](./browser-build.md): the real Helium-based browser. Launch only; no Loka patches yet.
+- [The sidebar in the real browser](./native-sidebar.md): `chrome://loka-sidebar` on real tabs, first run, icons,
+  sound; `bun run verify:browser`.
+- [Browser build](./browser-build.md): Helium plus Loka's patches: launch, `patches:check`, `build:status`, the alpha.

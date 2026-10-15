@@ -87,7 +87,7 @@ export async function openLoka(runName, { fresh = true, onboarding = false, widt
 
 		/**
 		 * Drag the way a user does. zone picks where on the target: before (top edge), after (bottom edge) or
-		 * into (the middle; folders only). Essentials tiles use left/right edges for before/after.
+		 * into (the middle: inside a folder, or onto a tab to make a folder of both). Essentials tiles use left/right edges for before/after.
 		 * @param {import("playwright").Locator} source @param {import("playwright").Locator} target
 		 * @param {"before" | "after" | "into"} zone
 		 */

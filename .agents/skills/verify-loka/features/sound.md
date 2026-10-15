@@ -31,5 +31,4 @@ Preconditions: seed data.
 
 - Headless Chromium runs WebAudio silently, so a count is the evidence; listening needs a headed browser.
 - Noise layers use `AudioBufferSourceNode`, which has its own `start`: the oscillator count leaves them out.
-- In the real browser a Loka tab page (Settings, the tour) is audible for about two seconds after a cue; the
-  background ignores Loka's own pages for the now-playing card.
+- A page that plays a cue is audible for about two seconds after it, as any tab is.

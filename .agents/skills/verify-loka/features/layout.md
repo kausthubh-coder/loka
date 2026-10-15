@@ -9,7 +9,8 @@ Loka's own page, drawn on the night sky instead of a white web page. Downloads i
 - `sidebar-resize`: drag the sidebar's inner edge (220 to 420 px). Double-click the edge resets to 272.
 - `sidebar-side`: Settings > Appearance > Sidebar side, Left or Right.
 - `sidebar-hide`: Ctrl+S, or Settings > Hide the sidebar. Reaching the window edge slides it in; leaving hides it.
-- `page-settings`: Appearance (works), Spaces (works: edit, new), Privacy and Search (switches only), shortcuts, about.
+- `page-settings`: Appearance (works), Spaces (works: edit, new), Sound, Tabs (archiving), Sync, Import, Privacy and
+  Search (switches only), shortcuts, about. The real browser's `Settings` opens `chrome://settings` instead.
 - `downloads-panel`: the toolbar's Downloads button: recent sample files, a running one that progresses, Retry on a
   failure, Clear. Escape closes any panel.
 - `pages-once`: opening Settings again goes to the existing tab, even from another space.

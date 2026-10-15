@@ -16,16 +16,16 @@ deletes it. Closing a pinned or essential tab only unloads it, so it stays in th
 
 ## How to get to it (user POV)
 
-- Ctrl+K, the URL pill at the top of the sidebar, or `+ New tab`.
-- Click a row. Hover a row for its `x`.
+- Ctrl+K, the URL pill at the top of the sidebar, `+ New tab`, or right-click empty space > `New tab`.
+- Click a row. Hover an open tab's row for its `x`; pinned rows have none (their menu has `Unload tab`).
 - Right-click a row for pin, unpin, Essentials, move and close.
-- `Clear`, on the divider line above the open tabs.
+- `Clear`, on the divider line above the open tabs. It only shows while the space has open tabs.
 
 ## Driving it with loka.mjs
 
 Preconditions: seed data, `Build` space active.
 
-- **Open.** `page.keyboard.press("Control+k")`, fill textbox `Search or enter address` with `lit.dev/playground`,
+- **Open.** `page.keyboard.press("Control+k")`, fill the combobox `Search or enter address` with `lit.dev/playground`,
   press Enter. `open[0]` and `activeTab` are both `lit.dev`.
 - **Activate and close.** Click `loka.row("Zen Browser")`, then the `Close Zen Browser` button. `open` no longer
   lists it.
@@ -40,4 +40,4 @@ Preconditions: seed data, `Build` space active.
 - Ctrl+W and Ctrl+T can't be caught by a web page, so the prototype uses Ctrl+E to close and Ctrl+K to open. The
   real browser will use the native shortcuts.
 - A tab's title is its host (`lit.dev`), not the path typed. Searches keep the typed words as the title.
-- The `x` only shows on hover or on the active row. Playwright's click still finds it by name.
+- The `x` only shows on an open tab's row, on hover or when active. Playwright's click still finds it by name.

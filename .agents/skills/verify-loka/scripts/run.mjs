@@ -233,6 +233,20 @@ const recipes = {
 		await loka.menuItem("Edit this space").click();
 		await loka.page.keyboard.press("Escape");
 		assert.equal(await loka.page.locator("loka-space-editor").count(), 0, "Escape closes the editor");
+
+		await loka.sidebar.getByRole("button", { name: "Spaces: Tunes", exact: true }).click();
+		await loka.menuItem("Edit this space").click();
+		const doomed = loka.page.getByRole("dialog", { name: "Edit Tunes" });
+		await doomed.getByRole("button", { name: "Delete space" }).click();
+		assert.ok(
+			(await loka.state()).spaces.some((/** @type {{ name: string }} */ x) => x.name === "Tunes"),
+			"the first click only asks",
+		);
+		await doomed.getByRole("button", { name: "Delete it and its tabs" }).click();
+		const names = (await loka.state()).spaces.map((/** @type {{ name: string }} */ x) => x.name);
+		assert.deepEqual(names, ["Build", "School", "Home"], "the second click deletes the space");
+		assert.equal((await loka.outline()).space, "Home", "and the space before it shows");
+		await loka.proof("03-tunes-deleted");
 	},
 
 	async layout(loka) {

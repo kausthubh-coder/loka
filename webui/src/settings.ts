@@ -13,6 +13,7 @@ import {
 	activeSpace,
 	type BrowserState,
 	createSpace,
+	deleteSpace,
 	type SpaceLook,
 	updateSpace,
 } from "../../prototype/src/features/sidebar/sidebar.logic";
@@ -104,6 +105,14 @@ export class LokaSettingsPage extends LitElement {
 		} else this.apply((s) => updateSpace(s, editing.spaceId, look));
 	}
 
+	private deleteEditedSpace() {
+		const editing = this.editing;
+		if (editing?.mode !== "edit") return;
+		this.editing = null;
+		this.preview = null;
+		this.apply((s) => deleteSpace(s, editing.spaceId));
+	}
+
 	override render() {
 		const state = this.state;
 		if (!state) return nothing;
@@ -136,7 +145,9 @@ export class LokaSettingsPage extends LitElement {
 					? html`<loka-space-editor
 							.look=${this.editing.look}
 							.mode=${this.editing.mode}
+							.deletable=${state.spaces.length > 1}
 							@loka-save=${(e: CustomEvent<SpaceLook>) => this.save(e.detail)}
+							@loka-delete=${() => this.deleteEditedSpace()}
 							@loka-close=${() => {
 								this.editing = null;
 								this.preview = null;

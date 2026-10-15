@@ -9,6 +9,7 @@ import {
 	countTabs,
 	createFolder,
 	createSpace,
+	deleteSpace,
 	exportState,
 	findFolder,
 	focusOrOpen,
@@ -166,6 +167,27 @@ describe("tabs and spaces", () => {
 		const home = space(state, "s-home");
 		expect([home.name, home.hue, home.planet, home.open]).toEqual(["Weekend", 260, "ringed", ["t-music"]]);
 		expect(updateSpace(seedState(), "s-home", { name: "   ", hue: 260, planet: "ringed" })).toEqual(seedState());
+	});
+
+	test("deleting the space showing removes its pinned, folder and open tabs and shows the next space", () => {
+		const state = deleteSpace(seedState(), "s-build");
+		expect(state.spaces.map((s) => s.id)).toEqual(["s-school", "s-home"]);
+		expect(state.activeSpaceId).toBe("s-school");
+		for (const id of ["t-helium", "t-chromium", "t-lit", "t-hn", "t-arc", "t-zen"])
+			expect(state.tabs[id]).toBeUndefined();
+		expect(state.essentials).toEqual(seedState().essentials);
+		expect(importState(exportState(state))).toEqual(state);
+	});
+
+	test("deleting the last space in the switcher shows the one before it; another space keeps showing", () => {
+		expect(deleteSpace(switchSpace(seedState(), "s-home"), "s-home").activeSpaceId).toBe("s-school");
+		expect(deleteSpace(seedState(), "s-school").activeSpaceId).toBe("s-build");
+	});
+
+	test("the only space can't be deleted", () => {
+		const one = deleteSpace(deleteSpace(seedState(), "s-school"), "s-home");
+		expect(one.spaces.map((s) => s.id)).toEqual(["s-build"]);
+		expect(deleteSpace(one, "s-build")).toBe(one);
 	});
 
 	test("a new space follows the system's light or dark unless it picks one", () => {

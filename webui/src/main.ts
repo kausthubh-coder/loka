@@ -21,6 +21,7 @@ import {
 	type BrowserState,
 	createFolder,
 	createSpace,
+	deleteSpace,
 	revealTab,
 	type SpaceLook,
 	stepTab,
@@ -363,6 +364,14 @@ export class LokaPanel extends LitElement {
 		this.apply((s) => (editing.mode === "create" ? createSpace(s, look)[0] : updateSpace(s, editing.spaceId, look)));
 	}
 
+	private deleteEditedSpace() {
+		const editing = this.editing;
+		if (editing?.mode !== "edit") return;
+		this.editing = null;
+		this.preview = null;
+		this.apply((s) => deleteSpace(s, editing.spaceId));
+	}
+
 	override render() {
 		const state = this.state;
 		if (!state) return null;
@@ -420,7 +429,9 @@ export class LokaPanel extends LitElement {
 						? html`<loka-space-editor
 								.look=${this.editing.look}
 								.mode=${this.editing.mode}
+								.deletable=${state.spaces.length > 1}
 								@loka-save=${(e: CustomEvent<SpaceLook>) => this.saveSpace(e.detail)}
+								@loka-delete=${() => this.deleteEditedSpace()}
 								@loka-close=${() => {
 									this.editing = null;
 									this.preview = null;

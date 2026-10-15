@@ -25,6 +25,7 @@ import {
 	closeTab,
 	createFolder,
 	createSpace,
+	deleteSpace,
 	focusOrOpen,
 	importState,
 	navigateTab,
@@ -251,6 +252,14 @@ export class LokaApp extends LitElement {
 			playCue("space-new");
 			this.apply((s) => createSpace(s, look)[0]);
 		} else this.apply((s) => updateSpace(s, editing.spaceId, look));
+	}
+
+	private deleteEditedSpace() {
+		const editing = this.editing;
+		if (editing?.mode !== "edit") return;
+		this.editing = null;
+		this.preview = null;
+		this.apply((s) => deleteSpace(s, editing.spaceId));
 	}
 
 	/**
@@ -523,7 +532,9 @@ export class LokaApp extends LitElement {
 						? html`<loka-space-editor
 								.look=${this.editing.look}
 								.mode=${this.editing.mode}
+								.deletable=${this.state.spaces.length > 1}
 								@loka-save=${(e: CustomEvent<SpaceLook>) => this.saveSpace(e.detail)}
+								@loka-delete=${() => this.deleteEditedSpace()}
 								@loka-close=${() => {
 									this.editing = null;
 									this.preview = null;

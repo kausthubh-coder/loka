@@ -1,4 +1,4 @@
-import { css, html, LitElement } from "lit";
+import { css, html, LitElement, nothing } from "lit";
 import { planet, SPACE_HUES } from "../sidebar/planet";
 import {
 	PLANET_KINDS,
@@ -37,13 +37,18 @@ export class LokaSpaceEditor extends LitElement {
 	static override properties = {
 		look: { attribute: false },
 		mode: {},
+		deletable: { type: Boolean },
 		draft: { state: true },
+		confirmingDelete: { state: true },
 	};
 
 	/** The look to start from. Read once: the window re-sends it on every render, which must not undo typing. */
 	declare look: SpaceLook;
 	declare mode: "create" | "edit";
 	declare draft: SpaceLook;
+	/** Editing a space that isn't the only one: it can be deleted, after a second click to confirm. */
+	deletable = false;
+	confirmingDelete = false;
 
 	protected override willUpdate() {
 		if (!this.draft) this.draft = { ...this.look, scheme: this.look.scheme ?? "system" };
@@ -63,6 +68,14 @@ export class LokaSpaceEditor extends LitElement {
 		e.preventDefault();
 		if (!this.draft.name.trim()) return;
 		this.dispatchEvent(new CustomEvent("loka-save", { detail: this.draft, bubbles: true, composed: true }));
+	}
+
+	private askToDelete() {
+		if (!this.confirmingDelete) {
+			this.confirmingDelete = true;
+			return;
+		}
+		this.dispatchEvent(new CustomEvent("loka-delete", { bubbles: true, composed: true }));
 	}
 
 	protected override firstUpdated() {
@@ -146,6 +159,13 @@ export class LokaSpaceEditor extends LitElement {
 				</fieldset>
 
 				<div class="actions">
+					${
+						this.mode === "edit" && this.deletable
+							? html`<button type="button" class="quiet delete" @click=${() => this.askToDelete()}>
+									${this.confirmingDelete ? "Delete it and its tabs" : "Delete space"}
+								</button>`
+							: nothing
+					}
 					<button type="button" class="quiet" @click=${() => this.close()}>Cancel</button>
 					<button type="submit" class="primary" ?disabled=${!name.trim()}>
 						${this.mode === "create" ? "Create space" : "Save"}

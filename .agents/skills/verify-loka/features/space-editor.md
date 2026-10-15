@@ -7,6 +7,8 @@ moon, ocean world), with a live preview. The window's sky follows the chosen col
 
 - `space-create` makes a space with the chosen look and switches to it. The name starts as `Space N`.
 - `space-edit` changes the look of an existing space; its tabs stay.
+- `space-delete`: in an edit, `Delete space` then `Delete it and its tabs` removes the space with its pinned, folder
+  and open tabs (the browser closes them); the next space along shows. The only space has no Delete button.
 - `space-preview` tints the window with the chosen color before saving; Cancel or Escape puts it back.
 
 ## How to get to it (user POV)
@@ -22,7 +24,9 @@ Preconditions: seed data.
   fill the `Space name` textbox, click `Hue 330`, click `Moon`, click `Create space`. The last space in `state()` is
   `{ name, hue: 330, planet: "cratered" }`, and it's the current space.
 - **Edit.** `Spaces: <name>` > `Edit this space`. The dialog is named `Edit <old name>`. Change and click `Save`.
-- **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs space-editor`.
+- **Delete.** `Spaces: <name>` > `Edit this space` > `Delete space` > `Delete it and its tabs`.
+- **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs space-editor`. In the browser: `bun run verify:flows`
+  (flow 2).
 
 ## Gotchas
 

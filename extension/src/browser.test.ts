@@ -1,5 +1,27 @@
 import { expect, test } from "bun:test";
-import { downloadRow, formatBytes } from "./browser.logic";
+import { downloadRow, formatBytes, pageInfo } from "./browser.logic";
+
+test("each loaded tab shows its page's own icon, loading and sound; an unloaded pinned tab keeps its last icon", () => {
+	const icons = new Map<string, string>();
+	const loaded = pageInfo(
+		{ yt: 11, wiki: 12, settings: 13 },
+		[
+			{ id: 11, favIconUrl: "https://www.youtube.com/favicon.ico", status: "complete", audible: true },
+			{ id: 12, status: "loading", mutedInfo: { muted: true } },
+			{ id: 13, favIconUrl: "chrome://theme/IDR_SETTINGS_FAVICON", status: "complete" },
+		],
+		icons,
+	);
+	expect(loaded).toEqual({
+		yt: { icon: "https://www.youtube.com/favicon.ico", loading: false, audible: true, muted: false },
+		wiki: { icon: undefined, loading: true, audible: false, muted: true },
+		settings: { icon: undefined, loading: false, audible: false, muted: false },
+	});
+	// YouTube's tab is unloaded: the browser tab is gone, the icon stays.
+	expect(pageInfo({ wiki: 12 }, [{ id: 12, status: "complete" }], icons).yt).toEqual({
+		icon: "https://www.youtube.com/favicon.ico",
+	});
+});
 
 test("sizes read the way people say them", () => {
 	expect([

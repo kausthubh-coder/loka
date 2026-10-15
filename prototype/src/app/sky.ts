@@ -1,49 +1,143 @@
-import { css, html, svg, type TemplateResult } from "lit";
+import { css, html, type TemplateResult } from "lit";
+import { ref } from "lit/directives/ref.js";
 
 // Loka's night sky, shared by the prototype's window and the real browser's sidebar and new tab page.
 // Put skyLayer() first inside an element with `position: relative; isolation: isolate` and `--hue` set, and add
-// skyStyles to that component's styles.
+// skyStyles to that component's styles. Call skyTurn() when the space changes.
+//
+// Everything that moves is a transform or opacity on a layer painted once, so the compositor runs it and a busy
+// page (or a scrolling tab list) can't make it stutter: three star layers drift at different speeds for depth, the
+// nebula breathes, and now and then a shooting star crosses. With reduced motion the sky holds still.
 
-// The star field: seeded, so the sky is the same every launch. Drawn once in a 1280x800 box that scales to the window.
-const STARS = (() => {
-	let seed = 7919;
+/** One star layer: a seeded tile (the same sky every launch) that repeats, drawn once as an SVG image. */
+function starTile(seed: number, width: number, height: number, count: number, size: [number, number]): string {
+	let s = seed;
 	const rand = () => {
-		seed = (seed * 16807) % 2147483647;
-		return seed / 2147483647;
+		s = (s * 16807) % 2147483647;
+		return s / 2147483647;
 	};
-	return Array.from({ length: 160 }, () => {
-		const bright = rand() > 0.92;
-		return {
-			x: (rand() * 1280).toFixed(1),
-			y: (rand() * 800).toFixed(1),
-			r: (bright ? 1 + rand() * 0.8 : 0.35 + rand() * 0.6).toFixed(2),
-			fill: rand() > 0.8 ? "hsl(200 90% 88%)" : "#fff",
-			opacity: (0.25 + rand() * 0.65).toFixed(2),
-		};
+	const stars = Array.from({ length: count }, () => {
+		const r = (size[0] + rand() * (size[1] - size[0])).toFixed(2);
+		const fill = rand() > 0.8 ? "hsl(200 90% 88%)" : "#fff";
+		const opacity = (0.25 + rand() * 0.65).toFixed(2);
+		return `<circle cx="${(rand() * width).toFixed(1)}" cy="${(rand() * height).toFixed(1)}" r="${r}" fill="${fill}" opacity="${opacity}"/>`;
 	});
-})();
+	const image = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${stars.join("")}</svg>`;
+	return `url("data:image/svg+xml,${encodeURIComponent(image)}")`;
+}
 
-/** The sky behind everything: tinted glows, a faint band of light, and the star field. */
-export function skyLayer(): TemplateResult {
-	return html`<div class="sky" aria-hidden="true">
-		<svg viewBox="0 0 1280 800" preserveAspectRatio="xMidYMid slice">
-			${STARS.map((s) => svg`<circle cx=${s.x} cy=${s.y} r=${s.r} fill=${s.fill} opacity=${s.opacity} />`)}
-		</svg>
+// Far: many faint pinpricks, slowest. Near: a few brighter stars, fastest. Tile widths match the drift keyframes.
+const FAR = starTile(7919, 480, 320, 70, [0.3, 0.7]);
+const MID = starTile(104729, 640, 420, 34, [0.5, 1]);
+const NEAR = starTile(1299709, 820, 540, 12, [0.9, 1.6]);
+
+const skies = new Set<HTMLElement>();
+if (typeof document !== "undefined") {
+	// Hidden pages don't draw, but say so anyway: nothing in the sky keeps running behind another tab.
+	document.addEventListener("visibilitychange", () => {
+		for (const sky of skies) sky.classList.toggle("paused", document.hidden);
+	});
+}
+
+function track(el: Element | undefined) {
+	if (el instanceof HTMLElement) {
+		skies.add(el);
+		el.classList.toggle("paused", document.hidden);
+	}
+	// Lit calls back with undefined when the sky leaves the page; drop skies that are gone.
+	for (const sky of skies) if (!sky.isConnected) skies.delete(sky);
+}
+
+/**
+ * The sky behind everything: the deep ground, a nebula in the space's color, three star layers, shooting stars.
+ * It takes the hue itself rather than inheriting the window's animated --hue: animating a hue number from blue to
+ * orange passes through green and yellow, which on the whole sky reads as a rainbow. skyTurn() crossfades instead.
+ */
+export function skyLayer(hue: number): TemplateResult {
+	return html`<div class="sky" aria-hidden="true" style="--hue: ${hue}" ${ref(track)}>
+		<div class="nebula"></div>
+		<div class="stars far" style="background-image: ${FAR}"></div>
+		<div class="stars mid" style="background-image: ${MID}"></div>
+		<div class="stars near" style="background-image: ${NEAR}"></div>
+		<i class="meteor one"></i>
+		<i class="meteor two"></i>
 	</div>`;
 }
 
+/**
+ * Switching spaces: the old space's sky (ground and nebula, held where it was) fades away over the new one, and the
+ * view turns, the star layers sweeping sideways and settling, the near ones further than the far ones, towards the
+ * side the new space came from. The sweep uses `translate`, separate from the drift's `transform`. With reduced
+ * motion only the fade happens.
+ */
+export function skyTurn(root: ParentNode, forward: boolean, fromHue: number) {
+	const sky = root.querySelector<HTMLElement>(".sky");
+	const nebula = sky?.querySelector<HTMLElement>(".nebula");
+	if (!sky || !nebula) return;
+	const old = Object.assign(document.createElement("div"), { className: "sky-was" });
+	old.style.setProperty("--hue", String(fromHue));
+	const oldNebula = Object.assign(document.createElement("div"), { className: "nebula held" });
+	oldNebula.style.transform = getComputedStyle(nebula).transform;
+	oldNebula.style.opacity = getComputedStyle(nebula).opacity;
+	old.append(oldNebula);
+	nebula.after(old);
+	void old
+		.animate([{ opacity: 1 }, { opacity: 0 }], {
+			duration: 650,
+			easing: "cubic-bezier(0.4, 0, 0.6, 1)",
+			// Held at 0 until it's removed, so it can't flash back for a frame.
+			fill: "forwards",
+		})
+		.finished.then(() => old.remove());
+
+	if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+	const layers: [string, number][] = [
+		["far", 8],
+		["mid", 18],
+		["near", 34],
+	];
+	for (const [name, distance] of layers) {
+		const x = forward ? -distance : distance;
+		root
+			.querySelector(`.sky .${name}`)
+			?.animate([{ translate: "0 0" }, { translate: `${x}px 0`, offset: 0.35 }, { translate: "0 0" }], {
+				duration: 1100,
+				easing: "cubic-bezier(0.2, 0, 0, 1)",
+			});
+	}
+}
+
 export const skyStyles = css`
-		/* Night sky tinted by the active space: a glow top-left, a faint band of light, a deep ground, stars. */
+		/* Night sky tinted by the active space: a deep ground, a nebula, a faint band of light, stars. */
 		.sky {
 			position: absolute;
 			inset: 0;
 			z-index: -1;
+			overflow: hidden;
 			pointer-events: none;
+		}
+		.sky,
+		.sky-was {
+			background: linear-gradient(165deg, hsl(var(--hue) 32% 8%), hsl(var(--hue) 38% 4%));
+		}
+		/* The space being left, fading out over the new one. */
+		.sky-was {
+			position: absolute;
+			inset: 0;
+		}
+		.sky-was .nebula {
+			animation: none;
+		}
+		/* Painted once, then only scaled and faded. Its glows follow the space's hue as it changes. */
+		.nebula {
+			position: absolute;
+			inset: -10%;
 			background:
-				radial-gradient(60% 50% at 6% 0%, hsl(var(--hue) 58% 34% / 0.45), transparent 70%),
-				radial-gradient(38% 34% at 26% 58%, hsl(calc(var(--hue) + 40) 45% 32% / 0.18), transparent 70%),
-				radial-gradient(55% 55% at 100% 100%, hsl(calc(var(--hue) - 35) 42% 26% / 0.28), transparent 70%),
-				linear-gradient(165deg, hsl(var(--hue) 32% 8%), hsl(var(--hue) 38% 4%));
+				radial-gradient(48% 40% at 10% 6%, hsl(var(--hue) 58% 34% / 0.5), transparent 70%),
+				radial-gradient(30% 22% at 32% 30%, hsl(calc(var(--hue) + 40) 60% 45% / 0.16), transparent 70%),
+				radial-gradient(34% 28% at 30% 60%, hsl(calc(var(--hue) + 40) 45% 32% / 0.22), transparent 70%),
+				radial-gradient(26% 40% at 72% 38%, hsl(calc(var(--hue) - 50) 50% 40% / 0.15), transparent 70%),
+				radial-gradient(46% 46% at 96% 96%, hsl(calc(var(--hue) - 35) 42% 26% / 0.3), transparent 70%);
 		}
 		.sky::after {
 			content: "";
@@ -57,10 +151,102 @@ export const skyStyles = css`
 				transparent 62%
 			);
 		}
-		.sky svg {
+		.stars {
 			position: absolute;
-			inset: 0;
-			width: 100%;
+			top: 0;
+			left: 0;
 			height: 100%;
+			background-repeat: repeat;
+		}
+		.stars.far {
+			width: calc(100% + 480px);
+			background-size: 480px 320px;
+		}
+		.stars.mid {
+			width: calc(100% + 640px);
+			background-size: 640px 420px;
+		}
+		.stars.near {
+			width: calc(100% + 820px);
+			background-size: 820px 540px;
+		}
+		.meteor {
+			position: absolute;
+			width: 130px;
+			height: 1.5px;
+			border-radius: 1px;
+			background: linear-gradient(90deg, hsl(var(--hue) 80% 92% / 0.9), transparent);
+			opacity: 0;
+			rotate: -28deg;
+			transform-origin: 0 50%;
+		}
+		.meteor.one {
+			top: 14%;
+			left: 62%;
+		}
+		.meteor.two {
+			top: 38%;
+			left: 84%;
+			rotate: -20deg;
+		}
+		@media (prefers-reduced-motion: no-preference) {
+			/* Each layer slides left by exactly one tile, so the loop has no seam. */
+			.stars.far {
+				animation: drift-far 260s linear infinite;
+			}
+			.stars.mid {
+				animation: drift-mid 210s linear infinite;
+			}
+			.stars.near {
+				animation: drift-near 150s linear infinite;
+			}
+			@keyframes drift-far {
+				to {
+					transform: translateX(-480px);
+				}
+			}
+			@keyframes drift-mid {
+				to {
+					transform: translateX(-640px);
+				}
+			}
+			@keyframes drift-near {
+				to {
+					transform: translateX(-820px);
+				}
+			}
+			.nebula {
+				animation: breathe 40s ease-in-out infinite alternate;
+			}
+			@keyframes breathe {
+				to {
+					transform: scale(1.06) translate(-1.5%, 1%);
+					opacity: 0.8;
+				}
+			}
+			/* Each visible for about a second of a long, uneven cycle: roughly one shooting star a minute. */
+			.meteor.one {
+				animation: meteor 83s linear -61s infinite;
+			}
+			.meteor.two {
+				animation: meteor 127s linear -20s infinite;
+			}
+			@keyframes meteor {
+				0%,
+				98.6% {
+					opacity: 0;
+					transform: translateX(0) scaleX(0.3);
+				}
+				99% {
+					opacity: 1;
+				}
+				100% {
+					opacity: 0;
+					transform: translateX(-280px) scaleX(1);
+				}
+			}
+			.sky.paused * {
+				animation-play-state: paused;
+			}
 		}
 `;

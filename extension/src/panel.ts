@@ -3,13 +3,13 @@
 
 import { css, html, LitElement } from "lit";
 import type { Update } from "../../prototype/src/app/loka-app";
-import { skyLayer, skyStyles } from "../../prototype/src/app/sky";
+import { skyLayer, skyStyles, skyTurn } from "../../prototype/src/app/sky";
 import { DEFAULT_UI, type UiPrefs } from "../../prototype/src/app/ui-prefs.logic";
 import type { ActionId } from "../../prototype/src/features/command-bar/command-bar.logic";
 import "../../prototype/src/features/command-bar/loka-command-bar";
 import { setDownloadSource } from "../../prototype/src/features/downloads/loka-downloads";
 import type { Media, MediaAction } from "../../prototype/src/features/media/loka-media-card";
-import { setFaviconSource } from "../../prototype/src/features/sidebar/favicon";
+import { type LiveTabs, setFaviconSource } from "../../prototype/src/features/sidebar/favicon";
 import "../../prototype/src/features/sidebar/loka-sidebar";
 import { type LokaSidebar, setExtensionSource } from "../../prototype/src/features/sidebar/loka-sidebar";
 import { SPACE_HUES } from "../../prototype/src/features/sidebar/planet";
@@ -21,12 +21,16 @@ import {
 	revealTab,
 	type SpaceLook,
 	stepTab,
+	switchesForward,
 	switchSpace,
+	type TabId,
 	updateSpace,
 } from "../../prototype/src/features/sidebar/sidebar.logic";
+import { playCue, setSoundPrefs } from "../../prototype/src/features/sound/sound";
 import "../../prototype/src/features/spaces/loka-space-editor";
 import { browserDownloads, browserExtensions, openUrl } from "./browser";
-import { faviconUrl, readSession, readState, readUi, watch, writeState } from "./store";
+import { pageInfo } from "./browser.logic";
+import { faviconUrl, LIVE_KEY, readSession, readState, readUi, watch, writeState } from "./store";
 import { saveSoon } from "./sync";
 
 setFaviconSource(faviconUrl);
@@ -43,6 +47,7 @@ export class LokaPanel extends LitElement {
 		commandOpen: { state: true },
 		editing: { state: true },
 		previewHue: { state: true },
+		live: { state: true },
 	};
 
 	state: BrowserState | null = null;
@@ -51,6 +56,21 @@ export class LokaPanel extends LitElement {
 	commandOpen = false;
 	editing: Editing | null = null;
 	previewHue: number | null = null;
+	/** Each loaded tab's page: its own icon, loading, sound. */
+	live: LiveTabs = {};
+	private icons = new Map<TabId, string>();
+	private liveQueued = false;
+
+	/** Reads the tabs again, at most once a frame however many events arrive. */
+	private refreshLive = () => {
+		if (this.liveQueued) return;
+		this.liveQueued = true;
+		requestAnimationFrame(async () => {
+			this.liveQueued = false;
+			const [{ live: links }, tabs] = await Promise.all([readSession(), chrome.tabs.query({})]);
+			this.live = pageInfo(links, tabs, this.icons);
+		});
+	};
 
 	apply: Update = (change) => {
 		if (!this.state) return;
@@ -73,7 +93,34 @@ export class LokaPanel extends LitElement {
 			if (ui) this.ui = ui;
 			if (media !== undefined) this.media = media;
 		});
+		this.refreshLive();
+		chrome.tabs.onUpdated.addListener((_id, change) => {
+			if ("favIconUrl" in change || "status" in change || "audible" in change || "mutedInfo" in change) {
+				this.refreshLive();
+			}
+		});
+		chrome.tabs.onRemoved.addListener(this.refreshLive);
+		// The background links a new browser tab to its Loka tab a moment after the browser reports it.
+		chrome.storage.onChanged.addListener((changes, area) => {
+			if (area === "session" && changes[LIVE_KEY]) this.refreshLive();
+		});
 		window.addEventListener("keydown", this.onKey);
+	}
+
+	protected override updated(changed: Map<string, unknown>) {
+		const before = changed.get("state") as BrowserState | null | undefined;
+		const state = this.state;
+		if (before && state && before.activeSpaceId !== state.activeSpaceId) {
+			const forward = switchesForward(state, before.activeSpaceId, state.activeSpaceId);
+			skyTurn(this.renderRoot, forward, activeSpace(before).hue);
+		}
+	}
+
+	private async toggleMute(tabId: string) {
+		const browserId = await this.browserTab(tabId);
+		if (browserId === undefined) return;
+		const tab = await chrome.tabs.get(browserId);
+		await chrome.tabs.update(browserId, { muted: !tab.mutedInfo?.muted });
 	}
 
 	private onKey = (e: KeyboardEvent) => {
@@ -86,16 +133,22 @@ export class LokaPanel extends LitElement {
 			this.sidebar()?.openPanel("search");
 		} else if (e.key === "k" || e.key === "l") {
 			e.preventDefault();
-			this.commandOpen = true;
+			this.openCommandBar();
 		} else {
 			const n = Number(e.key);
 			const target = Number.isInteger(n) && n >= 1 ? this.state?.spaces[n - 1] : undefined;
 			if (target) {
 				e.preventDefault();
+				if (target.id !== this.state?.activeSpaceId) playCue("space");
 				this.apply((s) => switchSpace(s, target.id));
 			}
 		}
 	};
+
+	private openCommandBar() {
+		if (!this.commandOpen) playCue("command");
+		this.commandOpen = true;
+	}
 
 	private sidebar() {
 		return this.renderRoot.querySelector<LokaSidebar>("loka-sidebar");
@@ -175,6 +228,7 @@ export class LokaPanel extends LitElement {
 	private saveSpace(look: SpaceLook) {
 		const editing = this.editing;
 		if (!editing) return;
+		if (editing.mode === "create") playCue("space-new");
 		this.apply((s) => (editing.mode === "create" ? createSpace(s, look)[0] : updateSpace(s, editing.spaceId, look)));
 		this.editing = null;
 		this.previewHue = null;
@@ -184,14 +238,16 @@ export class LokaPanel extends LitElement {
 		const state = this.state;
 		if (!state) return null;
 		const hue = this.previewHue ?? activeSpace(state).hue;
+		setSoundPrefs({ on: this.ui.sound, volume: this.ui.soundVolume });
+		// Whether it's playing is whatever the tab says now: the background only records that sound started.
+		const audible = this.media ? this.live[this.media.tabId]?.audible : undefined;
+		const media = this.media && audible !== undefined ? { ...this.media, playing: audible } : this.media;
 		return html`
 			<div
 				class="window"
 				style="--hue: ${hue}"
 				@loka-action=${(e: CustomEvent<ActionId>) => this.run(e.detail)}
-				@loka-command=${() => {
-					this.commandOpen = true;
-				}}
+				@loka-command=${() => this.openCommandBar()}
 				@loka-media=${(e: CustomEvent<MediaAction>) => this.onMedia(e.detail)}
 				@loka-nav=${(e: CustomEvent<"back" | "forward" | "reload">) => this.onNav(e.detail)}
 				@loka-tab-closed=${(e: CustomEvent<string>) => this.unload(e.detail)}
@@ -199,13 +255,21 @@ export class LokaPanel extends LitElement {
 					this.previewHue = e.detail;
 				}}
 			>
-				${skyLayer()}
-				<loka-sidebar .state=${state} .apply=${this.apply} .media=${this.media} .demo=${false}></loka-sidebar>
+				${skyLayer(hue)}
+				<loka-sidebar
+					.state=${state}
+					.apply=${this.apply}
+					.media=${media}
+					.live=${this.live}
+					.demo=${false}
+					@loka-tab-mute=${(e: CustomEvent<string>) => this.toggleMute(e.detail)}
+				></loka-sidebar>
 				${
 					this.commandOpen
 						? html`<loka-command-bar
 								.state=${state}
 								.apply=${this.apply}
+								.live=${this.live}
 								.go=${openUrl("new-tab")}
 								@loka-close=${() => {
 									this.commandOpen = false;
@@ -246,11 +310,6 @@ export class LokaPanel extends LitElement {
 			}
 			loka-sidebar {
 				height: 100%;
-			}
-			@media (prefers-reduced-motion: no-preference) {
-				.window {
-					transition: --hue 420ms cubic-bezier(0.2, 0, 0, 1);
-				}
 			}
 		`,
 	];

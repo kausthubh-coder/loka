@@ -1,4 +1,4 @@
-/* Registered so the sky's tint can animate between spaces instead of jumping. */
+/* Registered so anything drawn before a space's hue is set gets Loka's default blue. */
 @property --hue {
 	syntax: "<number>";
 	inherits: true;

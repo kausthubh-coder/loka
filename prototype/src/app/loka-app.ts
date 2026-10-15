@@ -7,6 +7,7 @@ import "../features/onboarding/loka-onboarding";
 import type { ActionId } from "../features/command-bar/command-bar.logic";
 import type { Media, MediaAction } from "../features/media/loka-media-card";
 import { applyTour, type TourResult } from "../features/onboarding/onboarding.logic";
+import type { LiveTabs } from "../features/sidebar/favicon";
 import type { LokaSidebar, Panel } from "../features/sidebar/loka-sidebar";
 import { SPACE_HUES } from "../features/sidebar/planet";
 import {
@@ -22,11 +23,13 @@ import {
 	revealTab,
 	type SpaceLook,
 	stepTab,
+	switchesForward,
 	switchSpace,
 	updateSpace,
 } from "../features/sidebar/sidebar.logic";
 import { seedState } from "../features/sidebar/sidebar.seed";
-import { skyLayer, skyStyles } from "./sky";
+import { playCue, setSoundPrefs } from "../features/sound/sound";
+import { skyLayer, skyStyles, skyTurn } from "./sky";
 import { clampWidth, DEFAULT_UI, parseUiPrefs, type UiPrefs } from "./ui-prefs.logic";
 
 const STORAGE_KEY = "loka.state.v1";
@@ -144,8 +147,10 @@ export class LokaApp extends LitElement {
 	private saveSpace(look: SpaceLook) {
 		const editing = this.editing;
 		if (!editing) return;
-		if (editing.mode === "create") this.apply((s) => createSpace(s, look)[0]);
-		else this.apply((s) => updateSpace(s, editing.spaceId, look));
+		if (editing.mode === "create") {
+			playCue("space-new");
+			this.apply((s) => createSpace(s, look)[0]);
+		} else this.apply((s) => updateSpace(s, editing.spaceId, look));
 		this.editing = null;
 		this.previewHue = null;
 	}
@@ -180,7 +185,7 @@ export class LokaApp extends LitElement {
 		}
 		if (e.key === "k" || e.key === "l") {
 			e.preventDefault();
-			this.commandOpen = true;
+			this.openCommandBar();
 			return;
 		}
 		if (e.key === "s") {
@@ -192,7 +197,10 @@ export class LokaApp extends LitElement {
 			// Ctrl+W can't be caught by a web page, so the prototype closes tabs with Ctrl+E.
 			e.preventDefault();
 			const tab = activeTab(this.state);
-			if (tab) this.apply((s) => closeTab(s, tab.id));
+			if (tab) {
+				playCue("tab-close");
+				this.apply((s) => closeTab(s, tab.id));
+			}
 			return;
 		}
 		const n = Number(e.key);
@@ -200,9 +208,15 @@ export class LokaApp extends LitElement {
 			const target = this.state.spaces[n - 1];
 			if (!target) return;
 			e.preventDefault();
+			if (target.id !== this.state.activeSpaceId) playCue("space");
 			this.apply((s) => switchSpace(s, target.id));
 		}
 	};
+
+	private openCommandBar() {
+		if (!this.commandOpen) playCue("command");
+		this.commandOpen = true;
+	}
 
 	/** Dragging the sidebar's inner edge sets its width. Listens on the window so a fast drag can't outrun the handle. */
 	private startResize(e: PointerEvent) {
@@ -227,6 +241,14 @@ export class LokaApp extends LitElement {
 		this.archiveTimer = window.setInterval(this.archiveNow, 60_000);
 	}
 
+	protected override updated(changed: Map<string, unknown>) {
+		const before = changed.get("state") as BrowserState | undefined;
+		if (before && before.activeSpaceId !== this.state.activeSpaceId) {
+			const forward = switchesForward(this.state, before.activeSpaceId, this.state.activeSpaceId);
+			skyTurn(this.renderRoot, forward, activeSpace(before).hue);
+		}
+	}
+
 	override disconnectedCallback() {
 		window.removeEventListener("keydown", this.onKey);
 		window.clearInterval(this.archiveTimer);
@@ -236,7 +258,12 @@ export class LokaApp extends LitElement {
 	override render() {
 		const space = activeSpace(this.state);
 		const { sidebarSide: side, sidebarHidden: hidden, sidebarWidth: width } = this.ui;
+		setSoundPrefs({ on: this.ui.sound, volume: this.ui.soundVolume });
 		const layout = `${side} ${hidden ? "hidden" : ""} ${hidden && this.peek ? "peek" : ""} ${this.tourOpen ? "touring" : ""}`;
+		// The prototype's one playing tab is the only page it knows anything live about.
+		const live: LiveTabs = this.media
+			? { [this.media.tabId]: { audible: this.media.playing, muted: this.media.muted } }
+			: {};
 		return html`
 			<div
 				class="window ${layout}"
@@ -247,7 +274,7 @@ export class LokaApp extends LitElement {
 					this.previewHue = e.detail;
 				}}
 			>
-				${skyLayer()}
+				${skyLayer(this.previewHue ?? space.hue)}
 				${
 					hidden
 						? html`<div class="edge-zone" aria-hidden="true" @pointerenter=${() => (this.peek = true)}></div>`
@@ -266,11 +293,11 @@ export class LokaApp extends LitElement {
 					.state=${this.state}
 					.apply=${this.apply}
 					.media=${this.media}
+					.live=${live}
 					@loka-media=${(e: CustomEvent<MediaAction>) => this.onMedia(e.detail)}
+					@loka-tab-mute=${() => this.onMedia("mute")}
 					@pointerleave=${() => (this.peek = false)}
-					@loka-command=${() => {
-						this.commandOpen = true;
-					}}
+					@loka-command=${() => this.openCommandBar()}
 					@loka-reset=${() => this.apply(() => seedState())}
 				></loka-sidebar>
 				<loka-page
@@ -413,10 +440,8 @@ export class LokaApp extends LitElement {
 			visibility: hidden;
 		}
 
+		/* No transition on --hue: animating the number sweeps through every hue in between. The sky crossfades. */
 		@media (prefers-reduced-motion: no-preference) {
-			.window {
-				transition: --hue 420ms cubic-bezier(0.2, 0, 0, 1);
-			}
 			.window.hidden loka-sidebar {
 				transition: translate 220ms cubic-bezier(0.2, 0, 0, 1);
 			}

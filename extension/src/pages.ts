@@ -19,6 +19,7 @@ import {
 	type SpaceLook,
 	updateSpace,
 } from "../../prototype/src/features/sidebar/sidebar.logic";
+import { playCue, setSoundPrefs } from "../../prototype/src/features/sound/sound";
 import "../../prototype/src/features/spaces/loka-space-editor";
 import { browserBookmarks, openBrowserSettings, openUrl } from "./browser";
 import { faviconUrl, readState, readUi, watch, writeState, writeUi } from "./store";
@@ -94,6 +95,7 @@ abstract class LokaPage extends LitElement {
 			@loka-save=${(e: CustomEvent<SpaceLook>) => {
 				const look = e.detail;
 				const id = editing.spaceId;
+				if (!id) playCue("space-new");
 				this.apply((s) => (id ? updateSpace(s, id, look) : createSpace(s, look)[0]));
 				this.editing = null;
 				this.previewHue = null;
@@ -107,6 +109,10 @@ abstract class LokaPage extends LitElement {
 
 	protected hue(): number {
 		return this.previewHue ?? (this.state ? activeSpace(this.state).hue : 200);
+	}
+
+	protected override willUpdate() {
+		setSoundPrefs({ on: this.ui.sound, volume: this.ui.soundVolume });
 	}
 
 	protected run(action: ActionId) {
@@ -155,7 +161,7 @@ export class LokaNewTab extends LokaPage {
 				this.previewHue = e.detail;
 			}}
 		>
-			${skyLayer()}
+			${skyLayer(this.hue())}
 			<loka-command-bar .state=${this.state} .apply=${this.applyAndClose} .go=${openUrl("this-tab")}></loka-command-bar>
 			${this.editor()}
 		</div>`;
@@ -181,7 +187,7 @@ export class LokaSettingsPage extends LokaPage {
 				this.previewHue = e.detail;
 			}}
 		>
-			${skyLayer()}
+			${skyLayer(this.hue())}
 			<loka-settings .state=${this.state} .apply=${this.apply} .ui=${this.ui} .setUi=${this.setUi} .browser=${hooks}></loka-settings>
 			${this.editor()}
 		</div>`;
@@ -207,7 +213,7 @@ export class LokaTourPage extends LokaPage {
 				this.previewHue = e.detail;
 			}}
 		>
-			${skyLayer()}
+			${skyLayer(this.hue())}
 			<loka-onboarding
 				.spaces=${this.state.spaces.slice(0, 3).map((s) => ({ name: s.name, hue: s.hue, planet: s.planet }))}
 				@loka-finish=${(e: CustomEvent<TourResult>) => this.finish(e.detail)}

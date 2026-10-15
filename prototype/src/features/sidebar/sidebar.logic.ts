@@ -273,6 +273,17 @@ export function switchSpace(state: BrowserState, spaceId: string): BrowserState 
 	return { ...state, activeSpaceId: spaceId };
 }
 
+/**
+ * Whether going from one space to another moves forward along the switcher, which wraps around: whichever way is
+ * shorter. A tie (half way round) counts as forward. Motion follows it: forward slides in from the right.
+ */
+export function switchesForward(state: BrowserState, fromId: string, toId: string): boolean {
+	const ids = state.spaces.map((s) => s.id);
+	const from = ids.indexOf(fromId);
+	const to = ids.indexOf(toId);
+	return (to - from + ids.length) % ids.length <= ids.length / 2;
+}
+
 export interface SpaceLook {
 	name: string;
 	hue: number;

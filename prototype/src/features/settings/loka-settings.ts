@@ -12,6 +12,7 @@ import {
 } from "../import/import.logic";
 import { IMPORT_SOURCES, type ImportSource, pickFile } from "../import/pick-file";
 import { planet, SPACE_HUES } from "../sidebar/planet";
+import { playCue, setSoundPrefs } from "../sound/sound";
 import "../sync/loka-sync-settings";
 import { type BrowserState, countTabs } from "../sidebar/sidebar.logic";
 import type { SyncHooks } from "../sync/loka-sync-settings";
@@ -178,6 +179,39 @@ export class LokaSettings extends LitElement {
 						${this.toggle("Hide the sidebar", ui.sidebarHidden, (on) => this.setUi({ sidebarHidden: on }))}
 					</div>`
 					}
+				</section>
+
+				<section aria-labelledby="sound">
+					<h2 id="sound">Sound</h2>
+					<div class="row">
+						<div><b>Sound effects</b><small>Soft cues when you switch spaces, open and close tabs and folders, and pin</small></div>
+						${this.toggle("Sound effects", ui.sound, (on) => {
+							this.setUi({ sound: on });
+							if (on) {
+								setSoundPrefs({ on, volume: ui.soundVolume });
+								playCue("pin");
+							}
+						})}
+					</div>
+					<div class="row">
+						<div><b>Volume</b><small>Plays a cue when you let go</small></div>
+						<label class="range">
+							<input
+								type="range"
+								min="0"
+								max="100"
+								.value=${String(Math.round(ui.soundVolume * 100))}
+								aria-label="Sound volume"
+								?disabled=${!ui.sound}
+								@input=${(e: Event) => this.setUi({ soundVolume: Number((e.target as HTMLInputElement).value) / 100 })}
+								@change=${(e: Event) => {
+									setSoundPrefs({ on: ui.sound, volume: Number((e.target as HTMLInputElement).value) / 100 });
+									playCue("tab-open");
+								}}
+							/>
+							<span>${Math.round(ui.soundVolume * 100)}%</span>
+						</label>
+					</div>
 				</section>
 
 				<section aria-labelledby="spaces">

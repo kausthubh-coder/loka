@@ -1,8 +1,9 @@
 import { css, html, LitElement, type TemplateResult } from "lit";
 import type { Update } from "../../app/loka-app";
-import { faviconBackground, faviconInner, hostOf } from "../sidebar/favicon";
+import { faviconBackground, faviconInner, hostOf, type LiveTabs } from "../sidebar/favicon";
 import { planet } from "../sidebar/planet";
 import { activateTab, type BrowserState, openTab, switchSpace } from "../sidebar/sidebar.logic";
+import { playCue } from "../sound/sound";
 import { type CommandResult, commandResults, isSearch } from "./command-bar.logic";
 
 /** The Ctrl+K bar: open an address or search, jump to any tab in any space, or run a command. */
@@ -11,6 +12,7 @@ export class LokaCommandBar extends LitElement {
 		state: { attribute: false },
 		apply: { attribute: false },
 		go: { attribute: false },
+		live: { attribute: false },
 		query: { state: true },
 		selected: { state: true },
 	};
@@ -22,6 +24,8 @@ export class LokaCommandBar extends LitElement {
 	 * the same tab on the new tab page). Without it the bar opens a new Loka tab.
 	 */
 	declare go: ((open: { url: string; query: string; search: boolean }) => void) | undefined;
+	/** What the browser says about each loaded tab, for their pages' own icons. */
+	live: LiveTabs = {};
 	query = "";
 	selected = 0;
 
@@ -33,9 +37,11 @@ export class LokaCommandBar extends LitElement {
 		if (!result) return;
 		if (result.kind === "go") {
 			const search = isSearch(result.url);
+			playCue("tab-open");
 			if (this.go) this.go({ url: result.url, query: this.query.trim(), search });
 			else this.apply((s) => openTab(s, result.url, search ? this.query.trim() : hostOf(result.url)));
 		} else if (result.kind === "tab") {
+			if (result.spaceId !== this.state.activeSpaceId) playCue("space");
 			this.apply((s) => activateTab(switchSpace(s, result.spaceId), result.tabId));
 		} else {
 			this.dispatchEvent(new CustomEvent("loka-action", { detail: result.action, bubbles: true, composed: true }));
@@ -62,7 +68,8 @@ export class LokaCommandBar extends LitElement {
 	private icon(result: CommandResult): TemplateResult {
 		if (result.kind === "tab") {
 			const url = this.state.tabs[result.tabId]?.url ?? "";
-			return html`<span class="fav" style="--fav: ${faviconBackground(url)}">${faviconInner(url)}</span>`;
+			const live = this.live[result.tabId];
+			return html`<span class="fav" style="--fav: ${faviconBackground(url, live)}">${faviconInner(url, live)}</span>`;
 		}
 		if (result.kind === "go") {
 			return isSearch(result.url)

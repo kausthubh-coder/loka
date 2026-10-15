@@ -38,3 +38,7 @@ Preconditions: `bun run ext:build`, and the prototype's dev server running (its 
 - The sidebar page opened as a tab is itself a tab, so it shows in its own open list ("Loka"). The side panel isn't.
 - Folder sync can't be driven headless: the folder picker needs a real click. Its encryption is unit tested.
 - `--load-extension` works in Loka (a non-Google build); Google Chrome ignores it.
+- A tab's icon is the one its page declared (`favIconUrl`, fed to the sidebar as `LiveTab.icon` from `panel.ts`);
+  the favicon cache (`_favicon?pageUrl=`) is only for tabs not loaded since the sidebar opened. To prove an icon is
+  real, draw the row's `<img>` to a canvas and compare it with the cache's answer for an address never visited,
+  which is the default globe.

@@ -20,6 +20,7 @@ import {
 	revealTab,
 	searchSidebar,
 	stepTab,
+	switchesForward,
 	switchSpace,
 	ungroupFolder,
 	updateSpace,
@@ -122,6 +123,14 @@ describe("tabs and spaces", () => {
 		const state = switchSpace(seedState(), "s-school");
 		expect(activeTab(state)?.title).toBe("Canvas: CSC 281");
 		expect(activeTab(switchSpace(state, "s-build"))?.title).toBe("imputnet/helium-windows");
+	});
+
+	test("going to the next space is forward, and the switcher wraps round the short way", () => {
+		const state = seedState(); // Build, School, Home
+		expect(switchesForward(state, "s-build", "s-school")).toBe(true);
+		expect(switchesForward(state, "s-school", "s-build")).toBe(false);
+		expect(switchesForward(state, "s-home", "s-build")).toBe(true);
+		expect(switchesForward(state, "s-build", "s-home")).toBe(false);
 	});
 
 	test("a new tab opens at the top of the active space and becomes active", () => {

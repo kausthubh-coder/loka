@@ -69,7 +69,7 @@
        }
 --- a/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc
 +++ b/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc
-@@ -77,6 +77,12 @@
+@@ -77,6 +77,14 @@
  #include "ui/views/view.h"
  #include "ui/views/view_class_properties.h"
  #include "ui/views/view_utils.h"
@@ -78,11 +78,25 @@
 +#include "chrome/browser/ui/webui/webui_embedding_context.h"
 +#include "ui/views/controls/webview/web_contents_set_background_color.h"
 +#include "ui/views/controls/webview/webview.h"
++#include "ui/gfx/geometry/rounded_corners_f.h"
++#include "ui/views/controls/native/native_view_host.h"
 +#include "url/gurl.h"
  
  namespace {
  constexpr int kResizeAreaWidth = 5;
-@@ -176,6 +182,19 @@
+@@ -98,6 +106,11 @@
+ 
+ DEFINE_CLASS_CUSTOM_ELEMENT_EVENT_TYPE(VerticalTabStripRegionView,
+                                        kAnimationCompletedEvent);
++
++namespace {
++// Loka: the corners of the sidebar when it floats over the page.
++constexpr int kLokaFloatingSidebarRadius = 14;
++}  // namespace
+ 
+ VerticalTabStripRegionView::VerticalTabStripRegionView(
+     tabs::VerticalTabStripStateController* state_controller,
+@@ -176,6 +189,19 @@
          std::make_unique<VerticalTabStripFocusSwipeController>(this);
    }
  
@@ -102,7 +116,34 @@
    SetNotifyEnterExitOnChild(true);
    UpdateColors();
    UpdateInteriorMargin();
-@@ -368,6 +387,22 @@
+@@ -318,7 +344,8 @@
+   if (floating) {
+     CustomCornersBackground::Corner rounded_corner;
+     rounded_corner.type = CustomCornersBackground::CornerType::kRounded;
+-    rounded_corner.radius = GetGenericFrameRadius();
++    // Loka: a softer card, like Zen's floating sidebar.
++    rounded_corner.radius = kLokaFloatingSidebarRadius;
+     corners[CornerOrientation::kTopLeading] = rounded_corner;
+     corners[CornerOrientation::kTopTrailing] = rounded_corner;
+     corners[CornerOrientation::kBottomLeading] = rounded_corner;
+@@ -334,6 +361,16 @@
+   background->SetCorners(corners);
+   background->SetOutline(outline);
+   background->SetPaintWithNativeFrameMaterials(floating);
++
++  // Loka: when the sidebar floats over the page, its own page is clipped to the
++  // card's corners and the card casts a soft shadow.
++  if (auto* web_view = views::AsViewClass<views::WebView>(loka_sidebar_.get())) {
++    web_view->holder()->SetNativeViewCornerRadii(
++        floating ? gfx::RoundedCornersF(kLokaFloatingSidebarRadius)
++                 : gfx::RoundedCornersF());
++  }
++  shadow_frame_->SetShadowCornerRadius(kLokaFloatingSidebarRadius);
++  shadow_frame_->SetShadowVisible(floating);
+ }
+ 
+ void VerticalTabStripRegionView::AddedToWidget() {
+@@ -368,6 +405,22 @@
    resize_area_->SetBoundsRect(
        gfx::Rect(resize_area_x, 0, resize_area_width_, bounds().height()));
    shadow_frame_->SetBoundsRect(GetLocalBounds());

@@ -55,6 +55,10 @@ export type Panel = "extensions" | "downloads" | "archive" | "search";
 interface MenuItem {
 	label: string;
 	run: () => void;
+	/** Starts a new group in the menu: a line above it. */
+	divider?: boolean;
+	/** Its shortcut, shown quietly on the right. */
+	hint?: string;
 }
 
 const PANEL_NAMES: Record<Panel, string> = {
@@ -263,15 +267,44 @@ export class LokaSidebar extends LitElement {
 
 	// ---- menus ---------------------------------------------------------------
 
+	/** What opened the menu, so focus can go back to it when the menu closes. */
+	private menuOpener: HTMLElement | null = null;
+	/** The menu just opened: focus goes into it on the next render. */
+	private focusMenu = false;
+	/** A menu item ran: if nothing took focus after it, focus goes back to the opener. */
+	private refocus = false;
+
 	private openMenu(e: MouseEvent, items: MenuItem[]) {
 		e.preventDefault();
 		e.stopPropagation();
+		this.menuOpener = e.currentTarget as HTMLElement;
+		this.focusMenu = true;
 		this.menu = { x: e.clientX, y: e.clientY, items };
 	}
 
 	private closeMenu = () => {
 		this.menu = null;
 	};
+
+	/** Keys in a menu: Up, Down, Home and End move; Escape and Tab close it and go back to what opened it. */
+	private menuKey(e: KeyboardEvent) {
+		const items = [...this.renderRoot.querySelectorAll<HTMLElement>('.menu [role="menuitem"]')];
+		const at = items.indexOf(this.shadowRoot?.activeElement as HTMLElement);
+		let next: number;
+		if (e.key === "ArrowDown") next = (at + 1) % items.length;
+		else if (e.key === "ArrowUp") next = (at - 1 + items.length) % items.length;
+		else if (e.key === "Home") next = 0;
+		else if (e.key === "End") next = items.length - 1;
+		else if (e.key === "Escape" || e.key === "Tab") {
+			e.preventDefault();
+			e.stopPropagation();
+			this.menu = null;
+			this.menuOpener?.focus();
+			return;
+		} else return;
+		e.preventDefault();
+		items[next]?.focus();
+	}
 
 	private tabMenu(tabId: TabId): MenuItem[] {
 		const state = this.state;
@@ -299,16 +332,17 @@ export class LokaSidebar extends LitElement {
 				run: move("unpin", { area: "open", spaceId: space.id, index: 0 }),
 			});
 		}
-		for (const other of state.spaces) {
-			if (other.id === space.id) continue;
+		for (const [i, other] of state.spaces.filter((s) => s.id !== space.id).entries()) {
 			items.push({
 				label: `Move to ${other.name}`,
+				divider: i === 0,
 				run: () => this.apply((s) => moveItem(s, tabId, { area: "open", spaceId: other.id, index: 0 })),
 			});
 		}
 		if (!isEssential) {
 			items.push({
 				label: "New folder with this tab",
+				divider: true,
 				run: () => {
 					const [made, folderId] = createFolder(this.state, space.id, null, "New folder");
 					playCue("into-folder");
@@ -317,7 +351,7 @@ export class LokaSidebar extends LitElement {
 				},
 			});
 		}
-		items.push({ label: isOpen ? "Close tab" : "Unload tab", run: () => this.closeTabFor(tabId) });
+		items.push({ label: isOpen ? "Close tab" : "Unload tab", divider: true, run: () => this.closeTabFor(tabId) });
 		return items;
 	}
 
@@ -331,10 +365,12 @@ export class LokaSidebar extends LitElement {
 
 	/** The bottom row's +: what you'd make next. */
 	private newMenu(e: MouseEvent) {
-		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		this.menuOpener = e.currentTarget as HTMLElement;
+		this.focusMenu = true;
+		const r = this.menuOpener.getBoundingClientRect();
 		this.menu = {
 			x: r.left,
-			y: r.top - 8 - 36 * 3,
+			y: r.top - 8 - 34 * 3 - 8,
 			items: [
 				{ label: "New tab", run: () => this.command("new-tab") },
 				{ label: "New folder", run: () => this.newFolder(null) },
@@ -373,7 +409,7 @@ export class LokaSidebar extends LitElement {
 					this.renamingId = id;
 				},
 			},
-			{ label: "Ungroup (keep tabs)", run: () => this.apply((s) => ungroupFolder(s, folderId)) },
+			{ label: "Ungroup (keep tabs)", divider: true, run: () => this.apply((s) => ungroupFolder(s, folderId)) },
 		];
 	}
 
@@ -443,10 +479,11 @@ export class LokaSidebar extends LitElement {
 	private spacesMenu(): MenuItem[] {
 		return [
 			...this.state.spaces.map((s, i) => ({
-				label: `${s.name}  (Ctrl+${i + 1})`,
+				label: s.name,
+				hint: `Ctrl+${i + 1}`,
 				run: () => this.switchTo(s.id),
 			})),
-			{ label: "Edit this space", run: () => this.action("edit-space") },
+			{ label: "Edit this space", divider: true, run: () => this.action("edit-space") },
 			{ label: "New space", run: () => this.action("new-space") },
 		];
 	}
@@ -641,13 +678,14 @@ export class LokaSidebar extends LitElement {
 			{ label: `Archived tabs (${this.state.archive.length})`, run: () => this.openPanel("archive") },
 			{ label: "History", run: () => this.action("history") },
 			{ label: "Settings", run: () => this.action("settings") },
-			{ label: "Show the welcome tour", run: () => this.action("onboarding") },
-			{ label: "Export spaces (JSON)", run: () => this.exportFile() },
+			{ label: "Show the welcome tour", divider: true, run: () => this.action("onboarding") },
+			{ label: "Export spaces (JSON)", divider: true, run: () => this.exportFile() },
 			{ label: "Import spaces (JSON)", run: () => this.importFile() },
 			...(this.demo
 				? [
 						{
 							label: "Reset demo data",
+							divider: true,
 							run: () => this.dispatchEvent(new CustomEvent("loka-reset", { bubbles: true, composed: true })),
 						},
 					]
@@ -839,6 +877,14 @@ export class LokaSidebar extends LitElement {
 		if (input && document.activeElement !== this && this.shadowRoot?.activeElement !== input) {
 			input.focus();
 			input.select();
+		}
+		if (this.focusMenu && this.menu) {
+			this.focusMenu = false;
+			this.renderRoot.querySelector<HTMLElement>('.menu [role="menuitem"]')?.focus();
+		}
+		if (this.refocus && !this.menu) {
+			this.refocus = false;
+			if (!this.shadowRoot?.activeElement && this.menuOpener?.isConnected) this.menuOpener.focus();
 		}
 	}
 
@@ -1206,20 +1252,22 @@ export class LokaSidebar extends LitElement {
 						? html`<div
 								class="menu"
 								role="menu"
-								style="left: ${Math.max(4, Math.min(this.menu.x, this.getBoundingClientRect().right - 204))}px; top: ${Math.max(4, Math.min(this.menu.y, window.innerHeight - 8 - 36 * this.menu.items.length))}px"
-								@keydown=${(e: KeyboardEvent) => e.key === "Escape" && this.closeMenu()}
+								style="left: ${Math.max(4, Math.min(this.menu.x, this.getBoundingClientRect().right - 204))}px; top: ${Math.max(4, Math.min(this.menu.y, window.innerHeight - 16 - 34 * this.menu.items.length - 9 * this.menu.items.filter((i) => i.divider).length))}px"
+								@keydown=${(e: KeyboardEvent) => this.menuKey(e)}
 							>
 								${this.menu.items.map(
-									(item) => html`<button
-										role="menuitem"
-										@click=${(e: Event) => {
-											e.stopPropagation();
-											this.closeMenu();
-											item.run();
-										}}
-									>
-										${item.label}
-									</button>`,
+									(item) => html`${item.divider ? html`<hr role="separator" />` : nothing}<button
+											role="menuitem"
+											tabindex="-1"
+											@click=${(e: Event) => {
+												e.stopPropagation();
+												this.closeMenu();
+												this.refocus = true;
+												item.run();
+											}}
+										>
+											${item.label}${item.hint ? html`<kbd>${item.hint}</kbd>` : nothing}
+										</button>`,
 								)}
 							</div>`
 						: nothing
@@ -1339,14 +1387,32 @@ export class LokaSidebar extends LitElement {
 			background: var(--loka-hover);
 			color: var(--loka-ink);
 		}
-		.icon:active {
+		.icon:active,
+		.tool:active,
+		.close:active,
+		.sound:active,
+		.dismiss:active,
+		.clear:active,
+		.space-label:active {
 			background: var(--loka-fill-hover);
 		}
 		.icon .dots {
 			stroke-width: 2.4;
 		}
-		.caption {
-			width: 30px;
+		/* Small controls inside dense rows keep their size and take clicks a little past their edge: 32px targets. */
+		.close,
+		.sound,
+		.dismiss,
+		.clear {
+			position: relative;
+		}
+		.close::after,
+		.sound::after,
+		.dismiss::after,
+		.clear::after {
+			content: "";
+			position: absolute;
+			inset: -2px;
 		}
 		.caption svg {
 			width: 16px;
@@ -1434,7 +1500,7 @@ export class LokaSidebar extends LitElement {
 		.pinned-ext {
 			display: flex;
 			flex-wrap: wrap;
-			height: 30px;
+			height: 32px;
 			max-width: 96px;
 			overflow: hidden;
 		}
@@ -1443,8 +1509,8 @@ export class LokaSidebar extends LitElement {
 			display: grid;
 			place-items: center;
 			flex: none;
-			width: 30px;
-			height: 30px;
+			width: 32px;
+			height: 32px;
 			border-radius: 8px;
 			color: var(--loka-ink-2);
 		}
@@ -1460,7 +1526,7 @@ export class LokaSidebar extends LitElement {
 		/* Download progress: a ring around the button, filling as the files come in. */
 		.ring {
 			position: absolute;
-			inset: 1px;
+			inset: 2px;
 			width: 28px;
 			height: 28px;
 			rotate: -90deg;
@@ -1614,6 +1680,7 @@ export class LokaSidebar extends LitElement {
 			pointer-events: none;
 		}
 
+		/* The list fades at an edge only while there's more to scroll past it (a scroll-driven mask). */
 		.scroll {
 			position: relative;
 			flex: 1;
@@ -1622,14 +1689,46 @@ export class LokaSidebar extends LitElement {
 			margin: 0 -4px;
 			padding: 0 4px;
 			scrollbar-width: thin;
+			--fade-top: 0px;
+			--fade-bottom: 0px;
+			mask-image: linear-gradient(
+				to bottom,
+				transparent,
+				#000 var(--fade-top),
+				#000 calc(100% - var(--fade-bottom)),
+				transparent
+			);
+			animation:
+				fade-top linear both,
+				fade-bottom linear both;
+			animation-timeline: scroll(self), scroll(self);
+			animation-range:
+				0 24px,
+				calc(100% - 24px) 100%;
+		}
+		@keyframes fade-top {
+			from {
+				--fade-top: 0px;
+			}
+			to {
+				--fade-top: 24px;
+			}
+		}
+		@keyframes fade-bottom {
+			from {
+				--fade-bottom: 24px;
+			}
+			to {
+				--fade-bottom: 0px;
+			}
 		}
 		.space-label {
 			display: flex;
 			align-items: center;
-			gap: 7px;
-			height: 28px;
+			gap: 8px;
+			height: 32px;
 			padding: 0 8px;
-			margin-bottom: 2px;
+			margin-bottom: 0;
 			border-radius: 7px;
 			color: var(--loka-ink-3);
 			font-size: 13px;
@@ -1723,8 +1822,8 @@ export class LokaSidebar extends LitElement {
 			flex: none;
 			display: grid;
 			place-items: center;
-			width: 26px;
-			height: 26px;
+			width: 28px;
+			height: 28px;
 			border-radius: 7px;
 			color: var(--loka-accent-ink);
 		}
@@ -1837,7 +1936,7 @@ export class LokaSidebar extends LitElement {
 			display: flex;
 			align-items: center;
 			gap: 8px;
-			height: 30px;
+			height: 32px;
 			padding: 0 2px 0 8px;
 		}
 		.divider span {
@@ -1848,11 +1947,11 @@ export class LokaSidebar extends LitElement {
 		.clear {
 			display: flex;
 			align-items: center;
-			gap: 3px;
-			height: 26px;
+			gap: 4px;
+			height: 28px;
 			color: var(--loka-ink-3);
 			font-size: 13px;
-			padding: 0 7px 0 5px;
+			padding: 0 8px 0 6px;
 			border-radius: 7px;
 		}
 		.clear svg {
@@ -1943,6 +2042,13 @@ export class LokaSidebar extends LitElement {
 			height: 30px;
 			border-radius: 50%;
 		}
+		/* The small planets take clicks a little past their edge. */
+		.neighbour::after {
+			content: "";
+			position: absolute;
+			inset: -5px;
+			border-radius: 50%;
+		}
 		.neighbour.left {
 			left: 22px;
 		}
@@ -1987,6 +2093,13 @@ export class LokaSidebar extends LitElement {
 			}
 		}
 
+		/* Panels and menus float over the list as tinted glass: what passes under them turns to fog, not ghost text. */
+		.panel,
+		.menu {
+			background: color-mix(in srgb, var(--loka-surface) 88%, transparent);
+			box-shadow: var(--loka-surface-edge);
+			backdrop-filter: blur(20px) saturate(1.3);
+		}
 		.panel {
 			position: absolute;
 			z-index: 10;
@@ -1995,10 +2108,9 @@ export class LokaSidebar extends LitElement {
 			right: 6px;
 			max-height: calc(100% - 240px);
 			overflow-y: auto;
+			overscroll-behavior: contain;
 			padding: 8px 6px;
 			border-radius: 14px;
-			background: var(--loka-surface);
-			box-shadow: var(--loka-surface-edge);
 			transform-origin: top right;
 		}
 		.menu {
@@ -2009,12 +2121,14 @@ export class LokaSidebar extends LitElement {
 			width: 196px;
 			padding: 4px;
 			border-radius: 12px;
-			background: var(--loka-surface);
-			box-shadow: var(--loka-surface-edge);
-			backdrop-filter: blur(12px);
 			transform-origin: top left;
 		}
 		.menu button {
+			flex: none;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 12px;
 			text-align: left;
 			height: 34px;
 			padding: 0 10px;
@@ -2025,6 +2139,20 @@ export class LokaSidebar extends LitElement {
 		.menu button:focus-visible {
 			background: var(--loka-hover);
 			outline: none;
+		}
+		.menu button:active {
+			background: var(--loka-fill-hover);
+		}
+		.menu kbd {
+			font: 12px system-ui, "Segoe UI", sans-serif;
+			color: var(--loka-ink-3);
+		}
+		.menu hr {
+			flex: none;
+			height: 1px;
+			margin: 4px 6px;
+			border: 0;
+			background: var(--loka-line);
 		}
 
 		/* Unpinned, the browser floats the sidebar over the page: give it a finished edge of its own. */
@@ -2073,11 +2201,21 @@ export class LokaSidebar extends LitElement {
 					transform: translateX(-50%);
 				}
 			}
-			.scroll.from-right {
-				animation: in-right 260ms cubic-bezier(0.2, 0, 0, 1);
+			/* The slide joins the scroll fades rather than replacing them. */
+			.scroll.from-right,
+			.scroll.from-left {
+				animation:
+					fade-top linear both,
+					fade-bottom linear both,
+					in-right 260ms cubic-bezier(0.2, 0, 0, 1);
+				animation-timeline: scroll(self), scroll(self), auto;
+				animation-range:
+					0 24px,
+					calc(100% - 24px) 100%,
+					normal;
 			}
 			.scroll.from-left {
-				animation: in-left 260ms cubic-bezier(0.2, 0, 0, 1);
+				animation-name: fade-top, fade-bottom, in-left;
 			}
 			/* Springs back when a swipe stops short; follows the fingers exactly while swiping. */
 			.scroll:not(.swiping),
@@ -2129,11 +2267,11 @@ export class LokaSidebar extends LitElement {
 			}
 			.menu {
 				transition:
-					opacity 120ms cubic-bezier(0.2, 0, 0, 1),
-					transform 160ms cubic-bezier(0.2, 0, 0, 1);
+					opacity 150ms cubic-bezier(0.2, 0, 0, 1),
+					transform 200ms cubic-bezier(0.2, 0, 0, 1);
 				@starting-style {
 					opacity: 0;
-					transform: scale(0.96);
+					transform: scale(0.97);
 				}
 			}
 		}

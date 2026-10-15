@@ -196,8 +196,8 @@ export class LokaMediaCard extends LitElement {
 		.controls button {
 			display: grid;
 			place-items: center;
-			width: 26px;
-			height: 30px;
+			width: 28px;
+			height: 32px;
 			border-radius: 7px;
 			color: var(--loka-ink-2);
 		}

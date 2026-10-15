@@ -135,11 +135,20 @@ export class LokaExtensions extends LitElement {
 				cursor: default;
 			}
 			.quiet {
-				height: 26px;
+				position: relative;
+				height: 28px;
 				padding: 0 8px;
 				border-radius: 7px;
 				color: var(--loka-ink-2);
 				font-size: 13px;
+			}
+			.quiet::after {
+				content: "";
+				position: absolute;
+				inset: -2px 0;
+			}
+			.quiet:active {
+				background: var(--loka-fill-hover);
 			}
 			.quiet:hover {
 				color: var(--loka-ink);

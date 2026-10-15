@@ -151,11 +151,21 @@ export class LokaDownloads extends LitElement {
 			cursor: default;
 		}
 		.quiet {
-			height: 26px;
+			position: relative;
+			height: 28px;
 			padding: 0 8px;
 			border-radius: 7px;
 			color: var(--loka-ink-2);
 			font-size: 13px;
+		}
+		.quiet::after {
+			content: "";
+			position: absolute;
+			inset: -2px 0;
+		}
+		.quiet:active,
+		.act:active {
+			background: var(--loka-fill-hover);
 		}
 		.quiet:hover,
 		.all:hover {
@@ -194,13 +204,13 @@ export class LokaDownloads extends LitElement {
 			border-radius: 5px;
 			background: hsl(var(--f) 45% 30%);
 			color: hsl(var(--f) 80% 90%);
-			font-size: 9px;
+			font-size: 10px;
 			font-weight: 700;
-			letter-spacing: 0.02em;
 		}
+		/* A file that didn't arrive loses its color, not its legibility. */
 		.cancelled .file,
 		.failed .file {
-			opacity: 0.55;
+			filter: grayscale(1);
 		}
 		.text {
 			flex: 1;
@@ -252,8 +262,8 @@ export class LokaDownloads extends LitElement {
 		.act {
 			display: grid;
 			place-items: center;
-			width: 28px;
-			height: 28px;
+			width: 32px;
+			height: 32px;
 			border-radius: 7px;
 			color: var(--loka-ink-2);
 		}

@@ -202,9 +202,9 @@ export class LokaCommandBar extends LitElement {
 								<span class="icon" aria-hidden="true">${this.icon(r)}</span>
 								<span class="label">${r.label}</span>
 								<span class="detail">
-									${space ? html`${planet(space.planet, space.hue, 14)}` : nothing}${r.detail}
+									${space ? html`${planet(space.planet, space.hue, 14)}` : nothing}<span class="detail-text">${r.detail}</span>
 								</span>
-								${i === selected ? html`<kbd aria-hidden="true">↵</kbd>` : nothing}
+								<kbd aria-hidden="true">↵</kbd>
 							</div>`;
 					})}
 				</div>
@@ -305,22 +305,63 @@ export class LokaCommandBar extends LitElement {
 		.mode,
 		kbd {
 			flex: none;
-			font: 11px system-ui, "Segoe UI", sans-serif;
+			font: 12px system-ui, "Segoe UI", sans-serif;
 			color: var(--loka-ink-2);
-			padding: 3px 7px;
+			padding: 2px 7px;
 			border-radius: 6px;
 			background: var(--loka-fill-hover);
 		}
-		kbd {
-			font-size: 12px;
-			padding: 1px 6px;
+		/* Every row keeps the Enter key's room, shown only on the selected one, so moving never shifts the details. */
+		.mode {
+			color: var(--loka-ink);
 		}
+		kbd {
+			padding: 1px 6px;
+			color: var(--loka-ink);
+			visibility: hidden;
+		}
+		.result.on kbd {
+			visibility: visible;
+		}
+		/* The list fades at an edge while there's more to scroll past it. */
 		.results {
 			max-height: min(52vh, 460px);
 			overflow-y: auto;
 			padding: 4px 0 0;
 			overscroll-behavior: contain;
 			scrollbar-width: thin;
+			--fade-top: 0px;
+			--fade-bottom: 0px;
+			mask-image: linear-gradient(
+				to bottom,
+				transparent,
+				#000 var(--fade-top),
+				#000 calc(100% - var(--fade-bottom)),
+				transparent
+			);
+			animation:
+				fade-top linear both,
+				fade-bottom linear both;
+			animation-timeline: scroll(self), scroll(self);
+			animation-range:
+				0 24px,
+				calc(100% - 24px) 100%;
+		}
+		@keyframes fade-top {
+			from {
+				--fade-top: 0px;
+			}
+			to {
+				--fade-top: 24px;
+			}
+		}
+		@keyframes fade-bottom {
+			from {
+				--fade-bottom: 24px;
+			}
+			to {
+				--fade-bottom: 0px;
+			}
 		}
 		:host([layout="page"]) .results {
 			max-height: calc(100vh - 54px - 16px - 52px);
@@ -329,8 +370,8 @@ export class LokaCommandBar extends LitElement {
 			display: none;
 		}
 		.group {
-			margin: 10px 12px 3px;
-			font-size: 11.5px;
+			margin: 10px 12px 4px;
+			font-size: 12px;
 			font-weight: 600;
 			letter-spacing: 0.02em;
 			color: var(--loka-ink-3);
@@ -375,18 +416,26 @@ export class LokaCommandBar extends LitElement {
 			overflow: hidden;
 			white-space: nowrap;
 			text-overflow: ellipsis;
-			font-size: 14.5px;
+			font-size: 15px;
 		}
 		.detail {
 			display: flex;
 			align-items: center;
 			gap: 6px;
 			max-width: 42%;
+			min-width: 0;
+			font-size: 13px;
+			color: var(--loka-ink-3);
+		}
+		.detail-text {
+			min-width: 0;
 			overflow: hidden;
 			white-space: nowrap;
 			text-overflow: ellipsis;
-			font-size: 13px;
-			color: var(--loka-ink-3);
+		}
+		/* Meta text on the lit row steps up a tone, so it keeps its contrast on the lighter background. */
+		.result.on .detail {
+			color: var(--loka-ink-2);
 		}
 		@media (max-width: 420px) {
 			.detail {

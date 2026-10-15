@@ -163,15 +163,19 @@ export function commandResults(state: BrowserState, query: string, context: Resu
 		results.push({ kind: "tab", tabId: tab.id, spaceId, label: tab.title, detail: spaceName, group: "Tabs" });
 	}
 
+	// The same page with and without a trailing slash is one result.
+	const same = (url: string) => url.replace(/\/$/, "");
 	const listed = new Set(
-		results.flatMap((r) => (r.kind === "go" ? [r.url] : r.kind === "tab" ? [state.tabs[r.tabId]?.url ?? ""] : [])),
+		results.flatMap((r) =>
+			r.kind === "go" ? [same(r.url)] : r.kind === "tab" ? [same(state.tabs[r.tabId]?.url ?? "")] : [],
+		),
 	);
 	const listedTabs = new Set(results.flatMap((r) => (r.kind === "tab" ? [r.tabId] : [])));
 	const lokaTabOf = (browserId: number) =>
 		Object.entries(context.links ?? {}).find(([id, linked]) => linked === browserId && state.tabs[id])?.[0];
 	let suggested = 0;
 	for (const s of native) {
-		if (suggested >= SUGGESTION_LIMIT || listed.has(s.url)) continue;
+		if (suggested >= SUGGESTION_LIMIT || listed.has(same(s.url))) continue;
 		if (s.kind === "tab" && s.tabId !== undefined) {
 			const lokaId = lokaTabOf(s.tabId);
 			if (lokaId && listedTabs.has(lokaId)) continue;
@@ -193,7 +197,7 @@ export function commandResults(state: BrowserState, query: string, context: Resu
 		} else {
 			results.push(fromSuggestion(s, "Suggestions"));
 		}
-		listed.add(s.url);
+		listed.add(same(s.url));
 		suggested++;
 	}
 

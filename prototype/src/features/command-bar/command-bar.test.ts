@@ -115,3 +115,12 @@ test("the sidebar command says hide while pinned and keep open while it isn't", 
 test("only the bar's own commands are taken from a relayed pick", () => {
 	expect([isActionId("downloads"), isActionId("format-disk")]).toEqual([true, false]);
 });
+
+test("a suggestion for a page already listed as a tab isn't shown again, trailing slash or not", () => {
+	const suggestions: NativeSuggestion[] = [
+		{ kind: "search", title: "zen", url: "https://search.example/?q=zen" },
+		{ kind: "bookmark", title: "Zen Browser", url: "https://zen-browser.app/" },
+	];
+	const results = commandResults(seedState(), "zen", { suggestions, suggestionsFor: "zen" });
+	expect(results.filter((r) => r.label === "Zen Browser").map((r) => r.kind)).toEqual(["tab"]);
+});

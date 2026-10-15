@@ -1763,6 +1763,14 @@ export class LokaSidebar extends LitElement {
 		.world svg.planet {
 			filter: drop-shadow(0 -4px 22px hsl(var(--hue) 85% 65% / 0.35));
 		}
+		/* Only the planet's round body takes clicks: its ring and glow reach over the neighbours, which sit behind it. */
+		.world,
+		.world svg {
+			pointer-events: none;
+		}
+		.world .planet-h > span {
+			pointer-events: auto;
+		}
 		.world:hover {
 			filter: brightness(1.08);
 		}

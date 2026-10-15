@@ -96,6 +96,17 @@ export interface ResultContext {
 	links?: Record<TabId, number>;
 	/** Whether the sidebar is pinned open, for the hide-or-pin command's wording. */
 	pinned?: boolean;
+	/**
+	 * True after the person deleted text, until they type a character again. Chrome's rule: deleting the completion
+	 * means they want what they typed, so nothing is completed and a pick that needed completing isn't Enter's.
+	 */
+	inlineOff?: boolean;
+}
+
+/** One answer from the browser's autocomplete: the words it was asked about and what it said. */
+export interface SuggestionAnswer {
+	for: string;
+	list: NativeSuggestion[];
 }
 
 const ENGINES: [RegExp, string][] = [
@@ -140,12 +151,186 @@ function typedRow(s: NativeSuggestion, query: string): CommandResult {
 	return { kind: "go", url: s.url, icon: "globe", label: `Go to ${shortUrl(s.url)}`, detail: "", group: "" };
 }
 
+/** Loka's own row for what was typed, before (or without) the browser's: a search, or an address it looks like. */
+function guessRow(query: string): CommandResult {
+	const url = toUrl(query);
+	// A search goes to the user's engine, whichever it is.
+	return isSearch(url)
+		? {
+				kind: "go",
+				url,
+				icon: "search",
+				search: query.trim(),
+				label: query.trim(),
+				detail: "Search the web",
+				group: "",
+			}
+		: { kind: "go", url, icon: "globe", label: `Go to ${shortUrl(url)}`, detail: "", group: "" };
+}
+
+/** An address the way the address bar completes it: no scheme, no www., no trailing slash. */
+function bareUrl(url: string): string {
+	return shortUrl(url).replace(/^www\./, "");
+}
+
+/** The row that goes first and that Enter runs, ahead of the search, and what it completes the typed text with. */
+interface DefaultPick {
+	row: CommandResult;
+	inline: string;
+	/** The browser's suggestion it came from, so it isn't listed again. */
+	from?: NativeSuggestion;
+}
+
+function switchDetail(state: BrowserState, spaceId: string): string {
+	const name = state.spaces.find((s) => s.id === spaceId)?.name;
+	return spaceId === state.activeSpaceId || !name ? "Switch to tab" : `Switch to tab · ${name}`;
+}
+
+/**
+ * Which row is Enter's when it isn't a search, in this order:
+ * 1. The browser's own pick when it's an open tab ("youtu" with YouTube open): switch to it.
+ * 2. A Loka tab whose site starts with what was typed, from any space; the shortest address wins, so a site's front
+ *    page beats its deep pages. Loka knows its tabs at once, so this needs no answer from the browser.
+ * 3. The browser's own pick when it's an address it knows (history, a bookmark): "Go to youtube.com".
+ * The browser's picks count only in an answer for these exact words. A plain search, or a first answer without a
+ * pick (builds before `default`), leaves no pick, and the search stays first.
+ */
+function defaultPick(
+	state: BrowserState,
+	query: string,
+	fresh: NativeSuggestion[],
+	context: ResultContext,
+): DefaultPick | null {
+	const q = query.trim().toLowerCase();
+	const first = fresh[0];
+	const browserPick =
+		first?.default === true && first.kind !== "search" && !(context.inlineOff && first.inline) ? first : undefined;
+
+	if (browserPick?.kind === "tab") {
+		const same = (url: string) => url.replace(/\/$/, "") === browserPick.url.replace(/\/$/, "");
+		const linked = Object.entries(context.links ?? {}).find(
+			([id, browserId]) => browserId === browserPick.tabId && state.tabs[id],
+		)?.[0];
+		const lokaId = linked ?? Object.values(state.tabs).find((t) => same(t.url))?.id;
+		const inline = browserPick.inline ?? "";
+		if (lokaId) {
+			const spaceId = spaceOf(state, lokaId);
+			const detail = switchDetail(state, spaceId);
+			const label = state.tabs[lokaId]?.title || browserPick.title;
+			return { row: { kind: "tab", tabId: lokaId, spaceId, label, detail, group: "" }, inline, from: browserPick };
+		}
+		if (browserPick.tabId !== undefined) {
+			const row: CommandResult = {
+				kind: "browser-tab",
+				tabId: browserPick.tabId,
+				url: browserPick.url,
+				label: browserPick.title || bareUrl(browserPick.url),
+				detail: "Switch to tab",
+				group: "",
+			};
+			return { row, inline, from: browserPick };
+		}
+	}
+
+	// A trailing space or any space inside means words, not the start of an address.
+	if (/^[a-z0-9.-]+$/.test(q) && query === query.trimEnd()) {
+		const matches = Object.values(state.tabs)
+			.filter((t) => /^https?:\/\//.test(t.url))
+			.flatMap((t) => {
+				const host = URL.parse(t.url)?.hostname.toLowerCase() ?? "";
+				const site = [host, host.replace(/^www\./, "")].find((h) => h !== "" && h.startsWith(q));
+				return site ? [{ tab: t, inline: site.slice(q.length) }] : [];
+			})
+			.sort((a, b) => a.tab.url.length - b.tab.url.length);
+		const match = matches.find((m) => !context.inlineOff || m.inline === "");
+		if (match) {
+			const spaceId = spaceOf(state, match.tab.id);
+			const detail = switchDetail(state, spaceId);
+			const row: CommandResult = {
+				kind: "tab",
+				tabId: match.tab.id,
+				spaceId,
+				label: match.tab.title,
+				detail,
+				group: "",
+			};
+			// The browser's pick for the same site (www. or not) is this tab, so it isn't listed again under History.
+			const from = browserPick && bareUrl(browserPick.url) === bareUrl(match.tab.url) ? browserPick : undefined;
+			return { row, inline: match.inline, from };
+		}
+	}
+
+	// An address without a completion is what was typed ("lit.dev/docs"); the first row already says it.
+	if (browserPick && (browserPick.kind !== "url" || browserPick.inline)) {
+		const icon = browserPick.kind === "bookmark" ? "bookmark" : browserPick.kind === "url" ? "globe" : "history";
+		const row: CommandResult = {
+			kind: "go",
+			url: browserPick.url,
+			icon,
+			label: `Go to ${bareUrl(browserPick.url)}`,
+			detail: browserPick.title,
+			group: "",
+		};
+		return { row, inline: browserPick.inline ?? "", from: browserPick };
+	}
+	return null;
+}
+
+/** The browser's answer, when it's for exactly these words; any other answer can't say what Enter does. */
+function freshAnswer(query: string, context: ResultContext): NativeSuggestion[] {
+	const q = query.trim().toLowerCase();
+	return q !== "" && context.suggestionsFor?.trim().toLowerCase() === q ? (context.suggestions ?? []) : [];
+}
+
+/**
+ * The text shown selected after the caret, completing what was typed ("be.com" after "youtu"). Only while the first
+ * row, the pick it completes to, is selected: moving to another row puts back exactly what was typed.
+ */
+export function inlineCompletion(
+	state: BrowserState,
+	query: string,
+	context: ResultContext = {},
+	selected = 0,
+): string {
+	if (selected !== 0 || context.inlineOff || !query.trim()) return "";
+	return defaultPick(state, query, freshAnswer(query, context), context)?.inline ?? "";
+}
+
+/**
+ * The person typed the next character of the completion ("b" over "youtu|be.com"): the same answer, now for the
+ * longer words with a shorter completion, so the pick and its completion stay put instead of flickering until the
+ * browser answers again. The answer's other rows keep only what still matches, and its old search is left out.
+ * Null when the typed text doesn't continue the completion.
+ */
+export function continueAnswer(answer: SuggestionAnswer, typed: string): SuggestionAnswer | null {
+	const [first, ...rest] = answer.list;
+	if (!first?.default || !first.inline) return null;
+	const full = `${answer.for}${first.inline}`;
+	const text = typed.toLowerCase();
+	if (typed.length <= answer.for.length || !full.toLowerCase().startsWith(text)) return null;
+	const q = typed.trim().toLowerCase();
+	const still = rest.filter(
+		(s) => s.kind !== "search" && (s.title.toLowerCase().includes(q) || s.url.toLowerCase().includes(q)),
+	);
+	return { for: typed, list: [{ ...first, inline: full.slice(typed.length) }, ...still] };
+}
+
+/**
+ * Which answer the bar keeps when one arrives. An answer for these exact words is kept until another one for the
+ * current words replaces it, so a late answer for earlier words can't take away the pick or its completion.
+ */
+export function keepAnswer(current: SuggestionAnswer, incoming: SuggestionAnswer, query: string): SuggestionAnswer {
+	return incoming.for !== query && current.for === query ? current : incoming;
+}
+
 const SUGGESTION_LIMIT = 6;
 
 /**
  * What the bar shows for a query, in groups:
- * 1. What was typed: the browser's own first answer (an address or a search with the user's engine) once it has
- *    answered these exact words, else Loka's guess from toUrl.
+ * 1. What Enter does. When there's a pick (defaultPick: an open tab for the site typed, or the address the browser
+ *    completes to) it goes first and the search second. Otherwise what was typed goes first: the browser's own
+ *    first answer (an address or a search with the user's engine) once it has answered these exact words, else
+ *    Loka's guess from toUrl.
  * 2. Tabs in any space whose title or site matches. An empty query lists this space's open tabs instead.
  * 3. The browser's other suggestions (history, bookmarks, open tabs), minus anything already listed. Suggestions
  *    for earlier words stay while the person keeps typing, but only the ones that still match.
@@ -166,28 +351,22 @@ export function commandResults(state: BrowserState, query: string, context: Resu
 		);
 	}
 
+	const pick = q ? defaultPick(state, query, fresh ? native : [], context) : null;
+	if (pick) {
+		results.push(pick.row);
+		native = native.filter((s) => s !== pick.from);
+	}
 	if (q) {
 		const first = native[0];
-		if (fresh && first && (first.kind === "url" || first.kind === "search")) {
-			results.push(typedRow(first, query.trim()));
-			native = native.slice(1);
-		} else {
-			// Before the browser answers: Loka's own guess. A search goes to the user's engine, whichever it is.
-			const url = toUrl(query);
-			results.push(
-				isSearch(url)
-					? {
-							kind: "go",
-							url,
-							icon: "search",
-							search: query.trim(),
-							label: query.trim(),
-							detail: "Search the web",
-							group: "",
-						}
-					: { kind: "go", url, icon: "globe", label: `Go to ${shortUrl(url)}`, detail: "", group: "" },
-			);
-		}
+		// After a pick, the browser's search for these words is the second row; without one, its first answer is
+		// the first row when that's an address or a search.
+		const typed = !fresh
+			? undefined
+			: !pick && first && (first.kind === "url" || first.kind === "search")
+				? first
+				: native.find((s) => s.kind === "search" && s.title.trim().toLowerCase() === q);
+		results.push(typed ? typedRow(typed, query.trim()) : guessRow(query));
+		native = native.filter((s) => s !== typed);
 	}
 
 	const current = state.spaces.find((s) => s.id === state.activeSpaceId);
@@ -196,6 +375,7 @@ export function commandResults(state: BrowserState, query: string, context: Resu
 		.map((id) => state.tabs[id])
 		// A new tab page is where the bar itself is showing; offering to go there goes nowhere.
 		.filter((tab) => tab && !tab.url.startsWith("chrome://newtab"))
+		.filter((tab) => tab && !(pick?.row.kind === "tab" && pick.row.tabId === tab.id))
 		.filter((tab) => tab && (!q || tab.title.toLowerCase().includes(q) || hostOf(tab.url).includes(q)))
 		.slice(0, 6);
 	for (const tab of tabs) {

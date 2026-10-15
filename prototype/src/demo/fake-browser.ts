@@ -96,7 +96,21 @@ function setDownloads(next: NativeDownload[]) {
 	keepTicking();
 }
 
-/** What the browser's autocomplete would answer: the words as typed, then matching history and bookmarks. */
+/** An address the way the address bar completes it: no scheme, no www., no trailing slash. */
+function bare(url: string): string {
+	return url
+		.replace(/^https?:\/\//, "")
+		.replace(/^www\./, "")
+		.replace(/\/$/, "");
+}
+
+/**
+ * What the browser's autocomplete would answer, shaped like the handler's OnResultChanged: a page visited before
+ * whose address starts with the words ("youtu" and youtube.com) is the pick for Enter, with the rest of its address
+ * as the completion, and the words as typed come second; otherwise the words as typed are the pick. Then the open
+ * tab and the history and bookmarks that match. The handler doesn't hear about deletions, so neither does this:
+ * the bar stops completing itself.
+ */
 function suggestionsFor(query: string): NativeSuggestion[] {
 	const q = query.trim().toLowerCase();
 	if (!q) return [];
@@ -109,7 +123,13 @@ function suggestionsFor(query: string): NativeSuggestion[] {
 	const open: NativeSuggestion[] = tab
 		? [{ kind: "tab", title: MUSIC_TAB.title, url: MUSIC_TAB.url, tabId: MUSIC_TAB.id }]
 		: [];
-	return [typed, ...open, ...matches.slice(0, 5)];
+	const others = [...open, ...matches.slice(0, 5)];
+	// Chrome's has_tab_match: a pick that's open in a tab is a tab suggestion.
+	const pick = query === query.trimEnd() ? others.find((s) => bare(s.url).startsWith(q)) : undefined;
+	const plain = (s: NativeSuggestion): NativeSuggestion => ({ ...s, default: false, inline: "" });
+	if (!pick) return [{ ...typed, default: true, inline: "" }, ...others.map(plain)];
+	const first: NativeSuggestion = { ...pick, default: true, inline: bare(pick.url).slice(q.length) };
+	return [first, plain(typed), ...others.filter((s) => s !== pick).map(plain)];
 }
 
 export const fakeBrowser: Browser = {

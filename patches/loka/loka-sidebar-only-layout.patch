@@ -1,0 +1,78 @@
+--- a/chrome/browser/ui/helium/helium_layout_state_controller.cc
++++ b/chrome/browser/ui/helium/helium_layout_state_controller.cc
+@@ -52,7 +52,8 @@
+ }
+ 
+ bool HeliumLayoutStateController::IsZenModeEnabled() const {
+-  return pref_service_->GetBoolean(prefs::kHeliumZenMode);
++  // Loka: zen mode is what hides the toolbar row; the sidebar replaces it.
++  return true;
+ }
+ 
+ void HeliumLayoutStateController::SetBrowserLayout(HeliumLayoutType layout) {
+@@ -60,6 +61,10 @@
+ }
+ 
+ HeliumLayoutType HeliumLayoutStateController::GetBrowserLayout() const {
++  // Loka: tabs live in the Loka sidebar only. There's no horizontal tab strip
++  // to switch to, whatever the pref says.
++  return HeliumLayoutType::kVertical;
++#if 0
+   int layout_value = pref_service_->GetInteger(prefs::kHeliumLayout);
+ 
+   if (layout_value < std::to_underlying(HeliumLayoutType::kClassic) ||
+@@ -68,6 +73,7 @@
+   }
+ 
+   return static_cast<HeliumLayoutType>(layout_value);
++#endif
+ }
+ 
+ base::CallbackListSubscription
+--- a/chrome/browser/ui/tabs/tab_strip_prefs.cc
++++ b/chrome/browser/ui/tabs/tab_strip_prefs.cc
+@@ -26,14 +26,15 @@
+   registry->RegisterBooleanPref(prefs::kEverythingMenuPinnedToTabstrip, true);
+   registry->RegisterBooleanPref(prefs::kTabScrollButtonsPinnedToTabstrip, true);
+   registry->RegisterBooleanPref(prefs::kVerticalTabsCollapsedState, false);
+-  registry->RegisterIntegerPref(prefs::kVerticalTabsUncollapsedWidth,
+-                                kVerticalTabStripDefaultUncollapsedWidth);
++  // Loka: wide enough for the sidebar's names, folders and space planets.
++  registry->RegisterIntegerPref(prefs::kVerticalTabsUncollapsedWidth, 300);
+ 
+   registry->RegisterIntegerPref(prefs::kHeliumLayout,
+                                 std::to_underlying(HeliumLayoutType::kClassic));
+   registry->RegisterBooleanPref(prefs::kHeliumVerticalRightAligned, false);
+   registry->RegisterBooleanPref(prefs::kHeliumZenMode, false);
+-  registry->RegisterBooleanPref(prefs::kHeliumZenModeSidebarPinned, false);
++  // Loka: the sidebar stays put unless the user chooses to hide it.
++  registry->RegisterBooleanPref(prefs::kHeliumZenModeSidebarPinned, true);
+   registry->RegisterBooleanPref(prefs::kHeliumZenModeTopChromePinned, false);
+ }
+ 
+--- a/chrome/browser/ui/tabs/vertical_tab_strip_state_controller.cc
++++ b/chrome/browser/ui/tabs/vertical_tab_strip_state_controller.cc
+@@ -170,7 +170,8 @@
+ }
+ 
+ bool VerticalTabStripStateController::ShouldDisplayVerticalTabs() const {
+-  return is_vertical_tabs_enabled_;
++  // Loka: always the sidebar, never a horizontal tab strip.
++  return true;
+ }
+ 
+ void VerticalTabStripStateController::SetVerticalTabsEnabled(bool enabled) {
+--- a/chrome/browser/ui/views/frame/browser_view.cc
++++ b/chrome/browser/ui/views/frame/browser_view.cc
+@@ -1704,6 +1704,11 @@
+   if (!zen_mode_enabled_) {
+     return 1.f;
+   }
++  // Loka: the sidebar is the title bar and has the address field, so the
++  // toolbar row shows only when pinned, never on hover.
++  if (!IsZenModeTopChromePinned()) {
++    return 0.f;
++  }
+   return zen_top_chrome_animation_.GetCurrentValue();
+ }
+ 

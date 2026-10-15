@@ -18,3 +18,4 @@ extension/dist
 # loka_brand.py builds these from resources/loka/branding
 resources/loka/generated
 resources/loka/*.txt
+webui/dist/

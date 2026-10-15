@@ -70,14 +70,16 @@ export const INITIAL_PREFERENCES = {
 	side_panel: { is_right_aligned: false },
 	helium: {
 		browser: {
+			// Vertical layout on the left, where the organizer panel shows the Loka sidebar. Zen mode with the top
+			// chrome unpinned hides the toolbar row; the sidebar has its own back, forward, reload and address.
 			layout: 2,
-			vertical_right_aligned: true,
+			vertical_right_aligned: false,
 			zen_mode: true,
-			zen_mode_sidebar_pinned: false,
-			zen_mode_top_chrome_pinned: true,
+			zen_mode_sidebar_pinned: true,
+			zen_mode_top_chrome_pinned: false,
 		},
 	},
-	vertical_tabs: { collapsed_state: true },
+	vertical_tabs: { collapsed_state: false },
 };
 
 function launch() {
@@ -88,16 +90,10 @@ function launch() {
 		process.exit(1);
 	}
 	writeFileSync(join(out, "initial_preferences"), JSON.stringify(INITIAL_PREFERENCES, null, 2));
-	// The Loka sidebar, from this checkout (`bun run ext:build` makes it). Until it's built into the browser as a
-	// component, it loads as an unpacked extension; non-Google Chromium builds allow that.
-	const extension = join(repo, "extension", "dist");
-	if (!existsSync(join(extension, "manifest.json"))) {
-		console.error("The Loka sidebar isn't built yet. Run: bun run ext:build");
-		process.exit(1);
-	}
+	// The Loka sidebar is part of the build (components/loka_sidebar; `bun run webui:build` refreshes it).
 	// A throwaway profile next to the build, never anyone's real browser profile.
 	const profile = join(BUILD_DIR, "profile-dev");
-	run(chrome, [`--user-data-dir=${profile}`, `--load-extension=${extension}`, ...process.argv.slice(3)]);
+	run(chrome, [`--user-data-dir=${profile}`, ...process.argv.slice(3)]);
 }
 
 if (import.meta.main) {

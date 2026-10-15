@@ -33,7 +33,6 @@ static class Loka
 		var flags = new[]
 		{
 			"--user-data-dir=" + profile,
-			"--load-extension=" + Path.Combine(app, "loka-sidebar"),
 			"--custom-update-server-url=" + UpdateFeed,
 		}.Concat(args);
 

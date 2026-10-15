@@ -96,11 +96,6 @@ if (!existsSync(join(out, "chrome.exe"))) {
 	console.error(`No build at ${out}. Build it first: bun run browser:build`);
 	process.exit(1);
 }
-const extension = join(repo, "extension", "dist");
-if (!existsSync(join(extension, "manifest.json"))) {
-	console.error("The Loka sidebar isn't built. Run: bun run ext:build");
-	process.exit(1);
-}
 
 rmSync(stage, { recursive: true, force: true });
 mkdirSync(app, { recursive: true });
@@ -119,7 +114,6 @@ if (!existsSync(join(app, "chrome.exe"))) {
 }
 console.log(`${files.length} runtime entries, ${(bytes / 1024 ** 2).toFixed(0)} MB of files at the top level`);
 
-cpSync(extension, join(app, "loka-sidebar"), { recursive: true });
 writeFileSync(join(app, "initial_preferences"), JSON.stringify(INITIAL_PREFERENCES, null, 2));
 writeFileSync(join(stage, "README.txt"), readme().replace(/\n/g, "\r\n"));
 

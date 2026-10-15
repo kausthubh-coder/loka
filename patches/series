@@ -37,3 +37,6 @@ helium/windows/updater/build-wiring.patch
 helium/windows/updater/register.patch
 helium/windows/updater/helper.patch
 helium/windows/updater/update-notifications.patch
+loka/loka-native-sidebar.patch
+loka/loka-sidebar-only-layout.patch
+loka/loka-name.patch

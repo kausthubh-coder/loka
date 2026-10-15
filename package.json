@@ -8,6 +8,7 @@
 		"build": "vite build prototype",
 		"preview": "vite preview prototype",
 		"ext:build": "vite build --config extension/vite.config.ts",
+		"webui:build": "vite build --config webui/vite.config.ts && node scripts/webui.mjs",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"typecheck": "tsc --noEmit",

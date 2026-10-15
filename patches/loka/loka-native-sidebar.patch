@@ -1,0 +1,1155 @@
+--- a/chrome/browser/prefs/browser_prefs.cc
++++ b/chrome/browser/prefs/browser_prefs.cc
+@@ -96,6 +96,7 @@
+ #include "chrome/browser/ui/safety_hub/safety_hub_prefs.h"
+ #include "chrome/browser/ui/tabs/organizer/organizer_prefs.h"
+ #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
+ #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_prefs.h"
+ #include "chrome/browser/ui/toolbar/chrome_location_bar_model_delegate.h"
+ #include "chrome/browser/ui/toolbar/toolbar_pref_names.h"
+@@ -330,6 +331,7 @@
+ #include "chrome/browser/ui/tabs/pinned_tab_codec.h"
+ #include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_pref_names.h"
+ #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
+ #include "chrome/browser/ui/webui/certificate_manager/certificate_manager_handler.h"
+ #include "chrome/browser/ui/webui/cr_components/theme_color_picker/theme_color_picker_handler.h"
+ #include "chrome/browser/ui/webui/history/foreign_session_handler.h"
+@@ -2208,6 +2210,7 @@
+   side_panel_prefs::RegisterProfilePrefs(registry);
+ 
+   tabs::RegisterProfilePrefs(registry);
++  LokaSidebarUI::RegisterProfilePrefs(registry);
+ 
+   CertificateManagerPageHandler::RegisterProfilePrefs(registry);
+ 
+--- a/chrome/browser/ui/BUILD.gn
++++ b/chrome/browser/ui/BUILD.gn
+@@ -1745,6 +1745,7 @@
+       "//chrome/browser/ui/webui/metrics_reporter:impl",
+       "//chrome/browser/ui/webui/new_tab_footer",
+       "//chrome/browser/ui/webui/new_tab_footer:impl",
++      "//chrome/browser/ui/webui/loka_sidebar",
+       "//chrome/browser/ui/webui/organizer_panel",
+       "//chrome/browser/ui/webui/page_action_internals",
+       "//chrome/browser/ui/webui/settings",
+--- a/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc
++++ b/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc
+@@ -77,6 +77,12 @@
+ #include "ui/views/view.h"
+ #include "ui/views/view_class_properties.h"
+ #include "ui/views/view_utils.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
++#include "chrome/browser/ui/webui/webui_embedding_context.h"
++#include "ui/views/controls/webview/web_contents_set_background_color.h"
++#include "ui/views/controls/webview/webview.h"
++#include "url/gurl.h"
+ 
+ namespace {
+ constexpr int kResizeAreaWidth = 5;
+@@ -176,6 +182,19 @@
+         std::make_unique<VerticalTabStripFocusSwipeController>(this);
+   }
+ 
++  // Loka: the column holds the Loka sidebar, the browser's own page for spaces,
++  // folders and tabs, in place of the tab list. It is drawn over the other
++  // children, which Layout() keeps hidden; the tab strip model is unchanged.
++  auto loka_sidebar =
++      std::make_unique<views::WebView>(browser_view->GetProfile());
++  webui::SetBrowserWindowInterface(loka_sidebar->GetWebContents(),
++                                   browser_view->browser());
++  views::WebContentsSetBackgroundColor::CreateForWebContentsWithColor(
++      loka_sidebar->GetWebContents(), SK_ColorTRANSPARENT);
++  loka_sidebar->LoadInitialURL(GURL(kLokaSidebarURL));
++  loka_sidebar->SetProperty(views::kViewIgnoredByLayoutKey, true);
++  loka_sidebar_ = AddChildView(std::move(loka_sidebar));
++
+   SetNotifyEnterExitOnChild(true);
+   UpdateColors();
+   UpdateInteriorMargin();
+@@ -368,6 +387,22 @@
+   resize_area_->SetBoundsRect(
+       gfx::Rect(resize_area_x, 0, resize_area_width_, bounds().height()));
+   shadow_frame_->SetBoundsRect(GetLocalBounds());
++
++  // Loka: the sidebar fills the column except the resize edge, and the tab
++  // list's own views stay hidden under it.
++  if (loka_sidebar_) {
++    gfx::Rect sidebar_bounds = GetLocalBounds();
++    sidebar_bounds.Inset(state_controller_->IsTabStripRightAligned()
++                             ? gfx::Insets::TLBR(0, resize_area_width_, 0, 0)
++                             : gfx::Insets::TLBR(0, 0, 0, resize_area_width_));
++    loka_sidebar_->SetBoundsRect(sidebar_bounds);
++    for (views::View* child : children()) {
++      if (child != loka_sidebar_ && child != resize_area_ &&
++          child != shadow_frame_ && child->GetVisible()) {
++        child->SetVisible(false);
++      }
++    }
++  }
+ 
+   // Ensure that we update the drop arrow position so that it does not render in
+   // the collapsed state when expand on hover is active.
+--- a/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h
++++ b/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h
+@@ -235,6 +235,8 @@
+   raw_ptr<VerticalTabStripBottomContainer> bottom_button_container_ = nullptr;
+   raw_ptr<views::View> gemini_button_ = nullptr;
+   raw_ptr<views::ResizeArea> resize_area_ = nullptr;
++  // Loka: the sidebar page that fills the column in place of the tab list.
++  raw_ptr<views::View> loka_sidebar_ = nullptr;
+   raw_ptr<ShadowFrameView> shadow_frame_ = nullptr;
+   int resize_area_width_;
+   raw_ptr<views::FlexLayout> flex_layout_ = nullptr;
+--- a/chrome/browser/ui/webui/chrome_web_ui_configs.cc
++++ b/chrome/browser/ui/webui/chrome_web_ui_configs.cc
+@@ -48,6 +48,7 @@
+ #include "chrome/browser/ui/webui/ntp_tiles_internals_ui.h"
+ #include "chrome/browser/ui/webui/omnibox/omnibox_ui.h"
+ #include "chrome/browser/ui/webui/onboarding/onboarding_page_ui.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
+ #include "chrome/browser/ui/webui/policy/policy_ui.h"
+ #include "chrome/browser/ui/webui/predictors/predictors_ui.h"
+ #include "chrome/browser/ui/webui/regional_capabilities_internals/regional_capabilities_internals_ui.h"
+@@ -492,6 +493,7 @@
+   map.AddWebUIConfig(std::make_unique<DefaultBrowserModalUIConfig>());
+   map.AddWebUIConfig(std::make_unique<ManagedUserProfileNoticeUIConfig>());
+   map.AddWebUIConfig(std::make_unique<HeliumOnboardingPageConfig>());
++  map.AddWebUIConfig(std::make_unique<LokaSidebarUIConfig>());
+   map.AddWebUIConfig(std::make_unique<ProfileCustomizationUIConfig>());
+   map.AddWebUIConfig(std::make_unique<ProfilePickerUIConfig>());
+   map.AddWebUIConfig(std::make_unique<SigninErrorUIConfig>());
+--- /dev/null
++++ b/chrome/browser/ui/webui/loka_sidebar/BUILD.gn
+@@ -0,0 +1,41 @@
++# Copyright 2026 The Loka Authors
++# You can use, redistribute, and/or modify this source code under
++# the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++source_set("loka_sidebar") {
++  sources = [
++    "loka_sidebar_handler.cc",
++    "loka_sidebar_handler.h",
++    "loka_sidebar_ui.cc",
++    "loka_sidebar_ui.h",
++  ]
++
++  public_deps = [
++    "//chrome/browser/ui/webui/top_chrome",
++    "//content/public/browser",
++  ]
++
++  deps = [
++    "//base",
++    "//chrome/browser/profiles:profile",
++    "//chrome/browser/search_engines",
++    "//chrome/browser/ui/tabs:tab_enums",
++    "//chrome/browser/ui/tabs:tab_group",
++    "//chrome/browser/ui/tabs:tab_strip",
++    "//chrome/browser/ui/tabs:tab_strip_model_observer",
++    "//chrome/browser/ui/webui:favicon_source",
++    "//chrome/browser/ui/webui:theme_source",
++    "//chrome/common",
++    "//components/favicon_base",
++    "//components/loka_sidebar:generated_resources",
++    "//components/pref_registry",
++    "//components/prefs",
++    "//components/search_engines",
++    "//components/tab_groups",
++    "//components/tabs:public",
++    "//ui/base",
++    "//ui/color",
++    "//ui/gfx",
++    "//ui/webui",
++  ]
++}
+--- /dev/null
++++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.cc
+@@ -0,0 +1,588 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h"
++
++#include <algorithm>
++#include <utility>
++#include <vector>
++
++#include "base/functional/bind.h"
++#include "base/location.h"
++#include "base/strings/utf_string_conversions.h"
++#include "base/task/sequenced_task_runner.h"
++#include "build/build_config.h"
++#include "chrome/browser/favicon/favicon_utils.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/search_engines/template_url_service_factory.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#include "chrome/browser/ui/navigator/browser_navigator.h"
++#include "chrome/browser/ui/navigator/browser_navigator_params.h"
++#include "chrome/browser/ui/tab_ui_helper.h"
++#include "chrome/browser/ui/tabs/tab_enums.h"
++#include "chrome/browser/ui/tabs/tab_group_model.h"
++#include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
++#include "chrome/browser/ui/webui/util/image_util.h"
++#include "chrome/browser/ui/webui/webui_embedding_context.h"
++#include "components/prefs/pref_service.h"
++#include "components/prefs/scoped_user_pref_update.h"
++#include "components/search_engines/template_url.h"
++#include "components/search_engines/template_url_service.h"
++#include "components/tab_groups/tab_group_color.h"
++#include "components/tab_groups/tab_group_visual_data.h"
++#include "components/tabs/public/tab_group.h"
++#include "components/tabs/public/tab_interface.h"
++#include "content/public/browser/navigation_controller.h"
++#include "content/public/browser/web_contents.h"
++#include "content/public/browser/web_ui.h"
++#include "content/public/common/url_constants.h"
++#include "ui/base/models/image_model.h"
++#include "ui/base/page_transition_types.h"
++#include "ui/base/base_window.h"
++#include "ui/base/window_open_disposition.h"
++#include "ui/color/color_provider.h"
++#include "url/gurl.h"
++
++#if BUILDFLAG(IS_WIN)
++#include <windows.h>
++
++#include "ui/views/win/hwnd_util.h"
++#endif
++
++namespace {
++
++// Loka's group colors are the browser's own names for them.
++tab_groups::TabGroupColorId ColorFromName(const std::string& name) {
++  static constexpr std::pair<const char*, tab_groups::TabGroupColorId>
++      kColors[] = {
++          {"grey", tab_groups::TabGroupColorId::kGrey},
++          {"blue", tab_groups::TabGroupColorId::kBlue},
++          {"red", tab_groups::TabGroupColorId::kRed},
++          {"yellow", tab_groups::TabGroupColorId::kYellow},
++          {"green", tab_groups::TabGroupColorId::kGreen},
++          {"pink", tab_groups::TabGroupColorId::kPink},
++          {"purple", tab_groups::TabGroupColorId::kPurple},
++          {"cyan", tab_groups::TabGroupColorId::kCyan},
++          {"orange", tab_groups::TabGroupColorId::kOrange},
++      };
++  for (const auto& [n, color] : kColors) {
++    if (name == n) {
++      return color;
++    }
++  }
++  return tab_groups::TabGroupColorId::kGrey;
++}
++
++int TabId(tabs::TabInterface* tab) {
++  return tab->GetHandle().raw_value();
++}
++
++}  // namespace
++
++LokaSidebarHandler::LokaSidebarHandler() = default;
++
++LokaSidebarHandler::~LokaSidebarHandler() {
++  if (observed_) {
++    observed_->RemoveObserver(this);
++  }
++}
++
++void LokaSidebarHandler::RegisterMessages() {
++  const auto add = [this](const char* name,
++                          void (LokaSidebarHandler::*handler)(
++                              const base::ListValue&)) {
++    web_ui()->RegisterMessageCallback(
++        name, base::BindRepeating(handler, base::Unretained(this)));
++  };
++  add("getTabs", &LokaSidebarHandler::HandleGetTabs);
++  add("getGroups", &LokaSidebarHandler::HandleGetGroups);
++  add("getStore", &LokaSidebarHandler::HandleGetStore);
++  add("setStore", &LokaSidebarHandler::HandleSetStore);
++  add("createTab", &LokaSidebarHandler::HandleCreateTab);
++  add("activateTab", &LokaSidebarHandler::HandleActivateTab);
++  add("closeTab", &LokaSidebarHandler::HandleCloseTab);
++  add("navigateTab", &LokaSidebarHandler::HandleNavigateTab);
++  add("goBack", &LokaSidebarHandler::HandleGoBack);
++  add("goForward", &LokaSidebarHandler::HandleGoForward);
++  add("reload", &LokaSidebarHandler::HandleReload);
++  add("setMuted", &LokaSidebarHandler::HandleSetMuted);
++  add("groupTabs", &LokaSidebarHandler::HandleGroupTabs);
++  add("updateGroup", &LokaSidebarHandler::HandleUpdateGroup);
++  add("ungroupTabs", &LokaSidebarHandler::HandleUngroupTabs);
++  add("search", &LokaSidebarHandler::HandleSearch);
++  add("openPage", &LokaSidebarHandler::HandleOpenPage);
++  add("windowAction", &LokaSidebarHandler::HandleWindowAction);
++  add("startWindowDrag", &LokaSidebarHandler::HandleStartWindowDrag);
++}
++
++void LokaSidebarHandler::OnJavascriptAllowed() {
++  StartObserving();
++  Profile* profile = Profile::FromWebUI(web_ui());
++  pref_change_registrar_.Init(profile->GetPrefs());
++  pref_change_registrar_.Add(
++      kLokaSidebarStorePref,
++      base::BindRepeating(&LokaSidebarHandler::OnStoreChanged,
++                          base::Unretained(this)));
++}
++
++void LokaSidebarHandler::OnJavascriptDisallowed() {
++  pref_change_registrar_.RemoveAll();
++  if (observed_) {
++    observed_->RemoveObserver(this);
++    observed_ = nullptr;
++  }
++  weak_factory_.InvalidateWeakPtrs();
++  tabs_change_pending_ = false;
++}
++
++void LokaSidebarHandler::StartObserving() {
++  TabStripModel* tab_strip = GetTabStrip();
++  if (tab_strip == observed_) {
++    return;
++  }
++  if (observed_) {
++    observed_->RemoveObserver(this);
++  }
++  observed_ = tab_strip;
++  if (observed_) {
++    observed_->AddObserver(this);
++  }
++}
++
++BrowserWindowInterface* LokaSidebarHandler::GetBrowser() {
++  return webui::GetBrowserWindowInterface(web_ui()->GetWebContents());
++}
++
++TabStripModel* LokaSidebarHandler::GetTabStrip() {
++  BrowserWindowInterface* browser = GetBrowser();
++  return browser ? browser->GetTabStripModel() : nullptr;
++}
++
++tabs::TabInterface* LokaSidebarHandler::FindTab(const base::Value& id) {
++  TabStripModel* tab_strip = GetTabStrip();
++  if (!tab_strip || !id.is_int()) {
++    return nullptr;
++  }
++  tabs::TabInterface* tab = tabs::TabHandle(id.GetInt()).Get();
++  if (!tab || tab_strip->GetIndexOfTab(tab) == TabStripModel::kNoTab) {
++    return nullptr;
++  }
++  return tab;
++}
++
++int LokaSidebarHandler::GroupNumber(const tab_groups::TabGroupId& group) {
++  auto [it, inserted] = group_numbers_.try_emplace(group, next_group_number_);
++  if (inserted) {
++    ++next_group_number_;
++  }
++  return it->second;
++}
++
++std::optional<tab_groups::TabGroupId> LokaSidebarHandler::GroupFromNumber(
++    int number) {
++  for (const auto& [group, n] : group_numbers_) {
++    if (n == number) {
++      return group;
++    }
++  }
++  return std::nullopt;
++}
++
++std::string LokaSidebarHandler::FaviconDataUrl(tabs::TabInterface* tab) {
++  TabUIHelper* helper = TabUIHelper::From(tab);
++  if (!helper || !helper->ShouldDisplayFavicon()) {
++    return std::string();
++  }
++  const ui::ImageModel favicon = helper->GetFavicon();
++  if (favicon.IsEmpty()) {
++    return std::string();
++  }
++  const ui::ColorProvider& provider =
++      web_ui()->GetWebContents()->GetColorProvider();
++  gfx::ImageSkia image = favicon.Rasterize(&provider);
++  // The browser's stand-in globe isn't the site's icon; the page shows its
++  // own fallback for that.
++  if (image.BackedBySameObjectAs(
++          favicon::GetDefaultFaviconModel().Rasterize(&provider))) {
++    return std::string();
++  }
++  auto& cached = favicons_[TabId(tab)];
++  if (!cached.second.empty() && cached.first.BackedBySameObjectAs(image)) {
++    return cached.second;
++  }
++  cached = {image, webui::EncodePNGAndMakeDataURI(
++                       image, web_ui()->GetDeviceScaleFactor())};
++  return cached.second;
++}
++
++base::DictValue LokaSidebarHandler::TabData(tabs::TabInterface* tab,
++                                             int index) {
++  TabStripModel* tab_strip = GetTabStrip();
++  content::WebContents* contents = tab->GetContents();
++  TabUIHelper* helper = TabUIHelper::From(tab);
++  GURL url = helper ? helper->GetLastCommittedURL() : GURL();
++  if ((!url.is_valid() || url.is_empty()) && helper) {
++    url = helper->GetVisibleURL();
++  }
++  base::DictValue data;
++  data.Set("id", TabId(tab));
++  data.Set("index", index);
++  data.Set("url", url.spec());
++  data.Set("title",
++           helper ? base::UTF16ToUTF8(helper->GetTitle()) : std::string());
++  data.Set("favicon", FaviconDataUrl(tab));
++  data.Set("active", tab_strip->active_index() == index);
++  data.Set("pinned", tab->IsPinned());
++  data.Set("loading", contents->IsLoading());
++  data.Set("audible", contents->IsCurrentlyAudible());
++  data.Set("muted", contents->IsAudioMuted());
++  const std::optional<tab_groups::TabGroupId> group = tab->GetGroup();
++  data.Set("groupId", group ? GroupNumber(*group) : -1);
++  if (tabs::TabInterface* opener = tab_strip->GetOpenerOfTabAt(index)) {
++    data.Set("openerId", TabId(opener));
++  }
++  data.Set("lastAccessed",
++           contents->GetLastActiveTime().InMillisecondsFSinceUnixEpoch());
++  return data;
++}
++
++base::ListValue LokaSidebarHandler::TabList() {
++  base::ListValue tabs;
++  TabStripModel* tab_strip = GetTabStrip();
++  if (!tab_strip) {
++    return tabs;
++  }
++  std::map<int32_t, std::pair<gfx::ImageSkia, std::string>> alive;
++  for (int i = 0; i < tab_strip->count(); ++i) {
++    tabs::TabInterface* tab = tab_strip->GetTabAtIndex(i);
++    tabs.Append(TabData(tab, i));
++    if (auto it = favicons_.find(TabId(tab)); it != favicons_.end()) {
++      alive.insert(*it);
++    }
++  }
++  favicons_ = std::move(alive);
++  return tabs;
++}
++
++base::ListValue LokaSidebarHandler::GroupList() {
++  base::ListValue groups;
++  TabStripModel* tab_strip = GetTabStrip();
++  if (!tab_strip || !tab_strip->group_model()) {
++    return groups;
++  }
++  for (const tab_groups::TabGroupId& id :
++       tab_strip->group_model()->ListTabGroups()) {
++    const TabGroup* group = tab_strip->group_model()->GetTabGroup(id);
++    base::DictValue data;
++    data.Set("id", GroupNumber(id));
++    data.Set("title", base::UTF16ToUTF8(group->visual_data()->title()));
++    data.Set("collapsed", group->visual_data()->is_collapsed());
++    groups.Append(std::move(data));
++  }
++  return groups;
++}
++
++base::DictValue LokaSidebarHandler::StoreValue() {
++  Profile* profile = Profile::FromWebUI(web_ui());
++  return profile->GetPrefs()->GetDict(kLokaSidebarStorePref).Clone();
++}
++
++void LokaSidebarHandler::OnTabStripModelChanged(
++    TabStripModel* tab_strip_model,
++    const TabStripModelChange& change,
++    const TabStripSelectionChange& selection) {
++  ScheduleTabsChanged();
++}
++
++void LokaSidebarHandler::OnTabChangedAt(tabs::TabInterface* tab,
++                                        TabChangeType change_type) {
++  ScheduleTabsChanged();
++}
++
++void LokaSidebarHandler::OnTabGroupChanged(const TabGroupChange& change) {
++  ScheduleTabsChanged();
++}
++
++void LokaSidebarHandler::ScheduleTabsChanged() {
++  if (tabs_change_pending_ || !IsJavascriptAllowed()) {
++    return;
++  }
++  tabs_change_pending_ = true;
++  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
++      FROM_HERE, base::BindOnce(&LokaSidebarHandler::SendTabsChanged,
++                                weak_factory_.GetWeakPtr()));
++}
++
++void LokaSidebarHandler::SendTabsChanged() {
++  tabs_change_pending_ = false;
++  if (!IsJavascriptAllowed()) {
++    return;
++  }
++  // The sidebar can be moved to another window's panel; follow it.
++  StartObserving();
++  FireWebUIListener("tabs-changed", TabList());
++}
++
++void LokaSidebarHandler::OnStoreChanged() {
++  FireWebUIListener("store-changed", StoreValue());
++}
++
++void LokaSidebarHandler::HandleGetTabs(const base::ListValue& args) {
++  AllowJavascript();
++  ResolveJavascriptCallback(args[0], TabList());
++}
++
++void LokaSidebarHandler::HandleGetGroups(const base::ListValue& args) {
++  AllowJavascript();
++  ResolveJavascriptCallback(args[0], GroupList());
++}
++
++void LokaSidebarHandler::HandleGetStore(const base::ListValue& args) {
++  AllowJavascript();
++  ResolveJavascriptCallback(args[0], StoreValue());
++}
++
++void LokaSidebarHandler::HandleSetStore(const base::ListValue& args) {
++  if (args.size() < 2 || !args[0].is_string()) {
++    return;
++  }
++  Profile* profile = Profile::FromWebUI(web_ui());
++  ScopedDictPrefUpdate update(profile->GetPrefs(), kLokaSidebarStorePref);
++  if (args[1].is_string()) {
++    update->Set(args[0].GetString(), args[1].GetString());
++  } else {
++    update->Remove(args[0].GetString());
++  }
++}
++
++void LokaSidebarHandler::HandleCreateTab(const base::ListValue& args) {
++  AllowJavascript();
++  BrowserWindowInterface* browser = GetBrowser();
++  if (!browser || args.size() < 3) {
++    ResolveJavascriptCallback(args[0], base::Value());
++    return;
++  }
++  const std::string& spec = args[1].is_string() ? args[1].GetString() : "";
++  GURL url(spec.empty() ? "chrome://newtab/" : spec);
++  NavigateParams params(browser, url, ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
++  params.disposition = args[2].is_bool() && !args[2].GetBool()
++                           ? WindowOpenDisposition::NEW_BACKGROUND_TAB
++                           : WindowOpenDisposition::NEW_FOREGROUND_TAB;
++  Navigate(&params);
++  tabs::TabInterface* tab =
++      params.navigated_or_inserted_contents
++          ? tabs::TabInterface::MaybeGetFromContents(
++                params.navigated_or_inserted_contents)
++          : nullptr;
++  ResolveJavascriptCallback(args[0],
++                            tab ? base::Value(TabId(tab)) : base::Value());
++}
++
++void LokaSidebarHandler::HandleActivateTab(const base::ListValue& args) {
++  tabs::TabInterface* tab = args.empty() ? nullptr : FindTab(args[0]);
++  if (!tab) {
++    return;
++  }
++  TabStripModel* tab_strip = GetTabStrip();
++  tab_strip->ActivateTabAt(tab_strip->GetIndexOfTab(tab));
++}
++
++void LokaSidebarHandler::HandleCloseTab(const base::ListValue& args) {
++  tabs::TabInterface* tab = args.empty() ? nullptr : FindTab(args[0]);
++  if (!tab) {
++    return;
++  }
++  TabStripModel* tab_strip = GetTabStrip();
++  tab_strip->CloseWebContentsAt(
++      tab_strip->GetIndexOfTab(tab),
++      TabCloseTypes::CLOSE_USER_GESTURE |
++          TabCloseTypes::CLOSE_CREATE_HISTORICAL_TAB);
++}
++
++void LokaSidebarHandler::HandleNavigateTab(const base::ListValue& args) {
++  tabs::TabInterface* tab = args.size() < 2 ? nullptr : FindTab(args[0]);
++  if (!tab || !args[1].is_string()) {
++    return;
++  }
++  GURL url(args[1].GetString());
++  if (!url.is_valid()) {
++    return;
++  }
++  content::NavigationController::LoadURLParams load(url);
++  load.transition_type = ui::PAGE_TRANSITION_TYPED;
++  tab->GetContents()->GetController().LoadURLWithParams(load);
++}
++
++void LokaSidebarHandler::HandleGoBack(const base::ListValue& args) {
++  tabs::TabInterface* tab = args.empty() ? nullptr : FindTab(args[0]);
++  if (tab && tab->GetContents()->GetController().CanGoBack()) {
++    tab->GetContents()->GetController().GoBack();
++  }
++}
++
++void LokaSidebarHandler::HandleGoForward(const base::ListValue& args) {
++  tabs::TabInterface* tab = args.empty() ? nullptr : FindTab(args[0]);
++  if (tab && tab->GetContents()->GetController().CanGoForward()) {
++    tab->GetContents()->GetController().GoForward();
++  }
++}
++
++void LokaSidebarHandler::HandleReload(const base::ListValue& args) {
++  tabs::TabInterface* tab = args.empty() ? nullptr : FindTab(args[0]);
++  if (tab) {
++    tab->GetContents()->GetController().Reload(content::ReloadType::NORMAL,
++                                               /*check_for_repost=*/true);
++  }
++}
++
++void LokaSidebarHandler::HandleSetMuted(const base::ListValue& args) {
++  tabs::TabInterface* tab = args.size() < 2 ? nullptr : FindTab(args[0]);
++  if (tab && args[1].is_bool()) {
++    tab->GetContents()->SetAudioMuted(args[1].GetBool());
++  }
++}
++
++void LokaSidebarHandler::HandleGroupTabs(const base::ListValue& args) {
++  AllowJavascript();
++  TabStripModel* tab_strip = GetTabStrip();
++  if (!tab_strip || args.size() < 3 || !args[1].is_list()) {
++    ResolveJavascriptCallback(args[0], base::Value());
++    return;
++  }
++  std::vector<int> indices;
++  for (const base::Value& id : args[1].GetList()) {
++    if (tabs::TabInterface* tab = FindTab(id)) {
++      indices.push_back(tab_strip->GetIndexOfTab(tab));
++    }
++  }
++  if (indices.empty()) {
++    ResolveJavascriptCallback(args[0], base::Value());
++    return;
++  }
++  std::sort(indices.begin(), indices.end());
++  std::optional<tab_groups::TabGroupId> group =
++      args[2].is_int() ? GroupFromNumber(args[2].GetInt()) : std::nullopt;
++  if (group && tab_strip->group_model()->ContainsTabGroup(*group)) {
++    tab_strip->AddToExistingGroup(indices, *group);
++  } else {
++    group = tab_strip->AddToNewGroup(indices);
++  }
++  ResolveJavascriptCallback(args[0], base::Value(GroupNumber(*group)));
++}
++
++void LokaSidebarHandler::HandleUpdateGroup(const base::ListValue& args) {
++  TabStripModel* tab_strip = GetTabStrip();
++  if (!tab_strip || args.size() < 4 || !args[0].is_int()) {
++    return;
++  }
++  std::optional<tab_groups::TabGroupId> id = GroupFromNumber(args[0].GetInt());
++  if (!id || !tab_strip->group_model()->ContainsTabGroup(*id)) {
++    return;
++  }
++  TabGroup* group = tab_strip->group_model()->GetTabGroup(*id);
++  const tab_groups::TabGroupVisualData* old = group->visual_data();
++  std::u16string title = args[1].is_string()
++                             ? base::UTF8ToUTF16(args[1].GetString())
++                             : old->title();
++  tab_groups::TabGroupColorId color = args[2].is_string()
++                                          ? ColorFromName(args[2].GetString())
++                                          : old->color();
++  bool collapsed =
++      args[3].is_bool() ? args[3].GetBool() : old->is_collapsed();
++  tab_strip->ChangeTabGroupVisuals(
++      *id, tab_groups::TabGroupVisualData(title, color, collapsed));
++}
++
++void LokaSidebarHandler::HandleUngroupTabs(const base::ListValue& args) {
++  TabStripModel* tab_strip = GetTabStrip();
++  if (!tab_strip || args.empty() || !args[0].is_list()) {
++    return;
++  }
++  std::vector<int> indices;
++  for (const base::Value& id : args[0].GetList()) {
++    if (tabs::TabInterface* tab = FindTab(id)) {
++      indices.push_back(tab_strip->GetIndexOfTab(tab));
++    }
++  }
++  if (indices.empty()) {
++    return;
++  }
++  std::sort(indices.begin(), indices.end());
++  tab_strip->RemoveFromGroup(indices);
++}
++
++void LokaSidebarHandler::HandleSearch(const base::ListValue& args) {
++  BrowserWindowInterface* browser = GetBrowser();
++  if (!browser || args.size() < 2 || !args[0].is_string()) {
++    return;
++  }
++  TemplateURLService* service =
++      TemplateURLServiceFactory::GetForProfile(Profile::FromWebUI(web_ui()));
++  const TemplateURL* engine =
++      service ? service->GetDefaultSearchProvider() : nullptr;
++  if (!engine) {
++    return;
++  }
++  GURL url = engine->GenerateSearchURL(service->search_terms_data(),
++                                       base::UTF8ToUTF16(args[0].GetString()));
++  const bool new_tab = !args[1].is_bool() || args[1].GetBool();
++  NavigateParams params(browser, url, ui::PAGE_TRANSITION_GENERATED);
++  params.disposition = new_tab ? WindowOpenDisposition::NEW_FOREGROUND_TAB
++                               : WindowOpenDisposition::CURRENT_TAB;
++  Navigate(&params);
++}
++
++void LokaSidebarHandler::HandleOpenPage(const base::ListValue& args) {
++  BrowserWindowInterface* browser = GetBrowser();
++  if (!browser || args.empty() || !args[0].is_string()) {
++    return;
++  }
++  // Only the browser's own pages: the sidebar opens settings, downloads and
++  // extensions this way.
++  GURL url(args[0].GetString());
++  if (!url.SchemeIs(content::kChromeUIScheme)) {
++    return;
++  }
++  NavigateParams params(browser, url, ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
++  params.disposition = WindowOpenDisposition::SINGLETON_TAB;
++  Navigate(&params);
++}
++
++void LokaSidebarHandler::HandleWindowAction(const base::ListValue& args) {
++  BrowserWindowInterface* browser = GetBrowser();
++  if (!browser || args.empty() || !args[0].is_string()) {
++    return;
++  }
++  ui::BaseWindow* window = browser->GetWindow();
++  const std::string& action = args[0].GetString();
++  if (action == "minimize") {
++    window->Minimize();
++  } else if (action == "maximize") {
++    if (window->IsMaximized()) {
++      window->Restore();
++    } else {
++      window->Maximize();
++    }
++  } else if (action == "close") {
++    window->Close();
++  }
++}
++
++void LokaSidebarHandler::HandleStartWindowDrag(const base::ListValue& args) {
++  // The sidebar's empty top row moves the window, like a title bar: hand the
++  // press that's still down to Windows' own move loop.
++#if BUILDFLAG(IS_WIN)
++  BrowserWindowInterface* browser = GetBrowser();
++  if (!browser || browser->GetWindow()->IsFullscreen()) {
++    return;
++  }
++  HWND hwnd = views::HWNDForNativeWindow(browser->GetWindow()->GetNativeWindow());
++  if (!hwnd || !(::GetAsyncKeyState(VK_LBUTTON) & 0x8000)) {
++    return;
++  }
++  ::ReleaseCapture();
++  ::SendMessage(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
++#endif
++}
+--- /dev/null
++++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h
+@@ -0,0 +1,113 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
++#define CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
++
++#include <map>
++#include <string>
++
++#include "base/memory/raw_ptr.h"
++#include "base/memory/weak_ptr.h"
++#include "base/values.h"
++#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
++#include "components/prefs/pref_change_registrar.h"
++#include "components/tab_groups/tab_group_id.h"
++#include "content/public/browser/web_ui_message_handler.h"
++#include "ui/gfx/image/image_skia.h"
++
++class BrowserWindowInterface;
++class TabStripModel;
++
++namespace tabs {
++class TabInterface;
++}
++
++// The sidebar's line to its window: the real tabs and tab groups, and Loka's
++// store in the profile's prefs. Tabs are named by their TabHandle and groups
++// by a number this handler hands out, so the page works with plain numbers.
++//
++// Page -> browser (chrome.send):
++//   getTabs(cb), getGroups(cb), getStore(cb), setStore(key, value|null),
++//   createTab(cb, url, active), activateTab(id), closeTab(id),
++//   navigateTab(id, url), goBack(id), goForward(id), reload(id),
++//   setMuted(id, muted), groupTabs(cb, ids, groupId|-1),
++//   updateGroup(groupId, title, color, collapsed), ungroupTabs(ids),
++//   search(query, newTab), openPage(url),
++//   windowAction("minimize"|"maximize"|"close"), startWindowDrag()
++// Browser -> page (WebUI listeners):
++//   "tabs-changed" (tabs), "store-changed" (store)
++class LokaSidebarHandler : public content::WebUIMessageHandler,
++                           public TabStripModelObserver {
++ public:
++  LokaSidebarHandler();
++  LokaSidebarHandler(const LokaSidebarHandler&) = delete;
++  LokaSidebarHandler& operator=(const LokaSidebarHandler&) = delete;
++  ~LokaSidebarHandler() override;
++
++  // content::WebUIMessageHandler:
++  void RegisterMessages() override;
++  void OnJavascriptAllowed() override;
++  void OnJavascriptDisallowed() override;
++
++  // TabStripModelObserver:
++  void OnTabStripModelChanged(TabStripModel* tab_strip_model,
++                              const TabStripModelChange& change,
++                              const TabStripSelectionChange& selection) override;
++  void OnTabChangedAt(tabs::TabInterface* tab,
++                      TabChangeType change_type) override;
++  void OnTabGroupChanged(const TabGroupChange& change) override;
++
++ private:
++  BrowserWindowInterface* GetBrowser();
++  TabStripModel* GetTabStrip();
++  // The tab with this id, if it's in this window.
++  tabs::TabInterface* FindTab(const base::Value& id);
++  int GroupNumber(const tab_groups::TabGroupId& group);
++  std::optional<tab_groups::TabGroupId> GroupFromNumber(int number);
++
++  base::ListValue TabList();
++  base::DictValue TabData(tabs::TabInterface* tab, int index);
++  std::string FaviconDataUrl(tabs::TabInterface* tab);
++  base::ListValue GroupList();
++  base::DictValue StoreValue();
++
++  // Sends the tabs once, after the current batch of tab strip changes.
++  void ScheduleTabsChanged();
++  void SendTabsChanged();
++  void OnStoreChanged();
++  void StartObserving();
++
++  void HandleGetTabs(const base::ListValue& args);
++  void HandleGetGroups(const base::ListValue& args);
++  void HandleGetStore(const base::ListValue& args);
++  void HandleSetStore(const base::ListValue& args);
++  void HandleCreateTab(const base::ListValue& args);
++  void HandleActivateTab(const base::ListValue& args);
++  void HandleCloseTab(const base::ListValue& args);
++  void HandleNavigateTab(const base::ListValue& args);
++  void HandleGoBack(const base::ListValue& args);
++  void HandleGoForward(const base::ListValue& args);
++  void HandleReload(const base::ListValue& args);
++  void HandleSetMuted(const base::ListValue& args);
++  void HandleGroupTabs(const base::ListValue& args);
++  void HandleUpdateGroup(const base::ListValue& args);
++  void HandleUngroupTabs(const base::ListValue& args);
++  void HandleSearch(const base::ListValue& args);
++  void HandleOpenPage(const base::ListValue& args);
++  void HandleWindowAction(const base::ListValue& args);
++  void HandleStartWindowDrag(const base::ListValue& args);
++
++  raw_ptr<TabStripModel> observed_ = nullptr;
++  PrefChangeRegistrar pref_change_registrar_;
++  bool tabs_change_pending_ = false;
++  std::map<tab_groups::TabGroupId, int> group_numbers_;
++  int next_group_number_ = 1;
++  // Each tab's last favicon and its data: URL, so unchanged icons aren't
++  // encoded again on every change.
++  std::map<int32_t, std::pair<gfx::ImageSkia, std::string>> favicons_;
++  base::WeakPtrFactory<LokaSidebarHandler> weak_factory_{this};
++};
++
++#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
+--- /dev/null
++++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.cc
+@@ -0,0 +1,65 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
++
++#include <memory>
++
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/webui/favicon_source.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h"
++#include "chrome/browser/ui/webui/theme_source.h"
++#include "components/favicon_base/favicon_url_parser.h"
++#include "components/loka_sidebar/resources/grit/loka_sidebar_generated.h"
++#include "components/loka_sidebar/resources/grit/loka_sidebar_generated_map.h"
++#include "components/pref_registry/pref_registry_syncable.h"
++#include "content/public/browser/url_data_source.h"
++#include "content/public/browser/web_contents.h"
++#include "content/public/browser/web_ui.h"
++#include "content/public/browser/web_ui_data_source.h"
++#include "content/public/common/url_constants.h"
++#include "services/network/public/mojom/content_security_policy.mojom.h"
++#include "ui/webui/webui_util.h"
++
++LokaSidebarUIConfig::LokaSidebarUIConfig()
++    : DefaultTopChromeWebUIConfig(content::kChromeUIScheme, kLokaSidebarHost) {}
++
++LokaSidebarUI::LokaSidebarUI(content::WebUI* web_ui)
++    : TopChromeWebUIController(web_ui, /*enable_chrome_send=*/true) {
++  Profile* profile = Profile::FromWebUI(web_ui);
++  content::WebUIDataSource* source =
++      content::WebUIDataSource::CreateAndAdd(profile, kLokaSidebarHost);
++  webui::SetupWebUIDataSource(source, kLokaSidebarGenerated,
++                              IDR_LOKA_SIDEBAR_SIDEBAR_HTML);
++  // Lit renders with template elements, not innerHTML, but its build keeps a
++  // policy name around; allow it so nothing trips over Trusted Types.
++  source->OverrideContentSecurityPolicy(
++      network::mojom::CSPDirectiveName::TrustedTypes,
++      "trusted-types lit-html;");
++  // Favicons of tabs that aren't loaded come from the browser's favicon cache.
++  source->OverrideContentSecurityPolicy(
++      network::mojom::CSPDirectiveName::ImgSrc,
++      "img-src chrome://favicon2 chrome://theme data: blob: 'self';");
++  // Each space's hue is set as an inline style (--hue) on its elements.
++  source->OverrideContentSecurityPolicy(
++      network::mojom::CSPDirectiveName::StyleSrc,
++      "style-src 'self' 'unsafe-inline';");
++
++  content::URLDataSource::Add(
++      profile, std::make_unique<FaviconSource>(
++                   profile, chrome::FaviconUrlFormat::kFavicon2));
++  content::URLDataSource::Add(profile, std::make_unique<ThemeSource>(profile));
++
++  web_ui->AddMessageHandler(std::make_unique<LokaSidebarHandler>());
++}
++
++LokaSidebarUI::~LokaSidebarUI() = default;
++
++// static
++void LokaSidebarUI::RegisterProfilePrefs(
++    user_prefs::PrefRegistrySyncable* registry) {
++  registry->RegisterDictionaryPref(kLokaSidebarStorePref);
++}
++
++WEB_UI_CONTROLLER_TYPE_IMPL(LokaSidebarUI)
+--- /dev/null
++++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h
+@@ -0,0 +1,49 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_UI_H_
++#define CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_UI_H_
++
++#include <string_view>
++
++#include "chrome/browser/ui/webui/top_chrome/top_chrome_web_ui_controller.h"
++#include "chrome/browser/ui/webui/top_chrome/top_chrome_webui_config.h"
++
++namespace user_prefs {
++class PrefRegistrySyncable;
++}
++
++// The Loka sidebar: spaces, folders, essentials and the window's tabs. It is
++// the browser's own UI, shown in the window's left column (the organizer
++// panel), not a tab.
++inline constexpr char kLokaSidebarHost[] = "loka-sidebar.top-chrome";
++inline constexpr char kLokaSidebarURL[] = "chrome://loka-sidebar.top-chrome/";
++
++// Where the sidebar keeps its spaces and settings: a dictionary of strings in
++// the profile's prefs, shared by every window.
++inline constexpr char kLokaSidebarStorePref[] = "loka.store";
++
++class LokaSidebarUI;
++
++class LokaSidebarUIConfig : public DefaultTopChromeWebUIConfig<LokaSidebarUI> {
++ public:
++  LokaSidebarUIConfig();
++};
++
++class LokaSidebarUI : public TopChromeWebUIController {
++ public:
++  explicit LokaSidebarUI(content::WebUI* web_ui);
++  LokaSidebarUI(const LokaSidebarUI&) = delete;
++  LokaSidebarUI& operator=(const LokaSidebarUI&) = delete;
++  ~LokaSidebarUI() override;
++
++  static void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry);
++
++  static constexpr std::string_view GetWebUIName() { return "LokaSidebar"; }
++
++ private:
++  WEB_UI_CONTROLLER_TYPE_DECL();
++};
++
++#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_UI_H_
+--- a/chrome/chrome_paks.gni
++++ b/chrome/chrome_paks.gni
+@@ -492,12 +492,14 @@
+         "$root_gen_dir/chrome/default_browser_modal_resources.pak",
+         "$root_gen_dir/chrome/profile_picker_resources.pak",
+         "$root_gen_dir/components/helium_onboarding/resources/helium_onboarding_generated.pak",
++        "$root_gen_dir/components/loka_sidebar/resources/loka_sidebar_generated.pak",
+       ]
+       deps += [
+         "//chrome/browser/resources/default_browser/default_browser_modal:resources",
+         "//chrome/browser/resources/intro:resources",
+         "//chrome/browser/resources/signin/profile_picker:resources",
+         "//components/helium_onboarding:generated_resources",
++        "//components/loka_sidebar:generated_resources",
+       ]
+     }
+ 
+--- /dev/null
++++ b/components/loka_sidebar/BUILD.gn
+@@ -0,0 +1,46 @@
++# Copyright 2026 The Loka Authors
++# You can use, redistribute, and/or modify this source code under
++# the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++# The Loka sidebar's page. dist/ is built from the Loka repo's webui/ folder
++# (`bun run webui:build` copies it here); this packs it into a .pak.
++
++import("//tools/grit/grit_rule.gni")
++
++action("grit") {
++  script = "//third_party/node/node.py"
++  node_script = "./util/generate-grd.mts"
++
++  args = [
++    "--experimental-strip-types",
++    rebase_path(node_script),
++    rebase_path("dist"),
++    rebase_path("$target_gen_dir/resources.grd"),
++  ]
++
++  inputs = [
++    node_script,
++    "dist/sidebar.html",
++  ]
++
++  outputs = [ "$target_gen_dir/resources.grd" ]
++}
++
++grit("generated_resources") {
++  source = "$target_gen_dir/resources.grd"
++
++  # Required because the .grd is generated.
++  enable_input_discovery_for_gn_analyze = false
++  use_brotli = true
++
++  output_dir = "$target_gen_dir/resources"
++
++  outputs = [
++    "grit/loka_sidebar_generated.h",
++    "grit/loka_sidebar_generated_map.cc",
++    "grit/loka_sidebar_generated_map.h",
++    "loka_sidebar_generated.pak",
++  ]
++
++  deps = [ ":grit" ]
++}
+--- /dev/null
++++ b/components/loka_sidebar/util/generate-grd.mts
+@@ -0,0 +1,79 @@
++import { writeFile, readdir, lstat } from 'node:fs/promises';
++import { basename, dirname, relative, join, sep, posix } from 'node:path';
++
++if (process.argv.length !== 4) {
++    console.log(`usage: ${basename(process.argv[1])} <dist folder> <.grd output>`);
++    process.exit(1);
++}
++
++async function* walk(path: string): AsyncGenerator<string> {
++    const entries = await readdir(path);
++
++    for (const entry of entries) {
++        const full_path = join(path, entry);
++        const info = await lstat(full_path);
++
++        if (info.isDirectory()) {
++            yield* walk(full_path);
++        } else if (info.isFile()) {
++            yield full_path;
++        }
++    }
++}
++
++const to_identifier = (path: string) => {
++    const prefix = 'IDR_LOKA_SIDEBAR_';
++
++    return prefix + path.replace(/[-\\\/.:_]+/g, '_')
++                        .toUpperCase();
++}
++
++const check = (str: string) => {
++    if (/[<>&'"]/g.test(str)) {
++        throw "filename contains invalid characters: " + str;
++    }
++
++    return str;
++}
++
++const generate = async () => {
++    const dist_dir = process.argv[2];
++    const grd_out = process.argv[3];
++    const includes: string[] = [];
++
++    for await (const path of walk(dist_dir)) {
++        const relative_path = relative(dist_dir, path).replaceAll(sep, posix.sep);
++        includes.push(`
++          <include
++              name="${check(to_identifier(relative_path))}"
++              file="${check(posix.join(relative(dirname(grd_out), dist_dir).replaceAll(sep, posix.sep), relative_path))}"
++              resource_path="${check(relative_path)}"
++              type="BINDATA"
++          />
++      `);
++    }
++
++    const template = `<?xml version="1.0" encoding="UTF-8"?>
++  <grit latest_public_release="0" current_release="1">
++    <outputs>
++      <output filename="grit/loka_sidebar_generated.h" type="rc_header">
++        <emit emit_type='prepend'></emit>
++      </output>
++      <output filename="grit/loka_sidebar_generated_map.cc" type="resource_file_map_source" />
++      <output filename="grit/loka_sidebar_generated_map.h" type="resource_map_header" />
++      <output filename="loka_sidebar_generated.pak" type="data_package" />
++    </outputs>
++    <release seq="1">
++      <includes>
++        {here}
++      </includes>
++    </release>
++  </grit>`;
++
++    await writeFile(
++        grd_out,
++        template.replace('{here}', includes.join(''))
++    );
++}
++
++await generate();
+--- a/tools/gritsettings/resource_ids.spec
++++ b/tools/gritsettings/resource_ids.spec
+@@ -1425,6 +1425,10 @@
+    "META": {"sizes": {"includes": [48],}},
+     "includes": [7510],
+   },
++  "<(SHARED_INTERMEDIATE_DIR)/components/loka_sidebar/resources.grd": {
++   "META": {"sizes": {"includes": [20],}},
++    "includes": [7560],
++  },
+   # END components/ section.
+ 
+   # START ios/ section.

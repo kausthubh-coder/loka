@@ -210,18 +210,18 @@ export const browser = {
 	/** Light or dark for the browser and the pages that follow it (prefers-color-scheme). */
 	setColorScheme: (scheme: ColorScheme) => tell("setColorScheme", scheme),
 	onCommand: (listener: (command: BrowserCommand) => void) => on("command", (c) => listener(c as BrowserCommand)),
+	/**
+	 * Shows the floating command bar: a frameless, transparent window (about 680x520) centered over this one, loading
+	 * command.html, which then gets `command` through onCommand.
+	 */
+	openCommandBar: (command: BrowserCommand) => tell("openCommandBar", command),
+	/** From command.html: hide the floating command bar (Escape, a click outside it, or after a pick). */
+	closeCommandBar: () => tell("closeCommandBar"),
 
 	// Planned, asked for by the sidebar's front end (not in the handler yet):
 	/** The pinned state changed from outside this page (another window, a browser menu). */
 	onSidebarPinnedChanged: (listener: (pinned: boolean) => void) =>
 		on("sidebar-pinned-changed", (p) => listener(p as boolean)),
-	/**
-	 * Shows the whole-window command bar (command.html, centered over the window) and sends it `command` through
-	 * onCommand; resolves true once it's showing. The sidebar shows its own bar when this doesn't answer.
-	 */
-	openCommandBar: (command: BrowserCommand) => ask<boolean>("openCommandBar", command),
-	/** From command.html: hide the command bar and give focus back to the page. */
-	closeCommandBar: () => tell("closeCommandBar"),
 	/** From command.html: pass what was picked to this window's sidebar, which gets it through onCommandPicked. */
 	commandPicked: (pick: CommandPick) => tell("commandPicked", pick),
 	onCommandPicked: (listener: (pick: CommandPick) => void) => on("command-picked", (p) => listener(p as CommandPick)),

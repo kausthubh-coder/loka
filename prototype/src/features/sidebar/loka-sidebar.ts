@@ -1,13 +1,18 @@
 import { css, html, LitElement, nothing, svg, type TemplateResult } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { repeat } from "lit/directives/repeat.js";
+import type { Browser, NativeDownload, NativeExtension } from "../../../../webui/src/bridge";
 import type { Update } from "../../app/loka-app";
-import type { ActionId } from "../command-bar/command-bar.logic";
+import { EASE_IN, EASE_OUT, leave, reducedMotion } from "../../app/theme";
+import type { ActionId, CommandMode } from "../command-bar/command-bar.logic";
 import { faviconBackground, faviconInner, hostOf, type LiveTabs } from "./favicon";
 import "../archive/loka-archive-panel";
+import { overallProgress } from "../downloads/downloads.logic";
 import "../downloads/loka-downloads";
+import { toolbarExtensions, withPinned } from "../extensions/extensions.logic";
+import { extensionIcon, extensionIconStyles } from "../extensions/loka-extensions";
 import "../media/loka-media-card";
-import type { Media } from "../media/loka-media-card";
+import type { NowPlaying } from "../media/loka-media-card";
 import "../search/loka-sidebar-search";
 import { playCue } from "../sound/sound";
 import type { Cue } from "../sound/sound.logic";
@@ -58,41 +63,19 @@ const PANEL_NAMES: Record<Panel, string> = {
 	search: "Search the sidebar",
 };
 
-export interface ExtensionInfo {
-	id: string;
-	name: string;
-	letter: string;
-	color: string;
-	detail: string;
-	/** The extension's own icon, when the browser can give it. */
-	icon?: string;
+/** Where an element sat before an update, and which list it was in, to animate from. */
+interface Was {
+	el: HTMLElement;
+	rect: DOMRect;
+	tile: boolean;
 }
 
-/** Where the Extensions panel's list comes from, and what clicking a pinned icon does. */
-export interface ExtensionSource {
-	list(): Promise<ExtensionInfo[]>;
-	/** Calls `changed` whenever extensions are installed, removed, turned on or off. Returns a stop function. */
-	watch(changed: () => void): () => void;
-	open(id: string): void;
-	manage(): void;
-}
-
-let extensionSource: ExtensionSource | null = null;
-const PINNED_KEY = "loka.pinnedExtensions";
-
-/** The extension swaps in the browser's installed extensions; the prototype shows samples. */
-export function setExtensionSource(source: ExtensionSource) {
-	extensionSource = source;
-}
-
-/** Stand-ins for installed extensions. Helium ships uBlock Origin; the others show how a user's own would sit. */
-const EXTENSIONS: ExtensionInfo[] = [
-	{ id: "ublock", name: "uBlock Origin", letter: "u", color: "#c74b4b", detail: "12 blocked on this page" },
-	{ id: "bitwarden", name: "Bitwarden", letter: "b", color: "#3f7fdd", detail: "Passwords" },
-	{ id: "darkreader", name: "Dark Reader", letter: "d", color: "#4c4f5c", detail: "Off for this site" },
-];
-
-/** The Arc-style sidebar: URL pill, essentials, the space's pinned tree, open tabs and the space switcher. */
+/**
+ * The Arc- and Zen-style sidebar: the top row (menu, hide, back, forward, reload, the window's own buttons), the
+ * address field with the pinned extensions in it, Essentials, the space's pinned tree and open tabs, now playing,
+ * and the space switcher. It reaches the browser only through `browser` (the real bridge, or the prototype's
+ * fake): extensions and downloads come from there and stay empty until the browser answers.
+ */
 export class LokaSidebar extends LitElement {
 	static override properties = {
 		state: { attribute: false },
@@ -103,30 +86,35 @@ export class LokaSidebar extends LitElement {
 		renamingId: { state: true },
 		swipe: { state: true },
 		panel: { state: true },
-		pinnedExtensions: { state: true },
 		extensions: { state: true },
-		media: { attribute: false },
+		downloads: { state: true },
+		playing: { attribute: false },
 		live: { attribute: false },
+		browser: { attribute: false },
+		pinned: { attribute: false },
 		demo: { type: Boolean },
 	};
 
 	declare state: BrowserState;
 	declare apply: Update;
+	declare browser: Browser;
 	dragId: string | null = null;
 	drop: Drop | null = null;
 	menu: { x: number; y: number; items: MenuItem[] } | null = null;
 	renamingId: string | null = null;
 	/** Sideways swipe distance so far, in wheel pixels (negative is towards the previous space). */
 	swipe = 0;
-	/** The popover open under the toolbar, if any. */
+	/** The popover open under the address field, if any. */
 	panel: Panel | null = null;
-	pinnedExtensions = new Set<string>(JSON.parse(localStorage.getItem(PINNED_KEY) ?? '["ublock"]'));
-	/** The prototype's samples; in the browser, the installed extensions once they've loaded. */
-	extensions: ExtensionInfo[] = extensionSource ? [] : EXTENSIONS;
-	private stopWatchingExtensions: (() => void) | null = null;
-	declare media: Media | null;
+	/** The installed extensions and the downloads, as the browser last said. Null until it has answered. */
+	extensions: NativeExtension[] | null = null;
+	downloads: NativeDownload[] | null = null;
+	private stopWatching: (() => void)[] = [];
+	playing: NowPlaying | null = null;
 	/** What the browser says about each loaded tab: its page's icon, loading, playing sound. */
 	live: LiveTabs = {};
+	/** Pinned shows the sidebar always; unpinned, the browser slides it away until the mouse reaches the edge. */
+	pinned = true;
 	/** The prototype: shows "Reset demo data". The real browser leaves it out. */
 	demo = true;
 
@@ -134,18 +122,47 @@ export class LokaSidebar extends LitElement {
 	openPanel(panel: Panel) {
 		this.menu = null;
 		this.panel = panel;
-		if (panel === "extensions") void this.loadExtensions();
 	}
 
-	private async loadExtensions() {
-		if (!extensionSource) return;
-		this.extensions = await extensionSource.list();
-		// First run in the browser: pin uBlock Origin, which Helium ships, by its real ID.
-		if (localStorage.getItem(PINNED_KEY) === null) {
-			const ublock = this.extensions.find((x) => x.name.startsWith("uBlock Origin"));
-			this.pinnedExtensions = new Set(ublock ? [ublock.id] : []);
-			localStorage.setItem(PINNED_KEY, JSON.stringify([...this.pinnedExtensions]));
-		}
+	/** Closes the open panel after its exit, which is quicker and quieter than its entrance. */
+	private async closePanel() {
+		const open = this.panel;
+		if (!open) return;
+		await leave(this.renderRoot.querySelector(".panel"));
+		if (this.panel === open) this.panel = null;
+	}
+
+	/** Listens to the browser for extensions and downloads. */
+	private watchBrowser() {
+		for (const stop of this.stopWatching) stop();
+		const browser = this.browser;
+		this.stopWatching = [
+			browser.onExtensionsChanged((list) => {
+				this.extensions = list;
+			}),
+			browser.onDownloadsChanged((list) => {
+				this.downloads = list;
+			}),
+		];
+		// The browser may not answer these yet (the message is new); the toolbar then just shows none.
+		void browser.extensions().then((list) => {
+			if (this.browser === browser) this.extensions = list;
+		});
+		void browser.downloads().then((list) => {
+			if (this.browser === browser) this.downloads = list;
+		});
+	}
+
+	private pinExtension = (id: string, pinned: boolean) => {
+		playCue(pinned ? "pin" : "unpin");
+		this.extensions = withPinned(this.extensions ?? [], id, pinned);
+		this.browser.setExtensionPinned(id, pinned);
+	};
+
+	/** Clicks an extension's toolbar button: the browser opens its popup next to the button, or runs it. */
+	private runExtension(e: Event, id: string) {
+		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		this.browser.runExtension(id, { x: r.x, y: r.y, width: r.width, height: r.height });
 	}
 
 	/** Closes a tab, telling the browser too: unloading a pinned tab changes nothing in the spaces, only the browser. */
@@ -158,22 +175,19 @@ export class LokaSidebar extends LitElement {
 	// Escape closes a panel or menu wherever focus is: a click inside a panel can re-render the button that had it.
 	private onEscape = (e: KeyboardEvent) => {
 		if (e.key !== "Escape" || (!this.panel && !this.menu)) return;
-		this.panel = null;
+		void this.closePanel();
 		this.menu = null;
 	};
 
 	override connectedCallback() {
 		super.connectedCallback();
 		window.addEventListener("keydown", this.onEscape);
-		if (extensionSource) {
-			void this.loadExtensions();
-			this.stopWatchingExtensions = extensionSource.watch(() => void this.loadExtensions());
-		}
 	}
 
 	override disconnectedCallback() {
 		window.removeEventListener("keydown", this.onEscape);
-		this.stopWatchingExtensions?.();
+		for (const stop of this.stopWatching) stop();
+		this.stopWatching = [];
 		super.disconnectedCallback();
 	}
 
@@ -307,11 +321,23 @@ export class LokaSidebar extends LitElement {
 	private emptyMenu(): MenuItem[] {
 		return [
 			{ label: "New folder", run: () => this.newFolder(null) },
-			{
-				label: "New tab",
-				run: () => this.dispatchEvent(new CustomEvent("loka-command", { bubbles: true, composed: true })),
-			},
+			{ label: "New tab", run: () => this.command("new-tab") },
 		];
+	}
+
+	/** The bottom row's +: what you'd make next. */
+	private newMenu(e: MouseEvent) {
+		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		this.menu = {
+			x: r.left,
+			y: r.top - 8 - 36 * 3,
+			items: [
+				{ label: "New tab", run: () => this.command("new-tab") },
+				{ label: "New folder", run: () => this.newFolder(null) },
+				{ label: "New space", run: () => this.action("new-space") },
+			],
+		};
+		e.stopPropagation();
 	}
 
 	/**
@@ -366,6 +392,11 @@ export class LokaSidebar extends LitElement {
 	/** Commands the window handles (the space editor, pages, the tour) go up as one event, like the command bar's. */
 	private action(action: ActionId) {
 		this.dispatchEvent(new CustomEvent("loka-action", { detail: action, bubbles: true, composed: true }));
+	}
+
+	/** Asks the window for the command bar: to open a new tab, or to change the address of the one on screen. */
+	private command(mode: CommandMode) {
+		this.dispatchEvent(new CustomEvent<CommandMode>("loka-command", { detail: mode, bubbles: true, composed: true }));
 	}
 
 	// ---- spaces: the horizon ------------------------------------------------
@@ -448,76 +479,150 @@ export class LokaSidebar extends LitElement {
 	/** Which way the list slides in after a switch: from the right when moving forward, as if turning a page. */
 	private slideFrom: "left" | "right" | null = null;
 
-	/** Where each row of the space's list was before this update, to animate from. Null when nothing should move. */
-	private rowsBefore: Map<string, { el: HTMLElement; rect: DOMRect }> | null = null;
+	/** Where each row and Essential was before this update, to animate from. Null when nothing should move. */
+	private rowsBefore: Map<string, Was> | null = null;
+	/** The horizon's planets before a space switch, which set behind the new one. */
+	private horizonBefore: { els: HTMLElement[]; forward: boolean } | null = null;
 
 	protected override willUpdate(changed: Map<string, unknown>) {
+		if (changed.has("browser") && this.browser) this.watchBrowser();
 		const before = changed.get("state") as BrowserState | undefined;
 		if (!before) return;
 		if (before.activeSpaceId !== this.state.activeSpaceId) {
-			this.slideFrom = switchesForward(this.state, before.activeSpaceId, this.state.activeSpaceId) ? "right" : "left";
+			const forward = switchesForward(this.state, before.activeSpaceId, this.state.activeSpaceId);
+			this.slideFrom = forward ? "right" : "left";
+			const horizon = this.renderRoot.querySelector(".horizon");
+			this.horizonBefore = horizon
+				? {
+						els: [
+							...horizon.querySelectorAll<HTMLElement>(":scope > .world, :scope > .world-name, :scope > .neighbour"),
+						],
+						forward,
+					}
+				: null;
 			return;
 		}
 		// Same space, new state: the DOM still shows the old rows, so this is where they are now.
 		this.rowsBefore = new Map(
-			[...this.renderRoot.querySelectorAll<HTMLElement>(".scroll [data-key]")].map((el) => [
+			[...this.renderRoot.querySelectorAll<HTMLElement>(".scroll [data-key], .essentials [data-key]")].map((el) => [
 				el.dataset.key ?? "",
-				{ el, rect: el.getBoundingClientRect() },
+				{ el, rect: el.getBoundingClientRect(), tile: el.classList.contains("essential") },
 			]),
 		);
 	}
 
 	/**
-	 * Rows move instead of jumping (FLIP): a row that changed place slides from where it was, a new row (an opened
-	 * tab, a folder's contents) fades in from just above, and a row that left (a closed tab, a folder closing) fades
-	 * out where it was while the rows below close the gap. Transforms and opacity only; with reduced motion, only the
-	 * fades.
+	 * Rows and Essentials move instead of jumping (FLIP): one that changed place slides from where it was, a tab
+	 * pinned into Essentials flies from its row into its tile (and back out), a new one (an opened tab, a folder's
+	 * contents) fades in from just above, and one that left fades out where it was while the rest close the gap.
+	 * Transforms and opacity only; with reduced motion, only the fades.
 	 */
 	private animateRows() {
 		const before = this.rowsBefore;
 		this.rowsBefore = null;
 		const scroll = this.renderRoot.querySelector<HTMLElement>(".scroll");
-		if (!before || !scroll) return;
-		const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-		const ease = "cubic-bezier(0.2, 0, 0, 1)";
+		const grid = this.renderRoot.querySelector<HTMLElement>(".essentials");
+		if (!before || !scroll || !grid) return;
+		const still = reducedMotion();
 		const now = new Map(
-			[...scroll.querySelectorAll<HTMLElement>("[data-key]")].map((el) => [el.dataset.key ?? "", el]),
+			[...this.renderRoot.querySelectorAll<HTMLElement>(".scroll [data-key], .essentials [data-key]")].map((el) => [
+				el.dataset.key ?? "",
+				el,
+			]),
 		);
 		for (const [key, el] of now) {
 			for (const a of el.getAnimations()) if (a.id === "row") a.cancel();
 			const was = before.get(key);
+			const tile = el.classList.contains("essential");
 			if (!was) {
-				const from = still ? { opacity: 0 } : { opacity: 0, transform: "translateY(-6px)" };
-				el.animate([from, { opacity: 1, transform: "none" }], { duration: 200, easing: ease, id: "row" });
+				const from = still ? { opacity: 0 } : { opacity: 0, transform: tile ? "scale(0.85)" : "translateY(-6px)" };
+				el.animate([from, { opacity: 1, transform: "none" }], { duration: 220, easing: EASE_OUT, id: "row" });
 				continue;
 			}
-			const dy = was.rect.top - el.getBoundingClientRect().top;
-			if (!still && Math.abs(dy) > 0.5) {
-				el.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], {
+			if (still) continue;
+			const rect = el.getBoundingClientRect();
+			if (was.tile !== tile) {
+				// Between a row and a tile: the icon travels, so the new shape grows from where the old one's icon was.
+				const fromX = was.tile ? was.rect.left + was.rect.width / 2 : was.rect.left + 20;
+				const fromY = was.rect.top + was.rect.height / 2;
+				const dx = fromX - (tile ? rect.left + rect.width / 2 : rect.left + 20);
+				const dy = fromY - (rect.top + rect.height / 2);
+				el.animate(
+					[
+						{ transform: `translate(${dx}px, ${dy}px) scale(0.6)`, opacity: 0.4 },
+						{ transform: "none", opacity: 1 },
+					],
+					{ duration: 320, easing: EASE_OUT, id: "row" },
+				);
+				continue;
+			}
+			const dx = was.rect.left - rect.left;
+			const dy = was.rect.top - rect.top;
+			if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+				el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], {
 					duration: 240,
-					easing: ease,
+					easing: EASE_OUT,
 					id: "row",
 				});
 			}
 		}
-		const box = scroll.getBoundingClientRect();
-		for (const [key, { el, rect }] of before) {
+		for (const [key, { el, rect, tile }] of before) {
 			if (now.has(key) || el.isConnected) continue;
-			// Lit has let go of the old row; put it back where it was, on top, just long enough to fade.
+			// Lit has let go of the old element; put it back where it was, on top, just long enough to fade.
+			const home = tile ? grid : scroll;
+			const box = home.getBoundingClientRect();
 			el.classList.add("leaving");
 			el.removeAttribute("data-key");
 			el.removeAttribute("role");
 			Object.assign(el.style, {
-				top: `${rect.top - box.top + scroll.scrollTop}px`,
+				top: `${rect.top - box.top + (tile ? 0 : scroll.scrollTop)}px`,
 				left: `${rect.left - box.left}px`,
 				width: `${rect.width}px`,
+				height: `${rect.height}px`,
 			});
-			scroll.append(el);
-			const to = still ? { opacity: 0 } : { opacity: 0, transform: "scale(0.97)" };
+			home.append(el);
+			const to = still ? { opacity: 0 } : { opacity: 0, transform: "scale(0.96)" };
 			void el
-				.animate([{ opacity: 1 }, to], { duration: 140, easing: "cubic-bezier(0.4, 0, 1, 1)", fill: "forwards" })
+				.animate([{ opacity: 1 }, to], { duration: 140, easing: EASE_IN, fill: "forwards" })
 				.finished.then(() => el.remove());
 		}
+	}
+
+	/**
+	 * Switching spaces on the horizon: the old planet and its neighbours set, sinking and fading behind the
+	 * horizon's edge, and the new ones rise into place: first the big planet, then its neighbours, so it reads like
+	 * the sky turning. The old planets are the elements Lit just let go of, put back for their exit.
+	 */
+	private animateHorizon() {
+		const before = this.horizonBefore;
+		this.horizonBefore = null;
+		const horizon = this.renderRoot.querySelector<HTMLElement>(".horizon");
+		if (!before || !horizon) return;
+		const still = reducedMotion();
+		const side = before.forward ? 1 : -1;
+		const sink = (el: HTMLElement, distance: number, drift: number, duration: number) => {
+			el.classList.add("leaving");
+			horizon.prepend(el);
+			const to = still ? { opacity: 0 } : { opacity: 0, transform: `translate(${drift}px, ${distance}px)` };
+			void el
+				.animate([{ opacity: 1, transform: "none" }, to], { duration, easing: EASE_IN, fill: "forwards" })
+				.finished.then(() => el.remove());
+		};
+		const rise = (el: Element, distance: number, drift: number, duration: number, delay: number) => {
+			const from = still ? { opacity: 0 } : { opacity: 0, transform: `translate(${drift}px, ${distance}px)` };
+			el.animate([from, { opacity: 1, transform: "none" }], { duration, delay, easing: EASE_OUT, fill: "backwards" });
+		};
+		for (const el of before.els) {
+			if (el.isConnected) continue;
+			if (el.classList.contains("world")) sink(el, 70, -24 * side, 340);
+			else if (el.classList.contains("world-name")) sink(el, 10, 0, 140);
+			else sink(el, 46, 0, 260);
+		}
+		const world = horizon.querySelector(":scope > .world:not(.leaving)");
+		if (world) rise(world, 70, 24 * side, 620, 60);
+		const name = horizon.querySelector(":scope > .world-name:not(.leaving)");
+		if (name) rise(name, 8, 0, 360, 240);
+		for (const n of horizon.querySelectorAll(":scope > .neighbour:not(.leaving)")) rise(n, 46, 0, 520, 200);
 	}
 
 	private moreMenu(e: MouseEvent) {
@@ -628,6 +733,7 @@ export class LokaSidebar extends LitElement {
 						? html`<button
 								class="close"
 								aria-label="Close ${tab.title}"
+								title="Close tab"
 								@click=${(e: Event) => {
 									e.stopPropagation();
 									this.closeTabFor(tabId);
@@ -718,6 +824,7 @@ export class LokaSidebar extends LitElement {
 
 	protected override updated() {
 		this.animateRows();
+		this.animateHorizon();
 		const input = this.renderRoot.querySelector<HTMLInputElement>("input.rename");
 		if (input && document.activeElement !== this && this.shadowRoot?.activeElement !== input) {
 			input.focus();
@@ -725,69 +832,141 @@ export class LokaSidebar extends LitElement {
 		}
 	}
 
+	/** The top row is the window's title bar too: its empty space drags the window, a double-click maximizes. */
+	private onTopPress(e: MouseEvent) {
+		const target = e.target as HTMLElement;
+		if (e.button !== 0 || e.detail !== 1 || target.closest("button")) return;
+		this.browser.startWindowDrag();
+	}
+
+	private topRow(): TemplateResult {
+		const hide = this.pinned;
+		return html`<div
+			class="top"
+			@mousedown=${(e: MouseEvent) => this.onTopPress(e)}
+			@dblclick=${(e: MouseEvent) => !(e.target as HTMLElement).closest("button") && this.browser.windowAction("maximize")}
+		>
+			<button class="icon" aria-label="More" title="Menu" @click=${(e: MouseEvent) => this.moreMenu(e)}>
+				<svg viewBox="0 0 20 20"><path d="M4.5 10h.01M10 10h.01M15.5 10h.01" class="dots" /></svg>
+			</button>
+			<button
+				class="icon"
+				aria-label=${hide ? "Hide sidebar" : "Keep sidebar open"}
+				title=${hide ? "Hide the sidebar. It slides back when the mouse reaches the window's edge" : "Keep the sidebar open"}
+				@click=${() => this.action("toggle-sidebar")}
+			>
+				${
+					hide
+						? html`<svg viewBox="0 0 20 20"><rect x="2.75" y="4" width="14.5" height="12" rx="2.5" /><path d="M7.5 4v12" /><path d="m13.25 8-2 2 2 2" /></svg>`
+						: html`<svg viewBox="0 0 20 20"><rect x="2.75" y="4" width="14.5" height="12" rx="2.5" /><path d="M7.5 4v12" /><path class="fill" d="M3.5 5.5a1.5 1.5 0 0 1 1.5-1.5h2.5v12H5a1.5 1.5 0 0 1-1.5-1.5z" /></svg>`
+				}
+			</button>
+			<span class="nav">
+				<button class="icon" aria-label="Back" title="Back" @click=${() => this.nav("back")}>
+					<svg viewBox="0 0 20 20"><path d="M16 10H4.5M9 5l-5 5 5 5" /></svg>
+				</button>
+				<button class="icon forward" aria-label="Forward" title="Forward" @click=${() => this.nav("forward")}>
+					<svg viewBox="0 0 20 20"><path d="M4 10h11.5M11 5l5 5-5 5" /></svg>
+				</button>
+				<button class="icon reload" aria-label="Reload" title="Reload" @click=${() => this.nav("reload")}>
+					<svg viewBox="0 0 20 20"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 3.5v3.5h-3.5" /></svg>
+				</button>
+			</span>
+			<span class="drag" aria-hidden="true"></span>
+			<button class="icon caption" aria-label="Minimize" title="Minimize" @click=${() => this.browser.windowAction("minimize")}>
+				<svg viewBox="0 0 20 20"><path d="M5 10h10" /></svg>
+			</button>
+			<button class="icon caption" aria-label="Maximize" title="Maximize" @click=${() => this.browser.windowAction("maximize")}>
+				<svg viewBox="0 0 20 20"><rect x="5" y="5" width="10" height="10" rx="1.5" /></svg>
+			</button>
+			<button class="icon caption close-window" aria-label="Close window" title="Close" @click=${() => this.browser.windowAction("close")}>
+				<svg viewBox="0 0 20 20"><path d="m5.5 5.5 9 9m0-9-9 9" /></svg>
+			</button>
+		</div>`;
+	}
+
+	/** The address field: the page's site, opening the command bar on this tab; the pinned extensions sit inside it. */
+	private addressField(): TemplateResult {
+		const current = activeTab(this.state);
+		const secure = current?.url.startsWith("https://");
+		// Browser pages have no site name worth showing; their title says more.
+		const own = current ? /^(chrome|loka|about):/.test(current.url) : false;
+		const label = !current ? "" : own ? current.title : hostOf(current.url);
+		const loading = current ? this.live[current.id]?.loading : false;
+		const progress = overallProgress(this.downloads);
+		return html`<div class="url ${loading ? "loading" : ""}">
+			<button
+				class="address"
+				aria-label=${label ? `Address: ${label}` : "Search or enter address"}
+				title="Change the address (Ctrl+L)"
+				@click=${() => this.command(current ? "focus-location" : "new-tab")}
+			>
+				${
+					!current
+						? html`<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5.5" /><path d="m13 13 3.5 3.5" /></svg>`
+						: secure
+							? html`<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="5" y="9" width="10" height="7.5" rx="2" /><path d="M7.25 9V7a2.75 2.75 0 0 1 5.5 0v2" /></svg>`
+							: own
+								? planet(activeSpace(this.state).planet, activeSpace(this.state).hue, 16)
+								: html`<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5" /><path d="M10 7v.01M10 9.5v4" /></svg>`
+				}
+				<span class="host ${label ? "" : "placeholder"}">${label || "Search or enter address"}</span>
+			</button>
+			<span class="pill-tools">
+				<span class="pinned-ext">
+					${toolbarExtensions(this.extensions).map(
+						(x) => html`<button
+							class="tool"
+							aria-label=${x.name}
+							title=${x.badge ? `${x.name}: ${x.badge}` : x.name}
+							@click=${(e: Event) => this.runExtension(e, x.id)}
+						>
+							${extensionIcon(x, 18)}
+						</button>`,
+					)}
+				</span>
+				${this.panelButton(
+					"downloads",
+					"Downloads",
+					html`<svg viewBox="0 0 20 20"><path d="M10 3.5v9M6 8.75l4 4 4-4M4.5 16.5h11" /></svg>
+						${
+							progress === null
+								? nothing
+								: html`<svg class="ring ${Number.isNaN(progress) ? "spin" : ""}" viewBox="0 0 28 28" aria-hidden="true">
+										<circle cx="14" cy="14" r="12" pathLength="100" stroke-dasharray="${Number.isNaN(progress) ? 25 : Math.max(2, progress * 100)} 100" />
+									</svg>`
+						}`,
+				)}
+				${this.panelButton(
+					"extensions",
+					"Extensions",
+					html`<svg viewBox="0 0 20 20"><path d="M8 3.5h3.5v2.25a1.25 1.25 0 0 0 2.5 0V5.5h2.5v4h-.75a1.25 1.25 0 0 0 0 2.5h.75v4.5H12v-.75a1.25 1.25 0 0 0-2.5 0v.75H3.5V12h.75a1.25 1.25 0 0 0 0-2.5H3.5v-4H8z" /></svg>`,
+				)}
+			</span>
+		</div>`;
+	}
+
 	override render() {
 		const state = this.state;
 		const space = activeSpace(state);
-		const current = activeTab(state);
 		const rows = pinnedRows(space.pinned);
+		const count = state.essentials.length;
+		// Essentials fill the row they're in, so one is one big tile; a drag adds the free cell to drop in.
+		const columns = Math.min(4, Math.max(1, count + (this.dragId && count % 4 !== 0 ? 1 : 0)));
 
 		return html`
 			<aside
+				class=${this.pinned ? "" : "floating"}
 				@click=${() => {
 					this.closeMenu();
-					this.panel = null;
+					void this.closePanel();
 				}}
-				@loka-close-panel=${() => {
-					this.panel = null;
-				}}
+				@loka-close-panel=${() => void this.closePanel()}
 				@wheel=${this.onWheel} @contextmenu=${(e: MouseEvent) => e.target === e.currentTarget && e.preventDefault()}>
-				<div class="toolbar">
-					<button class="icon" aria-label="Back" @click=${() => this.nav("back")}><svg viewBox="0 0 16 16"><path d="M10 3L5 8l5 5" /></svg></button>
-					<button class="icon" aria-label="Forward" @click=${() => this.nav("forward")}><svg viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" /></svg></button>
-					<button class="icon" aria-label="Reload" @click=${() => this.nav("reload")}><svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 3v2.5h-2.5" /></svg></button>
-					<span class="push"></span>
-					${this.extensions
-						.filter((x) => this.pinnedExtensions.has(x.id))
-						.map(
-							(x) => html`<button
-							class="icon ext"
-							aria-label=${x.name}
-							title="${x.name}: ${x.detail}"
-							@click=${() => extensionSource?.open(x.id)}
-						>
-							${this.extensionTile(x, false)}
-						</button>`,
-						)}
-					${this.panelButton(
-						"downloads",
-						"Downloads",
-						html`<svg viewBox="0 0 16 16"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10" /></svg>`,
-					)}
-					${this.panelButton(
-						"extensions",
-						"Extensions",
-						html`<svg viewBox="0 0 16 16"><path d="M6.5 2.5h3v2a1 1 0 0 0 2 0v-.5h2v3.5h-.5a1 1 0 0 0 0 2h.5v4h-4v-.5a1 1 0 0 0-2 0v.5h-5v-4h.5a1 1 0 0 0 0-2h-.5v-3.5h4z" /></svg>`,
-					)}
-					<button class="icon" aria-label="More" @click=${(e: MouseEvent) => this.moreMenu(e)}>
-						<svg viewBox="0 0 16 16"><path d="M4 8h.01M8 8h.01M12 8h.01" /></svg>
-					</button>
-				</div>
-				<button
-					class="url"
-					@click=${() => this.dispatchEvent(new CustomEvent("loka-command", { bubbles: true, composed: true }))}
-				>
-					${
-						!current
-							? "Search or enter address"
-							: // Browser and extension pages have no site name worth showing; their title says more.
-								/^(chrome|chrome-extension):/.test(current.url)
-								? current.title
-								: hostOf(current.url)
-					}
-					<kbd>Ctrl K</kbd>
-				</button>
+				${this.topRow()}
+				${this.addressField()}
 
-				<div class="essentials" role="list" aria-label="Essentials">
+				<div class="essentials" role="list" aria-label="Essentials" style="--cols: ${columns}">
 					${repeat(
 						state.essentials,
 						(id) => id,
@@ -798,6 +977,7 @@ export class LokaSidebar extends LitElement {
 							return html`
 								<button
 									class="essential ${active ? "active" : ""} ${this.dragId === id ? "dragging" : ""} ${this.dropClass(id)}"
+									data-key=${id}
 									role="listitem"
 									title=${tab.title}
 									aria-label=${tab.title}
@@ -816,7 +996,7 @@ export class LokaSidebar extends LitElement {
 									@click=${() => this.apply((s) => activateTab(s, id))}
 									@contextmenu=${(e: MouseEvent) => this.openMenu(e, this.tabMenu(id))}
 								>
-									${this.favicon(id, tab.url, 22)}
+									${this.favicon(id, tab.url, 24)}
 								</button>
 							`;
 						},
@@ -824,14 +1004,14 @@ export class LokaSidebar extends LitElement {
 					${
 						// The drop slot sits in a free cell of the last row, never a new row: adding a row
 						// when a drag starts would shift everything under the pointer.
-						state.essentials.length % 4 !== 0 || state.essentials.length === 0
+						count % 4 !== 0 || count === 0
 							? html`<div
-									class="essential slot ${this.dragId ? "visible" : ""} ${state.essentials.length === 0 ? "wide" : ""} ${this.dropClass("essentials-end")}"
+									class="essential slot ${this.dragId ? "visible" : ""} ${count === 0 ? "wide" : ""} ${this.dropClass("essentials-end")}"
 									aria-hidden="true"
 									@dragover=${(e: DragEvent) => this.over(e, "essentials-end", () => ({ area: "essentials", index: Infinity }))}
 									@drop=${(e: DragEvent) => this.dropHere(e)}
 								>
-									${state.essentials.length === 0 ? "Drag tabs here for Essentials" : nothing}
+									${count === 0 ? "Drag tabs here for Essentials" : nothing}
 								</div>`
 							: nothing
 					}
@@ -844,6 +1024,13 @@ export class LokaSidebar extends LitElement {
 				style="translate: ${-this.swipe * 0.5}px 0; opacity: ${1 - Math.abs(this.swipe) / 180}"
 				@contextmenu=${(e: MouseEvent) => this.openMenu(e, this.emptyMenu())}
 			>
+					<button
+						class="space-label"
+						title="${space.name}: switch or edit spaces"
+						@click=${(e: MouseEvent) => this.openMenu(e, this.spacesMenu())}
+					>
+						${planet(space.planet, space.hue, 14)}<span>${space.name}</span>
+					</button>
 					<div class="pinned" role="tree" aria-label="Pinned in ${space.name}">
 						${repeat(
 							rows,
@@ -872,12 +1059,13 @@ export class LokaSidebar extends LitElement {
 							space.open.length > 0
 								? html`<button
 										class="clear"
+										title="Close every open tab in ${space.name}"
 										@click=${() => {
 											playCue("clear");
 											this.apply((s) => space.open.reduce((acc, id) => closeTab(acc, id), s));
 										}}
 									>
-										Clear
+										<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v8M4.5 7.5 8 11l3.5-3.5M4 13.5h8" /></svg>Clear
 									</button>`
 								: nothing
 						}
@@ -887,11 +1075,11 @@ export class LokaSidebar extends LitElement {
 						<button
 							class="row new-tab ${this.dropClass("open-start")}"
 							data-key="new-tab"
-							@click=${() => this.dispatchEvent(new CustomEvent("loka-command", { bubbles: true, composed: true }))}
+							@click=${() => this.command("new-tab")}
 							@dragover=${(e: DragEvent) => this.over(e, "open-start", () => ({ area: "open", spaceId: space.id, index: 0 }))}
 							@drop=${(e: DragEvent) => this.dropHere(e)}
 						>
-							<span class="plus">+</span><span class="label">New tab</span>
+							<svg class="plus" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" /></svg><span class="label">New tab</span>
 						</button>
 						${repeat(
 							space.open,
@@ -909,12 +1097,16 @@ export class LokaSidebar extends LitElement {
 				)}
 
 				${
-					this.media && this.media.tabId !== space.activeTabId && state.tabs[this.media.tabId]
-						? html`<loka-media-card class="media" .media=${this.media} .state=${state} .live=${this.live[this.media.tabId]}></loka-media-card>`
+					this.playing
+						? html`<loka-media-card
+								class="media"
+								.playing=${this.playing}
+								.live=${this.playing.tab ? this.live[this.playing.tab.id] : undefined}
+							></loka-media-card>`
 						: nothing
 				}
 				<nav class="horizon" aria-label="Spaces">
-					${this.neighbour(this.neighbourAt(-1), "left")}
+					${keyed(`left-${this.neighbourAt(-1)?.id}`, this.neighbour(this.neighbourAt(-1), "left"))}
 					${keyed(
 						space.id,
 						html`<button
@@ -928,7 +1120,10 @@ export class LokaSidebar extends LitElement {
 							</button>
 							<span class="world-name" aria-hidden="true">${space.name}</span>`,
 					)}
-					${this.neighbour(this.neighbourAt(1), "right")}
+					${keyed(`right-${this.neighbourAt(1)?.id}`, this.neighbour(this.neighbourAt(1), "right"))}
+					<button class="new" aria-label="New" title="New tab, folder or space" @click=${(e: MouseEvent) => this.newMenu(e)}>
+						<svg viewBox="0 0 20 20"><path d="M10 4.5v11M4.5 10h11" /></svg>
+					</button>
 				</nav>
 
 				${
@@ -939,7 +1134,7 @@ export class LokaSidebar extends LitElement {
 								aria-label=${PANEL_NAMES[this.panel]}
 								@click=${(e: Event) => e.stopPropagation()}
 								@keydown=${(e: KeyboardEvent) => {
-									if (e.key === "Escape") this.panel = null;
+									if (e.key === "Escape") void this.closePanel();
 								}}
 							>
 								${this.panelBody(this.panel)}
@@ -951,7 +1146,7 @@ export class LokaSidebar extends LitElement {
 						? html`<div
 								class="menu"
 								role="menu"
-								style="left: ${Math.min(this.menu.x, this.getBoundingClientRect().right - 196)}px; top: ${Math.min(this.menu.y, window.innerHeight - 40 * this.menu.items.length)}px"
+								style="left: ${Math.max(4, Math.min(this.menu.x, this.getBoundingClientRect().right - 204))}px; top: ${Math.max(4, Math.min(this.menu.y, window.innerHeight - 8 - 36 * this.menu.items.length))}px"
 								@keydown=${(e: KeyboardEvent) => e.key === "Escape" && this.closeMenu()}
 							>
 								${this.menu.items.map(
@@ -975,14 +1170,15 @@ export class LokaSidebar extends LitElement {
 
 	private panelButton(panel: Panel, label: string, icon: TemplateResult): TemplateResult {
 		return html`<button
-			class="icon ${this.panel === panel ? "on" : ""}"
+			class="tool ${this.panel === panel ? "on" : ""}"
 			aria-label=${label}
 			aria-expanded=${this.panel === panel}
 			title=${label}
 			@click=${(e: Event) => {
 				e.stopPropagation();
 				this.menu = null;
-				this.panel = this.panel === panel ? null : panel;
+				if (this.panel === panel) void this.closePanel();
+				else this.panel = panel;
 			}}
 		>
 			${icon}
@@ -990,50 +1186,29 @@ export class LokaSidebar extends LitElement {
 	}
 
 	private panelBody(panel: Panel): TemplateResult {
-		if (panel === "downloads") return html`<loka-downloads></loka-downloads>`;
+		if (panel === "downloads")
+			return html`<loka-downloads .downloads=${this.downloads} .browser=${this.browser}></loka-downloads>`;
 		if (panel === "archive")
 			return html`<loka-archive-panel .state=${this.state} .apply=${this.apply}></loka-archive-panel>`;
 		if (panel === "search")
 			return html`<loka-sidebar-search .state=${this.state} .apply=${this.apply}></loka-sidebar-search>`;
-		return html`<p class="ext-head">Extensions</p>
-								${this.extensions.map(
-									(x) => html`<div class="ext-row">
-										${this.extensionTile(x, true)}
-										<span class="ext-name">${x.name}<small>${x.detail}</small></span>
-										<button
-											class="icon pin ${this.pinnedExtensions.has(x.id) ? "on" : ""}"
-											aria-label="${this.pinnedExtensions.has(x.id) ? "Unpin" : "Pin"} ${x.name}"
-											aria-pressed=${this.pinnedExtensions.has(x.id)}
-											@click=${() => {
-												const next = new Set(this.pinnedExtensions);
-												if (!next.delete(x.id)) next.add(x.id);
-												this.pinnedExtensions = next;
-												localStorage.setItem(PINNED_KEY, JSON.stringify([...next]));
-											}}
-										>
-											<svg viewBox="0 0 16 16"><path d="M9.5 2.5 13.5 6.5 11 7.5 8.5 10l-.5 3L3 8l3-.5L8.5 5z" /><path d="M5.5 10.5 2.5 13.5" /></svg>
-										</button>
-									</div>`,
-								)}
-								<button class="ext-more" @click=${() => extensionSource?.manage()}>Manage extensions</button>`;
+		return html`<loka-extensions
+			.extensions=${this.extensions}
+			.browser=${this.browser}
+			.pin=${this.pinExtension}
+		></loka-extensions>`;
 	}
 
-	private extensionTile(x: ExtensionInfo, big: boolean): TemplateResult {
-		return x.icon
-			? html`<img class="ext-tile ${big ? "big" : ""}" src=${x.icon} alt="" aria-hidden="true" />`
-			: html`<span class="ext-tile ${big ? "big" : ""}" style="--x: ${x.color}" aria-hidden="true">${x.letter}</span>`;
-	}
-
-	static override styles = css`
+	static override styles = [
+		extensionIconStyles,
+		css`
 		:host {
 			display: block;
 			min-height: 0;
-			font-size: 14px;
-			--text: #ececf1;
-			--muted: #a7a8b4;
-			--row-hover: hsl(var(--hue) 30% 80% / 0.08);
-			--row-active: hsl(var(--hue) 40% 85% / 0.16);
-			--accent: hsl(var(--hue) 85% 72%);
+			font-size: 15px;
+			--text: var(--loka-ink);
+			--muted: var(--loka-ink-2);
+			--accent: var(--loka-accent);
 		}
 		aside {
 			position: relative;
@@ -1041,8 +1216,8 @@ export class LokaSidebar extends LitElement {
 			flex-direction: column;
 			height: 100%;
 			box-sizing: border-box;
-			padding: 10px 10px 8px 12px;
-			gap: 10px;
+			padding: 6px 8px 8px 10px;
+			gap: 8px;
 			user-select: none;
 		}
 		button {
@@ -1050,194 +1225,257 @@ export class LokaSidebar extends LitElement {
 			color: inherit;
 			background: none;
 			border: 0;
+			padding: 0;
 			cursor: default;
 		}
 		svg {
-			width: 16px;
-			height: 16px;
+			width: 18px;
+			height: 18px;
 			fill: none;
 			stroke: currentColor;
 			stroke-width: 1.5;
 			stroke-linecap: round;
 			stroke-linejoin: round;
 		}
+		svg .fill {
+			fill: currentColor;
+			fill-opacity: 0.35;
+			stroke: none;
+		}
 		:focus-visible {
-			outline: 2px solid var(--accent);
+			outline: 2px solid var(--loka-accent);
 			outline-offset: -2px;
 			border-radius: 8px;
 		}
-		.toolbar {
+
+		/* The top row is the window's title bar: menu and hide, the page's own buttons, then the window's. */
+		.top {
+			flex: none;
 			display: flex;
-			gap: 2px;
-			color: var(--muted);
+			align-items: center;
+			gap: 0;
+			height: 36px;
+			margin: 0 -4px 0 -6px;
+			container-type: inline-size;
+		}
+		.nav {
+			display: flex;
+			margin-left: 6px;
+		}
+		.drag {
+			flex: 1;
+			align-self: stretch;
 		}
 		.icon {
 			display: grid;
 			place-items: center;
-			width: 28px;
-			height: 28px;
-			border-radius: 7px;
-			color: var(--muted);
+			flex: none;
+			width: 32px;
+			height: 32px;
+			border-radius: 8px;
+			color: var(--loka-ink-2);
 		}
 		.icon:hover {
-			background: var(--row-hover);
-			color: var(--text);
+			background: var(--loka-hover);
+			color: var(--loka-ink);
 		}
-		.push {
-			margin-left: auto;
+		.icon:active {
+			background: var(--loka-fill-hover);
 		}
-		.icon.on {
-			background: var(--row-active);
-			color: var(--text);
+		.icon .dots {
+			stroke-width: 2.4;
 		}
-		.media {
-			flex: none;
-			margin: 0 -2px -4px;
+		.caption {
+			width: 30px;
 		}
-		.ext-tile {
-			display: grid;
-			place-items: center;
+		.caption svg {
 			width: 16px;
 			height: 16px;
-			border-radius: 4px;
-			background: var(--x);
+			stroke-width: 1.3;
+		}
+		.close-window:hover {
+			background: #c42b1c;
 			color: #fff;
-			font-size: 11px;
-			font-weight: 700;
 		}
-		.ext-tile.big {
-			width: 26px;
-			height: 26px;
-			border-radius: 7px;
-			font-size: 14px;
+		/* A narrow sidebar keeps the window's buttons and drops the page's least-used ones first. */
+		@container (width < 286px) {
+			.reload {
+				display: none;
+			}
 		}
-		.panel {
-			position: absolute;
-			z-index: 10;
-			top: 44px;
-			left: 6px;
-			right: 6px;
-			max-height: calc(100% - 210px);
-			overflow-y: auto;
-			padding: 8px;
-			border-radius: 12px;
-			background: hsl(var(--hue) 22% 13% / 0.97);
-			box-shadow:
-				0 0 0 1px hsl(var(--hue) 30% 85% / 0.12),
-				0 16px 40px #0009;
+		@container (width < 254px) {
+			.forward {
+				display: none;
+			}
 		}
-		.ext-head {
-			margin: 4px 8px 8px;
-			font-weight: 600;
-			color: var(--text);
-		}
-		.ext-row {
-			display: flex;
-			align-items: center;
-			gap: 10px;
-			padding: 6px 8px;
-			border-radius: 8px;
-		}
-		.ext-row:hover {
-			background: var(--row-hover);
-		}
-		.ext-name {
-			flex: 1;
-			display: grid;
-			color: var(--text);
-		}
-		.ext-name small {
-			color: var(--muted);
-			font-size: 12px;
-		}
-		.pin.on {
-			color: var(--accent);
-		}
-		.pin.on svg {
-			fill: currentColor;
-			fill-opacity: 0.3;
-		}
-		.ext-more {
-			width: 100%;
-			margin-top: 6px;
-			padding: 8px;
-			border-radius: 8px;
-			color: var(--muted);
-			text-align: left;
-		}
-		.ext-more:hover {
-			background: var(--row-hover);
-			color: var(--text);
-		}
+
+		/* The address field, with the pinned extensions, Downloads and Extensions inside it on the right. */
 		.url {
+			position: relative;
+			flex: none;
 			display: flex;
 			align-items: center;
-			justify-content: space-between;
-			height: 34px;
-			padding: 0 10px;
-			border-radius: 10px;
-			background: hsl(var(--hue) 30% 85% / 0.08);
-			color: var(--text);
-			text-align: left;
+			height: 40px;
+			padding-right: 4px;
+			border-radius: 12px;
+			background: var(--loka-fill);
+			box-shadow: inset 0 0 0 1px var(--loka-line);
+			overflow: hidden;
 		}
 		.url:hover {
-			background: hsl(var(--hue) 30% 85% / 0.12);
+			background: var(--loka-fill-hover);
 		}
-		kbd {
-			font: 11px system-ui;
-			color: var(--muted);
+		.address {
+			flex: 1;
+			min-width: 0;
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			height: 100%;
+			padding: 0 6px 0 12px;
+			text-align: left;
+			color: var(--loka-ink);
+			font-size: 14px;
 		}
-		.essentials {
+		.address > svg {
+			flex: none;
+			width: 16px;
+			height: 16px;
+			color: var(--loka-ink-3);
+		}
+		.host {
+			min-width: 0;
+			overflow: hidden;
+			white-space: nowrap;
+			text-overflow: ellipsis;
+		}
+		.host.placeholder {
+			color: var(--loka-ink-3);
+		}
+		/* Loading: a thin line in the space's color runs along the field's bottom edge. */
+		.url.loading::after {
+			content: "";
+			position: absolute;
+			left: 12px;
+			right: 12px;
+			bottom: 0;
+			height: 2px;
+			border-radius: 1px;
+			background: linear-gradient(90deg, transparent, var(--loka-accent), transparent);
+			opacity: 0.9;
+		}
+		.pill-tools {
+			display: flex;
+			align-items: center;
+			flex: none;
+			min-width: 0;
+		}
+		/* Pinned extensions that don't fit wrap onto a hidden second line, so a narrow sidebar hides whole buttons. */
+		.pinned-ext {
+			display: flex;
+			flex-wrap: wrap;
+			height: 30px;
+			max-width: 96px;
+			overflow: hidden;
+		}
+		.tool {
+			position: relative;
 			display: grid;
-			grid-template-columns: repeat(4, 1fr);
-			gap: 6px;
+			place-items: center;
+			flex: none;
+			width: 30px;
+			height: 30px;
+			border-radius: 8px;
+			color: var(--loka-ink-2);
+		}
+		.tool:hover {
+			background: var(--loka-hover);
+			color: var(--loka-ink);
+		}
+		.tool.on {
+			background: var(--loka-selected);
+			box-shadow: var(--loka-selected-edge);
+			color: var(--loka-ink);
+		}
+		/* Download progress: a ring around the button, filling as the files come in. */
+		.ring {
+			position: absolute;
+			inset: 1px;
+			width: 28px;
+			height: 28px;
+			rotate: -90deg;
+		}
+		.ring circle {
+			fill: none;
+			stroke: var(--loka-accent);
+			stroke-width: 2;
+		}
+
+		.essentials {
+			position: relative;
+			flex: none;
+			display: grid;
+			grid-template-columns: repeat(var(--cols, 4), 1fr);
+			gap: 8px;
 		}
 		.essential {
 			display: grid;
 			place-items: center;
-			height: 50px;
-			border-radius: 10px;
-			background: hsl(var(--hue) 30% 85% / 0.07);
+			height: 56px;
+			border-radius: 12px;
+			background: var(--loka-fill);
+			box-shadow: inset 0 0 0 1px var(--loka-line);
 			position: relative;
 		}
 		.essential:hover {
-			background: hsl(var(--hue) 30% 85% / 0.12);
+			background: var(--loka-fill-hover);
 		}
 		.essential.active {
-			background: var(--row-active);
-			box-shadow: inset 0 0 0 1px hsl(var(--hue) 70% 80% / 0.35);
+			background: var(--loka-selected);
+			box-shadow:
+				inset 0 0 0 1.5px var(--loka-accent),
+				var(--loka-selected-edge);
 		}
 		.essential.slot {
 			background: none;
-			color: var(--muted);
+			box-shadow: none;
+			color: var(--loka-ink-3);
+			font-size: 13px;
 		}
 		.essential.slot.visible,
 		.essential.slot.wide {
-			box-shadow: inset 0 0 0 1px hsl(var(--hue) 30% 85% / 0.12);
+			box-shadow: inset 0 0 0 1px var(--loka-line);
 		}
 		.essential.slot.wide {
 			grid-column: 1 / -1;
+			height: 44px;
 		}
 		.essential.drop-before::before,
 		.essential.drop-after::before {
 			content: "";
 			position: absolute;
-			top: 6px;
-			bottom: 6px;
+			top: 8px;
+			bottom: 8px;
 			width: 2px;
 			border-radius: 1px;
-			background: var(--accent);
+			background: var(--loka-accent);
 		}
 		.essential.drop-before::before {
-			left: -4px;
+			left: -5px;
 		}
 		.essential.drop-after::before {
-			right: -4px;
+			right: -5px;
 		}
 		.essential.slot.drop-before,
 		.essential.slot.drop-after {
-			box-shadow: inset 0 0 0 1.5px var(--accent);
+			box-shadow: inset 0 0 0 1.5px var(--loka-accent);
 		}
+		.essential.leaving {
+			position: absolute;
+			z-index: 1;
+			pointer-events: none;
+		}
+
 		.scroll {
 			position: relative;
 			flex: 1;
@@ -1247,23 +1485,40 @@ export class LokaSidebar extends LitElement {
 			padding: 0 4px;
 			scrollbar-width: thin;
 		}
+		.space-label {
+			display: flex;
+			align-items: center;
+			gap: 7px;
+			height: 28px;
+			padding: 0 8px;
+			margin-bottom: 2px;
+			border-radius: 7px;
+			color: var(--loka-ink-3);
+			font-size: 13px;
+			font-weight: 550;
+		}
+		.space-label:hover {
+			color: var(--loka-ink);
+			background: var(--loka-hover);
+		}
 		.row {
 			position: relative;
 			display: flex;
 			align-items: center;
-			gap: 10px;
+			gap: 12px;
 			width: 100%;
 			box-sizing: border-box;
-			height: 36px;
-			padding: 0 6px 0 calc(9px + var(--depth, 0) * 18px);
-			border-radius: 8px;
-			color: var(--text);
+			height: 42px;
+			padding: 0 6px 0 calc(11px + var(--depth, 0) * 18px);
+			border-radius: 10px;
+			color: var(--loka-ink);
 		}
 		.row:hover {
-			background: var(--row-hover);
+			background: var(--loka-hover);
 		}
 		.row.active {
-			background: var(--row-active);
+			background: var(--loka-selected);
+			box-shadow: var(--loka-selected-edge);
 		}
 		.row.dragging,
 		.essential.dragging {
@@ -1279,11 +1534,11 @@ export class LokaSidebar extends LitElement {
 		.row.drop-after::after {
 			content: "";
 			position: absolute;
-			left: calc(9px + var(--depth, 0) * 18px);
+			left: calc(11px + var(--depth, 0) * 18px);
 			right: 6px;
 			height: 2px;
 			border-radius: 1px;
-			background: var(--accent);
+			background: var(--loka-accent);
 		}
 		.row.drop-before::before {
 			top: -1px;
@@ -1292,8 +1547,8 @@ export class LokaSidebar extends LitElement {
 			bottom: -1px;
 		}
 		.row.drop-into {
-			background: hsl(var(--hue) 80% 70% / 0.18);
-			box-shadow: inset 0 0 0 1.5px var(--accent);
+			background: color-mix(in srgb, var(--loka-accent) 18%, transparent);
+			box-shadow: inset 0 0 0 1.5px var(--loka-accent);
 		}
 		.label {
 			flex: 1;
@@ -1323,40 +1578,39 @@ export class LokaSidebar extends LitElement {
 			position: absolute;
 			inset: -3px;
 			border-radius: 50%;
-			border: 1.5px solid hsl(var(--hue) 30% 85% / 0.12);
-			border-top-color: var(--accent);
+			border: 1.5px solid var(--loka-line);
+			border-top-color: var(--loka-accent);
 		}
 		.sound {
 			flex: none;
 			display: grid;
 			place-items: center;
-			width: 22px;
-			height: 22px;
-			padding: 0;
-			border-radius: 6px;
-			color: var(--accent);
+			width: 26px;
+			height: 26px;
+			border-radius: 7px;
+			color: var(--loka-accent-ink);
 		}
 		.sound.muted {
-			color: var(--muted);
+			color: var(--loka-ink-2);
 		}
 		.sound svg {
-			width: 14px;
-			height: 14px;
+			width: 16px;
+			height: 16px;
 		}
 		.sound:hover {
-			background: var(--row-hover);
+			background: var(--loka-hover);
 		}
 		.folder {
-			color: var(--text);
+			color: var(--loka-ink);
 		}
 		/* No arrow: the icon itself is the open or closed state. */
 		.folder-icon {
 			flex: none;
-			width: 21px;
-			height: 21px;
-			margin: 0 -1px 0 -2px;
-			color: var(--accent);
-			stroke-width: 1.2;
+			width: 22px;
+			height: 22px;
+			margin: 0 -2px 0 -2px;
+			color: var(--loka-accent-ink);
+			stroke-width: 1.15;
 		}
 		.folder-icon .body {
 			fill: currentColor;
@@ -1367,41 +1621,40 @@ export class LokaSidebar extends LitElement {
 			stroke-width: 1.1;
 		}
 		.folder-icon .holds {
-			fill: #fff;
-			stroke: hsl(var(--hue) 40% 8%);
+			fill: var(--loka-ink);
+			stroke: var(--loka-fill-hover);
 			stroke-width: 1.6;
 		}
 		.count {
-			color: var(--muted);
-			font-size: 11px;
+			color: var(--loka-ink-3);
+			font-size: 12px;
 			font-variant-numeric: tabular-nums;
 		}
 		.rename {
 			flex: 1;
 			min-width: 0;
 			font: inherit;
-			color: var(--text);
-			background: hsl(var(--hue) 30% 10%);
-			border: 1px solid var(--accent);
-			border-radius: 5px;
-			padding: 2px 4px;
+			color: var(--loka-ink);
+			background: var(--loka-surface);
+			border: 1px solid var(--loka-accent);
+			border-radius: 6px;
+			padding: 3px 6px;
 			outline: none;
 		}
 		.close {
 			flex: none;
 			display: grid;
 			place-items: center;
-			width: 22px;
-			height: 22px;
+			width: 28px;
+			height: 28px;
 			margin-right: -2px;
-			padding: 0;
-			border-radius: 6px;
-			color: var(--muted);
+			border-radius: 7px;
+			color: var(--loka-ink-2);
 			opacity: 0;
 		}
 		.close svg {
-			width: 14px;
-			height: 14px;
+			width: 16px;
+			height: 16px;
 		}
 		.row:hover .close,
 		.row.active .close,
@@ -1409,8 +1662,8 @@ export class LokaSidebar extends LitElement {
 			opacity: 1;
 		}
 		.close:hover {
-			background: var(--row-hover);
-			color: var(--text);
+			background: var(--loka-hover);
+			color: var(--loka-ink);
 		}
 		.end-zone {
 			height: 10px;
@@ -1421,67 +1674,81 @@ export class LokaSidebar extends LitElement {
 			place-items: center;
 			height: 44px;
 			margin: 2px 0;
-			border-radius: 8px;
-			color: var(--muted);
-			box-shadow: inset 0 0 0 1px hsl(var(--hue) 30% 85% / 0.1);
+			border-radius: 10px;
+			color: var(--loka-ink-3);
+			font-size: 13px;
+			box-shadow: inset 0 0 0 1px var(--loka-line);
 		}
 		.end-zone.drop-before,
 		.end-zone.drop-after {
-			box-shadow: inset 0 0 0 1.5px var(--accent);
-			border-radius: 8px;
+			box-shadow: inset 0 0 0 1.5px var(--loka-accent);
+			border-radius: 10px;
 		}
 		.divider {
 			display: flex;
 			align-items: center;
 			gap: 8px;
-			height: 24px;
-			padding: 0 6px;
+			height: 30px;
+			padding: 0 2px 0 8px;
 		}
 		.divider span {
 			flex: 1;
 			height: 1px;
-			background: hsl(var(--hue) 30% 85% / 0.12);
+			background: var(--loka-line);
 		}
 		.clear {
-			color: var(--muted);
-			font-size: 12px;
-			padding: 2px 6px;
-			border-radius: 6px;
+			display: flex;
+			align-items: center;
+			gap: 3px;
+			height: 26px;
+			color: var(--loka-ink-3);
+			font-size: 13px;
+			padding: 0 7px 0 5px;
+			border-radius: 7px;
+		}
+		.clear svg {
+			width: 14px;
+			height: 14px;
 		}
 		.clear:hover {
-			color: var(--text);
-			background: var(--row-hover);
+			color: var(--loka-ink);
+			background: var(--loka-hover);
 		}
 		.new-tab {
-			color: var(--muted);
+			color: var(--loka-ink-2);
 			text-align: left;
 		}
 		.new-tab:hover {
-			color: var(--text);
+			color: var(--loka-ink);
 		}
 		.plus {
-			display: grid;
-			place-items: center;
-			width: 16px;
-			font-size: 16px;
+			width: 18px;
+			height: 18px;
+			flex: none;
 		}
-		/* Spaces as a horizon: the current space is a planet rising at the bottom, its neighbours sit either side. */
+		.media {
+			flex: none;
+			margin: 0 -2px -2px;
+		}
+
+		/* Spaces as a horizon: the current space is a planet rising at the bottom, its neighbours small in the sky
+		   either side, low enough that switching sets them behind its edge. */
 		.horizon {
 			position: relative;
 			flex: none;
 			/* Tall enough above the planet for a ring's arc and its glow, which would otherwise be cut off flat. */
 			height: 140px;
-			margin: -24px -10px -8px -12px;
+			margin: -24px -8px -8px -10px;
 			overflow: hidden;
 		}
 		.world {
 			position: absolute;
+			z-index: 1;
 			left: 50%;
 			top: 56px;
 			width: 400px;
 			height: 400px;
 			margin-left: -200px;
-			padding: 0;
 			border-radius: 50%;
 		}
 		.world svg,
@@ -1500,36 +1767,55 @@ export class LokaSidebar extends LitElement {
 		}
 		.world-name {
 			position: absolute;
+			z-index: 2;
 			left: 0;
 			right: 0;
-			top: 90px;
+			top: 92px;
 			text-align: center;
 			font-size: 14px;
 			font-weight: 650;
 			color: #fff;
-			text-shadow:
-				0 1px 3px #000a,
-				0 0 10px #0006;
+			text-shadow: var(--loka-label-shadow);
 			pointer-events: none;
 		}
 		.neighbour {
 			position: absolute;
-			/* Above the big planet, so a ring arcing behind it passes behind these too. */
-			z-index: 1;
-			top: 44px;
+			z-index: 0;
+			top: 62px;
 			width: 30px;
 			height: 30px;
-			padding: 0;
 			border-radius: 50%;
 		}
 		.neighbour.left {
-			left: 24px;
+			left: 22px;
 		}
 		.neighbour.right {
-			right: 24px;
+			right: 22px;
 		}
 		.neighbour:hover {
 			filter: brightness(1.15);
+		}
+		.horizon .leaving {
+			pointer-events: none;
+		}
+		/* The +, at the bottom corner over the planet, makes a new tab, folder or space. */
+		.new {
+			position: absolute;
+			z-index: 3;
+			left: 12px;
+			bottom: 10px;
+			display: grid;
+			place-items: center;
+			width: 32px;
+			height: 32px;
+			border-radius: 9px;
+			color: #fff;
+			background: hsl(var(--hue) 40% 10% / 0.28);
+			box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 0.16);
+			backdrop-filter: blur(6px);
+		}
+		.new:hover {
+			background: hsl(var(--hue) 40% 10% / 0.42);
 		}
 		@keyframes in-right {
 			from {
@@ -1543,29 +1829,53 @@ export class LokaSidebar extends LitElement {
 				opacity: 0;
 			}
 		}
+
+		.panel {
+			position: absolute;
+			z-index: 10;
+			top: 92px;
+			left: 6px;
+			right: 6px;
+			max-height: calc(100% - 240px);
+			overflow-y: auto;
+			padding: 8px 6px;
+			border-radius: 14px;
+			background: var(--loka-surface);
+			box-shadow: var(--loka-surface-edge);
+			transform-origin: top right;
+		}
 		.menu {
 			position: fixed;
 			z-index: 10;
 			display: flex;
 			flex-direction: column;
-			width: 188px;
+			width: 196px;
 			padding: 4px;
-			border-radius: 10px;
-			background: hsl(var(--hue) 22% 13% / 0.96);
-			box-shadow:
-				0 0 0 1px hsl(var(--hue) 30% 85% / 0.12),
-				0 12px 32px #0008;
+			border-radius: 12px;
+			background: var(--loka-surface);
+			box-shadow: var(--loka-surface-edge);
 			backdrop-filter: blur(12px);
+			transform-origin: top left;
 		}
 		.menu button {
 			text-align: left;
-			padding: 7px 10px;
-			border-radius: 6px;
+			height: 34px;
+			padding: 0 10px;
+			border-radius: 8px;
+			font-size: 14px;
 		}
 		.menu button:hover,
 		.menu button:focus-visible {
-			background: var(--row-active);
+			background: var(--loka-hover);
+			outline: none;
 		}
+
+		/* Unpinned, the browser floats the sidebar over the page: give it a finished edge of its own. */
+		aside.floating {
+			border-radius: 12px;
+			box-shadow: inset 0 0 0 1px var(--loka-line);
+		}
+
 		@media (prefers-reduced-motion: no-preference) {
 			.row,
 			.essential {
@@ -1574,32 +1884,32 @@ export class LokaSidebar extends LitElement {
 			.fav.loading::after {
 				animation: spin 800ms linear infinite;
 			}
+			.ring.spin {
+				animation: spin 1s linear infinite;
+			}
 			@keyframes spin {
 				to {
 					rotate: 1turn;
 				}
 			}
-			.world-name {
-				animation: rise 320ms cubic-bezier(0.2, 0, 0, 1);
+			.ring circle {
+				transition: stroke-dasharray 450ms linear;
 			}
-			@keyframes rise {
+			.url.loading::after {
+				animation: shimmer 1.1s ease-in-out infinite;
+			}
+			@keyframes shimmer {
 				from {
-					opacity: 0;
-					transform: translateY(8px);
+					transform: translateX(-60%);
 				}
-			}
-			/* After a switch the new planet rises and the new list slides in from the side it came from. */
-			.world {
-				animation: planet-rise 380ms cubic-bezier(0.2, 0, 0, 1);
-			}
-			@keyframes planet-rise {
-				from {
-					transform: translateY(34px);
+				to {
+					transform: translateX(60%);
 				}
 			}
 			/* The planet turns: its surface strip slides one body-width every four and a half minutes. */
 			.world .turn {
 				animation: turn 270s linear infinite;
+				animation-play-state: var(--loka-play, running);
 			}
 			@keyframes turn {
 				to {
@@ -1619,8 +1929,43 @@ export class LokaSidebar extends LitElement {
 					translate 220ms cubic-bezier(0.2, 0, 0, 1),
 					opacity 220ms;
 			}
+			.neighbour {
+				transition: transform 160ms cubic-bezier(0.2, 0, 0, 1);
+			}
+			.neighbour:hover {
+				transform: translateY(-3px);
+			}
+			/* Panels grow from the button that opened them; menus from where they were asked for. */
+			.panel {
+				transition:
+					opacity 150ms cubic-bezier(0.2, 0, 0, 1),
+					transform 200ms cubic-bezier(0.2, 0, 0, 1);
+				@starting-style {
+					opacity: 0;
+					transform: translateY(-4px) scale(0.97);
+				}
+			}
+			.menu {
+				transition:
+					opacity 120ms cubic-bezier(0.2, 0, 0, 1),
+					transform 160ms cubic-bezier(0.2, 0, 0, 1);
+				@starting-style {
+					opacity: 0;
+					transform: scale(0.96);
+				}
+			}
 		}
-	`;
+		@media (prefers-reduced-motion: reduce) {
+			.panel,
+			.menu {
+				transition: opacity 120ms ease-out;
+				@starting-style {
+					opacity: 0;
+				}
+			}
+		}
+	`,
+	];
 }
 
 customElements.define("loka-sidebar", LokaSidebar);

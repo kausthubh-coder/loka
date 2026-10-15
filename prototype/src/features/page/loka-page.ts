@@ -15,6 +15,8 @@ export class LokaPage extends LitElement {
 		apply: { attribute: false },
 		ui: { attribute: false },
 		setUi: { attribute: false },
+		pinned: { attribute: false },
+		scheme: { reflect: true },
 	};
 
 	declare tab: Tab | null;
@@ -23,12 +25,21 @@ export class LokaPage extends LitElement {
 	declare apply: Update;
 	declare ui: UiPrefs;
 	declare setUi: SetUi;
+	declare pinned: boolean;
+	/** Web pages follow the scheme the space asked the browser for, as they would through prefers-color-scheme. */
+	scheme: "light" | "dark" = "light";
 
 	override render() {
 		const tab = this.tab;
 		if (tab?.url === "loka://settings") {
 			return html`<section class="frame inside">
-				<loka-settings .state=${this.state} .apply=${this.apply} .ui=${this.ui} .setUi=${this.setUi}></loka-settings>
+				<loka-settings
+					.state=${this.state}
+					.apply=${this.apply}
+					.ui=${this.ui}
+					.setUi=${this.setUi}
+					.pinned=${this.pinned}
+				></loka-settings>
 			</section>`;
 		}
 
@@ -77,7 +88,18 @@ export class LokaPage extends LitElement {
 				0 20px 60px #0006;
 			overflow: hidden;
 		}
-		/* Loka's own pages sit on the night sky instead of a white web page. */
+		/* A web page in a dark space, following prefers-color-scheme. */
+		:host([scheme="dark"]) .frame:not(.inside, .empty) {
+			background: #17181c;
+			color: #e6e6ea;
+		}
+		:host([scheme="dark"]) .skeleton span {
+			background: #2a2b31;
+		}
+		:host([scheme="dark"]) .url {
+			color: #9a9ba6;
+		}
+		/* Loka's own pages sit on the sky instead of a white web page. */
 		.frame.inside {
 			padding: 0;
 			background: hsl(var(--hue) 25% 9% / 0.82);
@@ -87,13 +109,14 @@ export class LokaPage extends LitElement {
 			display: grid;
 			place-content: center;
 			text-align: center;
-			background: hsl(var(--hue) 25% 10% / 0.6);
-			color: #c9cad4;
+			background: var(--loka-fill);
+			box-shadow: inset 0 0 0 1px var(--loka-line);
+			color: var(--loka-ink-2);
 		}
 		.hint {
 			font-size: 16px;
 			margin: 0 0 6px;
-			color: #ececf1;
+			color: var(--loka-ink);
 		}
 		.keys {
 			margin: 0;
@@ -102,7 +125,7 @@ export class LokaPage extends LitElement {
 			font: 12px system-ui;
 			padding: 1px 6px;
 			border-radius: 5px;
-			background: hsl(var(--hue) 30% 85% / 0.12);
+			background: var(--loka-fill-hover);
 		}
 		header {
 			display: flex;

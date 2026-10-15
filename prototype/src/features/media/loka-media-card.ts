@@ -1,31 +1,30 @@
-import { css, html, LitElement } from "lit";
+import { css, html, LitElement, nothing } from "lit";
+import type { NativeMedia } from "../../../../webui/src/bridge";
 import { faviconBackground, faviconInner, hostOf, type LiveTab } from "../sidebar/favicon";
-import type { BrowserState } from "../sidebar/sidebar.logic";
+import type { Tab } from "../sidebar/sidebar.logic";
 
-/** What's playing. In the real browser this comes from Chromium's media sessions; the prototype has one sample. */
-export interface Media {
-	tabId: string;
-	artist: string;
-	playing: boolean;
+/** What the window gives the card: the media session, the Loka tab playing it (if the sidebar holds it), mute. */
+export interface NowPlaying {
+	media: NativeMedia;
+	tab: Tab | null;
 	muted: boolean;
 }
 
-export type MediaAction = "toggle" | "previous" | "next" | "mute" | "go" | "stop";
+export type MediaAction = "toggle" | "previous" | "next" | "mute" | "go";
 
 /**
- * The now-playing card above the horizon, shown when the playing tab isn't the one on screen. Sends `loka-media`
- * with a MediaAction; the window owns the media state.
+ * The now-playing card above the horizon, shown while something plays in a tab that isn't on screen. Title, artist
+ * and artwork come from the page's media session; the tab's own title and icon stand in for what it doesn't say.
+ * Sends `loka-media` with a MediaAction; the window talks to the browser.
  */
 export class LokaMediaCard extends LitElement {
 	static override properties = {
-		media: { attribute: false },
-		state: { attribute: false },
+		playing: { attribute: false },
 		live: { attribute: false },
 	};
 
-	declare media: Media;
-	declare state: BrowserState;
-	/** The playing tab's page, for its own icon. */
+	declare playing: NowPlaying;
+	/** The playing tab's page, for its own icon when there's no artwork. */
 	declare live: LiveTab | undefined;
 
 	private send(action: MediaAction) {
@@ -33,34 +32,50 @@ export class LokaMediaCard extends LitElement {
 	}
 
 	override render() {
-		const tab = this.state.tabs[this.media.tabId];
-		if (!tab) return null;
-		const { playing, muted } = this.media;
+		const { media, tab, muted } = this.playing;
+		const url = tab?.url ?? "";
+		const title = media.title || tab?.title || "Playing";
+		const artist = media.artist || hostOf(url);
+		const where = tab?.title ?? title;
 		return html`
-			<section aria-label="Now playing: ${tab.title}">
-				<button class="art" style="--fav: ${faviconBackground(tab.url, this.live)}" title="Go to ${tab.title}" @click=${() => this.send("go")}>
-					<span aria-hidden="true">${faviconInner(tab.url, this.live)}</span>
-					${playing ? html`<span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>` : null}
+			<section aria-label="Now playing: ${title}">
+				<button class="art" title="Go to ${where}" @click=${() => this.send("go")}>
+					${
+						media.artwork
+							? html`<img src=${media.artwork} alt="" draggable="false" />`
+							: html`<span class="fav" style="--fav: ${faviconBackground(url, this.live)}">${faviconInner(url, this.live)}</span>`
+					}
+					${media.playing ? html`<span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>` : nothing}
 				</button>
-				<button class="info" title="Go to ${tab.title}" @click=${() => this.send("go")}>
-					<span class="title">${tab.title}</span>
-					<small>${this.media.artist || hostOf(tab.url)}</small>
+				<button class="info" title="Go to ${where}" @click=${() => this.send("go")}>
+					<span class="title">${title}</span>
+					<small>${artist}</small>
 				</button>
 				<div class="controls">
-					<button aria-label="Previous track" @click=${() => this.send("previous")}>
+					<button aria-label="Previous track" title="Previous" @click=${() => this.send("previous")}>
 						<svg viewBox="0 0 16 16"><path d="M4 3.5v9M12 3.5 6.5 8l5.5 4.5z" /></svg>
 					</button>
-					<button aria-label=${playing ? "Pause" : "Play"} @click=${() => this.send("toggle")}>
+					<button
+						class="play"
+						aria-label=${media.playing ? "Pause" : "Play"}
+						title=${media.playing ? "Pause" : "Play"}
+						@click=${() => this.send("toggle")}
+					>
 						${
-							playing
+							media.playing
 								? html`<svg viewBox="0 0 16 16"><path d="M5.5 3.5v9M10.5 3.5v9" /></svg>`
 								: html`<svg viewBox="0 0 16 16"><path class="fill" d="M5 3.5v9l7.5-4.5z" /></svg>`
 						}
 					</button>
-					<button aria-label="Next track" @click=${() => this.send("next")}>
+					<button aria-label="Next track" title="Next" @click=${() => this.send("next")}>
 						<svg viewBox="0 0 16 16"><path d="M12 3.5v9M4 3.5 9.5 8 4 12.5z" /></svg>
 					</button>
-					<button aria-label=${muted ? "Unmute" : "Mute"} aria-pressed=${muted} @click=${() => this.send("mute")}>
+					<button
+						aria-label=${muted ? "Unmute" : "Mute"}
+						title=${muted ? "Unmute" : "Mute"}
+						aria-pressed=${muted}
+						@click=${() => this.send("mute")}
+					>
 						${
 							muted
 								? html`<svg viewBox="0 0 16 16"><path d="M3 6h2.5L9 3v10L5.5 10H3zM11.5 6l3 4m0-4-3 4" /></svg>`
@@ -75,17 +90,18 @@ export class LokaMediaCard extends LitElement {
 	static override styles = css`
 		:host {
 			display: block;
-			color: #ececf1;
 			font: 13px/1.35 system-ui, "Segoe UI", sans-serif;
 		}
 		section {
 			display: flex;
 			align-items: center;
 			gap: 10px;
-			padding: 8px;
+			padding: 7px 6px 7px 7px;
 			border-radius: 12px;
-			background: hsl(var(--hue) 30% 85% / 0.08);
-			box-shadow: inset 0 0 0 1px hsl(var(--hue) 30% 85% / 0.08);
+			background: var(--loka-fill);
+			box-shadow:
+				inset 0 0 0 1px var(--loka-line),
+				var(--loka-selected-edge);
 		}
 		button {
 			font: inherit;
@@ -93,15 +109,37 @@ export class LokaMediaCard extends LitElement {
 			border: 0;
 			background: none;
 			padding: 0;
+			cursor: default;
 		}
 		.art {
 			position: relative;
 			flex: none;
 			display: grid;
 			place-items: center;
-			width: 38px;
-			height: 38px;
+			width: 40px;
+			height: 40px;
 			border-radius: 8px;
+			overflow: hidden;
+		}
+		.art img {
+			width: 100%;
+			height: 100%;
+			object-fit: cover;
+		}
+		/* The faint inner edge frames artwork on any background. */
+		.art::after {
+			content: "";
+			position: absolute;
+			inset: 0;
+			border-radius: inherit;
+			box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.1);
+			pointer-events: none;
+		}
+		.fav {
+			display: grid;
+			place-items: center;
+			width: 100%;
+			height: 100%;
 			background: var(--fav);
 			color: #0b0c10;
 			font-weight: 700;
@@ -144,8 +182,11 @@ export class LokaMediaCard extends LitElement {
 			white-space: nowrap;
 			text-overflow: ellipsis;
 		}
+		.title {
+			font-weight: 550;
+		}
 		small {
-			color: #a7a8b4;
+			color: var(--loka-ink-2);
 			font-size: 12px;
 		}
 		.controls {
@@ -156,13 +197,16 @@ export class LokaMediaCard extends LitElement {
 			display: grid;
 			place-items: center;
 			width: 26px;
-			height: 28px;
+			height: 30px;
 			border-radius: 7px;
-			color: #d9dae2;
+			color: var(--loka-ink-2);
 		}
 		.controls button:hover {
-			background: hsl(var(--hue) 30% 85% / 0.12);
-			color: #fff;
+			background: var(--loka-hover);
+			color: var(--loka-ink);
+		}
+		.controls .play {
+			color: var(--loka-ink);
 		}
 		svg {
 			width: 14px;
@@ -177,13 +221,23 @@ export class LokaMediaCard extends LitElement {
 			fill: currentColor;
 		}
 		:focus-visible {
-			outline: 2px solid hsl(var(--hue) 85% 72%);
+			outline: 2px solid var(--loka-accent);
 			outline-offset: 1px;
 			border-radius: 7px;
 		}
 		@media (prefers-reduced-motion: no-preference) {
+			:host {
+				animation: card-in 260ms cubic-bezier(0.2, 0, 0, 1);
+			}
+			@keyframes card-in {
+				from {
+					opacity: 0;
+					transform: translateY(6px);
+				}
+			}
 			.eq i {
 				animation: bounce 900ms ease-in-out infinite alternate;
+				animation-play-state: var(--loka-play, running);
 			}
 			.eq i:nth-child(2) {
 				animation-delay: -300ms;

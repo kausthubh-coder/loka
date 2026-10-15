@@ -1,12 +1,11 @@
 // Loka's data in the browser. The spaces and settings live in the profile (the "loka.store" pref), shared by every
-// window's sidebar; each sidebar listens for changes and redraws. Which browser tab is which Loka tab, which tab
-// group is which space and what's playing are this window's own, so they live in this page.
+// window's sidebar; each sidebar listens for changes and redraws. Which browser tab is which Loka tab and which tab
+// group is which space are this window's own, so they live in this page.
 
 import { DEFAULT_UI, parseUiPrefs, type UiPrefs } from "../../prototype/src/app/ui-prefs.logic";
-import type { Media } from "../../prototype/src/features/media/loka-media-card";
 import { type BrowserState, importState } from "../../prototype/src/features/sidebar/sidebar.logic";
 import { browser } from "./bridge";
-import { firstState, type LiveMap } from "./live.logic";
+import { firstState, type GroupRecord, type LiveMap } from "./live.logic";
 
 export const STATE_KEY = "state.v1";
 export const UI_KEY = "ui.v1";
@@ -14,11 +13,11 @@ export const UI_KEY = "ui.v1";
 const ONBOARDING_KEY = "onboarding";
 const APPLIED_KEY = "onboarding.applied";
 
-export type Groups = Record<string, { id: number; collapsed: boolean }>;
+export type Groups = Record<string, GroupRecord>;
 
 let store: Record<string, string> = {};
 let loaded: Promise<void> | null = null;
-type Change = { state?: BrowserState; ui?: UiPrefs; media?: Media | null; onboarding?: boolean; foreign?: boolean };
+type Change = { state?: BrowserState; ui?: UiPrefs; onboarding?: boolean; foreign?: boolean };
 const listeners = new Set<(what: Change) => void>();
 /** Values this page wrote that the browser hasn't echoed back yet, so an echo isn't taken for another window's. */
 const echoes = new Set<string>();
@@ -67,18 +66,13 @@ export async function writeUi(ui: UiPrefs) {
 	notify({ ui });
 }
 
-let session: { live: LiveMap; groups: Groups; media: Media | null } = { live: {}, groups: {}, media: null };
-
-export async function readSession() {
-	return session;
-}
+let session: { live: LiveMap; groups: Groups } = { live: {}, groups: {} };
 
 const linkListeners = new Set<() => void>();
 
-export async function writeSession(values: Partial<{ live: LiveMap; groups: Groups; media: Media | null }>) {
+export async function writeSession(values: Partial<{ live: LiveMap; groups: Groups }>) {
 	const linksChanged = values.live !== undefined && values.live !== session.live;
 	session = { ...session, ...values };
-	if ("media" in values) notify({ media: session.media });
 	if (linksChanged) for (const listener of linkListeners) listener();
 }
 
@@ -88,7 +82,7 @@ export function onLinksChanged(listener: () => void) {
 }
 
 /**
- * Calls back with the new spaces, prefs or media whenever this page or another window's sidebar changes them.
+ * Calls back with the new spaces or prefs whenever this page or another window's sidebar changes them.
  * `foreign` marks a change another window made.
  */
 export function watch(changed: (what: Change) => void) {

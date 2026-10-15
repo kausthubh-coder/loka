@@ -13,9 +13,9 @@ describe("window preferences", () => {
 	});
 
 	test("bad fields fall back one by one, good ones are kept", () => {
-		expect(parseUiPrefs('{"sidebarSide": "top", "sidebarHidden": true, "onboarded": "yes"}')).toEqual({
+		expect(parseUiPrefs('{"sidebarSide": "top", "sound": false, "onboarded": "yes"}')).toEqual({
 			...DEFAULT_UI,
-			sidebarHidden: true,
+			sound: false,
 		});
 		expect(parseUiPrefs("{ broken")).toEqual(DEFAULT_UI);
 	});

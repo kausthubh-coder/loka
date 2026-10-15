@@ -1,19 +1,22 @@
 // The Loka sidebar, built into the browser: the window's left column shows this page (chrome://loka-sidebar).
 // Clicks change the spaces (saved in the profile); sync.ts makes this window's real tabs follow.
 
-import { css, html, LitElement } from "lit";
+import { css, html, LitElement, nothing } from "lit";
 import type { Update } from "../../prototype/src/app/loka-app";
 import { skyLayer, skyStyles, skyTurn } from "../../prototype/src/app/sky";
+import { reducedMotion, themeTokens } from "../../prototype/src/app/theme";
+import { resolveScheme, type Scheme } from "../../prototype/src/app/theme.logic";
 import { DEFAULT_UI, type UiPrefs } from "../../prototype/src/app/ui-prefs.logic";
-import type { ActionId } from "../../prototype/src/features/command-bar/command-bar.logic";
+import { type ActionId, isActionId } from "../../prototype/src/features/command-bar/command-bar.logic";
 import "../../prototype/src/features/command-bar/loka-command-bar";
-import { setDownloadSource } from "../../prototype/src/features/downloads/loka-downloads";
-import type { Media, MediaAction } from "../../prototype/src/features/media/loka-media-card";
+import type { MediaAction, NowPlaying } from "../../prototype/src/features/media/loka-media-card";
+import { nowPlaying } from "../../prototype/src/features/media/media.logic";
 import { type LiveTabs, setFaviconSource } from "../../prototype/src/features/sidebar/favicon";
 import "../../prototype/src/features/sidebar/loka-sidebar";
-import { type LokaSidebar, setExtensionSource } from "../../prototype/src/features/sidebar/loka-sidebar";
+import type { LokaSidebar } from "../../prototype/src/features/sidebar/loka-sidebar";
 import { SPACE_HUES } from "../../prototype/src/features/sidebar/planet";
 import {
+	activateTab,
 	activeSpace,
 	type BrowserState,
 	createFolder,
@@ -28,79 +31,79 @@ import {
 } from "../../prototype/src/features/sidebar/sidebar.logic";
 import { playCue, setSoundPrefs } from "../../prototype/src/features/sound/sound";
 import "../../prototype/src/features/spaces/loka-space-editor";
-import { browser, type NativeTab } from "./bridge";
+import type { LookPreview } from "../../prototype/src/features/spaces/loka-space-editor";
+import { type BrowserCommand, browser, type CommandPick, type NativeMedia, type NativeTab } from "./bridge";
 import { applyOnboarding, onboardingSpaces } from "./onboarding.logic";
 import {
 	faviconUrl,
 	markOnboardingApplied,
 	onLinksChanged,
 	pendingOnboarding,
-	readSession,
 	readState,
 	readUi,
 	watch,
-	writeSession,
 	writeState,
 } from "./store";
 import { browserTabOf, linkedTabs, spacesChanged, startSync } from "./sync";
 
 setFaviconSource(faviconUrl);
-// Downloads and extensions are the browser's own pages for now; the panels hand over to them.
-setDownloadSource({
-	list: () => [],
-	watch: () => () => {},
-	retry: () => {},
-	cancel: () => {},
-	show: () => browser.openPage("chrome://downloads/"),
-	clear: () => {},
-	openFolder: () => browser.openPage("chrome://downloads/"),
-});
-setExtensionSource({
-	list: async () => [],
-	watch: () => () => {},
-	open: () => browser.openPage("chrome://extensions/"),
-	manage: () => browser.openPage("chrome://extensions/"),
-});
 startSync();
 
-/** Opens what the command bar chose: an address as typed, or a search with the user's own engine. */
-function openUrl() {
-	return ({ url, query, search }: { url: string; query: string; search: boolean }) => {
-		if (search) browser.search(query, true);
-		else void browser.createTab(url, true);
-	};
-}
-
 type Editing = { mode: "create"; look: SpaceLook } | { mode: "edit"; spaceId: string; look: SpaceLook };
+
+const darkSystem = matchMedia("(prefers-color-scheme: dark)");
 
 export class LokaPanel extends LitElement {
 	static override properties = {
 		state: { state: true },
 		ui: { state: true },
-		media: { state: true },
-		commandOpen: { state: true },
+		command: { state: true },
 		editing: { state: true },
-		previewHue: { state: true },
+		preview: { state: true },
 		live: { state: true },
+		media: { state: true },
+		pinned: { state: true },
+		systemDark: { state: true },
 	};
 
 	state: BrowserState | null = null;
 	ui: UiPrefs = DEFAULT_UI;
-	media: Media | null = null;
-	commandOpen = false;
+	/** The sidebar's own command bar, when the browser hands it a shortcut instead of showing its floating one. */
+	command: { mode: BrowserCommand; query: string } | null = null;
 	editing: Editing | null = null;
-	previewHue: number | null = null;
+	preview: LookPreview | null = null;
 	/** Each loaded tab's page: its own icon, loading, sound. */
 	live: LiveTabs = {};
+	/** The browser's media sessions. Null until it answers. */
+	media: NativeMedia[] | null = null;
+	/** The browser keeps whether the sidebar is pinned; it starts pinned until the browser says otherwise. */
+	pinned = true;
+	systemDark = darkSystem.matches;
 	private tabs: NativeTab[] = [];
 	/** The last icon each Loka tab's page had, so a pinned tab keeps it after it unloads. */
 	private icons = new Map<TabId, string>();
+	private sentScheme: string | null = null;
 
 	apply: Update = (change) => {
-		if (!this.state) return;
-		this.state = change(this.state);
-		void writeState(this.state).then(spacesChanged);
+		const before = this.state;
+		if (!before) return;
+		const next = change(before);
+		const commit = () => {
+			this.state = next;
+			void writeState(next).then(spacesChanged);
+		};
+		// A space in the other scheme crossfades the whole sidebar rather than snapping every color at once.
+		if (this.schemeOf(next) !== this.schemeOf(before) && !reducedMotion() && document.startViewTransition) {
+			document.startViewTransition(async () => {
+				commit();
+				await this.updateComplete;
+			});
+		} else commit();
 	};
+
+	private schemeOf(state: BrowserState, preview = this.preview): Scheme {
+		return resolveScheme(preview?.scheme ?? activeSpace(state).scheme, this.systemDark);
+	}
 
 	/** Rebuilds `live` from the browser's tabs and which Loka tab each one is. */
 	private refreshLive = () => {
@@ -129,20 +132,37 @@ export class LokaPanel extends LitElement {
 		super.connectedCallback();
 		void (async () => {
 			[this.state, this.ui] = await Promise.all([readState(), readUi()]);
-			this.media = (await readSession()).media;
 			await this.applySetup();
 		})();
-		watch(({ state, ui, media, onboarding }) => {
+		watch(({ state, ui, onboarding }) => {
 			if (onboarding) void this.applySetup();
 			if (state) this.state = state;
 			if (ui) this.ui = ui;
-			if (media !== undefined) this.media = media;
 		});
 		browser.onTabsChanged(this.setTabs);
 		void browser.tabs().then(this.setTabs);
 		// The sync links a new browser tab to its Loka tab a moment after the browser reports it.
 		onLinksChanged(this.refreshLive);
 		window.addEventListener("keydown", this.onKey);
+		darkSystem.addEventListener("change", (e) => {
+			this.systemDark = e.matches;
+		});
+		document.addEventListener("visibilitychange", () => this.requestUpdate());
+		void browser.sidebarPinned().then((pinned) => {
+			this.pinned = pinned;
+		});
+		browser.onSidebarPinnedChanged((pinned) => {
+			this.pinned = pinned;
+		});
+		// Ctrl+T and Ctrl+L, when the browser hands them to this page rather than to its floating command bar.
+		browser.onCommand((mode) => this.openOwnCommandBar(mode));
+		browser.onCommandPicked((pick) => this.runPick(pick));
+		void browser.media().then((media) => {
+			this.media = media;
+		});
+		browser.onMediaChanged((media) => {
+			this.media = media;
+		});
 	}
 
 	/** Takes in the spaces made in setup, once. */
@@ -157,10 +177,21 @@ export class LokaPanel extends LitElement {
 	protected override updated(changed: Map<string, unknown>) {
 		const before = changed.get("state") as BrowserState | null | undefined;
 		const state = this.state;
-		if (before && state && before.activeSpaceId !== state.activeSpaceId) {
+		if (!state) return;
+		if (before && before.activeSpaceId !== state.activeSpaceId) {
 			const forward = switchesForward(state, before.activeSpaceId, state.activeSpaceId);
-			skyTurn(this.renderRoot, forward, activeSpace(before).hue);
+			skyTurn(this.renderRoot, forward, activeSpace(before).hue, this.schemeOf(before, null));
 		}
+		// The browser and its pages follow the space's own choice; "system" hands it back to the computer.
+		const scheme = activeSpace(state).scheme;
+		if (scheme !== this.sentScheme) {
+			this.sentScheme = scheme;
+			browser.setColorScheme(scheme);
+		}
+		// Scrollbars and form controls in this page match what it shows.
+		document.documentElement.style.colorScheme = this.schemeOf(state);
+		// Unpinned, the browser floats this page over the window: its rounded corners show what's behind.
+		document.body.style.background = this.pinned ? "" : "transparent";
 	}
 
 	private onKey = (e: KeyboardEvent) => {
@@ -173,7 +204,7 @@ export class LokaPanel extends LitElement {
 			this.sidebar()?.openPanel("search");
 		} else if (e.key === "k" || e.key === "l") {
 			e.preventDefault();
-			this.openCommandBar();
+			browser.openCommandBar(e.key === "k" ? "new-tab" : "focus-location");
 		} else {
 			const n = Number(e.key);
 			const target = Number.isInteger(n) && n >= 1 ? this.state?.spaces[n - 1] : undefined;
@@ -185,9 +216,33 @@ export class LokaPanel extends LitElement {
 		}
 	};
 
-	private openCommandBar() {
-		if (!this.commandOpen) playCue("command");
-		this.commandOpen = true;
+	/** The tab on screen in this window, as the browser has it. */
+	private shownTab(): NativeTab | undefined {
+		return this.tabs.find((t) => t.active);
+	}
+
+	private openOwnCommandBar(mode: BrowserCommand) {
+		if (!this.command) playCue("command");
+		this.command = { mode, query: mode === "focus-location" ? (this.shownTab()?.url ?? "") : "" };
+	}
+
+	/** Runs what was picked in a command bar: this page's own, or the browser's floating one (command.html). */
+	private runPick(pick: CommandPick) {
+		const shown = this.shownTab();
+		if (pick.kind === "open") {
+			const newTab = pick.newTab || !shown;
+			if (pick.search !== undefined) browser.search(pick.search, newTab);
+			else if (newTab || !shown) void browser.createTab(pick.url, true);
+			else browser.navigateTab(shown.id, pick.url);
+		} else if (pick.kind === "tab") {
+			this.apply((s) => activateTab(switchSpace(s, pick.spaceId), pick.tabId));
+		} else if (pick.kind === "browser-tab") {
+			browser.activateTab(pick.tabId);
+		} else if (pick.kind === "space") {
+			this.apply((s) => switchSpace(s, pick.spaceId));
+		} else if (isActionId(pick.action)) {
+			this.run(pick.action);
+		}
 	}
 
 	private sidebar() {
@@ -205,51 +260,71 @@ export class LokaPanel extends LitElement {
 		const space = activeSpace(state);
 		if (action === "new-space") {
 			const hue = SPACE_HUES[state.spaces.length % SPACE_HUES.length] ?? 200;
-			this.editing = { mode: "create", look: { name: `Space ${state.spaces.length + 1}`, hue, planet: "banded" } };
+			this.editing = {
+				mode: "create",
+				look: { name: `Space ${state.spaces.length + 1}`, hue, planet: "banded", scheme: "system" },
+			};
 		} else if (action === "edit-space") {
 			this.editing = {
 				mode: "edit",
 				spaceId: space.id,
-				look: { name: space.name, hue: space.hue, planet: space.planet },
+				look: { name: space.name, hue: space.hue, planet: space.planet, scheme: space.scheme },
 			};
 		} else if (action === "new-folder") {
 			this.apply((s) => createFolder(s, space.id, null, "New folder")[0]);
 		} else if (action === "toggle-sidebar") {
-			// The sidebar is part of the window; there's nothing to close.
+			// Shown at once; the browser slides the sidebar away (or keeps it) and says so if it changes elsewhere.
+			this.pinned = !this.pinned;
+			browser.setSidebarPinned(this.pinned);
 		} else if (action === "settings") {
 			browser.openPage("chrome://settings/");
 		} else if (action === "onboarding") {
 			browser.openPage("chrome://setup/");
-		} else if (action === "downloads" || action === "archive") {
+		} else if (action === "downloads" || action === "extensions" || action === "archive") {
 			this.sidebar()?.openPanel(action);
 		} else if (action === "search-sidebar") {
 			this.sidebar()?.openPanel("search");
 		}
 	}
 
-	private async onMedia(action: MediaAction) {
-		const media = this.media;
-		if (!media) return;
-		const browserId = browserTabOf(media.tabId);
-		if (action === "go") this.apply((s) => revealTab(s, media.tabId));
-		else if (action === "stop") await writeSession({ media: null });
-		if (browserId === undefined) return;
-		if (action === "mute") browser.setMuted(browserId, !media.muted);
-		// Play and pause need the page's media session, which the sidebar doesn't reach yet: it shows the tab.
-		if (action === "toggle") browser.activateTab(browserId);
+	/** The card shows media from another tab; the browser's tab ids map back to Loka's through the sync's links. */
+	private nowPlaying(state: BrowserState): NowPlaying | null {
+		const media = nowPlaying(this.media, this.shownTab()?.id);
+		if (!media) return null;
+		const lokaId = Object.entries(linkedTabs()).find(([, id]) => id === media.tabId)?.[0];
+		const tab = lokaId ? (state.tabs[lokaId] ?? null) : null;
+		return { media, tab, muted: this.tabs.find((t) => t.id === media.tabId)?.muted ?? false };
+	}
+
+	private onMedia(action: MediaAction) {
+		const state = this.state;
+		const playing = state && this.nowPlaying(state);
+		if (!playing) return;
+		const { tabId, playing: on } = playing.media;
+		if (action === "go") {
+			const lokaId = playing.tab?.id;
+			if (lokaId) this.apply((s) => revealTab(s, lokaId));
+			else browser.activateTab(tabId);
+		} else if (action === "toggle") browser.mediaAction(tabId, on ? "pause" : "play");
+		else if (action === "previous" || action === "next") browser.mediaAction(tabId, action);
+		else if (action === "mute") browser.setMuted(tabId, !playing.muted);
 	}
 
 	private onNav(action: "back" | "forward" | "reload") {
-		const state = this.state;
-		const shown = state && activeSpace(state).activeTabId;
-		const browserId = shown ? browserTabOf(shown) : undefined;
-		if (browserId === undefined) return;
-		if (action === "back") browser.goBack(browserId);
-		else if (action === "forward") browser.goForward(browserId);
-		else browser.reload(browserId);
+		const shown = this.shownTab();
+		if (!shown) return;
+		if (action === "back") browser.goBack(shown.id);
+		else if (action === "forward") browser.goForward(shown.id);
+		else browser.reload(shown.id);
 	}
 
+	/**
+	 * A tab closed from the sidebar. A pinned tab or Essential stays in the spaces, so only the browser tab goes, now.
+	 * A closed open tab is gone from the spaces: the sync shows the next tab first and then closes it, so the
+	 * browser never picks a tab from another space in between.
+	 */
 	private unload(tabId: TabId) {
+		if (!this.state?.tabs[tabId]) return;
 		const browserId = browserTabOf(tabId);
 		if (browserId !== undefined) browser.closeTab(browserId);
 	}
@@ -257,71 +332,58 @@ export class LokaPanel extends LitElement {
 	private saveSpace(look: SpaceLook) {
 		const editing = this.editing;
 		if (!editing) return;
+		this.editing = null;
+		this.preview = null;
 		if (editing.mode === "create") playCue("space-new");
 		this.apply((s) => (editing.mode === "create" ? createSpace(s, look)[0] : updateSpace(s, editing.spaceId, look)));
-		this.editing = null;
-		this.previewHue = null;
 	}
 
 	override render() {
 		const state = this.state;
 		if (!state) return null;
-		const hue = this.previewHue ?? activeSpace(state).hue;
+		const hue = this.preview?.hue ?? activeSpace(state).hue;
+		const scheme = this.schemeOf(state);
 		setSoundPrefs({ on: this.ui.sound, volume: this.ui.soundVolume });
-		// Whether it's playing is whatever the tab says now: the sync only records that sound started.
-		const audible = this.media ? this.live[this.media.tabId]?.audible : undefined;
-		const media = this.media && audible !== undefined ? { ...this.media, playing: audible } : this.media;
 		return html`
 			<div
-				class="window"
-				style="--hue: ${hue}"
+				class="window theme-${scheme} ${this.pinned ? "" : "floating"}"
+				style="--hue: ${hue}; --loka-play: ${document.hidden ? "paused" : "running"}"
 				@loka-action=${(e: CustomEvent<ActionId>) => this.run(e.detail)}
-				@loka-command=${() => this.openCommandBar()}
+				@loka-command=${(e: CustomEvent<BrowserCommand>) => browser.openCommandBar(e.detail)}
 				@loka-media=${(e: CustomEvent<MediaAction>) => this.onMedia(e.detail)}
 				@loka-nav=${(e: CustomEvent<"back" | "forward" | "reload">) => this.onNav(e.detail)}
 				@loka-tab-closed=${(e: CustomEvent<string>) => this.unload(e.detail)}
-				@loka-preview=${(e: CustomEvent<number>) => {
-					this.previewHue = e.detail;
+				@loka-preview=${(e: CustomEvent<LookPreview>) => {
+					this.preview = e.detail;
 				}}
 			>
-				${skyLayer(hue)}
-				<div
-					class="titlebar"
-					@mousedown=${(e: MouseEvent) => {
-						if (e.button === 0 && e.target === e.currentTarget && e.detail === 1) browser.startWindowDrag();
-					}}
-					@dblclick=${(e: MouseEvent) => e.target === e.currentTarget && browser.windowAction("maximize")}
-				>
-					<button class="caption" aria-label="Minimize" @click=${() => browser.windowAction("minimize")}>
-						<svg viewBox="0 0 10 10"><path d="M1 5.5h8" /></svg>
-					</button>
-					<button class="caption" aria-label="Maximize" @click=${() => browser.windowAction("maximize")}>
-						<svg viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" rx="1" /></svg>
-					</button>
-					<button class="caption close" aria-label="Close" @click=${() => browser.windowAction("close")}>
-						<svg viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6" /></svg>
-					</button>
-				</div>
+				${skyLayer(hue, scheme)}
 				<loka-sidebar
 					.state=${state}
 					.apply=${this.apply}
-					.media=${media}
+					.playing=${this.nowPlaying(state)}
 					.live=${this.live}
+					.browser=${browser}
+					.pinned=${this.pinned}
 					.demo=${false}
 					@loka-tab-mute=${(e: CustomEvent<string>) => this.toggleMute(e.detail)}
 				></loka-sidebar>
 				${
-					this.commandOpen
+					this.command
 						? html`<loka-command-bar
 								.state=${state}
-								.apply=${this.apply}
 								.live=${this.live}
-								.go=${openUrl()}
+								.browser=${browser}
+								.links=${linkedTabs()}
+								.pinned=${this.pinned}
+								.mode=${this.command.mode}
+								.initialQuery=${this.command.query}
+								@loka-pick=${(e: CustomEvent<CommandPick>) => this.runPick(e.detail)}
 								@loka-close=${() => {
-									this.commandOpen = false;
+									this.command = null;
 								}}
 							></loka-command-bar>`
-						: null
+						: nothing
 				}
 				${
 					this.editing
@@ -331,22 +393,22 @@ export class LokaPanel extends LitElement {
 								@loka-save=${(e: CustomEvent<SpaceLook>) => this.saveSpace(e.detail)}
 								@loka-close=${() => {
 									this.editing = null;
-									this.previewHue = null;
+									this.preview = null;
 								}}
 							></loka-space-editor>`
-						: null
+						: nothing
 				}
 			</div>
 		`;
 	}
 
 	static override styles = [
+		themeTokens,
 		skyStyles,
 		css`
 			:host {
 				display: block;
 				height: 100vh;
-				color: #e9e9ef;
 			}
 			.window {
 				position: relative;
@@ -356,45 +418,9 @@ export class LokaPanel extends LitElement {
 				display: flex;
 				flex-direction: column;
 			}
-			/* The window's title bar lives here: empty space drags the window, the buttons sit at its end. */
-			.titlebar {
-				flex: none;
-				height: 34px;
-				display: flex;
-				justify-content: flex-end;
-				align-items: center;
-				gap: 2px;
-				padding: 0 6px;
-			}
-			.caption {
-				width: 34px;
-				height: 28px;
-				display: grid;
-				place-items: center;
-				border: 0;
-				border-radius: 7px;
-				background: transparent;
-				color: rgb(233 233 239 / 0.62);
-				cursor: default;
-			}
-			.caption svg {
-				width: 10px;
-				height: 10px;
-				fill: none;
-				stroke: currentColor;
-				stroke-width: 1.2;
-			}
-			.caption:hover {
-				background: rgb(255 255 255 / 0.1);
-				color: #e9e9ef;
-			}
-			.caption.close:hover {
-				background: #c42b1c;
-				color: #fff;
-			}
-			.caption:focus-visible {
-				outline: 2px solid hsl(var(--hue) 80% 70%);
-				outline-offset: -2px;
+			/* Floating over the page while unpinned: a finished panel of its own, corners and all. */
+			.window.floating {
+				border-radius: 12px;
 			}
 			loka-sidebar {
 				flex: 1;

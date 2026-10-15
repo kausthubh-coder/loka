@@ -20,7 +20,7 @@ import {
 	tabRemoved,
 	tabUpdated,
 } from "./live.logic";
-import { type Groups, readSession, readState, readUi, writeSession, writeState } from "./store";
+import { type Groups, readState, readUi, writeSession, writeState } from "./store";
 
 let live: LiveMap = {};
 let groups: Groups = {};
@@ -109,7 +109,11 @@ async function run(op: Op) {
 		const groupId = await browser.groupTabs(op.browserIds, existing);
 		if (groupId === null) return;
 		browser.updateGroup(groupId, { title: op.title, color: op.color });
-		groups = { ...groups, [op.key]: { id: groupId, collapsed: false } };
+		groups = { ...groups, [op.key]: { id: groupId, collapsed: false, title: op.title, color: op.color } };
+	} else if (op.op === "look") {
+		browser.updateGroup(op.groupId, { title: op.title, color: op.color });
+		const record = groups[op.key];
+		if (record) groups = { ...groups, [op.key]: { ...record, title: op.title, color: op.color } };
 	} else if (op.op === "ungroup") {
 		browser.ungroupTabs(op.browserIds);
 	} else if (op.op === "collapse") {
@@ -117,14 +121,6 @@ async function run(op: Op) {
 		groups = Object.fromEntries(
 			Object.entries(groups).map(([id, g]) => [id, g.id === op.groupId ? { ...g, collapsed: op.collapsed } : g]),
 		);
-	}
-}
-
-function hostOf(url: string): string {
-	try {
-		return new URL(url).hostname.replace(/^www\./, "");
-	} catch {
-		return "";
 	}
 }
 
@@ -142,28 +138,16 @@ function onTabs(tabs: NativeTab[]) {
 			});
 			continue;
 		}
-		if (old.title !== t.title || old.url !== t.url || old.audible !== t.audible || old.muted !== t.muted) {
-			void serial("browser", async (s) => {
-				const lokaId = Object.entries(live).find(([, id]) => id === t.id)?.[0];
-				const { media } = await readSession();
-				if (lokaId && t.audible && !old.audible) {
-					// Something started playing: it becomes the sidebar's now-playing card.
-					await writeSession({ media: { tabId: lokaId, artist: hostOf(t.url), playing: true, muted: t.muted } });
-				} else if (lokaId && media?.tabId === lokaId && old.muted !== t.muted) {
-					await writeSession({ media: { ...media, muted: t.muted } });
-				}
-				return tabUpdated(s, live, asBrowserTab(t));
-			});
+		if (old.title !== t.title || old.url !== t.url) {
+			void serial("browser", (s) => tabUpdated(s, live, asBrowserTab(t)));
 		}
 		if (t.active && !old.active) void serial("browser", (s) => tabActivated(s, live, t.id, Date.now()));
 	}
 	for (const id of before.keys()) {
 		if (seen.has(id)) continue;
-		void serial("browser", async (s) => {
+		void serial("browser", (s) => {
 			const [state, next] = tabRemoved(s, live, id);
 			live = next;
-			const { media } = await readSession();
-			if (media && live[media.tabId] === undefined) await writeSession({ media: null });
 			return state;
 		});
 	}

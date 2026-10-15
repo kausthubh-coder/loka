@@ -56,6 +56,7 @@ export class LokaSettings extends LitElement {
 		ui: { attribute: false },
 		imported: { state: true },
 		setUi: { attribute: false },
+		pinned: { attribute: false },
 		privacy: { state: true },
 		engine: { state: true },
 		browser: { attribute: false },
@@ -67,6 +68,8 @@ export class LokaSettings extends LitElement {
 	/** The last import's result, shown under the buttons. */
 	imported = "";
 	declare setUi: SetUi;
+	/** Whether the sidebar is pinned open; the browser keeps that, not the window prefs. */
+	declare pinned: boolean;
 	privacy = { ads: true, clearOnExit: false };
 	engine = "DuckDuckGo";
 	declare browser: BrowserHooks | undefined;
@@ -176,7 +179,11 @@ export class LokaSettings extends LitElement {
 					</div>
 					<div class="row">
 						<div><b>Hide the sidebar</b><small>It slides in when the pointer reaches the window's edge. Ctrl+S.</small></div>
-						${this.toggle("Hide the sidebar", ui.sidebarHidden, (on) => this.setUi({ sidebarHidden: on }))}
+						${this.toggle("Hide the sidebar", !this.pinned, () =>
+							this.dispatchEvent(
+								new CustomEvent("loka-action", { detail: "toggle-sidebar", bubbles: true, composed: true }),
+							),
+						)}
 					</div>`
 					}
 				</section>

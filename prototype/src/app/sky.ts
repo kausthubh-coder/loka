@@ -1,5 +1,6 @@
 import { css, html, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
+import type { Scheme } from "./theme.logic";
 
 // Loka's night sky, shared by the prototype's window and the real browser's sidebar and new tab page.
 // Put skyLayer() first inside an element with `position: relative; isolation: isolate` and `--hue` set, and add
@@ -8,6 +9,9 @@ import { ref } from "lit/directives/ref.js";
 // Everything that moves is a transform or opacity on a layer painted once, so the compositor runs it and a busy
 // page (or a scrolling tab list) can't make it stutter: three star layers drift at different speeds for depth, the
 // nebula breathes, and now and then a shooting star crosses. With reduced motion the sky holds still.
+//
+// In a light space it's the day sky instead: the space's hue as a pale atmosphere with soft clouds and the sun's
+// glow at the top left, where the planets are lit from. The stars are gone, as they are by day.
 
 /** One star layer: a seeded tile (the same sky every launch) that repeats, drawn once as an SVG image. */
 function starTile(seed: number, width: number, height: number, count: number, size: [number, number]): string {
@@ -53,8 +57,8 @@ function track(el: Element | undefined) {
  * It takes the hue itself rather than inheriting the window's animated --hue: animating a hue number from blue to
  * orange passes through green and yellow, which on the whole sky reads as a rainbow. skyTurn() crossfades instead.
  */
-export function skyLayer(hue: number): TemplateResult {
-	return html`<div class="sky" aria-hidden="true" style="--hue: ${hue}" ${ref(track)}>
+export function skyLayer(hue: number, scheme: Scheme): TemplateResult {
+	return html`<div class="sky ${scheme}" aria-hidden="true" style="--hue: ${hue}" ${ref(track)}>
 		<div class="nebula"></div>
 		<div class="stars far" style="background-image: ${FAR}"></div>
 		<div class="stars mid" style="background-image: ${MID}"></div>
@@ -70,11 +74,11 @@ export function skyLayer(hue: number): TemplateResult {
  * side the new space came from. The sweep uses `translate`, separate from the drift's `transform`. With reduced
  * motion only the fade happens.
  */
-export function skyTurn(root: ParentNode, forward: boolean, fromHue: number) {
+export function skyTurn(root: ParentNode, forward: boolean, fromHue: number, fromScheme: Scheme) {
 	const sky = root.querySelector<HTMLElement>(".sky");
 	const nebula = sky?.querySelector<HTMLElement>(".nebula");
 	if (!sky || !nebula) return;
-	const old = Object.assign(document.createElement("div"), { className: "sky-was" });
+	const old = Object.assign(document.createElement("div"), { className: `sky-was ${fromScheme}` });
 	old.style.setProperty("--hue", String(fromHue));
 	const oldNebula = Object.assign(document.createElement("div"), { className: "nebula held" });
 	oldNebula.style.transform = getComputedStyle(nebula).transform;
@@ -120,6 +124,13 @@ export const skyStyles = css`
 		.sky-was {
 			background: linear-gradient(165deg, hsl(var(--hue) 32% 8%), hsl(var(--hue) 38% 4%));
 		}
+		/* Day: a pale atmosphere, brightest under the sun at the top left, deepening towards the horizon. */
+		.sky.light,
+		.sky-was.light {
+			background:
+				radial-gradient(70% 45% at 6% 0%, hsl(calc(var(--hue) + 25) 100% 98%), transparent 70%),
+				linear-gradient(172deg, hsl(var(--hue) 62% 93%), hsl(var(--hue) 52% 87%) 62%, hsl(calc(var(--hue) - 20) 48% 82%));
+		}
 		/* The space being left, fading out over the new one. */
 		.sky-was {
 			position: absolute;
@@ -139,6 +150,19 @@ export const skyStyles = css`
 				radial-gradient(26% 40% at 72% 38%, hsl(calc(var(--hue) - 50) 50% 40% / 0.15), transparent 70%),
 				radial-gradient(46% 46% at 96% 96%, hsl(calc(var(--hue) - 35) 42% 26% / 0.3), transparent 70%);
 		}
+		/* Clouds instead of a nebula: white drifts and faint washes of neighbouring hues. */
+		.light .nebula {
+			background:
+				radial-gradient(40% 16% at 22% 18%, hsl(0 0% 100% / 0.75), transparent 70%),
+				radial-gradient(30% 12% at 70% 32%, hsl(0 0% 100% / 0.55), transparent 70%),
+				radial-gradient(46% 20% at 40% 58%, hsl(0 0% 100% / 0.4), transparent 70%),
+				radial-gradient(34% 28% at 80% 70%, hsl(calc(var(--hue) + 40) 70% 85% / 0.35), transparent 70%),
+				radial-gradient(40% 30% at 10% 90%, hsl(calc(var(--hue) - 35) 60% 80% / 0.3), transparent 70%);
+		}
+		.sky.light .stars,
+		.sky.light .meteor {
+			display: none;
+		}
 		.sky::after {
 			content: "";
 			position: absolute;
@@ -150,6 +174,9 @@ export const skyStyles = css`
 				hsl(calc(var(--hue) + 30) 70% 85% / 0.08) 52%,
 				transparent 62%
 			);
+		}
+		.sky.light::after {
+			background: linear-gradient(118deg, transparent 38%, hsl(0 0% 100% / 0.22) 50%, transparent 62%);
 		}
 		.stars {
 			position: absolute;

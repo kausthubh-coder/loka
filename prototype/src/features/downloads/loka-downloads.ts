@@ -1,181 +1,166 @@
-import { css, html, LitElement } from "lit";
+import { css, html, LitElement, nothing, type TemplateResult } from "lit";
+import { repeat } from "lit/directives/repeat.js";
+import type { Browser, NativeDownload } from "../../../../webui/src/bridge";
+import {
+	type DownloadAction,
+	downloadActions,
+	downloadProgress,
+	downloadStatus,
+	sortDownloads,
+} from "./downloads.logic";
 
-export interface Download {
-	id: string;
-	name: string;
-	size: string;
-	when: string;
-	status: "running" | "done" | "failed";
-	progress: number;
-}
-
-/** Where the panel's downloads come from, and what its buttons do. */
-export interface DownloadSource {
-	list(): Download[];
-	/** Calls back whenever the list changes; returns the function that stops it. */
-	watch(changed: () => void): () => void;
-	retry(id: string): void;
-	cancel(id: string): void;
-	show(id: string): void;
-	clear(): void;
-	openFolder(): void;
-}
-
-// Sample files: the prototype has no network, so this shows the states a real download goes through. Module state,
-// so closing and reopening the panel doesn't reset them.
-let samples: Download[] = [
-	{
-		id: "d1",
-		name: "helium_0.19.2.1_x64-installer.exe",
-		size: "148 MB",
-		when: "now",
-		status: "running",
-		progress: 0.38,
-	},
-	{ id: "d2", name: "CSC281-GDD-v3.pdf", size: "2.1 MB", when: "10:42", status: "done", progress: 1 },
-	{ id: "d3", name: "lofi-cover.png", size: "840 KB", when: "10:15", status: "failed", progress: 0.2 },
-	{ id: "d4", name: "loka-spaces.json", size: "6 KB", when: "Yesterday", status: "done", progress: 1 },
-];
-
-const sampleSource: DownloadSource = {
-	list: () => samples,
-	watch(changed) {
-		// Moves a running sample along so the progress can be seen working.
-		const timer = window.setInterval(() => {
-			if (!samples.some((d) => d.status === "running")) return;
-			samples = samples.map((d) => {
-				if (d.status !== "running") return d;
-				const progress = Math.min(1, d.progress + 0.03);
-				return { ...d, progress, status: progress >= 1 ? "done" : "running" };
-			});
-			changed();
-		}, 400);
-		return () => window.clearInterval(timer);
-	},
-	retry: (id) => {
-		samples = samples.map((d) => (d.id === id ? { ...d, status: "running", progress: 0 } : d));
-	},
-	cancel: (id) => {
-		samples = samples.map((d) => (d.id === id ? { ...d, status: "failed" } : d));
-	},
-	show: () => {},
-	clear: () => {
-		samples = samples.filter((d) => d.status === "running");
-	},
-	openFolder: () => {},
+const ICONS: Record<DownloadAction, TemplateResult> = {
+	pause: html`<svg viewBox="0 0 16 16"><path d="M5.5 3.5v9M10.5 3.5v9" /></svg>`,
+	resume: html`<svg viewBox="0 0 16 16"><path class="fill" d="M5 3.5v9l7.5-4.5z" /></svg>`,
+	cancel: html`<svg viewBox="0 0 16 16"><path d="m4.5 4.5 7 7m0-7-7 7" /></svg>`,
+	retry: html`<svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 3v2.5h-2.5" /></svg>`,
+	show: html`<svg viewBox="0 0 16 16"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.5h5A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5z" /></svg>`,
+	remove: html`<svg viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" /></svg>`,
+	open: html``,
 };
 
-let source: DownloadSource = sampleSource;
+const LABELS: Record<DownloadAction, string> = {
+	pause: "Pause",
+	resume: "Resume",
+	cancel: "Cancel",
+	retry: "Try again",
+	show: "Show in folder",
+	remove: "Remove from list",
+	open: "Open",
+};
 
-/** The extension swaps in the browser's real downloads. */
-export function setDownloadSource(next: DownloadSource) {
-	source = next;
+/** A file type's tile color, by extension, so a list of files can be told apart at a glance. */
+function fileHue(name: string): number {
+	const ext = name.split(".").pop()?.toLowerCase() ?? "";
+	const known: Record<string, number> = { exe: 205, msi: 205, pdf: 0, png: 150, jpg: 150, zip: 40, json: 45, mp4: 280 };
+	if (ext in known) return known[ext] ?? 220;
+	let hash = 0;
+	for (const c of ext) hash = (hash * 31 + c.charCodeAt(0)) % 360;
+	return hash;
 }
 
-/** The sidebar's Downloads panel, opened from the toolbar like Extensions: recent files, progress, retry. */
+/**
+ * The sidebar's Downloads panel: newest first, with live progress and each state's actions (open a finished file,
+ * show it in its folder, pause, resume, cancel, try again, remove). `downloads` is null until the browser answers.
+ */
 export class LokaDownloads extends LitElement {
-	static override properties = { items: { state: true } };
+	static override properties = {
+		downloads: { attribute: false },
+		browser: { attribute: false },
+	};
 
-	items: Download[] = [];
-	private unwatch = () => {};
+	declare downloads: NativeDownload[] | null;
+	declare browser: Browser;
 
-	override connectedCallback() {
-		super.connectedCallback();
-		this.items = source.list();
-		this.unwatch = source.watch(() => {
-			this.items = source.list();
-		});
+	private act(id: number, action: DownloadAction) {
+		this.browser.downloadAction(id, action);
 	}
 
-	override disconnectedCallback() {
-		this.unwatch();
-		super.disconnectedCallback();
+	private clear() {
+		for (const d of this.downloads ?? []) {
+			if (d.state !== "running" && d.state !== "paused") this.act(d.id, "remove");
+		}
 	}
 
-	/** Runs a button's action, then reads the list again so the change shows at once. */
-	private act(run: () => void) {
-		run();
-		this.items = source.list();
+	private row(d: NativeDownload, now: number): TemplateResult {
+		const { open, buttons } = downloadActions(d);
+		const progress = downloadProgress(d);
+		const ext = d.name.includes(".") ? (d.name.split(".").pop() ?? "") : "";
+		const inProgress = d.state === "running" || d.state === "paused";
+		const text = html`<span class="file" style="--f: ${fileHue(d.name)}" aria-hidden="true">${ext.toUpperCase().slice(0, 4)}</span>
+			<span class="text">
+				<span class="name">${d.name}</span>
+				${
+					inProgress
+						? html`<span
+								class="bar ${progress === null ? "unknown" : ""} ${d.state}"
+								role="progressbar"
+								aria-label="${d.name} progress"
+								aria-valuenow=${progress === null ? nothing : Math.round(progress * 100)}
+								aria-valuemin="0"
+								aria-valuemax="100"
+							><span style="transform: scaleX(${progress ?? 0.3})"></span></span>`
+						: nothing
+				}
+				<small class=${d.state === "failed" ? "error" : ""}>${downloadStatus(d, now)}</small>
+			</span>`;
+		return html`<li class=${d.state}>
+			${
+				open
+					? html`<button class="main" title="Open ${d.name}" @click=${() => this.act(d.id, "open")}>${text}</button>`
+					: html`<div class="main">${text}</div>`
+			}
+			<span class="acts">
+				${buttons.map(
+					(action) => html`<button
+						class="act ${action === "remove" ? "secondary" : ""}"
+						aria-label="${LABELS[action]} ${d.name}"
+						title=${LABELS[action]}
+						@click=${() => this.act(d.id, action)}
+					>
+						${ICONS[action]}
+					</button>`,
+				)}
+			</span>
+		</li>`;
 	}
 
 	override render() {
+		const list = this.downloads === null ? null : sortDownloads(this.downloads);
+		const now = Date.now();
+		const finished = (list ?? []).some((d) => d.state !== "running" && d.state !== "paused");
 		return html`
 			<header>
 				<b>Downloads</b>
-				<button class="quiet" @click=${() => this.act(() => source.clear())}>Clear</button>
+				${finished ? html`<button class="quiet" @click=${() => this.clear()}>Clear</button>` : nothing}
 			</header>
-			<ul>
-				${this.items.map((d) => {
-					const ext = d.name.split(".").pop() ?? "";
-					const hue = { exe: 200, pdf: 0, png: 150, json: 40 }[ext] ?? 220;
-					return html`<li class=${d.status}>
-						<span class="file" style="--f: ${hue}" aria-hidden="true">${ext.toUpperCase().slice(0, 4)}</span>
-						<span class="text">
-							<span class="name">${d.name}</span>
-							${
-								d.status === "running"
-									? html`<span class="bar" role="progressbar" aria-label="${d.name} progress" aria-valuenow=${Math.round(d.progress * 100)}>
-											<span style="width: ${d.progress * 100}%"></span>
-										</span>`
-									: null
-							}
-							<small class=${d.status === "failed" ? "error" : ""}>
-								${
-									d.status === "running"
-										? `${Math.round(d.progress * 100)}% of ${d.size}`
-										: d.status === "failed"
-											? "Failed: network error"
-											: `${d.size}, ${d.when}`
-								}
-							</small>
-						</span>
-						${
-							d.status === "failed"
-								? html`<button class="act" @click=${() => this.act(() => source.retry(d.id))}>Retry</button>`
-								: d.status === "done"
-									? html`<button class="act icon" aria-label="Show ${d.name} in folder" title="Show in folder" @click=${() => source.show(d.id)}>
-											<svg viewBox="0 0 16 16"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.5h5A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5z" /></svg>
-										</button>`
-									: html`<button class="act icon" aria-label="Cancel ${d.name}" title="Cancel" @click=${() => this.act(() => source.cancel(d.id))}>
-											<svg viewBox="0 0 16 16"><path d="m4.5 4.5 7 7m0-7-7 7" /></svg>
-										</button>`
-						}
-					</li>`;
-				})}
-			</ul>
-			${this.items.length === 0 ? html`<p class="empty">No downloads yet.</p>` : null}
-			<button class="all" @click=${() => source.openFolder()}>Open the Downloads folder</button>
+			${
+				list?.length === 0
+					? html`<div class="empty">
+							<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10" /></svg>
+							<p><b>No downloads yet</b>Files you download show up here while they come in.</p>
+						</div>`
+					: html`<ul>${repeat(
+							list ?? [],
+							(d) => d.id,
+							(d) => this.row(d, now),
+						)}</ul>`
+			}
+			<button class="all" @click=${() => this.browser.openPage("chrome://downloads/")}>See all downloads</button>
 		`;
 	}
 
 	static override styles = css`
 		:host {
 			display: block;
-			color: #ececf1;
 			font: 14px/1.4 system-ui, "Segoe UI", sans-serif;
 		}
 		header {
 			display: flex;
 			align-items: center;
 			justify-content: space-between;
-			margin: 4px 6px 8px;
+			min-height: 26px;
+			margin: 2px 4px 6px 8px;
 		}
 		button {
 			font: inherit;
 			color: inherit;
 			border: 0;
 			background: none;
+			padding: 0;
+			cursor: default;
 		}
 		.quiet {
-			color: #a7a8b4;
-			padding: 2px 6px;
-			border-radius: 6px;
+			height: 26px;
+			padding: 0 8px;
+			border-radius: 7px;
+			color: var(--loka-ink-2);
+			font-size: 13px;
 		}
 		.quiet:hover,
-		.act:hover,
 		.all:hover {
-			color: #fff;
-			background: hsl(var(--hue) 30% 80% / 0.1);
+			color: var(--loka-ink);
+			background: var(--loka-hover);
 		}
 		ul {
 			list-style: none;
@@ -185,12 +170,20 @@ export class LokaDownloads extends LitElement {
 		li {
 			display: flex;
 			align-items: center;
-			gap: 10px;
-			padding: 7px 8px;
 			border-radius: 8px;
 		}
 		li:hover {
-			background: hsl(var(--hue) 30% 80% / 0.06);
+			background: var(--loka-hover);
+		}
+		.main {
+			flex: 1;
+			min-width: 0;
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			padding: 7px 4px 7px 8px;
+			text-align: left;
+			border-radius: 8px;
 		}
 		.file {
 			flex: none;
@@ -200,9 +193,14 @@ export class LokaDownloads extends LitElement {
 			height: 34px;
 			border-radius: 5px;
 			background: hsl(var(--f) 45% 30%);
-			color: hsl(var(--f) 80% 88%);
+			color: hsl(var(--f) 80% 90%);
 			font-size: 9px;
 			font-weight: 700;
+			letter-spacing: 0.02em;
+		}
+		.cancelled .file,
+		.failed .file {
+			opacity: 0.55;
 		}
 		.text {
 			flex: 1;
@@ -215,38 +213,61 @@ export class LokaDownloads extends LitElement {
 			white-space: nowrap;
 			text-overflow: ellipsis;
 		}
+		.cancelled .name {
+			color: var(--loka-ink-2);
+			text-decoration: line-through;
+			text-decoration-color: var(--loka-ink-3);
+		}
 		small {
-			color: #a7a8b4;
+			color: var(--loka-ink-2);
 			font-size: 12px;
 			font-variant-numeric: tabular-nums;
 		}
 		.error {
-			color: #ff9b8f;
+			color: var(--loka-danger);
 		}
+		/* The bar fills by scaling, so progress never relays out the row. */
 		.bar {
 			display: block;
 			height: 3px;
 			border-radius: 2px;
-			background: hsl(var(--hue) 30% 85% / 0.14);
+			background: var(--loka-line);
 			overflow: hidden;
 		}
 		.bar span {
 			display: block;
 			height: 100%;
-			background: hsl(var(--hue) 80% 68%);
+			border-radius: inherit;
+			background: var(--loka-accent);
+			transform-origin: left;
+		}
+		.bar.paused span {
+			background: var(--loka-ink-3);
+		}
+		.acts {
+			display: flex;
+			flex: none;
+			padding-right: 4px;
 		}
 		.act {
-			flex: none;
-			height: 28px;
-			padding: 0 8px;
-			border-radius: 7px;
-			color: #d6d7df;
-		}
-		.act.icon {
 			display: grid;
 			place-items: center;
 			width: 28px;
-			padding: 0;
+			height: 28px;
+			border-radius: 7px;
+			color: var(--loka-ink-2);
+		}
+		.act:hover {
+			background: var(--loka-hover);
+			color: var(--loka-ink);
+		}
+		/* Remove is there when you look for it, not before. */
+		.act.secondary {
+			opacity: 0;
+		}
+		li:hover .act.secondary,
+		.act.secondary:focus-visible {
+			opacity: 1;
 		}
 		svg {
 			width: 15px;
@@ -257,22 +278,62 @@ export class LokaDownloads extends LitElement {
 			stroke-linecap: round;
 			stroke-linejoin: round;
 		}
+		svg .fill {
+			fill: currentColor;
+		}
 		.all {
 			width: 100%;
 			margin-top: 6px;
 			padding: 8px;
 			border-radius: 8px;
-			color: #a7a8b4;
+			color: var(--loka-ink-2);
 			text-align: left;
 		}
 		.empty {
-			margin: 8px;
-			color: #b4b6c2;
+			display: grid;
+			justify-items: center;
+			gap: 8px;
+			padding: 14px 12px 6px;
+			text-align: center;
+			color: var(--loka-ink-2);
+		}
+		.empty svg {
+			width: 26px;
+			height: 26px;
+			stroke-width: 1.2;
+			color: var(--loka-accent-ink);
+		}
+		.empty p {
+			margin: 0;
 			font-size: 13px;
+			text-wrap: pretty;
+		}
+		.empty b {
+			display: block;
+			margin-bottom: 2px;
+			color: var(--loka-ink);
+			font-size: 14px;
+		}
+		:focus-visible {
+			outline: 2px solid var(--loka-accent);
+			outline-offset: -2px;
 		}
 		@media (prefers-reduced-motion: no-preference) {
 			.bar span {
-				transition: width 400ms linear;
+				transition: transform 450ms linear;
+			}
+			/* Size unknown: a short bar sweeps across instead. */
+			.bar.unknown.running span {
+				animation: sweep 1.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+				animation-play-state: var(--loka-play, running);
+			}
+			@keyframes sweep {
+				from {
+					translate: -100% 0;
+				}
+				to {
+					translate: 340% 0;
+				}
 			}
 		}
 	`;

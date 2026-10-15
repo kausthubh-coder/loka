@@ -75,6 +75,24 @@ Loka's patches live in `patches/loka/` and are listed at the end of `patches/ser
    `docs/helium-windows-README.md` (MSYS2 + quilt, `devutils/set_quilt_vars.sh`).
 4. Add the file to `patches/series`, commit on the branch, and open a PR. CI runs Helium's patch linter.
 
+## 3b. The portable alpha
+
+```
+bun run ext:build
+bun run browser:package    # C:\src\loka\dist\Loka-<version>-windows-x64.zip and .sha256
+```
+
+- `scripts/alpha/package_alpha.mjs` copies what `gn desc out\Default //chrome:chrome runtime_deps` lists (every
+  DLL, since the dev build is a component build), the sidebar as `app\loka-sidebar`, `initial_preferences` and a
+  README. `LOKA_VERSION` sets the version (default `0.1.0-alpha.1`).
+- `Loka.exe` is `scripts/alpha/Loka.cs`, compiled with the `csc.exe` that ships in Windows. It starts
+  `app\chrome.exe` with the sidebar, the profile `%LOCALAPPDATA%\Loka\User Data`, and
+  `--custom-update-server-url` pointed at Loka's (not yet published) feed, so Helium's updater never offers
+  Helium.
+- Don't run `gn desc` while a 6-job build is running on the 16 GB laptop: it needs about 1.5 GB of its own.
+- The alpha is the dev build: component build, unsigned, and without the full Loka name in every string. A
+  release build (below) is the efficient one, as a single `chrome.dll`.
+
 ## Release builds
 
 `.github/workflows/main.yml` (inherited from Helium, started by hand) builds on GitHub's free `windows-2025`

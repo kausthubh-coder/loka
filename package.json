@@ -18,7 +18,8 @@
 		"worktree:remove": "bun scripts/remove-worktree.mjs",
 		"browser:setup": "bun scripts/browser.mjs setup",
 		"browser:build": "bun scripts/browser.mjs build",
-		"browser:run": "bun scripts/browser.mjs run"
+		"browser:run": "bun scripts/browser.mjs run",
+		"browser:package": "node scripts/alpha/package_alpha.mjs"
 	},
 	"dependencies": {
 		"lit": "^3.3.3"

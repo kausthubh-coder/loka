@@ -10,12 +10,15 @@ import { browser } from "./bridge";
 
 export const STATE_KEY = "state.v1";
 export const UI_KEY = "ui.v1";
+/** What setup saved (the browser adds it to the store, read-only), and the value the sidebar last applied. */
+const ONBOARDING_KEY = "onboarding";
+const APPLIED_KEY = "onboarding.applied";
 
 export type Groups = Record<string, { id: number; collapsed: boolean }>;
 
 let store: Record<string, string> = {};
 let loaded: Promise<void> | null = null;
-type Change = { state?: BrowserState; ui?: UiPrefs; media?: Media | null; foreign?: boolean };
+type Change = { state?: BrowserState; ui?: UiPrefs; media?: Media | null; onboarding?: boolean; foreign?: boolean };
 const listeners = new Set<(what: Change) => void>();
 /** Values this page wrote that the browser hasn't echoed back yet, so an echo isn't taken for another window's. */
 const echoes = new Set<string>();
@@ -70,9 +73,18 @@ export async function readSession() {
 	return session;
 }
 
+const linkListeners = new Set<() => void>();
+
 export async function writeSession(values: Partial<{ live: LiveMap; groups: Groups; media: Media | null }>) {
+	const linksChanged = values.live !== undefined && values.live !== session.live;
 	session = { ...session, ...values };
 	if ("media" in values) notify({ media: session.media });
+	if (linksChanged) for (const listener of linkListeners) listener();
+}
+
+/** Calls back when the links between Loka tabs and browser tabs change. */
+export function onLinksChanged(listener: () => void) {
+	linkListeners.add(listener);
 }
 
 /**
@@ -83,7 +95,24 @@ export function watch(changed: (what: Change) => void) {
 	listeners.add(changed);
 }
 
+/** Setup's spaces if the sidebar hasn't applied them yet. */
+export async function pendingOnboarding(): Promise<string | null> {
+	await load();
+	const value = store[ONBOARDING_KEY];
+	return value && value !== store[APPLIED_KEY] ? value : null;
+}
+
+export function markOnboardingApplied(value: string) {
+	store = { ...store, [APPLIED_KEY]: value };
+	echoes.add(value);
+	browser.setStore(APPLIED_KEY, value);
+}
+
 browser.onStoreChanged((next) => {
+	if (next?.[ONBOARDING_KEY] !== undefined && next[ONBOARDING_KEY] !== store[ONBOARDING_KEY]) {
+		store = { ...store, [ONBOARDING_KEY]: next[ONBOARDING_KEY] };
+		notify({ onboarding: true });
+	}
 	for (const key of [STATE_KEY, UI_KEY]) {
 		const value = next?.[key];
 		if (value === undefined || value === store[key]) continue;
@@ -96,25 +125,8 @@ browser.onStoreChanged((next) => {
 	}
 });
 
-/** Favicons: a loaded tab's own icon when one of this window's tabs shows the page, else the browser's cache. */
-let liveIcons = new Map<string, string>();
-const iconListeners = new Set<() => void>();
-
-/** Keeps each loaded page's icon; tells the sidebar to redraw when one arrives or changes. */
-export function rememberIcons(tabs: { url: string; favicon: string }[]) {
-	const next = new Map(tabs.filter((t) => t.favicon).map((t) => [t.url, t.favicon]));
-	const changed = next.size !== liveIcons.size || [...next].some(([url, icon]) => liveIcons.get(url) !== icon);
-	liveIcons = next;
-	if (changed) for (const listener of iconListeners) listener();
-}
-
-export function onIconsChanged(listener: () => void) {
-	iconListeners.add(listener);
-}
-
+/** An unloaded page's icon, from the browser's favicon cache. A loaded tab's own icon comes with its tab data. */
 export function faviconUrl(pageUrl: string): string {
-	const live = liveIcons.get(pageUrl);
-	if (live) return live;
 	const url = new URL("chrome://favicon2/");
 	url.searchParams.set("size", "32");
 	url.searchParams.set("scaleFactor", `${window.devicePixelRatio}x`);

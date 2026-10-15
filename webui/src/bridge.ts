@@ -42,6 +42,61 @@ export interface NativeGroup {
 
 export type GroupColor = "grey" | "blue" | "red" | "yellow" | "green" | "pink" | "purple" | "cyan" | "orange";
 
+/** An installed, enabled extension, as its toolbar button would show it. */
+export interface NativeExtension {
+	id: string;
+	name: string;
+	/** Its action icon for the active tab, as a data: URL. */
+	icon: string;
+	/** Badge text for the active tab ("12"), or "". */
+	badge: string;
+	/** Badge background as a CSS color, or "". */
+	badgeColor: string;
+	/** Whether the user pinned it to the sidebar's toolbar. */
+	pinned: boolean;
+}
+
+export type DownloadState = "running" | "paused" | "complete" | "failed" | "cancelled";
+
+export interface NativeDownload {
+	id: number;
+	/** The file's name on disk, or the URL's last part while it's being named. */
+	name: string;
+	url: string;
+	state: DownloadState;
+	receivedBytes: number;
+	/** -1 when the size isn't known. */
+	totalBytes: number;
+	/** ms since 1970. */
+	startTime: number;
+	canResume: boolean;
+}
+
+/** What a tab's media session says is playing. */
+export interface NativeMedia {
+	tabId: number;
+	title: string;
+	artist: string;
+	/** The page's artwork as a data: URL, or "". */
+	artwork: string;
+	playing: boolean;
+}
+
+/** One row of the address field's suggestions, from the browser's own autocomplete (history, bookmarks, tabs). */
+export interface NativeSuggestion {
+	kind: "url" | "search" | "history" | "bookmark" | "tab";
+	title: string;
+	/** Where it goes when picked. */
+	url: string;
+	/** The open tab it switches to, for kind "tab". */
+	tabId?: number;
+}
+
+export type ColorScheme = "light" | "dark" | "system";
+
+/** Browser shortcuts the sidebar answers: Ctrl+T and Ctrl+L open the command bar instead of a new tab page. */
+export type BrowserCommand = "new-tab" | "focus-location";
+
 const pending = new Map<string, (value: unknown) => void>();
 const listeners = new Map<string, Set<(...args: unknown[]) => void>>();
 let nextId = 0;
@@ -106,4 +161,38 @@ export const browser = {
 	onTabsChanged: (listener: (tabs: NativeTab[]) => void) => on("tabs-changed", (t) => listener(t as NativeTab[])),
 	onStoreChanged: (listener: (store: Record<string, string>) => void) =>
 		on("store-changed", (s) => listener(s as Record<string, string>)),
+
+	// Planned: the C++ handler is being extended to answer these. Until a message exists the browser ignores it and
+	// an ask() never resolves, so callers must treat these as optional while the native side lands.
+	extensions: () => ask<NativeExtension[]>("getExtensions"),
+	/** Clicks the extension's toolbar button: opens its popup next to `anchor` (sidebar CSS pixels) or runs it. */
+	runExtension: (id: string, anchor: { x: number; y: number; width: number; height: number }) =>
+		tell("runExtension", id, anchor),
+	setExtensionPinned: (id: string, pinned: boolean) => tell("setExtensionPinned", id, pinned),
+	onExtensionsChanged: (listener: (extensions: NativeExtension[]) => void) =>
+		on("extensions-changed", (e) => listener(e as NativeExtension[])),
+
+	downloads: () => ask<NativeDownload[]>("getDownloads"),
+	downloadAction: (id: number, action: "open" | "show" | "pause" | "resume" | "cancel" | "retry" | "remove") =>
+		tell("downloadAction", id, action),
+	onDownloadsChanged: (listener: (downloads: NativeDownload[]) => void) =>
+		on("downloads-changed", (d) => listener(d as NativeDownload[])),
+
+	media: () => ask<NativeMedia[]>("getMedia"),
+	/** Plays or pauses the tab's media session, as the page's own controls would. */
+	mediaAction: (tabId: number, action: "play" | "pause" | "next" | "previous") => tell("mediaAction", tabId, action),
+	onMediaChanged: (listener: (media: NativeMedia[]) => void) =>
+		on("media-changed", (m) => listener(m as NativeMedia[])),
+
+	/** Starts the browser's autocomplete for `query`; results arrive through onSuggestions. */
+	suggest: (query: string) => tell("suggest", query),
+	onSuggestions: (listener: (query: string, suggestions: NativeSuggestion[]) => void) =>
+		on("suggestions", (q, s) => listener(q as string, s as NativeSuggestion[])),
+
+	/** Pinned shows the sidebar always; unpinned slides it away until the mouse reaches the window's edge. */
+	setSidebarPinned: (pinned: boolean) => tell("setSidebarPinned", pinned),
+	sidebarPinned: () => ask<boolean>("getSidebarPinned"),
+	/** Light or dark for the browser and the pages that follow it (prefers-color-scheme). */
+	setColorScheme: (scheme: ColorScheme) => tell("setColorScheme", scheme),
+	onCommand: (listener: (command: BrowserCommand) => void) => on("command", (c) => listener(c as BrowserCommand)),
 };

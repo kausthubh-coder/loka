@@ -20,7 +20,7 @@ import {
 	tabUpdated,
 } from "../../extension/src/live.logic";
 import { browser, type NativeTab } from "./bridge";
-import { type Groups, readSession, readState, readUi, rememberIcons, writeSession, writeState } from "./store";
+import { type Groups, readSession, readState, readUi, writeSession, writeState } from "./store";
 
 let live: LiveMap = {};
 let groups: Groups = {};
@@ -79,7 +79,6 @@ function start(): Promise<void> {
 
 function see(tabs: NativeTab[]) {
 	seen = new Map(tabs.map((t) => [t.id, t]));
-	rememberIcons(tabs);
 }
 
 async function reconcile(state: BrowserState, pass: Pass) {
@@ -192,4 +191,9 @@ export function spacesChanged(json: string | null) {
 /** The browser tab showing a Loka tab right now, if it's loaded. */
 export function browserTabOf(lokaTabId: string): number | undefined {
 	return live[lokaTabId];
+}
+
+/** Which browser tab shows each loaded Loka tab. */
+export function linkedTabs(): LiveMap {
+	return live;
 }

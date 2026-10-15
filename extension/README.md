@@ -1,34 +1,28 @@
-# Loka sidebar (browser extension)
+# Loka sidebar as a browser extension (legacy)
 
-The prototype's sidebar, command bar, space editor, Settings and tour, running inside a Chromium browser on real
-tabs. Loka loads it into its own build; it also runs in Chrome, Edge or Helium as an unpacked extension.
+This folder is the sidebar the 0.1.0 alpha shipped: the prototype's components in Chromium's side panel and new tab
+page, on real tabs. It is legacy and will be deleted. Loka's UI now ships inside the browser as
+`chrome://loka-sidebar.top-chrome`, built from `webui/` with C++ in `patches/loka/`; an extension is never how Loka
+delivers its UI. Nothing here proves anything about the browser. Use `bun run verify:browser` for that.
 
 ```
 bun run ext:build            # builds extension/dist
-node extension/test/e2e.mjs  # drives it in Chromium against real tabs (needs `bun run dev` for stand-in sites)
+node extension/test/e2e.mjs  # drives it in Playwright's Chromium (needs `bun run dev` for stand-in sites)
 ```
-
-Load it by hand: `chrome://extensions` > Developer mode > Load unpacked > `extension/dist`. Click the Loka button
-(or Alt+L) to open the side panel.
 
 ## How it fits together
 
 | Piece | What it does |
 |---|---|
-| `src/background.ts` | Keeps spaces and real tabs in step. Each space's live tabs sit in a tab group named after it; other spaces' groups fold away. |
-| `src/live.logic.ts` | The pure part: browser events -> spaces, and spaces -> a plan of tab operations. Unit tested. |
+| `src/background.ts` | Keeps spaces and real tabs in step, one tab group per space. |
 | `src/panel.ts` | The side panel: the prototype's `<loka-sidebar>` plus command bar and space editor. |
-| `src/pages.ts` | The new tab page (the command bar on the sky), Settings, and the tour. |
-| `src/browser.ts` | Real downloads, installed extensions, bookmarks, search with the user's engine, browser settings pages. |
-| `src/store.ts` | The spaces in `chrome.storage.local` (shared by every page); runtime links in `chrome.storage.session`. |
+| `src/pages.ts` | The new tab page, Settings and the tour. |
+| `src/browser.ts` | Downloads, installed extensions, bookmarks and search through `chrome.*` APIs. |
+| `src/store.ts` | The spaces in `chrome.storage.local` under `loka.state.v1`. |
 
-Two rules keep the browser and Loka from fighting (see the top of `background.ts`): only a Loka page moves the
-browser's focus, and every background job saves from freshly read spaces before any slow browser call.
+The tab-sync rules it shares with the native sidebar live in `prototype/src/features/tabs/live.logic.ts`.
 
-## Not done yet
+## Moving off it
 
-- Hiding the browser's own tab strip needs a Chromium patch; for now Helium's vertical tabs sit collapsed on the
-  right.
-- Previous/next track: pages don't expose their media session to other pages; the real fix is a Loka mojo
-  handler over Chromium's media sessions (see the first-release plan).
-- Sync, and keyboard shortcuts outside the side panel beyond Alt+L.
+The built-in sidebar can't read this extension's storage. Users export their spaces from this sidebar (`...` >
+`Export spaces (JSON)`) and import them in the new build; the import drops this extension's own pages.

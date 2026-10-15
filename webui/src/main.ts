@@ -43,6 +43,7 @@ import {
 	readUi,
 	watch,
 	writeState,
+	writeUi,
 } from "./store";
 import { browserTabOf, linkedTabs, spacesChanged, startSync } from "./sync";
 
@@ -383,7 +384,12 @@ export class LokaPanel extends LitElement {
 					.live=${this.live}
 					.browser=${browser}
 					.pinned=${this.pinned}
+					.hintDismissed=${this.ui.essentialsHintDismissed}
 					.demo=${false}
+					@loka-dismiss-hint=${() => {
+						this.ui = { ...this.ui, essentialsHintDismissed: true };
+						void writeUi(this.ui);
+					}}
 					@loka-tab-mute=${(e: CustomEvent<string>) => this.toggleMute(e.detail)}
 				></loka-sidebar>
 				${

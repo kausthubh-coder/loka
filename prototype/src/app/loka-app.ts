@@ -459,6 +459,8 @@ export class LokaApp extends LitElement {
 					.live=${live}
 					.browser=${fakeBrowser}
 					.pinned=${this.pinned}
+					.hintDismissed=${this.ui.essentialsHintDismissed}
+					@loka-dismiss-hint=${() => this.setUi({ essentialsHintDismissed: true })}
 					@loka-media=${(e: CustomEvent<MediaAction>) => this.onMedia(e.detail)}
 					@loka-tab-mute=${(e: CustomEvent<string>) => {
 						const browserId = DEMO_LINKS[e.detail];

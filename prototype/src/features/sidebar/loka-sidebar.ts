@@ -16,6 +16,7 @@ import type { NowPlaying } from "../media/loka-media-card";
 import "../search/loka-sidebar-search";
 import { playCue } from "../sound/sound";
 import type { Cue } from "../sound/sound.logic";
+import { essentialsDropSlots, showEssentialsHint, showPinnedHint } from "./empty-states.logic";
 import { planet } from "./planet";
 import {
 	activateTab,
@@ -92,6 +93,7 @@ export class LokaSidebar extends LitElement {
 		live: { attribute: false },
 		browser: { attribute: false },
 		pinned: { attribute: false },
+		hintDismissed: { attribute: false },
 		demo: { type: Boolean },
 	};
 
@@ -117,6 +119,8 @@ export class LokaSidebar extends LitElement {
 	pinned = true;
 	/** The prototype: shows "Reset demo data". The real browser leaves it out. */
 	demo = true;
+	/** The one-time Essentials hint was dismissed (a window pref the window saves). */
+	hintDismissed = false;
 
 	/** Opens a panel from outside (Ctrl+Shift+F, the command bar). */
 	openPanel(panel: Panel) {
@@ -957,8 +961,11 @@ export class LokaSidebar extends LitElement {
 		const space = activeSpace(state);
 		const rows = pinnedRows(space.pinned);
 		const count = state.essentials.length;
+		const draggingTab = this.dragId !== null && state.tabs[this.dragId] !== undefined;
+		const slots = essentialsDropSlots(count, draggingTab);
 		// Essentials fill the row they're in, so one is one big tile; a drag adds the free cell to drop in.
-		const columns = Math.min(4, Math.max(1, count + (this.dragId && count % 4 !== 0 ? 1 : 0)));
+		const columns = Math.min(4, Math.max(1, count + slots));
+		const toEssentials = (): Place => ({ area: "essentials", index: Infinity });
 
 		return html`
 			<aside
@@ -972,56 +979,98 @@ export class LokaSidebar extends LitElement {
 				${this.topRow()}
 				${this.addressField()}
 
-				<div class="essentials" role="list" aria-label="Essentials" style="--cols: ${columns}">
-					${repeat(
-						state.essentials,
-						(id) => id,
-						(id, index) => {
-							const tab = state.tabs[id];
-							if (!tab) return nothing;
-							const active = space.activeTabId === id;
-							return html`
+				${
+					count === 0
+						? // None yet: no room taken. While a tab is dragged, a tray of slots eases open at the top.
+							html`<div class="essentials empty" role="list" aria-label="Essentials">
+								${
+									slots
+										? html`<div class="tray" aria-hidden="true">
+												${Array.from(
+													{ length: slots },
+													(_, i) => html`<div
+														class="essential ghost ${this.dropClass(`essentials-slot-${i}`)}"
+														@dragover=${(e: DragEvent) => this.over(e, `essentials-slot-${i}`, toEssentials)}
+														@drop=${(e: DragEvent) => this.dropHere(e)}
+													></div>`,
+												)}
+												<p>Drop here to keep it in every space</p>
+											</div>`
+										: nothing
+								}
+							</div>`
+						: html`<div class="essentials" role="list" aria-label="Essentials" style="--cols: ${columns}">
+								${repeat(
+									state.essentials,
+									(id) => id,
+									(id, index) => {
+										const tab = state.tabs[id];
+										if (!tab) return nothing;
+										const active = space.activeTabId === id;
+										return html`
+											<button
+												class="essential ${active ? "active" : ""} ${this.dragId === id ? "dragging" : ""} ${this.dropClass(id)}"
+												data-key=${id}
+												role="listitem"
+												title=${tab.title}
+												aria-label=${tab.title}
+												draggable="true"
+												@dragstart=${(e: DragEvent) => this.startDrag(e, id)}
+												@dragend=${() => this.endDrag()}
+												@dragover=${(e: DragEvent) =>
+													this.over(
+														e,
+														id,
+														(mode) => ({ area: "essentials", index: mode === "before" ? index : index + 1 }),
+														null,
+														"x",
+													)}
+												@drop=${(e: DragEvent) => this.dropHere(e)}
+												@click=${() => this.apply((s) => activateTab(s, id))}
+												@contextmenu=${(e: MouseEvent) => this.openMenu(e, this.tabMenu(id))}
+											>
+												${this.favicon(id, tab.url, 24)}
+											</button>
+										`;
+									},
+								)}
+								${
+									// The drop slot sits in a free cell of the last row, never a new row: adding a row
+									// when a drag starts would shift everything under the pointer.
+									slots
+										? html`<div
+												class="essential slot ${this.dropClass("essentials-end")}"
+												aria-hidden="true"
+												@dragover=${(e: DragEvent) => this.over(e, "essentials-end", toEssentials)}
+												@drop=${(e: DragEvent) => this.dropHere(e)}
+											></div>`
+										: nothing
+								}
+							</div>`
+				}
+				${
+					showEssentialsHint(state, this.hintDismissed)
+						? html`<div
+								class="essentials-hint ${this.dropClass("essentials-hint")}"
+								@dragover=${(e: DragEvent) => this.over(e, "essentials-hint", toEssentials)}
+								@drop=${(e: DragEvent) => this.dropHere(e)}
+							>
+								<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1.6" /><rect x="11" y="3" width="6" height="6" rx="1.6" /><rect x="3" y="11" width="6" height="6" rx="1.6" /><rect x="11" y="11" width="6" height="6" rx="1.6" /></svg>
+								<span>Drag a tab up here to keep it in every space</span>
 								<button
-									class="essential ${active ? "active" : ""} ${this.dragId === id ? "dragging" : ""} ${this.dropClass(id)}"
-									data-key=${id}
-									role="listitem"
-									title=${tab.title}
-									aria-label=${tab.title}
-									draggable="true"
-									@dragstart=${(e: DragEvent) => this.startDrag(e, id)}
-									@dragend=${() => this.endDrag()}
-									@dragover=${(e: DragEvent) =>
-										this.over(
-											e,
-											id,
-											(mode) => ({ area: "essentials", index: mode === "before" ? index : index + 1 }),
-											null,
-											"x",
-										)}
-									@drop=${(e: DragEvent) => this.dropHere(e)}
-									@click=${() => this.apply((s) => activateTab(s, id))}
-									@contextmenu=${(e: MouseEvent) => this.openMenu(e, this.tabMenu(id))}
+									class="dismiss"
+									aria-label="Dismiss the Essentials hint"
+									title="Got it"
+									@click=${(e: Event) => {
+										e.stopPropagation();
+										this.dispatchEvent(new CustomEvent("loka-dismiss-hint", { bubbles: true, composed: true }));
+									}}
 								>
-									${this.favicon(id, tab.url, 24)}
+									<svg viewBox="0 0 16 16"><path d="m4.5 4.5 7 7m0-7-7 7" /></svg>
 								</button>
-							`;
-						},
-					)}
-					${
-						// The drop slot sits in a free cell of the last row, never a new row: adding a row
-						// when a drag starts would shift everything under the pointer.
-						count % 4 !== 0 || count === 0
-							? html`<div
-									class="essential slot ${this.dragId ? "visible" : ""} ${count === 0 ? "wide" : ""} ${this.dropClass("essentials-end")}"
-									aria-hidden="true"
-									@dragover=${(e: DragEvent) => this.over(e, "essentials-end", () => ({ area: "essentials", index: Infinity }))}
-									@drop=${(e: DragEvent) => this.dropHere(e)}
-								>
-									${count === 0 ? "Drag tabs here for Essentials" : nothing}
-								</div>`
-							: nothing
-					}
-				</div>
+							</div>`
+						: nothing
+				}
 
 				${keyed(
 					space.id,
@@ -1044,7 +1093,7 @@ export class LokaSidebar extends LitElement {
 							(row) => this.pinnedRow(row, space.id),
 						)}
 						<div
-							class="end-zone ${rows.length === 0 ? "empty" : ""} ${this.dropClass("pinned-end")}"
+							class="end-zone ${showPinnedHint(space) ? "hint" : ""} ${draggingTab ? "ready" : ""} ${this.dropClass("pinned-end")}"
 							data-key="pinned-end"
 							@dragover=${(e: DragEvent) =>
 								this.over(e, "pinned-end", () => ({
@@ -1055,7 +1104,12 @@ export class LokaSidebar extends LitElement {
 								}))}
 							@drop=${(e: DragEvent) => this.dropHere(e)}
 						>
-							${rows.length === 0 ? "Drag tabs here to pin them" : nothing}
+							${
+								showPinnedHint(space)
+									? html`<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11.8 3.2 16.8 8.2 13.6 9.4 10.6 12.4l-.6 3.6L4 10l3.6-.6 3-3z" /><path d="M6.8 13.2 3.5 16.5" /></svg>
+											<span>Pin tabs to keep them in this space</span>`
+									: nothing
+							}
 						</div>
 					</div>
 
@@ -1442,19 +1496,97 @@ export class LokaSidebar extends LitElement {
 				inset 0 0 0 1.5px var(--loka-accent),
 				var(--loka-selected-edge);
 		}
-		.essential.slot {
-			background: none;
+		.essential.slot,
+		.essential.ghost {
+			background: color-mix(in srgb, var(--loka-accent) 7%, transparent);
 			box-shadow: none;
-			color: var(--loka-ink-3);
+			outline: 1.5px dashed color-mix(in srgb, var(--loka-accent) 55%, transparent);
+			outline-offset: -1.5px;
+		}
+		/* No Essentials: no room taken (the sidebar's gap is given back); the tray only exists while a tab is dragged. */
+		.essentials.empty {
+			display: block;
+		}
+		.essentials.empty:not(:has(.tray)) {
+			margin-bottom: -8px;
+		}
+		.tray {
+			box-sizing: border-box;
+			overflow: hidden;
+			interpolate-size: allow-keywords;
+			display: grid;
+			grid-template-columns: repeat(3, 1fr);
+			gap: 8px;
+			padding: 6px;
+			border-radius: 16px;
+			background: var(--loka-surface);
+			box-shadow: var(--loka-surface-edge);
+		}
+		.tray p {
+			grid-column: 1 / -1;
+			margin: 0 0 2px;
+			text-align: center;
+			font-size: 12px;
+			color: var(--loka-ink-2);
+		}
+		.essential.ghost {
+			height: 56px;
+		}
+		.essential.ghost.drop-before,
+		.essential.ghost.drop-after,
+		.essential.slot.drop-before,
+		.essential.slot.drop-after {
+			background: color-mix(in srgb, var(--loka-accent) 20%, transparent);
+			outline-style: solid;
+			outline-color: var(--loka-accent);
+		}
+		.essential.ghost::before,
+		.essential.slot::before {
+			display: none;
+		}
+		/* The one-time hint: a small row, not a box, with its own way out. */
+		.essentials-hint {
+			flex: none;
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			min-height: 36px;
+			padding: 0 4px 0 12px;
+			margin-top: -2px;
+			border-radius: 10px;
+			color: var(--loka-ink-2);
 			font-size: 13px;
 		}
-		.essential.slot.visible,
-		.essential.slot.wide {
-			box-shadow: inset 0 0 0 1px var(--loka-line);
+		.essentials-hint > svg {
+			width: 16px;
+			height: 16px;
+			color: var(--loka-accent-ink);
 		}
-		.essential.slot.wide {
-			grid-column: 1 / -1;
-			height: 44px;
+		.essentials-hint span {
+			flex: 1;
+			text-wrap: pretty;
+		}
+		.essentials-hint.drop-before,
+		.essentials-hint.drop-after {
+			background: color-mix(in srgb, var(--loka-accent) 16%, transparent);
+			box-shadow: inset 0 0 0 1.5px var(--loka-accent);
+		}
+		.dismiss {
+			display: grid;
+			place-items: center;
+			flex: none;
+			width: 28px;
+			height: 28px;
+			border-radius: 7px;
+			color: var(--loka-ink-3);
+		}
+		.dismiss svg {
+			width: 14px;
+			height: 14px;
+		}
+		.dismiss:hover {
+			background: var(--loka-hover);
+			color: var(--loka-ink);
 		}
 		.essential.drop-before::before,
 		.essential.drop-after::before {
@@ -1675,18 +1807,29 @@ export class LokaSidebar extends LitElement {
 			height: 10px;
 			position: relative;
 		}
-		.end-zone.empty {
-			display: grid;
-			place-items: center;
-			height: 44px;
-			margin: 2px 0;
+		/* Nothing pinned: one quiet row, which becomes the drop slot when a tab is dragged over it. */
+		.end-zone.hint {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			height: 36px;
+			padding: 0 11px;
 			border-radius: 10px;
 			color: var(--loka-ink-3);
 			font-size: 13px;
-			box-shadow: inset 0 0 0 1px var(--loka-line);
+		}
+		.end-zone.hint svg {
+			width: 16px;
+			height: 16px;
+			flex: none;
+		}
+		.end-zone.hint.ready {
+			box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--loka-accent) 40%, transparent);
 		}
 		.end-zone.drop-before,
 		.end-zone.drop-after {
+			color: var(--loka-ink);
+			background: color-mix(in srgb, var(--loka-accent) 16%, transparent);
 			box-shadow: inset 0 0 0 1.5px var(--loka-accent);
 			border-radius: 10px;
 		}
@@ -1945,6 +2088,31 @@ export class LokaSidebar extends LitElement {
 			}
 			.neighbour {
 				transition: transform 160ms cubic-bezier(0.2, 0, 0, 1);
+			}
+			/* The Essentials tray slides down from under the address field, and its slots breathe gently. */
+			.tray {
+				transition:
+					opacity 160ms cubic-bezier(0.2, 0, 0, 1),
+					height 200ms cubic-bezier(0.2, 0, 0, 1),
+					padding 200ms cubic-bezier(0.2, 0, 0, 1);
+				@starting-style {
+					opacity: 0;
+					height: 0;
+					padding-block: 0;
+				}
+			}
+			.essential.ghost {
+				animation: breathe-slot 1.6s ease-in-out infinite alternate;
+			}
+			.essential.ghost.drop-before,
+			.essential.ghost.drop-after {
+				animation: none;
+			}
+			@keyframes breathe-slot {
+				to {
+					outline-color: color-mix(in srgb, var(--loka-accent) 85%, transparent);
+					background: color-mix(in srgb, var(--loka-accent) 12%, transparent);
+				}
 			}
 			.neighbour:hover {
 				transform: translateY(-3px);

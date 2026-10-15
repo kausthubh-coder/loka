@@ -106,6 +106,9 @@ const recipes = {
 		await loka.sidebar.getByRole("button", { name: "Close Zen Browser" }).click();
 		o = await loka.outline();
 		assert.ok(!o.open.includes("Zen Browser"), "closed tab is gone");
+		await loka.row("lit.dev").click({ button: "middle" });
+		o = await loka.outline();
+		assert.ok(!o.open.includes("lit.dev"), "a middle click closes a tab");
 
 		await loka.row("Arc: what we learned").click({ button: "right" });
 		await loka.menuItem("Pin to space").click();
@@ -233,6 +236,20 @@ const recipes = {
 		await loka.menuItem("Edit this space").click();
 		await loka.page.keyboard.press("Escape");
 		assert.equal(await loka.page.locator("loka-space-editor").count(), 0, "Escape closes the editor");
+
+		await loka.sidebar.getByRole("button", { name: "Spaces: Tunes", exact: true }).click();
+		await loka.menuItem("Edit this space").click();
+		const doomed = loka.page.getByRole("dialog", { name: "Edit Tunes" });
+		await doomed.getByRole("button", { name: "Delete space" }).click();
+		assert.ok(
+			(await loka.state()).spaces.some((/** @type {{ name: string }} */ x) => x.name === "Tunes"),
+			"the first click only asks",
+		);
+		await doomed.getByRole("button", { name: "Delete it and its tabs" }).click();
+		const names = (await loka.state()).spaces.map((/** @type {{ name: string }} */ x) => x.name);
+		assert.deepEqual(names, ["Build", "School", "Home"], "the second click deletes the space");
+		assert.equal((await loka.outline()).space, "Home", "and the space before it shows");
+		await loka.proof("03-tunes-deleted");
 	},
 
 	async layout(loka) {

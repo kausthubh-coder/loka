@@ -45,6 +45,15 @@ build is running.
   above; add `-- --no-first-run` to check setup stays away. It prints `PASS`/`FAIL`/`NOTE` per
   check and leaves `checks.json`, `startup-targets.json`, `rows.json`, `setup.png`, `sidebar.png`, `window.png` and
   `chrome.log` in `.agents/verify-runs/<time>-browser/`. It stops only its own process tree and deletes its profile.
+- **User flows.** `LOKA_CHROME=C:\src\loka\dist\snapshot\chrome.exe bun run verify:flows` drives what a user does,
+  in order on one fresh profile: setup's Spaces step, spaces (make, edit, delete, switch by planet, Ctrl+1..9 and the
+  command bar, each space's tab group folding), tabs (command bar, rows, x, middle click, drag, move, Ctrl+L, back,
+  forward, reload), hover, press and focus states, pinning, folders two deep, unload and reload, Essentials,
+  extensions (a second test extension with a popup and a badge is loaded), Downloads, media card, Archive, Search,
+  Settings, History, and a restart. Each check reads both the sidebar and the browser (getTabs, getGroups,
+  getExtensions, targets). Evidence per flow in `.agents/verify-runs/<time>-flows/<flow>/`: a picture and the saved
+  spaces per step, window pictures, `failed.png`/`failed.json` where a flow stopped, and `checks.json`. Its CDP
+  helpers live in `scripts/browser-session.mjs`, shared with verify:browser.
 - **Your own drive.** Start chrome.exe with `--user-data-dir` under `C:\src\loka\profile-verify`,
   `--remote-debugging-port=<free port>` and `--disable-features=CalculateNativeWinOcclusion`. The sidebar target
   (type `browser_ui`) appears in `/json/list` once the window has a normal tab; connect to its
@@ -56,6 +65,12 @@ build is running.
   titles and captures one with PrintWindow, which works with the screen off.
 
 ## Gotchas
+
+- CDP's synthetic keys reach the page but skip the browser's own shortcuts, so a drive can't press Ctrl+T or Ctrl+L
+  as accelerators: call `chrome.send("openCommandBar", ["new-tab"])`, which is the handler they both run. Keys the
+  sidebar page handles itself (Ctrl+K, Ctrl+L, Ctrl+1..9, Ctrl+H, Escape) do arrive. The flip side: a real keyboard
+  can behave differently from a drive. Escape closes the Downloads panel under CDP but not with a real key.
+- A sidebar picture taken during a fade shows panels half see-through; verify:flows waits for animations first.
 
 - Until a normal tab exists there is no sidebar target, so a drive that starts on setup must finish setup first.
 - A file input opens its picker only from a user gesture: evaluate the click with `userGesture: true`, and catch the

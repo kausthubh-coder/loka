@@ -11,6 +11,7 @@ import { archiveStale, type BrowserState } from "../../prototype/src/features/si
 import {
 	adoptTabs,
 	type BrowserTab,
+	homeOf,
 	type LiveMap,
 	type Op,
 	planReconcile,
@@ -32,6 +33,11 @@ let started: Promise<void> | null = null;
 let queue: Promise<unknown> = Promise.resolve();
 /** The tabs as last seen, to turn each new snapshot into created, removed, updated and activated. */
 let seen = new Map<number, NativeTab>();
+/**
+ * New tabs this window opened for a space (switching to an empty one), by browser tab id, until the browser reports
+ * them. The tab's creation event is queued behind the job that opened it, so the id is always here by then.
+ */
+const openedFor = new Map<number, string>();
 /** This window, as far as the planner cares: every tab here shares it. */
 const WINDOW = 1;
 
@@ -85,7 +91,13 @@ async function reconcile(state: BrowserState, pass: Pass) {
 	const tabs = (await browser.tabs()).map(asBrowserTab);
 	const known = new Set((await browser.groups()).map((g) => g.id));
 	groups = Object.fromEntries(Object.entries(groups).filter(([, g]) => known.has(g.id)));
-	const switched = pass === "ui" && shownSpace !== state.activeSpaceId;
+	// The browser is never left on another space's tab: after a switch, or when the tab on screen was just moved to
+	// another space, it shows this space's tab (or a new one), as on a switch.
+	const onScreen = tabs.find((t) => t.active);
+	const onScreenLoka = onScreen && Object.entries(live).find(([, id]) => id === onScreen.id)?.[0];
+	const home = onScreenLoka ? homeOf(state, onScreenLoka) : null;
+	const elsewhere = home !== null && home !== "essentials" && home !== state.activeSpaceId;
+	const switched = pass === "ui" && (shownSpace !== state.activeSpaceId || elsewhere);
 	shownSpace = state.activeSpaceId;
 	const ops = planReconcile(state, live, tabs, groups, switched).filter(
 		(op) => pass === "ui" || (op.op !== "activate" && op.op !== "create" && op.op !== "new-tab"),
@@ -99,7 +111,8 @@ async function run(op: Op) {
 		const made = await browser.createTab(op.url, true);
 		if (made !== null) live = { ...live, [op.tabId]: made };
 	} else if (op.op === "new-tab") {
-		await browser.createTab("", true);
+		const made = await browser.createTab("", true);
+		if (made !== null) openedFor.set(made, op.spaceId);
 	} else if (op.op === "activate") {
 		browser.activateTab(op.browserId);
 	} else if (op.op === "remove") {
@@ -132,7 +145,9 @@ function onTabs(tabs: NativeTab[]) {
 		const old = before.get(t.id);
 		if (!old) {
 			void serial("browser", (s) => {
-				const [state, next] = tabCreated(s, live, asBrowserTab(t), Date.now());
+				const spaceId = openedFor.get(t.id);
+				openedFor.delete(t.id);
+				const [state, next] = tabCreated(s, live, asBrowserTab(t), Date.now(), undefined, spaceId);
 				live = next;
 				return state;
 			});
@@ -164,6 +179,14 @@ export function startSync() {
 			return hours ? archiveStale(s, Date.now(), hours * 60 * 60 * 1000) : s;
 		});
 	}, 60_000);
+}
+
+/**
+ * Changes the spaces in the sync's own queue: after it has taken over the window's tabs, from the saved spaces, and
+ * the browser follows. For changes that must not race the start, like taking in setup's spaces on a first run.
+ */
+export function changeSpaces(change: (state: BrowserState) => BrowserState): Promise<unknown> {
+	return serial("ui", change);
 }
 
 /** The sidebar changed the spaces: make the browser follow. Changes this window wrote itself are skipped. */

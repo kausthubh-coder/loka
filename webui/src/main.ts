@@ -21,6 +21,7 @@ import {
 	type BrowserState,
 	createFolder,
 	createSpace,
+	deleteSpace,
 	revealTab,
 	type SpaceLook,
 	stepTab,
@@ -45,7 +46,7 @@ import {
 	writeState,
 	writeUi,
 } from "./store";
-import { browserTabOf, linkedTabs, spacesChanged, startSync } from "./sync";
+import { browserTabOf, changeSpaces, linkedTabs, spacesChanged, startSync } from "./sync";
 
 setFaviconSource(faviconUrl);
 startSync();
@@ -179,13 +180,16 @@ export class LokaPanel extends LitElement {
 		});
 	}
 
-	/** Takes in the spaces made in setup, once. */
+	/**
+	 * Takes in the spaces made in setup, once. Through the sync's queue: on a first run the sync is still taking over
+	 * the window's tabs, and a change built on this page's copy of the spaces would be written over by it.
+	 */
 	private async applySetup() {
 		const json = await pendingOnboarding();
 		if (!json || !this.state) return;
 		markOnboardingApplied(json);
 		const spaces = onboardingSpaces(json);
-		if (spaces.length) this.apply((s) => applyOnboarding(s, spaces));
+		if (spaces.length) await changeSpaces((s) => applyOnboarding(s, spaces));
 	}
 
 	protected override updated(changed: Map<string, unknown>) {
@@ -360,6 +364,14 @@ export class LokaPanel extends LitElement {
 		this.apply((s) => (editing.mode === "create" ? createSpace(s, look)[0] : updateSpace(s, editing.spaceId, look)));
 	}
 
+	private deleteEditedSpace() {
+		const editing = this.editing;
+		if (editing?.mode !== "edit") return;
+		this.editing = null;
+		this.preview = null;
+		this.apply((s) => deleteSpace(s, editing.spaceId));
+	}
+
 	override render() {
 		const state = this.state;
 		if (!state) return null;
@@ -417,7 +429,9 @@ export class LokaPanel extends LitElement {
 						? html`<loka-space-editor
 								.look=${this.editing.look}
 								.mode=${this.editing.mode}
+								.deletable=${state.spaces.length > 1}
 								@loka-save=${(e: CustomEvent<SpaceLook>) => this.saveSpace(e.detail)}
+								@loka-delete=${() => this.deleteEditedSpace()}
 								@loka-close=${() => {
 									this.editing = null;
 									this.preview = null;

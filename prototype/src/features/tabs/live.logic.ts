@@ -120,8 +120,10 @@ function showTab(state: BrowserState, tabId: TabId, now: number): BrowserState {
 }
 
 /**
- * A tab the browser opened. If Loka asked for it (`forTabId`), it only gets linked. Otherwise it joins the open tabs
- * of the space it was opened from (a link's opener), or the current space.
+ * A tab the browser opened. If Loka asked for it (`forTabId`), it only gets linked. A new tab Loka opened for a space
+ * (`forSpaceId`, a "new-tab" op) joins that space: the browser names the tab that was showing as its opener, and
+ * that tab is in the space the user just left. Otherwise it joins the open tabs of the space it was opened from (a
+ * link's opener), or the current space.
  */
 export function tabCreated(
 	state: BrowserState,
@@ -129,9 +131,13 @@ export function tabCreated(
 	tab: BrowserTab,
 	now: number,
 	forTabId?: TabId,
+	forSpaceId?: string,
 ): [BrowserState, LiveMap] {
 	if (forTabId && state.tabs[forTabId]) return [state, { ...live, [forTabId]: tab.id }];
 	if (lokaIdOf(live, tab.id)) return [state, live];
+	if (forSpaceId && state.spaces.some((s) => s.id === forSpaceId)) {
+		return addOpenTab(state, live, tab, forSpaceId, now);
+	}
 	const opener = tab.openerTabId === undefined ? null : lokaIdOf(live, tab.openerTabId);
 	const openerHome = opener ? homeOf(state, opener) : null;
 	const spaceId = openerHome && openerHome !== "essentials" ? openerHome : state.activeSpaceId;
@@ -173,7 +179,7 @@ export function tabActivated(state: BrowserState, live: LiveMap, browserId: numb
 
 export type Op =
 	| { op: "create"; tabId: TabId; url: string }
-	| { op: "new-tab" }
+	| { op: "new-tab"; spaceId: string }
 	| { op: "activate"; browserId: number }
 	| { op: "remove"; browserId: number }
 	| { op: "group"; key: string; browserIds: number[]; title: string; color: GroupColor }
@@ -223,7 +229,7 @@ export function planReconcile(
 		const first = [...space.open, ...pinnedIds(space.pinned)]
 			.map((id) => live[id])
 			.find((id) => id !== undefined && byId.has(id));
-		ops.push(first === undefined ? { op: "new-tab" } : { op: "activate", browserId: first });
+		ops.push(first === undefined ? { op: "new-tab", spaceId: space.id } : { op: "activate", browserId: first });
 	}
 	ops.push(...removes);
 	const ungroup: number[] = [];

@@ -5,10 +5,11 @@ deletes it. Closing a pinned or essential tab only unloads it, so it stays in th
 
 ## Sub-features
 
-- `tab-open` opens from Ctrl+K or Ctrl+L, the URL pill, or `+ New tab`. Addresses get `https://`; words become a
-  DuckDuckGo search.
+- `tab-open` opens from Ctrl+K or Ctrl+L, the URL pill, or `+ New tab`. Addresses get `https://` (localhost, IP
+  addresses and `name:port` get `http://`); words become a DuckDuckGo search.
 - `tab-activate` makes a clicked tab active (highlighted row, page area shows it).
-- `tab-close` closes with the row's `x`, or Ctrl+E for the active tab. The neighbour becomes active.
+- `tab-close` closes with the row's `x`, a middle click on the row, or Ctrl+E for the active tab. The neighbour
+  becomes active. A middle click on a pinned row unloads it.
 - `tab-pin` uses right-click > `Pin to space`; `Unpin` moves it back to the top of the open tabs.
 - `tab-unload` uses right-click > `Unload tab` on a pinned tab. It stays pinned, with no active tab.
 - `tab-move-space` uses right-click > `Move to <space>`.

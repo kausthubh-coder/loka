@@ -4,11 +4,17 @@ import type { BrowserState, TabId } from "../sidebar/sidebar.logic";
 
 const SEARCH_URL = "https://duckduckgo.com/?q=";
 
-/** Turns what was typed into a URL: an address if it looks like one, otherwise a search. */
+/**
+ * Turns what was typed into a URL: an address if it looks like one, otherwise a search. A computer on this network
+ * (localhost, an IP address, a name with a port) opens over http, as browsers do.
+ */
 export function toUrl(input: string): string {
 	const text = input.trim();
 	if (/^[a-z]+:\/\//i.test(text)) return text;
-	if (/^[^\s]+\.[a-z]{2,}(\/\S*)?$/i.test(text)) return `https://${text}`;
+	if (/^(localhost|\d{1,3}(\.\d{1,3}){3}|[a-z0-9-]+(\.[a-z0-9-]+)*:\d{1,5})(:\d{1,5})?([/?#]\S*)?$/i.test(text)) {
+		return `http://${text}`;
+	}
+	if (/^[^\s]+\.[a-z]{2,}([/?#]\S*)?$/i.test(text)) return `https://${text}`;
 	return `${SEARCH_URL}${encodeURIComponent(text)}`;
 }
 

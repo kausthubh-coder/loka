@@ -327,6 +327,26 @@ export function updateSpace(state: BrowserState, spaceId: string, look: SpaceLoo
 	return replaceSpace(state, spaceId, (s) => ({ ...s, ...look, name, scheme: look.scheme ?? s.scheme }));
 }
 
+/**
+ * Deletes a space with its pinned tabs, folders and open tabs; its archived tabs stay and come back to the current
+ * space. The last space can't go. Deleting the one showing shows the next one along the switcher (the one before it
+ * when it was last).
+ */
+export function deleteSpace(state: BrowserState, spaceId: string): BrowserState {
+	const index = state.spaces.findIndex((s) => s.id === spaceId);
+	const space = state.spaces[index];
+	if (!space || state.spaces.length < 2) return state;
+	const gone = new Set([...space.open, ...pinnedTabIds(space.pinned)]);
+	const spaces = state.spaces.toSpliced(index, 1);
+	const next = spaces[Math.min(index, spaces.length - 1)] ?? spaces[0];
+	return {
+		...state,
+		tabs: Object.fromEntries(Object.entries(state.tabs).filter(([id]) => !gone.has(id))),
+		spaces,
+		activeSpaceId: state.activeSpaceId === spaceId && next ? next.id : state.activeSpaceId,
+	};
+}
+
 /** Opens a tab, or goes to it if a tab with that URL is already open anywhere (used for Settings and Downloads). */
 export function focusOrOpen(state: BrowserState, url: string, title: string): BrowserState {
 	for (const space of state.spaces) {

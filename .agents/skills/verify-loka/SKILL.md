@@ -8,8 +8,8 @@ description: Launch and drive Loka to prove a change works, with screenshots, AR
 Loka has two surfaces. Only the browser build proves what a user gets.
 
 - **Browser build**: Helium plus Loka's patches in `C:\src\loka`. Its sidebar is the built-in page
-  `chrome://loka-sidebar.top-chrome` (from `webui/`, answered by C++). Prove it with `bun run verify:browser`; see
-  `features/native-sidebar.md` and `features/browser-build.md`. A change to `webui/`, the patches or anything the
+  `chrome://loka-sidebar.top-chrome` (from `webui/`, answered by C++). Prove it with `bun run verify:browser`, and
+  what users do with `bun run verify:flows`; see `features/native-sidebar.md` and `features/browser-build.md`. A change to `webui/`, the patches or anything the
   sidebar shows in the browser is done only when this passes on a build that has the change.
 - **Sidebar prototype**: the same sidebar components as a web page served by Vite, with seed data and no browser
   behind it. Drive it with Playwright through `scripts/loka.mjs`. The recipes below are for this surface; they prove

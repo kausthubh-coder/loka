@@ -33,10 +33,21 @@ function load(): Promise<void> {
 	return loaded;
 }
 
+/**
+ * The first state, made once for a profile with no spaces yet, so the sync and the sidebar start from the same space
+ * (the same ids) rather than each making its own.
+ */
+let unsaved: BrowserState | null = null;
+
 export async function readState(): Promise<BrowserState> {
 	await load();
 	const saved = store[STATE_KEY];
-	return (typeof saved === "string" && importState(saved)) || firstState();
+	if (typeof saved === "string") {
+		const parsed = importState(saved);
+		if (parsed) return parsed;
+	}
+	unsaved ??= firstState();
+	return unsaved;
 }
 
 /** Saves the spaces; returns the exact text written, so the writer can tell its own change from someone else's. */

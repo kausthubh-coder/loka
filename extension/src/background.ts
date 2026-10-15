@@ -57,6 +57,7 @@ function asBrowserTab(t: chrome.tabs.Tab): BrowserTab | null {
 		title: t.title ?? "",
 		active: t.active,
 		groupId: t.groupId,
+		windowId: t.windowId,
 		openerTabId: t.openerTabId,
 		lastAccessed: t.lastAccessed,
 	};
@@ -116,14 +117,14 @@ async function run(op: Op) {
 		} else if (op.op === "remove") {
 			await chrome.tabs.remove(op.browserId);
 		} else if (op.op === "group") {
-			const existing = groups[op.spaceId]?.id;
+			const existing = groups[op.key]?.id;
 			// The planner never sends an empty list.
 			const tabIds = op.browserIds as [number, ...number[]];
 			const groupId: number = await chrome.tabs.group(
 				existing === undefined ? { tabIds } : { tabIds, groupId: existing },
 			);
 			await chrome.tabGroups.update(groupId, { title: op.title, color: op.color });
-			groups = { ...groups, [op.spaceId]: { id: groupId, collapsed: false } };
+			groups = { ...groups, [op.key]: { id: groupId, collapsed: false } };
 		} else if (op.op === "ungroup") {
 			await chrome.tabs.ungroup(op.browserIds as [number, ...number[]]);
 		} else if (op.op === "collapse") {

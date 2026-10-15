@@ -21,6 +21,7 @@ const tab = (id: number, url: string, extra: Partial<BrowserTab> = {}): BrowserT
 	title: url,
 	active: false,
 	groupId: -1,
+	windowId: 1,
 	...extra,
 });
 const titles = (state: ReturnType<typeof seedState>, ids: string[]) => ids.map((id) => state.tabs[id]?.title);
@@ -129,13 +130,13 @@ describe("Loka tells the browser what to do", () => {
 			tab(72, "https://canvas.example.edu/courses/281"),
 		];
 		expect(planReconcile(state, live, browser, {})).toEqual([
-			{ op: "group", spaceId: "s-build", browserIds: [71], title: "Build", color: "blue" },
-			{ op: "group", spaceId: "s-school", browserIds: [72], title: "School", color: "orange" },
+			{ op: "group", key: "s-build@1", browserIds: [71], title: "Build", color: "blue" },
+			{ op: "group", key: "s-school@1", browserIds: [72], title: "School", color: "orange" },
 		]);
 		const grouped = [{ ...browser[0], groupId: 1 } as BrowserTab, { ...browser[1], groupId: 2 } as BrowserTab];
-		const groups = { "s-build": { id: 1, collapsed: false }, "s-school": { id: 2, collapsed: false } };
+		const groups = { "s-build@1": { id: 1, collapsed: false }, "s-school@1": { id: 2, collapsed: false } };
 		expect(planReconcile(state, live, grouped, groups)).toEqual([{ op: "collapse", groupId: 2, collapsed: true }]);
-		const folded = { ...groups, "s-school": { id: 2, collapsed: true } };
+		const folded = { ...groups, "s-school@1": { id: 2, collapsed: true } };
 		expect(planReconcile(state, live, grouped, folded)).toEqual([]);
 	});
 
@@ -163,6 +164,18 @@ describe("Loka tells the browser what to do", () => {
 		const home = { ...school, activeSpaceId: "s-home" };
 		expect(planReconcile(home, live, browser, {}, true)[0]).toEqual({ op: "new-tab" });
 		expect(planReconcile(home, live, browser, {}, false).some((o) => o.op === "new-tab")).toBe(false);
+	});
+
+	test("a space open in two windows gets a tab group in each, since a group can't span windows", () => {
+		const browser = [
+			tab(91, "https://github.com/imputnet/helium-windows", { active: true }),
+			tab(92, "https://lit.dev/docs", { windowId: 2 }),
+		];
+		const [state, live] = adoptTabs(seedState(NOW), browser, NOW);
+		expect(planReconcile(state, live, browser, {}).filter((o) => o.op === "group")).toEqual([
+			{ op: "group", key: "s-build@1", browserIds: [91], title: "Build", color: "blue" },
+			{ op: "group", key: "s-build@2", browserIds: [92], title: "Build", color: "blue" },
+		]);
 	});
 
 	test("each space color maps to the nearest tab group color", () => {

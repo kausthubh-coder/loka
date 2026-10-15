@@ -23,6 +23,7 @@ export interface BrowserTab {
 	title: string;
 	active: boolean;
 	groupId: number;
+	windowId: number;
 	openerTabId?: number;
 	lastAccessed?: number;
 }
@@ -180,7 +181,7 @@ export type Op =
 	| { op: "new-tab" }
 	| { op: "activate"; browserId: number }
 	| { op: "remove"; browserId: number }
-	| { op: "group"; spaceId: string; browserIds: number[]; title: string; color: GroupColor }
+	| { op: "group"; key: string; browserIds: number[]; title: string; color: GroupColor }
 	| { op: "ungroup"; browserIds: number[] }
 	| { op: "collapse"; groupId: number; collapsed: boolean };
 
@@ -188,7 +189,8 @@ export type Op =
  * What the browser must do so its tabs match Loka: close tabs Loka no longer has, load and show the tab the current
  * space is showing, keep each space's live tabs in a tab group named after it (Essentials in none), and fold away
  * the groups of the other spaces. Running it again on its own result plans nothing.
- * `groups` is the tab group each space already has, by space id, and whether it's folded. `switched` says the user
+ * `groups` is the tab group each space already has in each window, by `groupKey`, and whether it's folded (a tab
+ * group can't span windows, so a space open in two windows has a group in each). `switched` says the user
  * just changed spaces: if the new space shows nothing, the browser shows its first loaded tab, or a new tab (the
  * command bar), so the browser is never left on another space's tab, the way Arc does it.
  */
@@ -219,25 +221,34 @@ export function planReconcile(
 	}
 	const ungroup: number[] = [];
 	for (const s of state.spaces) {
-		const members = Object.entries(live)
-			.filter(([id, browserId]) => state.tabs[id] && byId.has(browserId) && homeOf(state, id) === s.id)
-			.map(([, browserId]) => browserId);
-		const group = groups[s.id]?.id;
-		const strays = members.filter((browserId) => group === undefined || byId.get(browserId)?.groupId !== group);
-		if (strays.length)
-			ops.push({ op: "group", spaceId: s.id, browserIds: strays, title: s.name, color: groupColor(s.hue) });
+		const byWindow = new Map<number, number[]>();
+		for (const [id, browserId] of Object.entries(live)) {
+			const tab = byId.get(browserId);
+			if (!tab || !state.tabs[id] || homeOf(state, id) !== s.id) continue;
+			byWindow.set(tab.windowId, [...(byWindow.get(tab.windowId) ?? []), browserId]);
+		}
+		for (const [windowId, members] of byWindow) {
+			const key = groupKey(s.id, windowId);
+			const group = groups[key]?.id;
+			const strays = members.filter((browserId) => group === undefined || byId.get(browserId)?.groupId !== group);
+			if (strays.length) ops.push({ op: "group", key, browserIds: strays, title: s.name, color: groupColor(s.hue) });
+		}
 	}
 	for (const [id, browserId] of Object.entries(live)) {
 		const tab = byId.get(browserId);
 		if (tab && tab.groupId !== -1 && homeOf(state, id) === "essentials") ungroup.push(browserId);
 	}
 	if (ungroup.length) ops.push({ op: "ungroup", browserIds: ungroup });
-	for (const s of state.spaces) {
-		const group = groups[s.id];
-		const collapsed = s.id !== space.id;
-		if (group && group.collapsed !== collapsed) ops.push({ op: "collapse", groupId: group.id, collapsed });
+	for (const [key, group] of Object.entries(groups)) {
+		const collapsed = key.split("@")[0] !== space.id;
+		if (group.collapsed !== collapsed) ops.push({ op: "collapse", groupId: group.id, collapsed });
 	}
 	return ops;
+}
+
+/** The key for a space's tab group in one window. */
+export function groupKey(spaceId: string, windowId: number): string {
+	return `${spaceId}@${windowId}`;
 }
 
 /** Chrome's tab group colors, which a space's hue is matched to. */

@@ -121,14 +121,16 @@ export class LokaPage extends LitElement {
 			background: hsl(var(--hue) 25% 9% / 0.82);
 			color: #e6e7ee;
 		}
-		.frame.history {
-			overflow-y: auto;
-			--history-bg: hsl(var(--hue) 25% 9%);
-		}
 		:host([scheme="light"]) .frame.inside {
 			background: hsl(var(--hue) 50% 96% / 0.9);
 			color: var(--loka-ink);
-			--history-bg: hsl(var(--hue) 50% 96%);
+		}
+		/* History is the sky with glass cards on it, as in the browser, so the window's sky shows through here.
+		   It scrolls inside itself. */
+		.frame.inside.history,
+		:host([scheme="light"]) .frame.inside.history {
+			background: transparent;
+			box-shadow: none;
 		}
 		.frame.empty {
 			display: grid;

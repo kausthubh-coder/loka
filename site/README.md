@@ -69,6 +69,24 @@ Keyless mode is for development. Before the page goes live, the owner has to do 
 
 Once real keys are set, Clerk stops using `.clerk/`; delete that folder.
 
-## What I couldn't verify
+## What's been checked, and what hasn't (2026-10-15)
 
-See the bottom of this file, updated at the end of each run.
+A Chromium build was running on the laptop with 1 to 2 GB free, and it crashed twice when browsers ran
+alongside it. So far only these ran: `tsc --noEmit` (clean), `bunx biome check site` (clean), and the screenshot
+capture. The page itself has **not** been opened in a browser yet.
+
+Still to do, each needing at least 3 GB free or the build finished (one at a time, stop each by its PID):
+
+1. `cd site && bun run dev`, open http://localhost:5544, and look at it at 1440 and 390 wide. Check the space
+   switcher recolors the page, and that Clerk's keyless mode starts (it writes `site/.clerk/`) and the waitlist
+   form renders. Submitting the form only works once waitlist mode is on (step 2 above), which needs the
+   claimed instance.
+2. With the dev server up: `npx @kausthubh/critly check http://localhost:5544/` (fix until exit 0), then
+   `npx @kausthubh/critly taste http://localhost:5544/` and open the images it writes to `.critly/taste/`.
+3. `cd site && bun run build` (with Clerk keys set, since keyless mode is development only).
+4. The launch video: render it as `video/README.md` describes, then copy it and its poster into `public/`.
+
+Not checkable here at all: the music bed is a HeyGen library track (nobody has listened to it yet), and whether
+HeyGen's license covers using it on this site needs checking against HeyGen's terms before launch. The
+Clerk Dashboard steps above come from Clerk's docs, not from clicking through the Dashboard. There is no Open
+Graph image yet, so shared links show no picture.

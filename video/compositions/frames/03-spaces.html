@@ -307,8 +307,8 @@
         // press-release-spring: Ctrl held a beat early, digit pressed on the switch
         tl.to(capCtrl, { scale: 0.96, y: 2, duration: 0.1, ease: "power1.in" }, at - 0.08);
         tl.to(capDigit, { scale: 0.9, y: 3, duration: 0.12, ease: "power1.in" }, at);
-        tl.to(capDigit, { scale: 1, y: 0, duration: 0.5, ease: "back.out(1.6)" }, at + 0.12);
-        tl.to(capCtrl, { scale: 1, y: 0, duration: 0.45, ease: "back.out(1.4)" }, at + 0.14);
+        tl.to(capDigit, { scale: 1, y: 0, duration: 0.4, ease: "power3.out" }, at + 0.12);
+        tl.to(capCtrl, { scale: 1, y: 0, duration: 0.35, ease: "power3.out" }, at + 0.14);
 
         // theme-crossfade-morph: incoming skin fades up on top while the outgoing
         // holds underneath and drops out late, so coverage never dips mid-blend.

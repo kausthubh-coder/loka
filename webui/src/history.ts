@@ -40,22 +40,14 @@ export class LokaHistoryPage extends LitElement {
 		css`
 			:host {
 				display: block;
-				min-height: 100vh;
+				height: 100vh;
 			}
+			/* The page is the window's height and <loka-history> scrolls inside it, so the sky stays put behind. */
 			.page {
 				position: relative;
 				isolation: isolate;
-				min-height: 100vh;
-			}
-			/* The sky stays put behind the list as it scrolls. */
-			.sky {
-				position: fixed;
-			}
-			.theme-dark {
-				--history-bg: hsl(200 36% 6%);
-			}
-			.theme-light {
-				--history-bg: hsl(200 60% 92%);
+				height: 100%;
+				overflow: hidden;
 			}
 		`,
 	];

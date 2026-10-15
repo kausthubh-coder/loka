@@ -551,26 +551,84 @@ const recipes = {
 		await loka.page.keyboard.press("Control+h");
 		const history = loka.page.locator("loka-history");
 		await history.getByRole("heading", { name: "Today" }).waitFor();
+		// A day's top-level rows: visits, and sites folded into one row ("lit.dev, 4 visits").
+		const topRows = history.locator('[role="tree"] > [role="treeitem"]');
+		/** How many visits the list shows, counting each folded site's. */
+		const visitCount = async () => {
+			let n = 0;
+			for (const label of await topRows.evaluateAll((rows) => rows.map((r) => r.getAttribute("aria-label") ?? ""))) {
+				n += Number(/, (\d+) visits$/.exec(label)?.[1] ?? 1);
+			}
+			return n;
+		};
+
+		// No row shows a redirector's address: redirects are named for where they went.
+		// textContent, not innerText: days off screen aren't rendered (content-visibility), so their innerText is empty.
+		const first = await history.getByRole("treeitem").allTextContents();
+		assert.ok(first.length > 0, "the list shows visits");
+		assert.ok(
+			first.every((t) => !/redirect\?|\/url\?|l\.php\?|https?:\/\//.test(t)),
+			"no row shows a raw address or a redirect link",
+		);
+
+		// The date filters narrow the list to their days.
+		await history.getByRole("button", { name: "Yesterday", exact: true }).click();
+		await loka.page.waitForTimeout(300);
+		const days = (await history.locator("section.day h2").allTextContents()).map((t) => t.trim());
+		assert.deepEqual(days, ["Yesterday"], "Yesterday shows only yesterday");
+		await loka.proof("01-yesterday");
+		await history.getByRole("button", { name: "All", exact: true }).click();
+		await history.getByRole("heading", { name: "Today" }).waitFor();
+
+		// A folded site opens with Enter to show its visits, and Left closes it again.
+		const site = history.locator('[role="treeitem"][aria-expanded="false"]').first();
+		const siteLabel = (await site.getAttribute("aria-label")) ?? "";
+		const siteKey = (await site.getAttribute("data-key")) ?? "";
+		const siteVisits = Number(/, (\d+) visits$/.exec(siteLabel)?.[1] ?? 0);
+		assert.ok(siteVisits >= 3, `a site folds three or more visits (${siteLabel})`);
+		await site.focus();
+		await loka.page.keyboard.press("Enter");
+		const open = history.locator(`[data-key="${siteKey}"]`);
+		assert.equal(await open.getAttribute("aria-expanded"), "true", "Enter opens the site");
+		assert.equal(await open.locator('[role="group"] > [role="treeitem"]').count(), siteVisits, "showing its visits");
+		await loka.page.keyboard.press("ArrowRight");
+		assert.equal(
+			await open
+				.locator('[role="group"] > [role="treeitem"]')
+				.first()
+				.evaluate((el) => el.matches(":focus")),
+			true,
+			"Right goes into it",
+		);
+		await loka.proof("02-site-open");
+		await loka.page.keyboard.press("ArrowLeft");
+		await loka.page.keyboard.press("ArrowLeft");
+		assert.equal(await open.getAttribute("aria-expanded"), "false", "Left goes back up and closes it");
+
+		// Search narrows the list: every row is a Lit page, or lit.dev folded.
 		await history.getByRole("searchbox", { name: "Search history" }).fill("lit:");
 		await loka.page.waitForTimeout(400);
-		// textContent, not innerText: days off screen aren't rendered (content-visibility), so their innerText is empty.
-		const titles = await history.getByRole("option").allTextContents();
-		assert.ok(titles.length > 0 && titles.every((t) => t.includes("Lit:")), "the search narrows the list");
-		await loka.proof("01-search");
-		const firstTitle = (await history.getByRole("option").first().locator(".title").textContent()) ?? "";
+		const titles = await topRows.allTextContents();
+		assert.ok(
+			titles.length > 0 && titles.every((t) => t.includes("Lit:") || t.includes("lit.dev")),
+			"the search narrows the list",
+		);
+		await loka.proof("03-search");
+
+		// Pick a run with Shift and delete it.
+		const before = await visitCount();
 		await history.getByRole("checkbox").nth(0).click();
 		await history
 			.getByRole("checkbox")
 			.nth(2)
 			.click({ modifiers: ["Shift"] });
-		await history.getByText("3 selected").waitFor();
+		const picked = Number(/(\d+) selected/.exec((await history.getByText(/\d+ selected/).textContent()) ?? "")?.[1]);
+		assert.ok(picked >= 3, `three rows picked at least three visits (${picked})`);
 		await history.getByRole("button", { name: "Delete" }).click();
 		await loka.page.waitForTimeout(300);
-		const left = await history.getByRole("option").allTextContents();
-		assert.ok(left.length <= titles.length - 3, "the picked visits are gone (every visit to their pages)");
-		assert.equal(await history.getByText("3 selected").count(), 0, "and nothing is picked any more");
-		assert.ok(firstTitle.length > 0);
-		await loka.proof("02-deleted");
+		assert.ok((await visitCount()) <= before - picked, "the picked visits are gone (every visit to their pages)");
+		assert.equal(await history.getByText(/\d+ selected/).count(), 0, "and nothing is picked any more");
+		await loka.proof("04-deleted");
 	},
 
 	async sound(loka) {

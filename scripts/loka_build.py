@@ -25,6 +25,16 @@ sys.path.insert(0, str(ROOT))
 import build  # noqa: E402  Helium's build.py, imported so its helpers and toolchain setup are reused
 
 SOURCE_TREE = ROOT / 'build' / 'src'
+ARGS_GN = SOURCE_TREE / 'out' / 'Default' / 'args.gn'
+
+# Loka's additions to Helium's --dev build args. Later assignments in args.gn win.
+DEV_GN_ARGS = {
+    # Helium's CI only makes official builds, which turn precompiled headers off. A dev build turns them on, and
+    # with Clang modules the PCH compile fails: "missing 'export module' declaration in module interface unit".
+    'enable_precompiled_headers': 'false',
+    # No debug symbols: linking takes far less RAM and time on a 16 GB laptop.
+    'symbol_level': '0',
+}
 
 
 def apply_all_patches(_prompt=''):
@@ -48,6 +58,7 @@ def find_7z():
 
 
 _rmtree = shutil.rmtree
+_run_build_process = build._run_build_process
 
 
 def rmtree_clearing_readonly(path, *args, **kwargs):
@@ -121,6 +132,27 @@ def clean_previous_unpacks():
             target.mkdir()
 
 
+def add_dev_gn_args():
+    """Append DEV_GN_ARGS to args.gn where its last assignment differs. Siso reruns gn when args.gn changes."""
+    lines = ARGS_GN.read_text(encoding='utf-8').splitlines()
+    current = {}
+    for line in lines:
+        key, sep, value = line.partition('=')
+        if sep:
+            current[key.strip()] = value.strip()
+    missing = [f'{key}={value}' for key, value in DEV_GN_ARGS.items() if current.get(key) != value]
+    if missing:
+        ARGS_GN.write_text('\n'.join([*lines, '# Loka dev build', *missing]) + '\n', encoding='utf-8')
+        print(f'Added to args.gn: {", ".join(missing)}', flush=True)
+
+
+def run_build_process_with_dev_args(*args, **kwargs):
+    """build.py writes args.gn, then runs gn gen through this; add Loka's dev args in between."""
+    if args and str(args[0]).endswith('gn.exe') and 'gen' in args:
+        add_dev_gn_args()
+    return _run_build_process(*args, **kwargs)
+
+
 def first(jobs, restart):
     built = (SOURCE_TREE / 'out' / 'Default' / 'build.ninja').exists()
     if built or ((SOURCE_TREE / 'BUILD.gn').exists() and not restart):
@@ -132,12 +164,14 @@ def first(jobs, restart):
     builtins.input = apply_all_patches
     shutil.rmtree = rmtree_clearing_readonly
     sys.argv = ['build.py', '--dev', '-j', str(jobs), '--7z-path', find_7z()]
+    build._run_build_process = run_build_process_with_dev_args
     build.main()
 
 
 def incremental(jobs):
     if not (SOURCE_TREE / 'out' / 'Default' / 'build.ninja').exists():
         sys.exit('No previous build found. Run "first" before "incremental".')
+    add_dev_gn_args()
     os.chdir(SOURCE_TREE)
     os.environ.setdefault('SISO_PATH', str(SOURCE_TREE / 'third_party/siso/cipd/siso.exe'))
     build._run_build_process(

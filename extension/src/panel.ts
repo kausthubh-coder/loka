@@ -3,7 +3,7 @@
 
 import { css, html, LitElement } from "lit";
 import type { Update } from "../../prototype/src/app/loka-app";
-import { skyLayer, skyStyles } from "../../prototype/src/app/sky";
+import { skyLayer, skyStyles, skyTurn } from "../../prototype/src/app/sky";
 import { DEFAULT_UI, type UiPrefs } from "../../prototype/src/app/ui-prefs.logic";
 import type { ActionId } from "../../prototype/src/features/command-bar/command-bar.logic";
 import "../../prototype/src/features/command-bar/loka-command-bar";
@@ -21,6 +21,7 @@ import {
 	revealTab,
 	type SpaceLook,
 	stepTab,
+	switchesForward,
 	switchSpace,
 	type TabId,
 	updateSpace,
@@ -104,6 +105,15 @@ export class LokaPanel extends LitElement {
 			if (area === "session" && changes[LIVE_KEY]) this.refreshLive();
 		});
 		window.addEventListener("keydown", this.onKey);
+	}
+
+	protected override updated(changed: Map<string, unknown>) {
+		const before = changed.get("state") as BrowserState | null | undefined;
+		const state = this.state;
+		if (before && state && before.activeSpaceId !== state.activeSpaceId) {
+			const forward = switchesForward(state, before.activeSpaceId, state.activeSpaceId);
+			skyTurn(this.renderRoot, forward, activeSpace(before).hue);
+		}
 	}
 
 	private async toggleMute(tabId: string) {
@@ -245,7 +255,7 @@ export class LokaPanel extends LitElement {
 					this.previewHue = e.detail;
 				}}
 			>
-				${skyLayer()}
+				${skyLayer(hue)}
 				<loka-sidebar
 					.state=${state}
 					.apply=${this.apply}
@@ -300,11 +310,6 @@ export class LokaPanel extends LitElement {
 			}
 			loka-sidebar {
 				height: 100%;
-			}
-			@media (prefers-reduced-motion: no-preference) {
-				.window {
-					transition: --hue 420ms cubic-bezier(0.2, 0, 0, 1);
-				}
 			}
 		`,
 	];

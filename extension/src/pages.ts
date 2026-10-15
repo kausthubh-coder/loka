@@ -161,7 +161,7 @@ export class LokaNewTab extends LokaPage {
 				this.previewHue = e.detail;
 			}}
 		>
-			${skyLayer()}
+			${skyLayer(this.hue())}
 			<loka-command-bar .state=${this.state} .apply=${this.applyAndClose} .go=${openUrl("this-tab")}></loka-command-bar>
 			${this.editor()}
 		</div>`;
@@ -187,7 +187,7 @@ export class LokaSettingsPage extends LokaPage {
 				this.previewHue = e.detail;
 			}}
 		>
-			${skyLayer()}
+			${skyLayer(this.hue())}
 			<loka-settings .state=${this.state} .apply=${this.apply} .ui=${this.ui} .setUi=${this.setUi} .browser=${hooks}></loka-settings>
 			${this.editor()}
 		</div>`;
@@ -213,7 +213,7 @@ export class LokaTourPage extends LokaPage {
 				this.previewHue = e.detail;
 			}}
 		>
-			${skyLayer()}
+			${skyLayer(this.hue())}
 			<loka-onboarding
 				.spaces=${this.state.spaces.slice(0, 3).map((s) => ({ name: s.name, hue: s.hue, planet: s.planet }))}
 				@loka-finish=${(e: CustomEvent<TourResult>) => this.finish(e.detail)}

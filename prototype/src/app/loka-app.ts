@@ -23,12 +23,13 @@ import {
 	revealTab,
 	type SpaceLook,
 	stepTab,
+	switchesForward,
 	switchSpace,
 	updateSpace,
 } from "../features/sidebar/sidebar.logic";
 import { seedState } from "../features/sidebar/sidebar.seed";
 import { playCue, setSoundPrefs } from "../features/sound/sound";
-import { skyLayer, skyStyles } from "./sky";
+import { skyLayer, skyStyles, skyTurn } from "./sky";
 import { clampWidth, DEFAULT_UI, parseUiPrefs, type UiPrefs } from "./ui-prefs.logic";
 
 const STORAGE_KEY = "loka.state.v1";
@@ -240,6 +241,14 @@ export class LokaApp extends LitElement {
 		this.archiveTimer = window.setInterval(this.archiveNow, 60_000);
 	}
 
+	protected override updated(changed: Map<string, unknown>) {
+		const before = changed.get("state") as BrowserState | undefined;
+		if (before && before.activeSpaceId !== this.state.activeSpaceId) {
+			const forward = switchesForward(this.state, before.activeSpaceId, this.state.activeSpaceId);
+			skyTurn(this.renderRoot, forward, activeSpace(before).hue);
+		}
+	}
+
 	override disconnectedCallback() {
 		window.removeEventListener("keydown", this.onKey);
 		window.clearInterval(this.archiveTimer);
@@ -265,7 +274,7 @@ export class LokaApp extends LitElement {
 					this.previewHue = e.detail;
 				}}
 			>
-				${skyLayer()}
+				${skyLayer(this.previewHue ?? space.hue)}
 				${
 					hidden
 						? html`<div class="edge-zone" aria-hidden="true" @pointerenter=${() => (this.peek = true)}></div>`
@@ -431,10 +440,8 @@ export class LokaApp extends LitElement {
 			visibility: hidden;
 		}
 
+		/* No transition on --hue: animating the number sweeps through every hue in between. The sky crossfades. */
 		@media (prefers-reduced-motion: no-preference) {
-			.window {
-				transition: --hue 420ms cubic-bezier(0.2, 0, 0, 1);
-			}
 			.window.hidden loka-sidebar {
 				transition: translate 220ms cubic-bezier(0.2, 0, 0, 1);
 			}

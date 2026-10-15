@@ -29,6 +29,7 @@ import {
 	pinnedRows,
 	renameFolder,
 	type Space,
+	switchesForward,
 	switchSpace,
 	type TabId,
 	toggleFolder,
@@ -450,11 +451,7 @@ export class LokaSidebar extends LitElement {
 	protected override willUpdate(changed: Map<string, unknown>) {
 		const before = changed.get("state") as BrowserState | undefined;
 		if (!before || before.activeSpaceId === this.state.activeSpaceId) return;
-		const ids = this.state.spaces.map((s) => s.id);
-		const from = ids.indexOf(before.activeSpaceId);
-		const to = ids.indexOf(this.state.activeSpaceId);
-		const forward = (to - from + ids.length) % ids.length <= ids.length / 2;
-		this.slideFrom = forward ? "right" : "left";
+		this.slideFrom = switchesForward(this.state, before.activeSpaceId, this.state.activeSpaceId) ? "right" : "left";
 	}
 
 	private moreMenu(e: MouseEvent) {
@@ -1417,7 +1414,7 @@ export class LokaSidebar extends LitElement {
 			stroke: none;
 		}
 		/* The glow follows the planet's own edge (the body is 92% of the box), not the button's. */
-		.world svg {
+		.world svg.planet {
 			filter: drop-shadow(0 -4px 22px hsl(var(--hue) 85% 65% / 0.35));
 		}
 		.world:hover {
@@ -1520,6 +1517,15 @@ export class LokaSidebar extends LitElement {
 			@keyframes planet-rise {
 				from {
 					transform: translateY(34px);
+				}
+			}
+			/* The planet turns: its surface strip slides one body-width every four and a half minutes. */
+			.world .turn {
+				animation: turn 270s linear infinite;
+			}
+			@keyframes turn {
+				to {
+					transform: translateX(-50%);
 				}
 			}
 			.scroll.from-right {

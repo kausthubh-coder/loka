@@ -45,7 +45,7 @@ import {
 	writeState,
 	writeUi,
 } from "./store";
-import { browserTabOf, linkedTabs, spacesChanged, startSync } from "./sync";
+import { browserTabOf, changeSpaces, linkedTabs, spacesChanged, startSync } from "./sync";
 
 setFaviconSource(faviconUrl);
 startSync();
@@ -179,13 +179,16 @@ export class LokaPanel extends LitElement {
 		});
 	}
 
-	/** Takes in the spaces made in setup, once. */
+	/**
+	 * Takes in the spaces made in setup, once. Through the sync's queue: on a first run the sync is still taking over
+	 * the window's tabs, and a change built on this page's copy of the spaces would be written over by it.
+	 */
 	private async applySetup() {
 		const json = await pendingOnboarding();
 		if (!json || !this.state) return;
 		markOnboardingApplied(json);
 		const spaces = onboardingSpaces(json);
-		if (spaces.length) this.apply((s) => applyOnboarding(s, spaces));
+		if (spaces.length) await changeSpaces((s) => applyOnboarding(s, spaces));
 	}
 
 	protected override updated(changed: Map<string, unknown>) {

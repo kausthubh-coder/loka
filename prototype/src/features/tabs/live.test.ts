@@ -66,6 +66,19 @@ describe("the browser's tab events update the spaces", () => {
 		expect(titles(state, school?.open ?? [])).toEqual(["https://docs.example.edu/"]);
 	});
 
+	test("the new tab Loka opens on switching to an empty space joins that space, not its opener's", () => {
+		const [s0, live0] = start();
+		const home = switchSpace(s0, "s-home");
+		// The browser names the tab that was showing (School's) as the new tab's opener.
+		const opened = tab(23, "chrome://newtab/", { openerTabId: 21, active: true });
+		const [state, live] = tabCreated(home, live0, opened, NOW, undefined, "s-home");
+		const lokaId = Object.keys(live).find((id) => live[id] === 23) ?? "";
+		expect(homeOf(state, lokaId)).toBe("s-home");
+		expect(state.spaces.find((s) => s.id === "s-school")?.open).toEqual(
+			s0.spaces.find((s) => s.id === "s-school")?.open,
+		);
+	});
+
 	test("a tab Loka asked for is only linked, not added a second time", () => {
 		const [s0, live0] = start();
 		const [state, live] = tabCreated(s0, live0, tab(30, "https://lit.dev/docs"), NOW, "t-lit");
@@ -170,7 +183,7 @@ describe("Loka tells the browser what to do", () => {
 			{ op: "group", key: "s-build@1", browserIds: [81], title: "Build", color: "blue" },
 			{ op: "group", key: "s-school@1", browserIds: [82], title: "School", color: "orange" },
 		];
-		expect(planReconcile(home, live, browser, {}, true)).toEqual([{ op: "new-tab" }, ...groups]);
+		expect(planReconcile(home, live, browser, {}, true)).toEqual([{ op: "new-tab", spaceId: "s-home" }, ...groups]);
 		expect(planReconcile(home, live, browser, {}, false)).toEqual(groups);
 	});
 

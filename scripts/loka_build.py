@@ -12,9 +12,11 @@ that prompt by applying the same series a release build applies: Helium core, th
 """
 import argparse
 import builtins
+import configparser
 import os
 import shutil
 import stat
+import subprocess
 import sys
 from pathlib import Path
 
@@ -58,12 +60,42 @@ def rmtree_clearing_readonly(path, *args, **kwargs):
     return _rmtree(path, *args, **kwargs)
 
 
+def clean_previous_unpacks():
+    """
+    Remove what an earlier attempt unpacked, so a restarted first build unpacks into empty folders.
+
+    On a rerun, clone.py resets and cleans the main tree, but `git clean` skips submodule paths. Several downloads
+    unpack into gitlinks that have no repo of their own (gperf, webauthn, search engine data), so old files stay
+    and the next unpack collides with them. Output paths come from Helium's own ini files.
+    """
+    parser = configparser.RawConfigParser()
+    parser.read([ROOT / 'downloads.ini', ROOT / 'helium-chromium' / 'deps.ini'], encoding='utf-8')
+    src = SOURCE_TREE.resolve()
+    for section in parser.sections():
+        output = parser.get(section, 'output_path', fallback=None)
+        target = (src / output).resolve() if output else None
+        if not target or target == src or not target.exists():
+            continue
+        relative = target.relative_to(src).as_posix()
+        staged = subprocess.run(['git', '-C', str(src), 'ls-files', '-s', '--', relative],
+                                capture_output=True, text=True, check=True).stdout.split()
+        if (target / '.git').exists():
+            print(f'Cleaning untracked files in the {relative} repo', flush=True)
+            subprocess.run(['git', '-C', str(target), 'clean', '-ffdxq'], check=True)
+        elif staged[:1] == ['160000']:
+            print(f'Emptying {relative} (a gitlink with no repo, unpacked by Helium)', flush=True)
+            rmtree_clearing_readonly(target)
+            target.mkdir()
+
+
 def first(jobs, restart):
     built = (SOURCE_TREE / 'out' / 'Default' / 'build.ninja').exists()
     if built or ((SOURCE_TREE / 'BUILD.gn').exists() and not restart):
         sys.exit(f'{SOURCE_TREE} already exists. Use "incremental", or pass --restart to reset it and start over.')
     # On rerun, clone.py fetches, `git reset --hard`s and cleans the existing tree, so a first build that failed
     # part way restarts from pristine sources; gclient's cache in build\src\uc_staging saves redownloading deps.
+    if restart and SOURCE_TREE.exists():
+        clean_previous_unpacks()
     builtins.input = apply_all_patches
     shutil.rmtree = rmtree_clearing_readonly
     sys.argv = ['build.py', '--dev', '-j', str(jobs), '--7z-path', find_7z()]

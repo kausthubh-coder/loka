@@ -210,6 +210,139 @@ export function processTree(root) {
 	return tree;
 }
 
+/**
+ * Starts the built browser on a throwaway profile (`C:\src\loka\profile-<name>-<time>`) with CDP on a free port,
+ * setup skipped, and one normal tab so the sidebar exists. `close()` stops only this process tree and deletes the
+ * profile.
+ * @param {{ name: string, chrome?: string, args?: string[], url?: string }} options
+ */
+export async function launchBrowser({ name, chrome = chromePath(), args = [], url = "about:blank" }) {
+	const { spawn } = await import("node:child_process");
+	const { mkdirSync, rmSync } = await import("node:fs");
+	refuseWhileBuilding(chrome);
+	const stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
+	const profile = join(BUILD_DIR, `profile-${name}-${stamp}-${process.pid}`);
+	mkdirSync(profile, { recursive: true });
+	const port = await freePort();
+	const child = spawn(
+		chrome,
+		[
+			`--user-data-dir=${profile}`,
+			`--remote-debugging-port=${port}`,
+			"--disable-features=CalculateNativeWinOcclusion",
+			"--no-first-run",
+			...args,
+			url,
+		],
+		{ stdio: "ignore" },
+	);
+	const pid = child.pid ?? 0;
+	const http = `http://127.0.0.1:${port}`;
+	/** @returns {Promise<Target[]>} */
+	const targets = () => fetch(`${http}/json/list`).then((r) => r.json());
+	const version = await until(
+		() =>
+			fetch(`${http}/json/version`).then(
+				(r) => r.json(),
+				() => null,
+			),
+		30000,
+	);
+	if (!version) throw new Error("the browser never opened its debugging port");
+	const browser = await connect(version.webSocketDebuggerUrl);
+	/** @param {(t: Target) => boolean} match @param {number} [ms] */
+	const target = async (match, ms = 20000) => {
+		const found = await until(async () => (await targets()).find(match), ms);
+		if (!found) throw new Error("no such target");
+		return found;
+	};
+	return {
+		pid,
+		profile,
+		http,
+		browser,
+		targets,
+		target,
+		/** The window's sidebar page. */
+		sidebar: async () => {
+			const t = await target((x) => x.url.startsWith("chrome://loka-sidebar.top-chrome"));
+			const session = await connect(t.webSocketDebuggerUrl);
+			await until(() => evaluate(session, "Boolean(document.querySelector('loka-panel'))").catch(() => false), 10000);
+			return session;
+		},
+		async close() {
+			const tree = processTree(pid);
+			browser.close();
+			spawnSync("taskkill", ["/T", "/F", "/PID", String(pid)], { stdio: "ignore" });
+			await sleep(1000);
+			for (const p of tree) if (alive(p)) spawnSync("taskkill", ["/F", "/PID", String(p)], { stdio: "ignore" });
+			rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
+		},
+	};
+}
+
+/** Which webui/src module each of Loka's built-in pages starts from. */
+const WEBUI_ENTRIES = { sidebar: "main.ts", history: "history.ts", command: "command.ts", settings: "settings.ts" };
+
+/**
+ * Runs this checkout's webui in one page of the built browser, without rebuilding the browser: the page's own entry
+ * is built here as one classic script, the page's own module scripts are stopped before they run (the parser gives
+ * a MutationObserver its turn before it starts a script), and the page reloads. The browser's handler, window and
+ * hit testing stay the real ones; only the page's code is this checkout's. chrome.send is installed after the
+ * document starts, so the code waits for DOMContentLoaded.
+ * @param {Session} session a page's target session @param {keyof typeof WEBUI_ENTRIES} page
+ */
+export async function useCheckoutWebui(session, page) {
+	const { build } = await import("vite");
+	const outDir = join(repo, ".agents", "verify-runs", "webui-inject", page);
+	await build({
+		configFile: false,
+		root: join(repo, "webui"),
+		logLevel: "warn",
+		publicDir: false,
+		build: {
+			outDir,
+			emptyOutDir: true,
+			target: "chrome140",
+			minify: false,
+			lib: {
+				entry: join(repo, "webui", "src", WEBUI_ENTRIES[page]),
+				formats: ["iife"],
+				name: "lokaCheckout",
+				fileName: () => "page.js",
+			},
+		},
+	});
+	const code = readFileSync(join(outDir, "page.js"), "utf8");
+	const css = readFileSync(join(repo, "webui", "src", "page.css"), "utf8");
+	const source = `(() => {
+	new MutationObserver((records) => {
+		for (const record of records)
+			for (const node of record.addedNodes) {
+				if (node.tagName === "SCRIPT" && node.type === "module") {
+					node.type = "text/plain";
+					node.remove();
+				}
+			}
+	}).observe(document, { childList: true, subtree: true });
+	window.__lokaCheckoutWebui = ${JSON.stringify(page)};
+	document.addEventListener("DOMContentLoaded", () => {
+		document.head.append(Object.assign(document.createElement("style"), { textContent: ${JSON.stringify(css)} }));
+		${code}
+	});
+})();
+//# sourceURL=loka-checkout-${page}.js`;
+	await session.call("Page.enable");
+	await session.call("Page.addScriptToEvaluateOnNewDocument", { source });
+	await session.call("Page.reload", {});
+	await sleep(500);
+	const ready = await until(
+		() => evaluate(session, "document.readyState === 'complete' && window.__lokaCheckoutWebui").catch(() => false),
+		15000,
+	);
+	if (!ready) throw new Error(`this checkout's ${page} page never started in the browser`);
+}
+
 /** @param {number} pid */
 export const alive = (pid) => {
 	try {

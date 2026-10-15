@@ -22,6 +22,7 @@ import {
 import "../../prototype/src/features/spaces/loka-space-editor";
 import { browserBookmarks, openBrowserSettings, openUrl } from "./browser";
 import { faviconUrl, readState, readUi, watch, writeState, writeUi } from "./store";
+import { browserSync } from "./sync";
 
 setFaviconSource(faviconUrl);
 
@@ -168,6 +169,7 @@ export class LokaSettingsPage extends LokaPage {
 		const hooks = {
 			openBrowserSettings,
 			bookmarks: browserBookmarks,
+			sync: browserSync,
 			version: `Loka ${chrome.runtime.getManifest().version}, on ${navigator.userAgent.match(/Chrome\/[\d.]+/)?.[0] ?? "Chromium"}`,
 		};
 		return html`<div

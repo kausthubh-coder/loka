@@ -27,6 +27,7 @@ import {
 import "../../prototype/src/features/spaces/loka-space-editor";
 import { browserDownloads, browserExtensions, openUrl } from "./browser";
 import { faviconUrl, readSession, readState, readUi, watch, writeState } from "./store";
+import { saveSoon } from "./sync";
 
 setFaviconSource(faviconUrl);
 setDownloadSource(browserDownloads);
@@ -64,7 +65,11 @@ export class LokaPanel extends LitElement {
 			this.media = (await readSession()).media;
 		})();
 		watch(({ state, ui, media }) => {
-			if (state) this.state = state;
+			if (state) {
+				this.state = state;
+				// Any change, from here or from the browser's tabs, reaches the sync folder a few seconds later.
+				saveSoon(state);
+			}
 			if (ui) this.ui = ui;
 			if (media !== undefined) this.media = media;
 		});

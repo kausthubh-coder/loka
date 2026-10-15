@@ -12,7 +12,10 @@ import {
 } from "../import/import.logic";
 import { IMPORT_SOURCES, type ImportSource, pickFile } from "../import/pick-file";
 import { planet, SPACE_HUES } from "../sidebar/planet";
+import "../sync/loka-sync-settings";
 import { type BrowserState, countTabs } from "../sidebar/sidebar.logic";
+import type { SyncHooks } from "../sync/loka-sync-settings";
+import { takeSpaces } from "../sync/sync.logic";
 
 export type SetUi = (change: Partial<UiPrefs>) => void;
 
@@ -26,6 +29,8 @@ export interface BrowserHooks {
 	openBrowserSettings(page: BrowserSettingsPage): void;
 	bookmarks(): Promise<ImportNode[]>;
 	version: string;
+	/** Folder sync; only the real browser has the folder access it needs. */
+	sync?: SyncHooks;
 }
 
 const SHORTCUTS: [string, string][] = [
@@ -228,6 +233,13 @@ export class LokaSettings extends LitElement {
 
 				<section aria-labelledby="sync">
 					<h2 id="sync">Sync</h2>
+					${
+						this.browser?.sync
+							? html`<loka-sync-settings
+									.hooks=${this.browser.sync}
+									@loka-take-spaces=${(e: CustomEvent<BrowserState>) => this.apply((s) => takeSpaces(s, e.detail))}
+								></loka-sync-settings>`
+							: html`
 					<div class="row">
 						<div>
 							<b>Sync spaces between your computers</b>
@@ -237,7 +249,8 @@ export class LokaSettings extends LitElement {
 							</small>
 						</div>
 						<span class="tag">First release</span>
-					</div>
+					</div>`
+					}
 				</section>
 
 				<section aria-labelledby="import">

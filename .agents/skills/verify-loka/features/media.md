@@ -7,8 +7,9 @@ the playing tab, in whatever space it is.
 ## Sub-features
 
 - `media-card` shows only while the playing tab is off screen.
-- `media-controls`: play/pause and mute change state; previous and next go to the page's own media session in the
-  real browser (the sample has one track).
+- `media-controls`: play/pause and mute change state; previous and next do nothing yet (the sample has one track).
+  In the real browser the card follows the tab's sound and play or pause shows the tab; reaching the page's media
+  session (`getMedia`, `mediaAction`) is planned in `webui/src/messages.ts`.
 - `media-go` reveals the playing tab.
 
 ## How to get to it (user POV)
@@ -26,5 +27,5 @@ Preconditions: seed data. The prototype starts with `Lo-fi beats` (Home) playing
 
 ## Gotchas
 
-- Media state is runtime only, never saved. The real browser reads it from Chromium's media sessions
-  (AudioFocusManager and MediaController) through a Loka mojo handler.
+- Media state is runtime only, never saved. The real browser builds the card from a tab's `audible` flag
+  (`webui/src/sync.ts`) until the media-session messages land.

@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
 	activateTab,
 	activeTab,
@@ -227,7 +229,11 @@ const HOUR = 60 * 60 * 1000;
 describe("folders made by dropping a tab on a tab", () => {
 	test("two pinned tabs become a folder in the target's place", () => {
 		const [state, id] = groupIntoFolder(seedState(), "t-lit", "t-chromium", "Reading");
-		expect(id).not.toBeNull();
+		const docs = space(state, "s-build").pinned[0];
+		const docsFolder = docs?.kind === "folder" ? docs.children[1] : undefined;
+		const reading = docsFolder?.kind === "folder" ? docsFolder.children[0] : undefined;
+		const found = reading?.kind === "folder" ? { id: reading.id, name: reading.name } : null;
+		expect(found).toEqual({ id: id ?? "no id returned", name: "Reading" });
 		expect(outline(state, "s-build")).toEqual([
 			"0:Loka",
 			"1:imputnet/helium-windows",
@@ -319,5 +325,55 @@ describe("search and keyboard", () => {
 		expect(activeTab(stepTab(start, -1))?.title).toBe("YouTube");
 		expect(activeTab(stepTab(start, 1))?.title).toBe("Chromium: Windows build guide");
 		expect(activeTab(stepTab(activateTab(start, "t-zen"), 1))?.title).toBe("Inbox");
+	});
+});
+
+describe("spaces saved by the 0.1.0 alpha (an extension)", () => {
+	// What the alpha's "Export spaces (JSON)" wrote, captured from the real alpha build: one space, two sites, a new
+	// tab page, and two of the alpha's own extension pages, one of them the active tab.
+	const alpha = readFileSync(join(import.meta.dirname, "alpha-0.1.0-export.json"), "utf8");
+
+	test("import keeps the spaces and sites and leaves out the alpha's own pages", () => {
+		const state = importState(alpha);
+		const personal = state?.spaces[0];
+		expect(state?.spaces.map((s) => [s.name, s.hue, s.planet])).toEqual([["Personal", 200, "ringed"]]);
+		expect(personal?.open.map((id) => state?.tabs[id]?.url)).toEqual([
+			"https://www.wikipedia.org/",
+			"https://example.com/",
+			"chrome://newtab/",
+		]);
+		expect(Object.keys(state?.tabs ?? {}).length).toBe(3);
+		expect(personal?.activeTabId).toBeNull();
+	});
+
+	test("an alpha page pinned in a folder or kept as an Essential goes too; the folder stays", () => {
+		const base = JSON.parse(alpha);
+		const page = (id: string, path: string) => ({
+			id,
+			url: `chrome-extension://kklllonkklkjgekkpeboddibgbjadkej/${path}`,
+			title: path,
+		});
+		base.tabs.p1 = page("p1", "settings.html");
+		base.tabs.e1 = page("e1", "newtab.html");
+		base.tabs.keep = { id: "keep", url: "https://lit.dev/", title: "Lit" };
+		base.essentials = ["e1"];
+		base.spaces[0].pinned = [
+			{
+				kind: "folder",
+				id: "f1",
+				name: "Loka",
+				open: true,
+				children: [
+					{ kind: "tab", id: "p1" },
+					{ kind: "tab", id: "keep" },
+				],
+			},
+		];
+		const state = importState(JSON.stringify(base));
+		expect(state?.essentials).toEqual([]);
+		expect(state?.spaces[0]?.pinned).toEqual([
+			{ kind: "folder", id: "f1", name: "Loka", open: true, children: [{ kind: "tab", id: "keep" }] },
+		]);
+		expect(["p1", "e1"].filter((id) => state?.tabs[id])).toEqual([]);
 	});
 });

@@ -6,7 +6,8 @@ saved and survives a reload.
 
 ## Sub-features
 
-- `folder-new` creates a folder at the end of the pinned list: right-click empty sidebar space > `New folder`.
+- `folder-new` creates a folder at the end of the pinned list: right-click empty sidebar space > `New folder`, or
+  Ctrl+K > `New folder` (this one doesn't start in rename mode).
 - `folder-from-tabs`: drop a tab on the middle of another tab to make a folder of both (pinned: in the target's
   place; open: at the end of pinned), or a tab's menu > `New folder with this tab`. Both start in rename mode.
 - `folder-new-inside` creates a folder inside another one (right-click > `New folder inside`).
@@ -21,7 +22,8 @@ saved and survives a reload.
 
 ## How to get to it (user POV)
 
-- Right-click empty space in the sidebar, a tab's menu, or drop a tab on a tab. There is no toolbar button.
+- Right-click empty space in the sidebar, a tab's menu, Ctrl+K > `New folder`, or drop a tab on a tab. There is no
+  toolbar button.
 - Right-click a folder: `Rename`, `New folder inside`, `Ungroup (keep tabs)`.
 - Double-click a folder name to rename it.
 - Drag any tab row or folder row onto a folder row.
@@ -50,5 +52,5 @@ Preconditions: seed data, `Build` space active.
 
 - Dropping on the bottom quarter of an open folder puts the item first inside that folder, which is where it shows.
   Use `"after"` on the folder's last child to land after the folder.
-- A new folder starts in rename mode with the text selected. Typing replaces `New folder`.
+- A folder made from the sidebar starts in rename mode with the text selected. Typing replaces `New folder`.
 - Clicking a folder row toggles it, so a stray click before a drag changes the outline.

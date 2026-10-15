@@ -1,8 +1,10 @@
 # Import
 
-Chrome and Edge bookmarks arrive as one closed pinned folder in the current space, keeping their folder tree. Each Arc
+Chrome and Edge bookmarks arrive as one closed pinned folder, keeping their folder tree: in the current space from
+Settings > Import, in the first space from the tour. Each Arc
 space becomes a Loka space with its name, color and nested pinned folders, and Arc's Favorites join Essentials.
-In the prototype the user picks the file; Loka itself finds it with Helium's importers (which Loka extends).
+The user picks the file, in the prototype and in the real browser alike; finding it with Helium's importers is planned,
+not built.
 
 ## Sub-features
 

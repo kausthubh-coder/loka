@@ -1,10 +1,15 @@
 {
 	"$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
-	"vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
+	},
 	"files": {
 		"includes": [
 			"prototype/**",
 			"extension/**",
+			"webui/**",
 			"scripts/**",
 			".agents/skills/*/scripts/**",
 			"package.json",
@@ -12,19 +17,79 @@
 			"biome.json"
 		]
 	},
-	"formatter": { "enabled": true, "indentStyle": "tab", "lineWidth": 120 },
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab",
+		"lineWidth": 120
+	},
 	"linter": {
 		"enabled": true,
 		"rules": {
 			"preset": "recommended",
 			"suspicious": {
 				"noExplicitAny": "error",
-				"noConsole": { "level": "error", "options": { "allow": ["error", "warn", "log"] } }
+				"noConsole": {
+					"level": "error",
+					"options": {
+						"allow": ["error", "warn", "log"]
+					}
+				}
 			},
-			"style": { "noNonNullAssertion": "error", "useConst": "error" },
-			"correctness": { "noUnusedVariables": "error", "noUnusedImports": "error" }
+			"style": {
+				"noNonNullAssertion": "error",
+				"useConst": "error"
+			},
+			"correctness": {
+				"noUnusedVariables": "error",
+				"noUnusedImports": "error"
+			}
 		}
 	},
-	"javascript": { "formatter": { "quoteStyle": "double" } },
-	"assist": { "enabled": true, "actions": { "source": { "organizeImports": "on" } } }
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "double"
+		}
+	},
+	"assist": {
+		"enabled": true,
+		"actions": {
+			"source": {
+				"organizeImports": "on"
+			}
+		}
+	},
+	"overrides": [
+		{
+			"includes": ["webui/**", "prototype/src/features/**"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedGlobals": {
+							"level": "error",
+							"options": {
+								"deniedGlobals": {
+									"chrome": "chrome.* is the extension API. The native sidebar talks to the browser only through webui/src/bridge.ts (chrome.send to LokaSidebarHandler)."
+								}
+							}
+						},
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": ["**/extension/**", "**/extension", "**/prototype/src/demo/**", "**/demo/**"],
+										"message": "The sidebar is native WebUI + C++ patches. Don't import the legacy extension or the prototype's demo data here; go through webui/src/bridge.ts."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		{
+			"includes": ["webui/**", "prototype/src/features/**", "!**/*.test.ts"],
+			"plugins": ["./scripts/lint/no-extension-urls.grit"]
+		}
+	]
 }

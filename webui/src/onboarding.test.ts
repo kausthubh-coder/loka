@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { firstState } from "../../extension/src/live.logic";
+import { firstState } from "../../prototype/src/features/tabs/live.logic";
 import { applyOnboarding, onboardingSpaces } from "./onboarding.logic";
 
 const saved = JSON.stringify({

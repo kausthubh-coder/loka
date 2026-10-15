@@ -6,7 +6,7 @@
 import { DEFAULT_UI, parseUiPrefs, type UiPrefs } from "../../prototype/src/app/ui-prefs.logic";
 import type { Media } from "../../prototype/src/features/media/loka-media-card";
 import { type BrowserState, importState } from "../../prototype/src/features/sidebar/sidebar.logic";
-import { firstState, type LiveMap } from "./live.logic";
+import { firstState, type LiveMap } from "../../prototype/src/features/tabs/live.logic";
 
 export const STATE_KEY = "loka.state.v1";
 export const UI_KEY = "loka.ui.v1";

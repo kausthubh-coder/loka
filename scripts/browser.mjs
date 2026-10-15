@@ -3,11 +3,12 @@
 //   bun run browser:setup   create or sync the build checkout (default C:\src\loka) to this commit
 //   bun run browser:build   first build (hours), or an incremental rebuild once one exists
 //   bun run browser:run     open the dev build with its own throwaway profile
+//   bun run build:status    what the current or last incremental build is doing, and recent build times
 //
 // The build checkout is a git worktree of this repo, so patch work done there is committed like any branch.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 export const BUILD_DIR = resolve(process.env.LOKA_BUILD_DIR ?? "C:\\src\\loka");
@@ -33,6 +34,18 @@ function setup() {
 			`${BUILD_DIR} is inside OneDrive. Chromium's tree is ~100 GB; set LOKA_BUILD_DIR to a folder outside it.`,
 		);
 		process.exit(1);
+	}
+	// C++ edited in build\src but never exported lives only there; moving the checkout to a commit whose patches
+	// don't have it is how it gets lost. Same check as `bun run patches:check`.
+	if (existsSync(join(BUILD_DIR, "build", "src"))) {
+		const check = spawnSync("python", [join(repo, "scripts", "patches_check.py")], {
+			stdio: "inherit",
+			env: { ...process.env, LOKA_BUILD_DIR: BUILD_DIR },
+		});
+		if (check.status !== 0) {
+			console.error(`\nNot syncing ${BUILD_DIR}: export the edits above into patches/loka and commit them first.`);
+			process.exit(1);
+		}
 	}
 	const commit = output("git", ["rev-parse", "HEAD"]);
 	if (!existsSync(BUILD_DIR)) {
@@ -96,13 +109,52 @@ function launch() {
 	run(chrome, [`--user-data-dir=${profile}`, ...process.argv.slice(3)]);
 }
 
+/** Prints build-status.json and the last build times (both written by scripts/build_log.py). */
+function status() {
+	const statusFile = join(BUILD_DIR, "build-status.json");
+	if (!existsSync(statusFile)) {
+		console.log(`No ${statusFile} yet: no incremental build has run since build_log.py was added.`);
+	} else {
+		const s = JSON.parse(readFileSync(statusFile, "utf8"));
+		let alive = false;
+		try {
+			process.kill(s.pid, 0);
+			alive = true;
+		} catch {}
+		if (s.phase === "compiling") {
+			const minutes = Math.round((Date.now() - new Date(s.started).getTime()) / 60000);
+			const state = alive
+				? `running for ${minutes} min (pid ${s.pid})`
+				: `stopped without finishing (pid ${s.pid} is gone)`;
+			console.log(`Build: ${s.mode}, -j ${s.jobs}, started ${s.started}, ${state}`);
+		} else {
+			console.log(
+				`Last build: ${s.mode}, -j ${s.jobs}, ${s.phase} (exit ${s.exit}) at ${s.ended} after ${s.seconds} s`,
+			);
+		}
+		console.log(`Last error: ${s.last_error ?? "none"}`);
+	}
+	const times = join(BUILD_DIR, "build-times.log");
+	if (existsSync(times)) {
+		console.log("\nRecent builds (build-times.log):");
+		for (const line of readFileSync(times, "utf8").trim().split("\n").slice(-5)) console.log(`  ${line}`);
+	}
+	// compile.bat's own log, whose last line reads "compile exited with N" once its build is over.
+	const compileLog = join(BUILD_DIR, "compile.log");
+	if (existsSync(compileLog)) {
+		const last = readFileSync(compileLog, "utf8").trimEnd().split("\n").at(-1) ?? "";
+		console.log(`\ncompile.log: ${last.includes("compile exited") ? last.trim() : "still running (no exit line yet)"}`);
+	}
+}
+
 if (import.meta.main) {
 	const command = process.argv[2];
 	if (command === "setup") setup();
 	else if (command === "build") build();
 	else if (command === "run") launch();
+	else if (command === "status") status();
 	else {
-		console.error("Usage: bun scripts/browser.mjs <setup|build|run>");
+		console.error("Usage: bun scripts/browser.mjs <setup|build|run|status>");
 		process.exit(1);
 	}
 }

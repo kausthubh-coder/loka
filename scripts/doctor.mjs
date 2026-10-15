@@ -115,6 +115,8 @@ if (process.argv.includes("--browser") && process.platform !== "win32") {
 		"Python packages requests and Pillow",
 		"python -m pip install requests Pillow",
 	);
+	// build.py checks this only after unpacking and patching, ~25 minutes into a first build.
+	check(out("where", ["clang-format"]) !== "", "clang-format on PATH", "python -m pip install clang-format");
 	check(
 		existsSync("C:\\Program Files\\7-Zip\\7z.exe") || out("where", ["7z"]) !== "",
 		"7-Zip",

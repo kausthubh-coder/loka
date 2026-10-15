@@ -13,6 +13,7 @@ that prompt by applying the same series a release build applies: Helium core, th
 import argparse
 import builtins
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -32,6 +33,13 @@ def apply_all_patches(_prompt=''):
             SOURCE_TREE,
             patch_bin_path=patch_bin,
         )
+    # Loka's built-in pages (webui/, packed into components/loka_sidebar) and its brand images aren't patches:
+    # build and copy them in before GN runs. The name substitution is skipped; loka-name.patch covers the strings.
+    subprocess.run(['bun', 'run', 'webui:build'], cwd=ROOT, check=True, shell=True)
+    subprocess.run(
+        [sys.executable, str(ROOT / 'scripts' / 'loka_brand.py'), 'apply', '--no-names'],
+        cwd=ROOT, check=True, env={**os.environ, 'LOKA_SOURCE_TREE': str(SOURCE_TREE)},
+    )
     return ''
 
 

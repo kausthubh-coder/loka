@@ -96,10 +96,11 @@
  
  VerticalTabStripRegionView::VerticalTabStripRegionView(
      tabs::VerticalTabStripStateController* state_controller,
-@@ -176,6 +189,19 @@
+@@ -175,6 +188,19 @@
+     focus_swipe_controller_ =
          std::make_unique<VerticalTabStripFocusSwipeController>(this);
    }
- 
++
 +  // Loka: the column holds the Loka sidebar, the browser's own page for spaces,
 +  // folders and tabs, in place of the tab list. It is drawn over the other
 +  // children, which Layout() keeps hidden; the tab strip model is unchanged.
@@ -112,11 +113,27 @@
 +  loka_sidebar->LoadInitialURL(GURL(kLokaSidebarURL));
 +  loka_sidebar->SetProperty(views::kViewIgnoredByLayoutKey, true);
 +  loka_sidebar_ = AddChildView(std::move(loka_sidebar));
-+
+ 
    SetNotifyEnterExitOnChild(true);
    UpdateColors();
-   UpdateInteriorMargin();
-@@ -318,7 +344,8 @@
+@@ -264,6 +290,16 @@
+     return false;
+   }
+ 
++  // Loka: the sidebar page is the column's content, so every point on it goes
++  // to the page (its own top row moves the window). Helium's tab list views
++  // are hidden under it, but a hidden view keeps its last bounds, and the
++  // bottom container's would otherwise answer "title bar" for most of the
++  // column: no hover, and every click a window drag.
++  if (loka_sidebar_ && loka_sidebar_->GetVisible() &&
++      IsHitInView(loka_sidebar_, point)) {
++    return false;
++  }
++
+   if (IsHitInView(bottom_button_container_, point)) {
+     gfx::Point point_in_child = point;
+     views::View::ConvertPointToTarget(this, bottom_button_container_,
+@@ -318,7 +354,8 @@
    if (floating) {
      CustomCornersBackground::Corner rounded_corner;
      rounded_corner.type = CustomCornersBackground::CornerType::kRounded;
@@ -126,7 +143,7 @@
      corners[CornerOrientation::kTopLeading] = rounded_corner;
      corners[CornerOrientation::kTopTrailing] = rounded_corner;
      corners[CornerOrientation::kBottomLeading] = rounded_corner;
-@@ -334,6 +361,16 @@
+@@ -334,6 +371,16 @@
    background->SetCorners(corners);
    background->SetOutline(outline);
    background->SetPaintWithNativeFrameMaterials(floating);
@@ -143,7 +160,7 @@
  }
  
  void VerticalTabStripRegionView::AddedToWidget() {
-@@ -368,6 +405,22 @@
+@@ -368,6 +415,22 @@
    resize_area_->SetBoundsRect(
        gfx::Rect(resize_area_x, 0, resize_area_width_, bounds().height()));
    shadow_frame_->SetBoundsRect(GetLocalBounds());
@@ -1644,7 +1661,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler_features.cc
-@@ -0,0 +1,660 @@
+@@ -0,0 +1,667 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2268,6 +2285,13 @@
 +                                                       : match.description;
 +    data.Set("title", base::UTF16ToUTF8(title));
 +    data.Set("url", match.destination_url.spec());
++    // The browser's own pick for Enter, like the address bar's: "youtu" goes to
++    // youtube.com when that's where you go, not to a search.
++    data.Set("default", match.allowed_to_be_default_match &&
++                            &match == &*controller->result().begin());
++    // What the address bar would complete the typed text to ("be.com" after
++    // "youtu"), when it would.
++    data.Set("inline", base::UTF16ToUTF8(match.inline_autocompletion));
 +    list.Append(std::move(data));
 +  }
 +  FireWebUIListener("suggestions", base::Value(suggest_query_), list);

@@ -18,6 +18,7 @@
 //   pinning     setSidebarPinned false and true read back through getSidebarPinned, with a window picture each
 //   suggest     suggest("example") answers with a search first
 //   identity    the window is "<tab> - Loka", no title says Chromium or Helium, chrome.exe's ProductName is Loka
+//   hit test    Windows' WM_NCHITTEST on the sidebar column answers "page" (real mouse input; CDP skips it)
 //   alpha       the sidebar's Import spaces (JSON) takes the 0.1.0 alpha's export, without its extension pages
 // Evidence (PNGs, JSON, chrome.log) goes to .agents/verify-runs/<time>-browser. The run stops only the process tree
 // it started, downloads into its own profile, and deletes that profile.
@@ -524,6 +525,27 @@ async function main() {
 		const others = win.titles.filter((t) => t !== shown);
 		if (others.length) note("other visible windows", others.map((t) => `"${t}"`).join(", "));
 		check("window screenshot", existsSync(join(evidence, "window.png")), win.shot || "not saved");
+
+		// Windows asks the window what's under the mouse before it sends any real mouse event. Every point on the
+		// sidebar below its top row must be the page: "title bar" there means no hover and clicks that drag the
+		// window, which CDP input (it skips this step) can't see.
+		/** @type {{ w: number, h: number, dpr: number }} */
+		const size = await evaluate(sidebar, "({ w: innerWidth, h: innerHeight, dpr: devicePixelRatio })");
+		const points = [0.12, 0.25, 0.38, 0.5, 0.62, 0.74].map(
+			(f) => `${Math.round((size.w / 2) * size.dpr)},${Math.round(size.h * f * size.dpr)}`,
+		);
+		const hits = spawnSync(
+			"powershell",
+			["-NoProfile", "-File", join(repo, "scripts", "window-hittest.ps1"), "-ProcId", String(pid), "-Points", points.join(";")],
+			{ encoding: "utf8" },
+		)
+			.stdout.trim()
+			.split(/\r?\n/);
+		check(
+			"the sidebar answers Windows' hit test as page, not title bar",
+			hits.length === points.length && hits.every((h) => h.trim() === "1"),
+			points.map((p, i) => `${p}=${hits[i]?.trim()}`).join(" "),
+		);
 		const product = spawnSync(
 			"powershell",
 			["-NoProfile", "-Command", `(Get-Item -LiteralPath '${chrome}').VersionInfo.ProductName`],

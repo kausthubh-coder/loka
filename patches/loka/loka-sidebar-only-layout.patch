@@ -78,7 +78,7 @@
  void VerticalTabStripStateController::SetVerticalTabsEnabled(bool enabled) {
 --- a/chrome/browser/ui/views/frame/browser_view.cc
 +++ b/chrome/browser/ui/views/frame/browser_view.cc
-@@ -439,14 +439,17 @@
+@@ -439,14 +439,25 @@
  // The visible height of the shadow above the tabs. Clicks in this area are
  // treated as clicks to the frame, rather than clicks to the tab.
  const int kTabShadowSize = 2;
@@ -91,14 +91,21 @@
      base::Milliseconds(200);
  constexpr base::TimeDelta kZenModeCursorExitGracePeriod =
      base::Milliseconds(3000);
-+// Loka: long enough that a quick wobble off the sidebar doesn't snap it shut.
++// Loka: Zen's timings. The sidebar shows the moment the pointer reaches the
++// edge, slides in over 250 ms and out over 150 ms, and waits 150 ms after the
++// pointer leaves before it goes.
  constexpr base::TimeDelta kZenModeHoverExitGracePeriod =
--    base::Milliseconds(150);
-+    base::Milliseconds(350);
+     base::Milliseconds(150);
++constexpr base::TimeDelta kLokaSidebarRevealDuration = base::Milliseconds(250);
++constexpr base::TimeDelta kLokaSidebarHideDuration = base::Milliseconds(150);
++// After the pointer leaves the window past the sidebar's side, the sidebar
++// waits this long, so overshooting the screen edge doesn't close it.
++constexpr base::TimeDelta kLokaSidebarExitPastEdgeGrace =
++    base::Milliseconds(1000);
  
  #if BUILDFLAG(IS_CHROMEOS)
  // UMA histograms that record animation smoothness for tab loading animation.
-@@ -1704,6 +1707,11 @@
+@@ -1704,6 +1715,11 @@
    if (!zen_mode_enabled_) {
      return 1.f;
    }
@@ -110,8 +117,30 @@
    return zen_top_chrome_animation_.GetCurrentValue();
  }
  
-@@ -2006,9 +2014,11 @@
-   const std::optional<gfx::Point> previous_cursor = zen_last_cursor_;
+@@ -1998,27 +2014,37 @@
+   zen_hover_bounds.Outset(gfx::Outsets::VH(0, kZenModeRevealTriggerThickness));
+   if (!GetCursorLocationInBrowserView(&cursor) ||
+       !zen_hover_bounds.Contains(cursor)) {
++    // Loka: leaving past the sidebar's own edge keeps it a moment (the
++    // pointer overshot the screen edge); leaving anywhere else closes it as
++    // leaving it inside the window does.
++    const bool left_past_sidebar =
++        zen_last_cursor_ && (IsPointInZenSideTrigger(*zen_last_cursor_) ||
++                             IsPointInZenSideChromeBounds(*zen_last_cursor_));
+     zen_last_cursor_.reset();
+-    StartZenCollapseTimer(kZenModeCursorExitGracePeriod);
+-    return;
+-  }
+-
+-  const std::optional<gfx::Point> previous_cursor = zen_last_cursor_;
++    StartZenCollapseTimer(zen_side_chrome_animation_.IsShowing()
++                              ? (left_past_sidebar
++                                     ? kLokaSidebarExitPastEdgeGrace
++                                     : kZenModeHoverExitGracePeriod)
++                              : kZenModeCursorExitGracePeriod);
++    return;
++  }
++
    zen_last_cursor_ = cursor;
  
 -  const bool in_top_trigger = IsPointInZenTopTrigger(cursor);
@@ -125,6 +154,109 @@
  
    // Top bar takes precedence: don't reveal side chrome when the cursor
    // is in the top trigger zone or over the revealed top chrome.
+   const bool in_side_trigger = IsPointInZenSideTrigger(cursor);
+   const bool in_side_chrome = IsPointInZenSideChromeBounds(cursor);
+-  const bool moving_out_through_side_gap =
+-      previous_cursor && IsLeavingZenSideGap(*previous_cursor, cursor);
+-  const bool reveal_side =
+-      !reveal_top && !moving_out_through_side_gap &&
+-      (in_side_trigger || in_side_chrome);
++  // Loka: the strip between the sidebar and the window edge is part of the
++  // sidebar (as in Zen); moving onto it used to close the sidebar, and the
++  // edge then opened it again, so it flickered.
++  const bool reveal_side = !reveal_top && (in_side_trigger || in_side_chrome);
+ 
+   // Defer the collapse briefly so quick excursions don't cause the
+   // chrome to snap closed.
+@@ -2042,6 +2068,13 @@
+ 
+   // Pinned VTS stays visible regardless of cursor position.
+   if (IsZenModeSideChromePinned()) {
++    reveal_side = true;
++  }
++
++  // Loka: a showing sidebar stays while the sidebar page holds it or a popup
++  // from it (an extension's, a menu) is open, as in Zen.
++  if (!reveal_side && zen_side_chrome_animation_.IsShowing() &&
++      (loka_sidebar_held_ || HasOpenBubbleFromSideChrome())) {
+     reveal_side = true;
+   }
+ 
+@@ -2088,9 +2121,15 @@
+ 
+   if (reveal_side) {
+     if (!zen_side_chrome_animation_.IsShowing()) {
++      zen_side_chrome_animation_.SetSlideDuration(
++          gfx::Animation::RichAnimationDuration(kLokaSidebarRevealDuration));
++      zen_side_chrome_animation_.SetTweenType(gfx::Tween::EASE_OUT_3);
+       zen_side_chrome_animation_.Show();
+     }
+   } else if (zen_side_chrome_animation_.IsShowing()) {
++    zen_side_chrome_animation_.SetSlideDuration(
++        gfx::Animation::RichAnimationDuration(kLokaSidebarHideDuration));
++    zen_side_chrome_animation_.SetTweenType(gfx::Tween::EASE_IN_OUT);
+     zen_side_chrome_animation_.Hide();
+   }
+ }
+@@ -2206,6 +2245,30 @@
+     }
+   }
+   return false;
++}
++
++bool BrowserView::HasOpenBubbleFromSideChrome() const {
++  if (!vertical_tab_strip_region_view_ || !GetWidget()) {
++    return false;
++  }
++  for (views::Widget* widget :
++       views::Widget::GetAllOwnedWidgets(GetWidget()->GetNativeView())) {
++    if (IsOpenBubbleAnchoredInViewSubtree(widget,
++                                          vertical_tab_strip_region_view_)) {
++      return true;
++    }
++  }
++  return false;
++}
++
++void BrowserView::SetLokaSidebarHeld(bool held) {
++  if (loka_sidebar_held_ == held) {
++    return;
++  }
++  loka_sidebar_held_ = held;
++  if (!held && zen_mode_enabled_) {
++    UpdateZenModeRevealFromCursor();
++  }
+ }
+ 
+ void BrowserView::AppMenuShown() {
+--- a/chrome/browser/ui/views/frame/browser_view.h
++++ b/chrome/browser/ui/views/frame/browser_view.h
+@@ -438,6 +438,9 @@
+ 
+   // Toggles the side chrome (VTS) visibility in zen mode.
+   void ToggleZenModeSideChrome();
++  // Loka: keeps a hidden sidebar that is showing open while the sidebar page
++  // needs it (a focused field, an open menu, a drag).
++  void SetLokaSidebarHeld(bool held);
+   void ToggleZenModeTopChrome();
+ 
+   // Returns the widget for anchoring bubbles and dialogs.
+@@ -961,6 +964,7 @@
+   bool IsPointInZenTopChromeBounds(const gfx::Point& point) const;
+   bool IsPointInZenSideChromeBounds(const gfx::Point& point) const;
+   bool HasOpenBubbleFromTopContainer() const;
++  bool HasOpenBubbleFromSideChrome() const;
+   bool GetCursorLocationInBrowserView(gfx::Point* cursor_location) const;
+ 
+   // Callback for the loading animation(s) associated with this view.
+@@ -1496,6 +1500,7 @@
+   gfx::SlideAnimation zen_side_chrome_animation_;
+   base::OneShotTimer zen_cursor_exit_timer_;
+   std::optional<gfx::Point> zen_last_cursor_;
++  bool loka_sidebar_held_ = false;
+   bool zen_mode_enabled_ = false;
+ 
+   mutable base::WeakPtrFactory<BrowserView> weak_ptr_factory_{this};
 --- a/chrome/browser/ui/views/frame/layout/browser_view_tabbed_layout_impl.cc
 +++ b/chrome/browser/ui/views/frame/layout/browser_view_tabbed_layout_impl.cc
 @@ -952,6 +952,11 @@
@@ -139,3 +271,63 @@
        }
  
        // Let the vertical tab strip animate out over the content.
+--- a/chrome/browser/ui/views/frame/multi_contents_view.cc
++++ b/chrome/browser/ui/views/frame/multi_contents_view.cc
+@@ -32,6 +32,7 @@
+ #include "chrome/browser/ui/views/frame/safe_invoke/safe_invoke.h"
+ #include "chrome/browser/ui/views/frame/scrim_view.h"
+ #include "chrome/browser/ui/views/frame/themed_background.h"
++#include "chrome/browser/ui/views/helium/frame_corner_radius.h"
+ #include "chrome/browser/ui/views/new_tab_footer/footer_web_view.h"
+ #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
+ #include "chrome/common/pref_names.h"
+@@ -579,17 +580,9 @@
+ 
+   if (IsInSplitView()) {
+     available_space.Inset(split_view_insets_);
+-  } else if (should_use_rounded_frame) {
+-    gfx::Insets single_insets(kSplitViewContentInset);
+-    single_insets.set_top(attached_chrome.TopInset());
+-    single_insets.set_left(contents_separators_.leading_side_chrome_attached
+-                               ? 0
+-                               : kSplitViewContentInset);
+-    single_insets.set_right(contents_separators_.trailing_side_chrome_attached
+-                                ? 0
+-                                : kSplitViewContentInset);
+-    available_space.Inset(single_insets);
+-  }
++  }
++  // Loka: a single page runs to the window's top, right and bottom edges, with
++  // no frame around it; only the sidebar sits beside it (Arc's look).
+   ViewSizes sizes = GetViewSizes(available_space);
+ 
+   gfx::Rect start_rect, resize_rect, end_rect;
+@@ -901,8 +894,16 @@
+   const views::Widget* widget = browser_view_->GetWidget();
+   const bool is_fullscreen = widget && widget->IsFullscreen();
+   const bool is_in_split = IsInSplitView();
+-  const bool should_round_single_contents =
++  // Loka: a single page has no outline; it is rounded only on the corners that
++  // meet the sidebar, and the window's own corners round the rest.
++  const bool should_round_single_contents = false;
++  const bool loka_round_sidebar_corners =
+       !is_in_split && ShouldUseRoundedFrame();
++  const float loka_radius = GetGenericFrameRadius();
++  const bool loka_sidebar_right = browser_view_->IsVerticalTabStripRightAligned();
++  const gfx::RoundedCornersF loka_radii(
++      loka_sidebar_right ? 0 : loka_radius, loka_sidebar_right ? loka_radius : 0,
++      loka_sidebar_right ? loka_radius : 0, loka_sidebar_right ? 0 : loka_radius);
+   const bool is_drop_target_visible = drop_target_view_->GetVisible();
+   const bool is_drop_target_on_start =
+       is_drop_target_visible &&
+@@ -951,7 +952,9 @@
+         (is_single_contents_view && should_round_single_contents);
+     if (!should_round_contents) {
+       contents_container_view->SetRoundedCorners(
+-          is_active ? GetBackgroundRadii() : gfx::RoundedCornersF());
++          !is_active                   ? gfx::RoundedCornersF()
++          : loka_round_sidebar_corners ? loka_radii
++                                       : GetBackgroundRadii());
+     }
+     contents_container_view->UpdateBorderAndOverlay(
+         is_in_split, should_round_contents, is_active,

@@ -231,8 +231,8 @@ async function main() {
 		[
 			`--user-data-dir=${profile}`,
 			`--remote-debugging-port=${port}`,
-			// Test browsers stay silent: pages and the sidebar's sound cues still play, unheard.
-			"--mute-audio",
+			// Test browsers stay silent: audio plays to a fake device, so tabs still count as audible but nothing is heard.
+			"--disable-audio-output",
 			"--disable-features=CalculateNativeWinOcclusion",
 			// The audio page starts itself, so the media checks don't depend on a gesture.
 			"--autoplay-policy=no-user-gesture-required",
@@ -630,6 +630,48 @@ async function main() {
 					? `no row for "${target?.title ?? "a background tab"}"`
 					: `sidebar at client ${probe.x - seen.x},${probe.y - seen.y}; clicked "${target?.title}" at ${Math.round(center.x)},${Math.round(center.y)}`,
 		);
+
+		// The hidden sidebar, as in Zen: the window's edge brings it back at once, the strip between it and the edge
+		// keeps it, leaving it closes it after a moment, and the sidebar page can hold it open. Moves are posted to
+		// the window, so they reach the browser's own hover tracking.
+		await tell("setSidebarPinned", false);
+		await sleep(600);
+		const away = { x: Math.round(size.w + 400), y: Math.round(size.h / 2) };
+		const sidebarShows = async () => (await evaluate(sidebar, "document.visibilityState")) === "visible";
+		const sidebarGone = () => until(async () => !(await sidebarShows()), 1500);
+		post("move", away.x, away.y);
+		const hidOnUnpin = await sidebarGone();
+		check("unpinned, the sidebar hides when the pointer is on the page", hidOnUnpin, `visible=${!hidOnUnpin}`);
+		post("move", 2, away.y);
+		const shownAt = Date.now();
+		const revealed = await until(sidebarShows, 1500);
+		check(
+			"the window's left edge brings the hidden sidebar back",
+			revealed,
+			revealed ? `visible after ${Date.now() - shownAt} ms` : "never showed",
+		);
+		post("move", Math.round(size.w / 2), away.y);
+		await sleep(300);
+		post("move", 3, away.y);
+		await sleep(600);
+		check(
+			"moving from the sidebar onto the edge strip keeps it open (no flicker)",
+			await sidebarShows(),
+			"visible 600 ms after reaching the edge strip",
+		);
+		await tell("holdSidebar", true);
+		post("move", away.x, away.y);
+		await sleep(700);
+		const held = await sidebarShows();
+		await tell("holdSidebar", false);
+		const released = await sidebarGone();
+		check(
+			"holdSidebar keeps it open off the sidebar; releasing it lets it hide",
+			held && released,
+			`held: visible=${held}; released: hidden=${released}`,
+		);
+		await tell("setSidebarPinned", true);
+		await sleep(600);
 
 		const product = spawnSync(
 			"powershell",

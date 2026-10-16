@@ -935,7 +935,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_HISTORY_UI_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.cc
-@@ -0,0 +1,652 @@
+@@ -0,0 +1,655 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1068,6 +1068,9 @@
 +  add("suggest", &LokaSidebarHandler::HandleSuggest);
 +  add("setSidebarPinned", &LokaSidebarHandler::HandleSetSidebarPinned);
 +  add("getSidebarPinned", &LokaSidebarHandler::HandleGetSidebarPinned);
++  add("holdSidebar", &LokaSidebarHandler::HandleHoldSidebar);
++  add("setAutoplay", &LokaSidebarHandler::HandleSetAutoplay);
++  add("getAutoplay", &LokaSidebarHandler::HandleGetAutoplay);
 +  add("setColorScheme", &LokaSidebarHandler::HandleSetColorScheme);
 +  add("setThemeColor", &LokaSidebarHandler::HandleSetThemeColor);
 +  add("openCommandBar", &LokaSidebarHandler::HandleOpenCommandBar);
@@ -1590,7 +1593,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h
-@@ -0,0 +1,225 @@
+@@ -0,0 +1,228 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1732,6 +1735,9 @@
 +  void HandleSuggest(const base::ListValue& args);
 +  void HandleSetSidebarPinned(const base::ListValue& args);
 +  void HandleGetSidebarPinned(const base::ListValue& args);
++  void HandleHoldSidebar(const base::ListValue& args);
++  void HandleSetAutoplay(const base::ListValue& args);
++  void HandleGetAutoplay(const base::ListValue& args);
 +  void HandleSetColorScheme(const base::ListValue& args);
 +  void HandleSetThemeColor(const base::ListValue& args);
 +  void HandleOpenCommandBar(const base::ListValue& args);
@@ -1818,7 +1824,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler_features.cc
-@@ -0,0 +1,768 @@
+@@ -0,0 +1,800 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2539,6 +2545,38 @@
 +  ResolveJavascriptCallback(
 +      args[0], base::Value(Profile::FromWebUI(web_ui())->GetPrefs()->GetBoolean(
 +                   prefs::kHeliumZenModeSidebarPinned)));
++}
++
++// While the sidebar page holds it (its address field is focused, a menu is
++// open, a drag is under way), a hidden sidebar that is showing stays open.
++void LokaSidebarHandler::HandleHoldSidebar(const base::ListValue& args) {
++  BrowserWindowInterface* browser = GetBrowser();
++  BrowserView* browser_view =
++      browser ? BrowserView::GetBrowserViewForBrowser(browser) : nullptr;
++  if (!browser_view || args.empty() || !args[0].is_bool()) {
++    return;
++  }
++  browser_view->SetLokaSidebarHeld(args[0].GetBool());
++}
++
++// Whether websites may play before you click: "block", "block-audible" or
++// "allow". See DetermineWebContentsAutoplayPolicy.
++void LokaSidebarHandler::HandleSetAutoplay(const base::ListValue& args) {
++  if (args.empty() || !args[0].is_string()) {
++    return;
++  }
++  const std::string& mode = args[0].GetString();
++  if (mode != "block" && mode != "block-audible" && mode != "allow") {
++    return;
++  }
++  Profile::FromWebUI(web_ui())->GetPrefs()->SetString("loka.autoplay", mode);
++}
++
++void LokaSidebarHandler::HandleGetAutoplay(const base::ListValue& args) {
++  AllowJavascript();
++  ResolveJavascriptCallback(
++      args[0], base::Value(Profile::FromWebUI(web_ui())->GetPrefs()->GetString(
++                   "loka.autoplay")));
 +}
 +
 +void LokaSidebarHandler::HandleSetColorScheme(const base::ListValue& args) {

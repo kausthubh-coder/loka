@@ -9,7 +9,15 @@ export interface UiPrefs {
 	/** Interface sounds: on unless turned off, at a quiet volume from 0 to 1. */
 	sound: boolean;
 	soundVolume: number;
+	/**
+	 * Media autoplay for pages: blocked until a click (the default), sound blocked only, or allowed. The browser keeps
+	 * the real setting (the loka.autoplay pref); this copy is what Settings shows without asking the browser.
+	 */
+	autoplay: Autoplay;
 }
+
+export type Autoplay = "block" | "block-audible" | "allow";
+export const AUTOPLAY_MODES: Autoplay[] = ["block", "block-audible", "allow"];
 
 export const SIDEBAR_MIN = 220;
 export const SIDEBAR_MAX = 420;
@@ -20,6 +28,7 @@ export const DEFAULT_UI: UiPrefs = {
 	archiveAfterHours: null,
 	sound: true,
 	soundVolume: 0.5,
+	autoplay: "block",
 };
 
 export function clampWidth(width: number): number {
@@ -44,5 +53,6 @@ export function parseUiPrefs(json: string | null): UiPrefs {
 			typeof d.soundVolume === "number" && Number.isFinite(d.soundVolume)
 				? Math.min(1, Math.max(0, d.soundVolume))
 				: DEFAULT_UI.soundVolume,
+		autoplay: AUTOPLAY_MODES.find((m) => m === d.autoplay) ?? DEFAULT_UI.autoplay,
 	};
 }

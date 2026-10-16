@@ -680,6 +680,22 @@ const recipes = {
 		await tones();
 		await loka.row("Docs").click();
 		assert.equal(await tones(), 0, "with sound off, nothing plays");
+
+		// Off shows as a quiet icon in the top row, which turns sounds back on; so does "..." > Unmute sounds.
+		const off = loka.sidebar.getByRole("button", { name: "Sounds are off" });
+		assert.equal(await off.count(), 1, "a muted sidebar says so");
+		await off.click();
+		assert.equal((await loka.ui()).sound, true, "the icon turns sounds back on");
+		assert.equal(await off.count(), 0, "and goes");
+		await loka.page.getByRole("button", { name: "More" }).click();
+		await loka.menuItem("Mute sounds").click();
+		assert.equal((await loka.ui()).sound, false, "... > Mute sounds turns them off");
+
+		// Autoplay is the browser's: Settings > Media asks it, and keeps what it showed.
+		await settings.getByRole("radio", { name: "Block sound only" }).click();
+		assert.deepEqual(await demoCalls(loka, "setAutoplay"), [["block-audible"]]);
+		assert.equal((await loka.ui()).autoplay, "block-audible");
+		await loka.proof("02-autoplay");
 	},
 };
 

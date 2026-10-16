@@ -225,6 +225,9 @@ export const browser = {
 	/** Pinned shows the sidebar always; unpinned slides it away until the mouse reaches the window's edge. */
 	setSidebarPinned: (pinned: boolean) => tell("setSidebarPinned", pinned),
 	sidebarPinned: () => ask<boolean>("getSidebarPinned"),
+	/** Media autoplay for pages loaded from now on (the loka.autoplay pref). */
+	setAutoplay: (mode: "block" | "block-audible" | "allow") => tell("setAutoplay", mode),
+	autoplay: () => ask<"block" | "block-audible" | "allow">("getAutoplay"),
 	/** Light or dark for the browser and the pages that follow it (prefers-color-scheme). */
 	setColorScheme: (scheme: ColorScheme) => tell("setColorScheme", scheme),
 	onCommand: (listener: (command: BrowserCommand) => void) => on("command", (c) => listener(c as BrowserCommand)),

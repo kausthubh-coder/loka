@@ -7,6 +7,13 @@ switch and a volume slider.
 
 ## Sub-features
 
+- `sound-mute`: "..." > Mute sounds (Unmute sounds once off) and the command bar's Mute sounds flip the same pref; while
+  it's off a quiet speaker icon sits in the top row and turns sounds back on.
+- `sound-device`: the audio device opens (slow, about 340 ms in the real sidebar) once the page has had no input for
+  3 s after the first one, never inside an action, so the first cue or two after a page loads can be silent.
+- `media-autoplay`: Settings > Media > Autoplay sends `setAutoplay` ("block", "block-audible", "allow") to the browser,
+  which applies it to pages loaded afterwards, and keeps the choice in the prefs (`autoplay`) to show it.
+
 - `sound-cues`: each action above plays its cue from its own handler; the cue table and throttle are in
   `sound.logic.ts`, unit tested.
 - `sound-gate`: nothing plays before the person has clicked or pressed a key in the page, while it's hidden, with

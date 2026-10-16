@@ -50,6 +50,8 @@ let track = 0;
 let playing = true;
 let muted = false;
 let scheme: ColorScheme = "system";
+/** The browser's loka.autoplay pref, as the fake keeps it. */
+let autoplay: "block" | "block-audible" | "allow" = "block";
 let store: Record<string, string> = {};
 
 function media(): NativeMedia[] {
@@ -231,6 +233,11 @@ export const fakeBrowser: Browser = {
 		emit("sidebar-pinned-changed", pinned);
 	},
 	sidebarPinned: async () => localStorage.getItem(PINNED_KEY) !== "false",
+	setAutoplay: (mode) => {
+		log("setAutoplay", mode);
+		autoplay = mode;
+	},
+	autoplay: async () => autoplay,
 	setColorScheme: (next) => {
 		log("setColorScheme", next);
 		scheme = next;

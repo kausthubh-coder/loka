@@ -39,7 +39,8 @@ export type ActionId =
 	| "extensions"
 	| "search-sidebar"
 	| "archive"
-	| "onboarding";
+	| "onboarding"
+	| "toggle-sound";
 
 export type ResultGroup = "" | "Tabs" | "History" | "Bookmarks" | "Spaces" | "Commands";
 
@@ -78,6 +79,12 @@ const ACTIONS: { action: ActionId; label: string; detail: string; words: string 
 	{ action: "search-sidebar", label: "Search the sidebar", detail: "Ctrl+Shift+F", words: "find tabs everywhere" },
 	{ action: "archive", label: "Archived tabs", detail: "Bring back an archived tab", words: "old closed restore" },
 	{ action: "onboarding", label: "Show the welcome tour", detail: "Onboarding", words: "intro welcome tour" },
+	{
+		action: "toggle-sound",
+		label: "Mute sounds",
+		detail: "Loka's interface sounds",
+		words: "sound effects audio quiet silence mute unmute volume",
+	},
 ];
 
 /** Where a tab lives, for the result's label. Essentials belong to every space, so they go to the current one. */
@@ -96,6 +103,8 @@ export interface ResultContext {
 	links?: Record<TabId, number>;
 	/** Whether the sidebar is pinned open, for the hide-or-pin command's wording. */
 	pinned?: boolean;
+	/** Whether interface sounds are on, for the mute command's wording. */
+	sound?: boolean;
 	/**
 	 * True after the person deleted text, until they type a character again. Chrome's rule: deleting the completion
 	 * means they want what they typed, so nothing is completed and a pick that needed completing isn't Enter's.
@@ -453,8 +462,10 @@ export function commandResults(state: BrowserState, query: string, context: Resu
 	}
 
 	for (const a of ACTIONS) {
-		const label = a.action === "toggle-sidebar" && context.pinned === false ? "Keep the sidebar open" : a.label;
-		const detail = a.action === "toggle-sidebar" && context.pinned === false ? "Pin it back in place" : a.detail;
+		const unpinned = a.action === "toggle-sidebar" && context.pinned === false;
+		const muted = a.action === "toggle-sound" && context.sound === false;
+		const label = unpinned ? "Keep the sidebar open" : muted ? "Unmute sounds" : a.label;
+		const detail = unpinned ? "Pin it back in place" : a.detail;
 		if (!q || `${label} ${a.label} ${a.words}`.toLowerCase().includes(q)) {
 			results.push({ kind: "action", action: a.action, label, detail, group: "Commands" });
 		}

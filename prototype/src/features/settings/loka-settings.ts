@@ -1,7 +1,7 @@
 import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 import type { Browser, NativeExtension } from "../../../../webui/src/bridge";
 import type { Update } from "../../app/loka-app";
-import { SIDEBAR_MAX, SIDEBAR_MIN, type UiPrefs } from "../../app/ui-prefs.logic";
+import { AUTOPLAY_MODES, type Autoplay, SIDEBAR_MAX, SIDEBAR_MIN, type UiPrefs } from "../../app/ui-prefs.logic";
 import { ARCHIVE_CHOICES } from "../archive/archive.logic";
 import { withPinned } from "../extensions/extensions.logic";
 import "../extensions/loka-extensions";
@@ -40,6 +40,12 @@ const BROWSER_PAGES = {
 };
 
 const SCHEME_NAMES: Record<SpaceScheme, string> = { light: "Light", dark: "Dark", system: "System" };
+
+const AUTOPLAY_NAMES: Record<Autoplay, string> = {
+	block: "Block video and sound until I click",
+	"block-audible": "Block sound only",
+	allow: "Allow",
+};
 
 /** Shortcuts in the real browser, and the prototype's stand-ins for the ones a web page can't catch. */
 function shortcuts(native: boolean): [string, string][] {
@@ -305,6 +311,29 @@ export class LokaSettings extends LitElement {
 					</div>
 				</section>
 
+				<section aria-labelledby="media">
+					<h2 id="media">Media</h2>
+					<div class="row column">
+						<div><b>Autoplay</b><small>For pages you open from now on</small></div>
+						<div class="segmented" role="radiogroup" aria-label="Autoplay">
+							${AUTOPLAY_MODES.map(
+								(mode) => html`<button
+									role="radio"
+									aria-checked=${ui.autoplay === mode}
+									class=${ui.autoplay === mode ? "on" : ""}
+									@click=${() => {
+										if (ui.autoplay === mode) return;
+										this.setUi({ autoplay: mode });
+										this.browser.setAutoplay(mode);
+									}}
+								>
+									${AUTOPLAY_NAMES[mode]}
+								</button>`,
+							)}
+						</div>
+					</div>
+				</section>
+
 				<section aria-labelledby="tabs">
 					<h2 id="tabs">Tabs</h2>
 					<div class="row">
@@ -498,6 +527,14 @@ export class LokaSettings extends LitElement {
 			min-height: 56px;
 			padding: 8px 0;
 			border-bottom: 1px solid var(--loka-line);
+		}
+		/* A row whose choices are too long to sit beside its label puts them under it. */
+		.row.column {
+			flex-direction: column;
+			align-items: stretch;
+		}
+		.row.column .segmented {
+			flex-wrap: wrap;
 		}
 		/* The label column; the controls on the right (like the Left / Right switch) keep their own layout. */
 		.row > div:not(.segmented) {

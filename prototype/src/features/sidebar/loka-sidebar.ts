@@ -119,6 +119,7 @@ export class LokaSidebar extends LitElement {
 		live: { attribute: false },
 		browser: { attribute: false },
 		pinned: { attribute: false },
+		soundOn: { attribute: false },
 		demo: { type: Boolean },
 	};
 
@@ -142,6 +143,8 @@ export class LokaSidebar extends LitElement {
 	live: LiveTabs = {};
 	/** Pinned shows the sidebar always; unpinned, the browser slides it away until the mouse reaches the edge. */
 	pinned = true;
+	/** Interface sounds are on (a window pref): the menu offers to mute them, and a quiet icon says when they're off. */
+	soundOn = true;
 	/** The prototype: shows "Reset demo data". The real browser leaves it out. */
 	demo = true;
 
@@ -987,6 +990,7 @@ export class LokaSidebar extends LitElement {
 			{ label: "Search the sidebar", run: () => this.openPanel("search") },
 			{ label: `Archived tabs (${this.state.archive.length})`, run: () => this.openPanel("archive") },
 			{ label: "History", run: () => this.action("history") },
+			{ label: this.soundOn ? "Mute sounds" : "Unmute sounds", run: () => this.action("toggle-sound") },
 			{ label: "Settings", run: () => this.action("settings") },
 			{ label: "Show the welcome tour", divider: true, run: () => this.action("onboarding") },
 			{ label: "Export spaces (JSON)", divider: true, run: () => this.exportFile() },
@@ -1302,6 +1306,18 @@ export class LokaSidebar extends LitElement {
 					<svg viewBox="0 0 20 20"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 3.5v3.5h-3.5" /></svg>
 				</button>
 			</span>
+			${
+				this.soundOn
+					? nothing
+					: html`<button
+							class="icon sounds-off"
+							aria-label="Sounds are off"
+							title="Sounds are off. Turn them on"
+							@click=${() => this.action("toggle-sound")}
+						>
+							<svg viewBox="0 0 20 20"><path d="M4 8h2.5L10 5v10l-3.5-3H4zM13 8l4 4m0-4-4 4" /></svg>
+						</button>`
+			}
 			<span class="drag" aria-hidden="true"></span>
 			${
 				mac
@@ -1792,6 +1808,14 @@ export class LokaSidebar extends LitElement {
 			content: "";
 			position: absolute;
 			inset: -2px;
+		}
+		.sounds-off {
+			width: 28px;
+			color: var(--loka-ink-3);
+		}
+		.sounds-off svg {
+			width: 15px;
+			height: 15px;
 		}
 		.caption svg {
 			width: 16px;

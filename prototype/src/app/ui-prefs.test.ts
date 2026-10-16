@@ -36,4 +36,11 @@ describe("window preferences", () => {
 		expect(parseUiPrefs('{"archiveAfterHours": 24}').archiveAfterHours).toBe(24);
 		expect(parseUiPrefs('{"archiveAfterHours": -5}').archiveAfterHours).toBeNull();
 	});
+
+	test("autoplay keeps a known mode and falls back to blocking until a click", () => {
+		expect(parseUiPrefs(null).autoplay).toBe("block");
+		expect(parseUiPrefs('{"autoplay": "block-audible"}').autoplay).toBe("block-audible");
+		expect(parseUiPrefs('{"autoplay": "allow"}').autoplay).toBe("allow");
+		expect(parseUiPrefs('{"autoplay": "always"}').autoplay).toBe("block");
+	});
 });

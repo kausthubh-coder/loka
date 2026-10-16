@@ -32,6 +32,7 @@ export class LokaCommandBar extends LitElement {
 		browser: { attribute: false },
 		links: { attribute: false },
 		pinned: { attribute: false },
+		sound: { attribute: false },
 		mode: {},
 		layout: { reflect: true },
 		initialQuery: { attribute: false },
@@ -48,6 +49,8 @@ export class LokaCommandBar extends LitElement {
 	browser: Browser | null = null;
 	links: Record<TabId, number> = {};
 	pinned = true;
+	/** Whether interface sounds are on, for the mute command's wording. */
+	sound = true;
 	mode: CommandMode = "new-tab";
 	layout: "embedded" | "page" = "embedded";
 	/** Filled in and selected when the bar opens: the current address, for Ctrl+L. */
@@ -191,6 +194,7 @@ export class LokaCommandBar extends LitElement {
 			suggestionsFor: this.suggestions.for,
 			links: this.links,
 			pinned: this.pinned,
+			sound: this.sound,
 			inlineOff: this.inlineOff,
 		};
 		const results = commandResults(this.state, query, context);

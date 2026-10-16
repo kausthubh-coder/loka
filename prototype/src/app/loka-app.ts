@@ -148,6 +148,10 @@ export class LokaApp extends LitElement {
 
 	private run(action: ActionId) {
 		const space = activeSpace(this.state);
+		if (action === "toggle-sound") {
+			this.setUi({ sound: !this.ui.sound });
+			return;
+		}
 		if (action === "new-space") {
 			const hue = SPACE_HUES[this.state.spaces.length % SPACE_HUES.length] ?? 200;
 			this.editing = {
@@ -471,6 +475,7 @@ export class LokaApp extends LitElement {
 					.live=${live}
 					.browser=${fakeBrowser}
 					.pinned=${this.pinned}
+					.soundOn=${this.ui.sound}
 					@loka-media=${(e: CustomEvent<MediaAction>) => this.onMedia(e.detail)}
 					@loka-tab-mute=${(e: CustomEvent<string>) => {
 						const browserId = DEMO_LINKS[e.detail];
@@ -517,6 +522,7 @@ export class LokaApp extends LitElement {
 								.browser=${fakeBrowser}
 								.links=${DEMO_LINKS}
 								.pinned=${this.pinned}
+								.sound=${this.ui.sound}
 								.mode=${this.command.mode}
 								.initialQuery=${this.command.query}
 								@loka-pick=${(e: CustomEvent<CommandPick>) => this.runPick(e.detail)}

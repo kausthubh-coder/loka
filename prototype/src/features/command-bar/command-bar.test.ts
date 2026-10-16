@@ -67,7 +67,16 @@ test("an empty bar lists this space's open tabs and every command, with nothing 
 		"tab:Zen Browser (Build)",
 	]);
 	expect(empty.filter((l) => l.startsWith("go:"))).toEqual([]);
-	expect(empty.filter((l) => l.startsWith("action:")).length).toBe(11);
+	expect(empty.filter((l) => l.startsWith("action:")).length).toBe(12);
+});
+
+test("the mute command says what it will do: mute while sounds are on, unmute once they're off", () => {
+	const labels = (sound: boolean) =>
+		commandResults(seedState(), "sounds", { sound })
+			.filter((r) => r.kind === "action")
+			.map((r) => r.label);
+	expect(labels(true)).toEqual(["Mute sounds"]);
+	expect(labels(false)).toEqual(["Unmute sounds"]);
 });
 
 test("new tab pages aren't offered as tabs to go to", () => {

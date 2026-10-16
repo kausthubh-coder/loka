@@ -50,6 +50,9 @@ export const PLANNED_MESSAGES = [
 	"commandPicked",
 	// The window's frame around the page takes the space's color ("#rrggbb", or null for the default).
 	"setThemeColor",
+	// Media autoplay for pages: "block" (until a click), "block-audible" or "allow" (the loka.autoplay pref).
+	"setAutoplay",
+	"getAutoplay",
 ] as const;
 
 /** Events the handler in patches/loka doesn't fire yet; same rule as PLANNED_MESSAGES. */

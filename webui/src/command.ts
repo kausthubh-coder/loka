@@ -37,6 +37,7 @@ export class LokaCommandPage extends LitElement {
 		opened: { state: true },
 		systemDark: { state: true },
 		pinned: { state: true },
+		sound: { state: true },
 	};
 
 	state: BrowserState | null = null;
@@ -46,6 +47,7 @@ export class LokaCommandPage extends LitElement {
 	opened = 0;
 	systemDark = darkSystem.matches;
 	pinned = true;
+	sound = true;
 	private tabs: NativeTab[] = [];
 
 	override connectedCallback() {
@@ -53,10 +55,16 @@ export class LokaCommandPage extends LitElement {
 		void readState().then((state) => {
 			this.state = state;
 		});
-		void readUi().then((ui) => setSoundPrefs({ on: ui.sound, volume: ui.soundVolume }));
+		void readUi().then((ui) => {
+			this.sound = ui.sound;
+			setSoundPrefs({ on: ui.sound, volume: ui.soundVolume });
+		});
 		watch(({ state, ui }) => {
 			if (state) this.state = state;
-			if (ui) setSoundPrefs({ on: ui.sound, volume: ui.soundVolume });
+			if (ui) {
+				this.sound = ui.sound;
+				setSoundPrefs({ on: ui.sound, volume: ui.soundVolume });
+			}
 		});
 		browser.onTabsChanged((tabs) => {
 			this.tabs = tabs;
@@ -129,6 +137,7 @@ export class LokaCommandPage extends LitElement {
 					.state=${state}
 					.browser=${browser}
 					.pinned=${this.pinned}
+					.sound=${this.sound}
 					.mode=${this.mode}
 					.initialQuery=${this.query}
 					@loka-pick=${(e: CustomEvent<CommandPick>) => this.pick(e.detail)}

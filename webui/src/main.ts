@@ -3,7 +3,7 @@
 
 import { css, html, LitElement, nothing } from "lit";
 import type { Update } from "../../prototype/src/app/loka-app";
-import { skyLayer, skyStyles, skyTurn } from "../../prototype/src/app/sky";
+import { restWhenIdle, skyLayer, skyStyles, skyTurn } from "../../prototype/src/app/sky";
 import { reducedMotion, themeTokens } from "../../prototype/src/app/theme";
 import { resolveScheme, type Scheme } from "../../prototype/src/app/theme.logic";
 import { DEFAULT_UI, type UiPrefs } from "../../prototype/src/app/ui-prefs.logic";
@@ -44,11 +44,14 @@ import {
 	readUi,
 	watch,
 	writeState,
+	writeUi,
 } from "./store";
 import { browserTabOf, changeSpaces, linkedTabs, spacesChanged, startSync } from "./sync";
 
 setFaviconSource(faviconUrl);
 startSync();
+// Fifteen seconds after the last pointer, key or wheel on the sidebar, its sky holds still (see restWhenIdle).
+restWhenIdle(15_000);
 
 type Editing = { mode: "create"; look: SpaceLook } | { mode: "edit"; spaceId: string; look: SpaceLook };
 
@@ -161,7 +164,6 @@ export class LokaPanel extends LitElement {
 		darkSystem.addEventListener("change", (e) => {
 			this.systemDark = e.matches;
 		});
-		document.addEventListener("visibilitychange", () => this.requestUpdate());
 		void browser.sidebarPinned().then((pinned) => {
 			this.pinned = pinned;
 		});
@@ -320,6 +322,11 @@ export class LokaPanel extends LitElement {
 			};
 		} else if (action === "new-folder") {
 			this.apply((s) => createFolder(s, space.id, null, "New folder")[0]);
+		} else if (action === "toggle-sound") {
+			this.ui = { ...this.ui, sound: !this.ui.sound };
+			void writeUi(this.ui);
+			setSoundPrefs({ on: this.ui.sound, volume: this.ui.soundVolume });
+			if (this.ui.sound) playCue("pin");
 		} else if (action === "toggle-sidebar") {
 			// Shown at once; the browser slides the sidebar away (or keeps it) and says so if it changes elsewhere.
 			this.pinned = !this.pinned;
@@ -405,7 +412,7 @@ export class LokaPanel extends LitElement {
 		return html`
 			<div
 				class="window theme-${scheme} ${this.pinned ? "" : "floating"}"
-				style="--hue: ${hue}; --loka-play: ${document.hidden ? "paused" : "running"}"
+				style="--hue: ${hue}"
 				@loka-action=${(e: CustomEvent<ActionId>) => this.run(e.detail)}
 				@loka-command=${(e: CustomEvent<BrowserCommand>) => browser.openCommandBar(e.detail)}
 				@loka-media=${(e: CustomEvent<MediaAction>) => this.onMedia(e.detail)}
@@ -423,6 +430,7 @@ export class LokaPanel extends LitElement {
 					.live=${this.live}
 					.browser=${browser}
 					.pinned=${this.pinned}
+					.soundOn=${this.ui.sound}
 					.demo=${false}
 					@loka-tab-mute=${(e: CustomEvent<string>) => this.toggleMute(e.detail)}
 					@loka-tab-reload=${(e: CustomEvent<string>) => this.reloadTab(e.detail)}
@@ -435,6 +443,7 @@ export class LokaPanel extends LitElement {
 								.browser=${browser}
 								.links=${linkedTabs()}
 								.pinned=${this.pinned}
+								.sound=${this.ui.sound}
 								.mode=${this.command.mode}
 								.initialQuery=${this.command.query}
 								@loka-pick=${(e: CustomEvent<CommandPick>) => this.runPick(e.detail)}

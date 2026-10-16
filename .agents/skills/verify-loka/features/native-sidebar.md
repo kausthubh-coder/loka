@@ -10,6 +10,10 @@ before any browser window. The UI is never delivered as an extension.
 
 - `native-first-run`: a fresh profile shows only setup ("Welcome to Loka"); "Use defaults" or Finish opens the normal
   window with the sidebar. `--no-first-run` skips setup.
+- `native-setup-frame`: on Windows the setup window has no title bar. The page fills it and draws Minimize and Close
+  in its top bar (`windowAction`), and the bar's empty space moves the window (`startWindowDrag`). Its top strip
+  answers WM_NCHITTEST as page, and its top edge still resizes. On macOS, and for setup opened in a tab, the page asks
+  `getWindowFrame`, gets "system" and draws none of these.
 - `native-tabs`: every tab in the window is a row; tabs opened from outside the sidebar join the current space.
 - `native-favicon`: a loaded tab's row shows its page's own icon (a data: URL from `getTabs`); an unloaded one asks
   the favicon cache (`chrome://favicon2`), which answers the default globe when it knows nothing.

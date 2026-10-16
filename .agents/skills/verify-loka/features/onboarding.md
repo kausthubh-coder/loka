@@ -34,10 +34,12 @@ Preconditions: `openLoka(name, { onboarding: true })` (the recipe runner does th
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs onboarding`.
 - **In the browser.** The real first run is Loka's setup (`chrome://setup`), not this tour.
   `bun run verify -- --ux onboarding` runs the recipe, verify:browser ("first run opens only Loka's setup", 'the only window is "Welcome to
-  Loka"', '"Use defaults" finishes setup', "no setup or helium:// page left") and verify:flows `first-run`: "setup's
+  Loka"', "setup draws its own Minimize and Close", "the setup window has no title bar", "setup's Minimize minimizes
+  the window", '"Use defaults" finishes setup', "no setup or helium:// page left") and verify:flows `first-run`: "setup's
   orbit shows the three spaces", "the sidebar has exactly setup's spaces", "with setup's colors and planets", "its
   tab is in a tab group named Research". Add `bun run verify:browser -- --no-first-run` to check setup stays away.
-  Not checked in the browser: setup's import step, reopening setup later, Skip.
+  Not checked in the browser: setup's import step, reopening setup later, Skip, dragging the setup window by its top
+  bar (it needs a real mouse press, which posted messages don't make) and its Close.
 
 ## Gotchas
 

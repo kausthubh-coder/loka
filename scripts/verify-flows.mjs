@@ -446,8 +446,8 @@ function driver(s) {
 				await s.call("Input.setInterceptDrags", { enabled: false });
 				throw new Error(`dragging ${show(from)} never started`);
 			}
-			// Starting a drag opens drop zones (the Essentials tray) that ease in and move the target: wait until it
-			// stays put, then aim.
+			// A drag can open drop zones (an end slot in Essentials, which only fades in) and move rows that are
+			// still settling: wait until the target stays put, then aim.
 			/** @type {Awaited<ReturnType<typeof box>>} */
 			let target = b;
 			for (let i = 0; i < 20; i++) {
@@ -1436,12 +1436,69 @@ async function pinning() {
 	);
 	await step("folder-out-and-back");
 
-	// Essentials: from the menu and by a drag; they show in every space.
-	await sb.click("QA Golf", { role: "[role=treeitem]", button: "right" });
-	await sb.click("Add to Essentials", { role: "[role=menuitem]" });
+	// Essentials: the first one by a real drag, then from the menu and by a drag; they show in every space.
+	// With none yet, starting a drag shows where Essentials go without moving a row: the row stays under the cursor.
+	const noneYet = (await sb.state()).essentials.length === 0;
+	/** The row's top, and the Essentials drop zone's size and opacity. */
+	const dragView = () =>
+		sb.run(
+			`(() => { const r = ${SIDEBAR_ROOT}; const row = window.__qa.find("QA Golf", "[role=treeitem]"); const zone = r.querySelector(".essentials .tray"); const z = zone?.getBoundingClientRect(); return { top: row?.getBoundingClientRect().top ?? null, zone: z ? { top: z.top, height: z.height, opacity: Number(getComputedStyle(zone).opacity) } : null }; })()`,
+		);
+	const grab = await until(
+		() =>
+			sb.run(
+				`(() => { const fav = window.__qa.find("QA Golf", "[role=treeitem]")?.querySelector(".fav"); if (!fav) return null; const r = fav.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`,
+			),
+		4000,
+	);
+	if (!grab) throw new Error("no QA Golf row to grab");
+	const origin = await sidebarOrigin(sb);
+	const post = (/** @type {string} */ kind, /** @type {number} */ x, /** @type {number} */ y) =>
+		windowInput(ctx.browser.pid, kind, x + origin.x, y + origin.y);
+	const pressed = await dragView();
+	post("down", grab.x, grab.y);
+	/** @type {Awaited<ReturnType<typeof dragView>>[]} */
+	const seen = [];
+	for (const dy of [8, 14, 20, 26]) {
+		post("hold", grab.x, grab.y - dy);
+		await sleep(60);
+		seen.push(await dragView());
+	}
+	await sleep(250);
+	const opened = await dragView();
+	seen.push(opened);
+	const moved = Math.max(...seen.map((v) => Math.abs((v.top ?? Number.NaN) - (pressed.top ?? 0))));
+	check(
+		"with no Essentials, starting a drag moves no row (real mouse)",
+		noneYet && moved < 0.5,
+		`${noneYet ? "no Essentials" : "Essentials weren't empty"}; Golf's top ${pressed.top} at the press, moved up to ${moved.toFixed(2)} px over ${seen.length} reads`,
+	);
+	check(
+		"and shows where Essentials go",
+		opened.zone && opened.zone.height >= 40 && opened.zone.opacity > 0.9,
+		show(opened.zone),
+	);
+	const zone = opened.zone ?? { top: 0, height: 0 };
+	post("hold", grab.x, zone.top + zone.height / 2 + 2);
+	post("hold", grab.x, zone.top + zone.height / 2);
+	await sleep(120);
+	post("up", grab.x, zone.top + zone.height / 2);
 	st = await until(async () => {
 		const now = await sb.state();
 		return now.essentials.some((id) => now.tabs[id]?.title === "QA Golf") ? now : null;
+	}, 5000);
+	const firstEssential = st ?? (await sb.state());
+	check(
+		"dropping there makes the first Essential",
+		st,
+		show(firstEssential.essentials.map((id) => firstEssential.tabs[id]?.title)),
+	);
+	await step("first-essential");
+	await sb.click("QA Foxtrot", { role: "[role=treeitem]", button: "right" });
+	await sb.click("Add to Essentials", { role: "[role=menuitem]" });
+	st = await until(async () => {
+		const now = await sb.state();
+		return now.essentials.some((id) => now.tabs[id]?.title === "QA Foxtrot") ? now : null;
 	}, 5000);
 	check("Add to Essentials adds it", st, show((st ?? (await sb.state())).essentials));
 	await sb.drag({ re: "^QA Hotel$" }, "QA Golf", 0.5, "[role=listitem]");

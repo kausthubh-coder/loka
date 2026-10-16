@@ -31,13 +31,15 @@ Preconditions: seed data.
 - **Remove.** Back in Build (`Control+1`), right-click `loka.essential("Inbox")`, then
   `Remove from Essentials`. `open[0]` is `Inbox`.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs essentials`.
-- **In the browser.** `bun run verify -- --ux essentials` runs it and verify:flows `pinning`: "Add to Essentials
-  adds it", "dragging a tab onto Essentials adds it", "Essentials stay when switching spaces"; `restart` keeps them.
-  Essentials sit outside every tab group. Not checked in the browser: remove, reorder, the tray and the hint.
+- **In the browser.** `bun run verify -- --ux essentials` runs it and verify:flows `pinning`: "with no Essentials,
+  starting a drag moves no row (real mouse)", "and shows where Essentials go", "dropping there makes the first
+  Essential", "Add to Essentials adds it", "dragging a tab onto Essentials adds it", "Essentials stay when
+  switching spaces"; `restart` keeps them. Essentials sit outside every tab group. Not checked in the browser: remove, reorder and the hint.
 
 ## Gotchas
 
 - With a full last row (4 or 8 tiles) there is no end slot. Drop on a tile's edge instead. The slot never adds a row.
-- With no Essentials the tray pushes the list down while it's open, so read positions after it has opened (~200 ms).
+- With no Essentials, a drag fades out the address field and fades in three slots (`.essentials .tray`) over it.
+  Nothing in the list moves; the first drop there makes the grid, and the rows slide down to make room.
 - `loka.drag` uses left and right edges for tiles, because the grid runs horizontally.
 - Folders can't become Essentials. A folder drop there is refused.

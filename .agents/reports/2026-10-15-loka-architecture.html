@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Loka should drive real Chromium tabs</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f7f7f5; --surface: #ecebe7; --raised: #ffffff;
+  --text: #1c1c1e; --text-2: #45454a; --text-3: #626268; --line: #d3d1cc;
+  --accent: #0a6560; --accent-soft: #dcefed;
+  --good: #1d6e36; --mixed: #855500; --bad: #a8261d;
+  --add-bg: #e3f3e6; --add-text: #17552a;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141517; --surface: #24252a; --raised: #1c1d21;
+    --text: #e8e8ea; --text-2: #c4c4c9; --text-3: #a3a3aa; --line: #3b3c42;
+    --accent: #66c8c0; --accent-soft: #1d3634;
+    --good: #74c98f; --mixed: #e2b656; --bad: #f2948a;
+    --add-bg: #1b3022; --add-text: #9fe0b0;
+  }
+}
+* { box-sizing: border-box; }
+html { background: var(--bg); color: var(--text); }
+body { margin: 0; font: 1.0625rem/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 52rem; margin: 0 auto; padding: 3rem 1.25rem 5rem; }
+p, li, dd { max-width: 62ch; text-wrap: pretty; }
+h1, h2, h3 { text-wrap: balance; line-height: 1.2; }
+h1 { font-size: 2.625rem; margin: 0 0 0.75rem; }
+h2 { font-size: 1.5rem; margin: 3.5rem 0 0.9rem; }
+h3 { font-size: 1.1875rem; margin: 2rem 0 0.6rem; }
+.lede { font-size: 1.1875rem; color: var(--text-2); margin: 0 0 1.75rem; max-width: 60ch; }
+code { font-family: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace; font-size: 0.9375em; }
+a { color: var(--accent); }
+::selection { background: var(--accent-soft); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.muted { color: var(--text-3); }
+figure { margin: 1.5rem 0 2rem; }
+figcaption { color: var(--text-2); font-size: 0.9375rem; margin-top: 0.6rem; max-width: 62ch; }
+.scroll { overflow-x: auto; }
+svg text { font-family: inherit; }
+.asks { margin: 0 0 0.5rem; padding-left: 1.4rem; }
+.asks li { margin-bottom: 0.45rem; }
+.asks strong { color: var(--accent); }
+table { border-collapse: collapse; width: 100%; font-size: 0.9375rem; }
+th, td { text-align: left; vertical-align: top; padding: 0.55rem 0.75rem 0.55rem 0; border-bottom: 1px solid var(--line); }
+th { font-weight: 600; color: var(--text-2); }
+td.num, th.num { font-variant-numeric: tabular-nums; text-align: end; }
+.bar { display: inline-block; height: 0.6rem; background: var(--text-3); border-radius: 2px; vertical-align: middle; }
+.bar.loka { background: var(--accent); }
+.st { font-weight: 600; white-space: nowrap; }
+.st.good { color: var(--good); } .st.mixed { color: var(--mixed); } .st.bad { color: var(--bad); }
+dl.terms { display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1.25rem; margin: 1rem 0; }
+dl.terms dt { font-weight: 600; }
+dl.terms dd { margin: 0; color: var(--text-2); }
+pre.diff { background: var(--raised); border: 1px solid var(--line); border-radius: 6px; padding: 0.9rem 1rem; overflow-x: auto; font-size: 0.9375rem; line-height: 1.5; margin: 0; }
+pre.diff .add { display: block; background: var(--add-bg); color: var(--add-text); }
+pre.diff .meta { color: var(--text-3); }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+.pair > * { min-width: 0; }
+.pair h3 { margin-top: 0.5rem; }
+ol.flow { padding-left: 1.3rem; margin: 0; }
+ol.flow li { margin-bottom: 0.5rem; }
+details { margin: 1rem 0; border-top: 1px solid var(--line); }
+details:last-of-type { border-bottom: 1px solid var(--line); }
+summary { padding-block: 0.75rem; cursor: pointer; font-weight: 600; min-height: 44px; }
+details > :not(summary) { margin-top: 0.25rem; }
+details[open] { padding-bottom: 1rem; }
+@media (max-width: 40rem) {
+  h1 { font-size: 1.875rem; }
+  .pair { grid-template-columns: 1fr; gap: 0.5rem; }
+  dl.terms { grid-template-columns: 1fr; gap: 0.15rem; }
+  dl.terms dd { margin-bottom: 0.6rem; }
+}
+@media print {
+  :root { color-scheme: light; --bg: #fff; --surface: #ecebe7; --raised: #fff; --text: #1c1c1e; --text-2: #45454a; --text-3: #626268; --line: #d3d1cc; --accent: #0a6560; --good: #1d6e36; --mixed: #855500; --bad: #a8261d; --add-bg: #e3f3e6; --add-text: #17552a; }
+  figure, table, pre { break-inside: avoid; }
+  h2, h3 { break-after: avoid; }
+}
+</style>
+</head>
+<body>
+<main data-type="teach">
+
+<h1>Loka should drive real Chromium tabs</h1>
+<p class="lede">Every page stays a normal Chromium tab, and a C++ model decides which space it belongs to. Loka has the Helium base and the model's rules; the browser half hasn't started.</p>
+
+<figure>
+<div class="scroll">
+<svg viewBox="0 0 790 320" role="img" aria-labelledby="fig-arch-t" style="width:100%;height:auto;min-width:600px">
+  <title id="fig-arch-t">The sidebar talks to a per-window controller over Mojo. The controller reads a per-profile spaces service and drives Chromium's tab strip.</title>
+  <defs>
+    <marker id="arch-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="var(--text-3)"/></marker>
+  </defs>
+  <rect x="220" y="10" width="560" height="300" rx="10" fill="none" stroke="var(--line)" stroke-dasharray="5 4"/>
+  <text x="238" y="34" font-size="13" fill="var(--text-3)">Browser process (C++)</text>
+
+  <g font-size="13" text-anchor="middle" fill="var(--text)">
+    <rect x="10" y="180" width="170" height="86" rx="7" fill="var(--accent-soft)" stroke="var(--accent)"/>
+    <text x="95" y="208" font-weight="600">Sidebar</text>
+    <text x="95" y="228" fill="var(--text-2)">WebUI page</text>
+    <text x="95" y="246" fill="var(--text-2)">Lit + TypeScript</text>
+
+    <rect x="240" y="50" width="220" height="86" rx="7" fill="var(--accent-soft)" stroke="var(--accent)"/>
+    <text x="350" y="76" font-weight="600">Spaces service</text>
+    <text x="350" y="96" fill="var(--text-2)">one per profile</text>
+    <text x="350" y="114" fill="var(--text-2)">spaces, essentials, pinned tree</text>
+
+    <rect x="240" y="180" width="220" height="86" rx="7" fill="var(--accent-soft)" stroke="var(--accent)"/>
+    <text x="350" y="206" font-weight="600">Window controller</text>
+    <text x="350" y="226" fill="var(--text-2)">one per window</text>
+    <text x="350" y="244" fill="var(--text-2)">active space, entry to live tab</text>
+
+    <rect x="540" y="50" width="220" height="86" rx="7" fill="var(--surface)" stroke="var(--line)"/>
+    <text x="650" y="76" font-weight="600">Saved state</text>
+    <text x="650" y="96" fill="var(--text-2)">Loka file in the profile</text>
+    <text x="650" y="114" fill="var(--text-2)">+ Loka ID in session data</text>
+
+    <rect x="540" y="180" width="220" height="86" rx="7" fill="var(--surface)" stroke="var(--line)"/>
+    <text x="650" y="206" font-weight="600">TabStripModel</text>
+    <text x="650" y="226" fill="var(--text-2)">Chromium's real tabs</text>
+    <text x="650" y="244" fill="var(--text-2)">every space, one list</text>
+  </g>
+
+  <g stroke="var(--text-3)" stroke-width="1.5" fill="none">
+    <line x1="182" y1="223" x2="236" y2="223" marker-start="url(#arch-arrow)" marker-end="url(#arch-arrow)"/>
+    <line x1="350" y1="178" x2="350" y2="140" marker-start="url(#arch-arrow)" marker-end="url(#arch-arrow)"/>
+    <line x1="462" y1="93" x2="536" y2="93" marker-end="url(#arch-arrow)"/>
+    <line x1="462" y1="205" x2="536" y2="205" marker-end="url(#arch-arrow)"/>
+    <line x1="538" y1="245" x2="464" y2="245" marker-end="url(#arch-arrow)"/>
+  </g>
+  <g font-size="13" fill="var(--text-3)">
+    <text x="200" y="214" text-anchor="middle">Mojo</text>
+    <text x="360" y="164">reads, changes</text>
+    <text x="499" y="85" text-anchor="middle">saves</text>
+    <text x="499" y="197" text-anchor="middle">commands</text>
+    <text x="499" y="261" text-anchor="middle">tab events</text>
+    <text x="238" y="294">Hooks into Chromium: hide tab strip, dock sidebar, shortcuts, colour, session data</text>
+  </g>
+</svg>
+</div>
+<figcaption>Teal parts are Loka's new code. Grey parts are Chromium's own, used as they are. Only the bottom line needs edits to Chromium files.</figcaption>
+</figure>
+
+<p><strong>Three choices for you</strong>. Answer by number.</p>
+<ol class="asks">
+  <li><strong>Windows.</strong> Does each window show its own space (like Zen), or can two windows show the same space (like Arc)?</li>
+  <li><strong>Unloaded pinned tabs.</strong> Should they be Loka entries that extensions can't see? Or discarded Chromium tabs that keep their ID and back history but cost a slot in the tab strip?</li>
+  <li><strong>Order of work.</strong> Should we fix the two model bugs and add live-tab state in TypeScript before the first browser patch? I'd say yes.</li>
+</ol>
+
+<h2>A browser is many processes</h2>
+<p>Chromium runs one browser process, which owns windows, tabs and profiles. Each site's pages run in their own sandboxed renderer process.</p>
+<p>The browser's own UI is C++, drawn with a toolkit called Views. Some UI is WebUI instead: a <code>chrome://</code> page that runs in a renderer and asks the browser process for things.</p>
+<dl class="terms">
+  <dt>Profile</dt><dd>One user's data: history, cookies, extensions. Per-profile C++ services are called KeyedServices.</dd>
+  <dt>Window</dt><dd>A <code>Browser</code> object, with <code>BrowserView</code> laying out its UI.</dd>
+  <dt>TabStripModel</dt><dd>A window's ordered list of tabs. Extensions, session restore and Ctrl+Tab all read it.</dd>
+  <dt>WebContents</dt><dd>One live page. A tab holds one while it's loaded.</dd>
+  <dt>WebUI</dt><dd>A trusted <code>chrome://</code> page used as browser UI. Chrome builds tab search and its side panel pages this way.</dd>
+  <dt>Mojo</dt><dd>Chromium's typed messages between processes. This is how a WebUI page calls C++.</dd>
+</dl>
+
+<h2>Patches are diffs replayed in order</h2>
+<p>Helium doesn't keep a copy of Chromium. Its build downloads Chromium's source, applies a list of patches in order (the <code>series</code> file), then compiles.</p>
+<figure>
+<div class="scroll">
+<table>
+  <caption class="muted" style="text-align:left;caption-side:bottom;padding-top:0.5rem">Layers are applied top to bottom. Counts are from this checkout on 15 Oct 2026.</caption>
+  <thead><tr><th scope="col">Layer</th><th scope="col">Where it lives</th><th scope="col" class="num">Patches</th><th scope="col"><span class="muted">size</span></th></tr></thead>
+  <tbody>
+    <tr><td>Chromium 155.0.8059.39</td><td>downloaded from Google</td><td class="num">base</td><td></td></tr>
+    <tr><td>Helium core (incl. ungoogled-chromium)</td><td><code>helium-chromium/patches</code></td><td class="num">346</td><td><span class="bar" style="width:173px"></span></td></tr>
+    <tr><td>Helium Windows</td><td><code>patches/series</code></td><td class="num">36</td><td><span class="bar" style="width:18px"></span></td></tr>
+    <tr><td>Loka</td><td><code>patches/loka/</code></td><td class="num">0</td><td><span class="bar loka" style="width:2px"></span></td></tr>
+  </tbody>
+</table>
+</div>
+<figcaption>Helium's 346 core patches: 257 its own, 70 from ungoogled-chromium, 19 from Brave, Bromite and others.</figcaption>
+</figure>
+<p>A patch says: in this file, next to these lines, remove these and add those. If Chromium has rewritten those lines, the patch fails and someone fixes it by hand.</p>
+<p>Chromium ships a new stable version about every 4 weeks. So every line a patch touches becomes a chore to redo each month.</p>
+
+<details class="check">
+<summary>Check yourself: which patch survives a Chromium update?</summary>
+<p>Chromium moves 40 lines around inside <code>browser_view.cc</code>. Will a 2-line hook still apply? Will a 400-line patch to the same file?</p>
+<p>The hook almost always applies. The patch tool finds the 3 unchanged lines around it at a new offset. The big patch has dozens of places that each need their surrounding lines unchanged, so one of them usually breaks. A brand new file never conflicts, because Chromium never touches it.</p>
+</details>
+
+<h2>Small hooks keep merges cheap</h2>
+<p>So put the feature in new files, and have the patch to Chromium's file add only the call. Helium works this way: its <code>components/helium_services/</code> folder arrives as new files inside its patches.</p>
+<div class="pair">
+<figure style="margin:0">
+<pre class="diff"><span class="meta">--- a/chrome/browser/ui/views/frame/browser_view.cc
++++ b/chrome/browser/ui/views/frame/browser_view.cc
+@@ void BrowserView::InitViews() {</span>
+   contents_container_ = ...;
+<span class="add">+  // Loka: dock the sidebar on the left.
++  loka::AttachSidebar(this);</span>
+   ...</pre>
+<figcaption>The hook: 2 lines in a Chromium file. Made-up example; the real call site isn't chosen yet.</figcaption>
+</figure>
+<figure style="margin:0">
+<pre class="diff"><span class="meta">--- /dev/null
++++ b/chrome/browser/loka/sidebar.cc</span>
+<span class="add">+// All the real work lives here:
++// layout, WebUI host, Mojo, model.
++void AttachSidebar(BrowserView* view) {
++  ...
++}</span></pre>
+<figcaption>The feature: new files Chromium never edits, so they never conflict.</figcaption>
+</figure>
+</div>
+
+<h3>Five rules that keep a fork alive</h3>
+<div class="scroll">
+<table>
+  <thead><tr><th scope="col">Rule</th><th scope="col">Why</th><th scope="col">In Loka</th></tr></thead>
+  <tbody>
+    <tr><td>Pages stay real Chromium tabs</td><td>Extensions, session restore, task manager and Ctrl+Tab keep working</td><td>Every open page sits in the <code>TabStripModel</code></td></tr>
+    <tr><td>One owner per fact</td><td>Two copies of the same fact drift apart</td><td>The model owns where a tab sits; Chromium owns the live page</td></tr>
+    <tr><td>Small hooks, code in new files</td><td>Merge cost every 4 weeks</td><td><code>chrome/browser/loka/</code>, a few lines patched elsewhere</td></tr>
+    <tr><td>Rules in plain, tested code</td><td>The C++ port copies a spec that's already proven</td><td><code>sidebar.logic.ts</code> and its tests</td></tr>
+    <tr><td>Never match tabs by URL</td><td>Duplicates and redirects make URLs ambiguous</td><td>A Loka ID stored with each tab in session data</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Two flows through the pieces</h2>
+<p>The diagram at the top, in motion. The second flow is the one the prototype can't do yet.</p>
+<div class="pair">
+<div>
+<h3>You click an unloaded pinned tab</h3>
+<ol class="flow">
+  <li>The sidebar sends “activate entry 42” over Mojo.</li>
+  <li>The window controller checks entry 42 is in the active space.</li>
+  <li>The entry has no live tab, so the controller opens one in the <code>TabStripModel</code>, at the index its ordering rule gives.</li>
+  <li>It links entry 42 to the new tab and activates it.</li>
+  <li>The page loads in its own renderer. The sidebar marks the row as live.</li>
+</ol>
+</div>
+<div>
+<h3>A link opens a new tab</h3>
+<ol class="flow">
+  <li>A page calls <code>window.open</code>, or an extension calls <code>chrome.tabs.create</code>.</li>
+  <li>Chromium adds a tab to the <code>TabStripModel</code> without asking Loka.</li>
+  <li>The controller sees “tab inserted” and adopts it: into the space of the tab that opened it, else the active space's open list.</li>
+  <li>The service saves the change and the sidebar shows a new row.</li>
+  <li>After a restart, session restore brings the tab back with its Loka ID, in the same place.</li>
+</ol>
+</div>
+</div>
+
+<h2>Loka has the base and spec</h2>
+<p>Here is what exists in the repo today next to the architecture above. I checked each row in the files.</p>
+<div class="scroll">
+<table>
+  <thead><tr><th scope="col">Piece</th><th scope="col">Best architecture</th><th scope="col">Loka today</th><th scope="col">Status</th></tr></thead>
+  <tbody>
+    <tr><td>Base</td><td>Helium plus a patch series</td><td>Helium's build; <code>patches/loka/</code> goes at the end of the series</td><td><span class="st good">Done</span></td></tr>
+    <tr><td>Dev builds</td><td>Component build, fast rebuilds</td><td><code>build.py --dev</code>, then <code>autoninja</code>, 6 jobs</td><td><span class="st good">Done</span></td></tr>
+    <tr><td>Updater</td><td>Reuse Helium's</td><td>Helium's WinSparkle patches are already in the series</td><td><span class="st mixed">Needs Loka feed</span></td></tr>
+    <tr><td>Space rules</td><td>Tested rules, ported to C++</td><td><code>sidebar.logic.ts</code>, pure functions, tested</td><td><span class="st mixed">2 bugs</span></td></tr>
+    <tr><td>Sidebar UI</td><td>WebUI page over Mojo</td><td><code>&lt;loka-sidebar&gt;</code> in Lit, run by Vite</td><td><span class="st mixed">Ready to move</span></td></tr>
+    <tr><td>Colour, Ctrl+K</td><td>Colour hook; WebUI popup</td><td><code>hue</code> per space; <code>command-bar/</code> prototype</td><td><span class="st mixed">Prototype</span></td></tr>
+    <tr><td>Saving</td><td>Profile file + Loka ID per tab</td><td><code>localStorage</code></td><td><span class="st mixed">Prototype</span></td></tr>
+    <tr><td>Release CI</td><td>Fast Windows runners</td><td>Free <code>windows-2025</code> runners, 15 to 44&nbsp;h per build</td><td><span class="st mixed">Slow</span></td></tr>
+    <tr><td>Hook rule</td><td>Written down, enforced in review</td><td>Not in <code>AGENTS.md</code> or <code>browser-build.md</code></td><td><span class="st bad">Missing</span></td></tr>
+    <tr><td>Live tabs</td><td>Entry-to-tab map, loaded state</td><td><code>Tab</code> is <code>{id, title, url}</code></td><td><span class="st bad">Missing</span></td></tr>
+    <tr><td>Outside tabs</td><td>Controller adopts them</td><td>No entry point</td><td><span class="st bad">Missing</span></td></tr>
+    <tr><td>Windows</td><td>Service per profile, controller per window</td><td>One global <code>activeSpaceId</code></td><td><span class="st bad">Missing</span></td></tr>
+    <tr><td>Signing</td><td>Before real users</td><td>Optional; builds unsigned</td><td><span class="st bad">Missing</span></td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>The two model bugs</h3>
+<ul>
+  <li><code>activateTab()</code> only checks that the tab exists. A tab from another space can become the active tab of the current one.</li>
+  <li><code>moveItem()</code> never updates <code>activeTabId</code>. Drag the active tab to another space, and the old space still points at it.</li>
+</ul>
+
+<h2>Astra's review changed four things</h2>
+<p>GPT-6-Astra read the repo and my first proposal, and agreed with the direction. It corrected these four points, and I agree with all of them.</p>
+<ol>
+  <li><strong>Tab order matters.</strong> Extensions read and change <code>tabs.index</code>, and Ctrl+Tab follows it. Loka needs a fixed rule for flattening the sidebar tree into that order.</li>
+  <li><strong>An unloaded entry isn't a Chromium tab.</strong> That's why choice 2 above exists.</li>
+  <li><strong>Match by ID, never by URL.</strong> Store a Loka ID in Chromium's session data. Plan for Loka's file and Chromium's session log disagreeing after a crash.</li>
+  <li><strong>“Only hooks” is a goal.</strong> Tab activation, closing, restore and drag and drop will need real edits inside Chromium. Keep those edits few and small.</li>
+</ol>
+<p>Astra also suggested two things to check first: Chromium's own vertical tabs code, and the startup and memory cost of a preloaded WebUI sidebar.</p>
+
+<h2>Build it in this order</h2>
+<ol>
+  <li><strong>Helium builds unchanged</strong>, locally and in CI. The scripts exist; I didn't check whether a build has run.</li>
+  <li><strong>Fix the TypeScript model</strong>: the two bugs, live and unloaded state, an <code>adoptTab</code> entry point, and the window decision. These are cheap to test here.</li>
+  <li><strong>First patch</strong>: hide the tab strip and dock an empty WebUI sidebar. Measure startup and memory.</li>
+  <li><strong>C++ service, window controller and Mojo</strong>. The sidebar lists real tabs.</li>
+  <li><strong>Saving with Loka IDs</strong>. Test restart, crash, outside tabs and two windows together.</li>
+  <li><strong>Spaces, lazy pinned tabs, essentials</strong>, then colour, Ctrl+K, drag and drop, Loka's update feed and signing.</li>
+</ol>
+
+<details>
+<summary>Check yourself: 2 questions on the design</summary>
+<p><strong>An extension calls <code>chrome.tabs.query({})</code>. Does it see tabs from hidden spaces?</strong> Yes. Every live tab is in the one <code>TabStripModel</code>, whatever its space. Unloaded pinned entries show up only if choice 2 makes them discarded tabs.</p>
+<p><strong>You open the same URL twice in one space, then restart. How does Loka tell the two tabs apart?</strong> By the Loka ID stored with each tab in session data. Matching by URL would mix them up.</p>
+</details>
+
+<details>
+<summary>What I checked and what I didn't (8 claims)</summary>
+<div class="scroll">
+<table>
+  <thead><tr><th scope="col">Claim</th><th scope="col">How</th><th scope="col">Result</th></tr></thead>
+  <tbody>
+    <tr><td>Chromium 155.0.8059.39 is the base</td><td>Read <code>helium-chromium/chromium_version.txt</code></td><td><span class="st good">Checked</span></td></tr>
+    <tr><td>Patch counts (346, 36, 0)</td><td>Counted lines in both <code>series</code> files</td><td><span class="st good">Checked</span></td></tr>
+    <tr><td>Helium's updater is WinSparkle</td><td>Searched <code>patches/helium/windows/updater/</code></td><td><span class="st good">Checked</span></td></tr>
+    <tr><td>The two model bugs</td><td>Read <code>activateTab</code> and <code>moveItem</code> in <code>sidebar.logic.ts</code></td><td><span class="st good">Checked</span></td></tr>
+    <tr><td>Helium adds its own source folders</td><td>Saw <code>components/helium_services/</code> in its patches</td><td><span class="st good">Checked</span></td></tr>
+    <tr><td>CI takes 15 to 44&nbsp;h</td><td>From <code>docs/browser-build.md</code>; no run timed</td><td><span class="st mixed">Taken from docs</span></td></tr>
+    <tr><td><code>SessionService::AddTabExtraData</code> exists in 155</td><td>Astra cited current Chromium; Helium's tree not searched</td><td><span class="st bad">Not checked</span></td></tr>
+    <tr><td>Chromium has vertical tabs code to reuse</td><td>Astra's claim; Chromium source not read</td><td><span class="st bad">Not checked</span></td></tr>
+  </tbody>
+</table>
+</div>
+</details>
+
+</main>
+<script>
+addEventListener("beforeprint", () => document.querySelectorAll("details").forEach((d) => {
+  d.dataset.wasOpen = d.open; d.open = true;
+}));
+addEventListener("afterprint", () => document.querySelectorAll("details").forEach((d) => (d.open = d.dataset.wasOpen === "true")));
+</script>
+</body>
+</html>

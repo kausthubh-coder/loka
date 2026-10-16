@@ -1624,18 +1624,19 @@ async function main() {
 		["8-settings", settings],
 		["9-restart", restart],
 	];
-	// --only <flow> runs that flow after the ones it builds on (first run always; restart needs them all).
+	// --only <flow>[,<flow>] runs those flows after the ones they build on (first run always; restart needs them all).
 	const onlyAt = process.argv.indexOf("--only");
-	const only = onlyAt > 0 ? (process.argv[onlyAt + 1] ?? "") : "";
-	const wanted = all.map(([n]) => n).find((n) => n === only || n.slice(2) === only);
-	if (onlyAt > 0 && !wanted) {
-		console.error(`--only takes one of: ${all.map(([n]) => n.slice(2)).join(", ")}`);
+	const asked = onlyAt > 0 ? (process.argv[onlyAt + 1] ?? "").split(",") : [];
+	const names = all.map(([n]) => n);
+	const wanted = asked.map((a) => names.find((n) => n === a || n.slice(2) === a));
+	if (wanted.some((w) => !w) || (onlyAt > 0 && !wanted.length)) {
+		console.error(`--only takes one or more of: ${names.map((n) => n.slice(2)).join(", ")}`);
 		process.exit(1);
 	}
 	const keep =
-		!wanted || wanted === "9-restart"
-			? all.map(([n]) => n)
-			: ["1-first-run", ...(NEEDS[/** @type {keyof typeof NEEDS} */ (wanted)] ?? []), wanted];
+		!wanted.length || wanted.includes("9-restart")
+			? names
+			: ["1-first-run", ...wanted.flatMap((w) => [...(NEEDS[/** @type {keyof typeof NEEDS} */ (w)] ?? []), String(w)])];
 	const flows = all.filter(([n]) => keep.includes(n));
 	if (!existsSync(chrome)) {
 		console.error(`No browser at ${chrome}. Build it (bun run browser:build) or set LOKA_CHROME.`);

@@ -35,23 +35,27 @@ export class LokaMediaCard extends LitElement {
 		const { media, tab, muted } = this.playing;
 		const url = tab?.url ?? "";
 		const title = media.title || tab?.title || "Playing";
-		const artist = media.artist || hostOf(url);
+		const host = hostOf(url);
+		const artist = media.artist || host;
 		const where = tab?.title ?? title;
+		// The buttons don't take focus from a click (their pressed state says enough); the keyboard still reaches them.
+		const keepFocus = (e: PointerEvent) => e.preventDefault();
 		return html`
 			<section aria-label="Now playing: ${title}">
-				<button class="art" title="Go to ${where}" @click=${() => this.send("go")}>
+				<button class="art ${media.artwork ? "" : "tile"}" title="Go to ${where}" @pointerdown=${keepFocus} @click=${() => this.send("go")}>
 					${
 						media.artwork
 							? html`<img src=${media.artwork} alt="" draggable="false" />`
-							: html`<span class="fav" style="--fav: ${faviconBackground(url, this.live)}">${faviconInner(url, this.live)}</span>`
+							: // No artwork: the site's icon at icon size on a soft tile in its space's color, never stretched.
+								html`<span class="fav" style="--fav: ${faviconBackground(url, this.live)}">${faviconInner(url, this.live)}</span>`
 					}
 					${media.playing ? html`<span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>` : nothing}
 				</button>
-				<button class="info" title="Go to ${where}" @click=${() => this.send("go")}>
+				<button class="info" title="Go to ${where}" @pointerdown=${keepFocus} @click=${() => this.send("go")}>
 					<span class="title">${title}</span>
 					<small>${artist}</small>
 				</button>
-				<div class="controls">
+				<div class="controls" role="group" aria-label="Playback" @pointerdown=${keepFocus}>
 					<button aria-label="Previous track" title="Previous" @click=${() => this.send("previous")}>
 						<svg viewBox="0 0 16 16"><path d="M4 3.5v9M12 3.5 6.5 8l5.5 4.5z" /></svg>
 					</button>
@@ -143,6 +147,9 @@ export class LokaMediaCard extends LitElement {
 			height: 100%;
 			object-fit: cover;
 		}
+		.art.tile {
+			background: color-mix(in srgb, var(--loka-accent) 18%, var(--loka-fill));
+		}
 		/* The faint inner edge frames artwork on any background. */
 		.art::after {
 			content: "";
@@ -155,12 +162,14 @@ export class LokaMediaCard extends LitElement {
 		.fav {
 			display: grid;
 			place-items: center;
-			width: 100%;
-			height: 100%;
+			width: 22px;
+			height: 22px;
+			border-radius: 5px;
+			overflow: hidden;
 			background: var(--fav);
 			color: #0b0c10;
 			font-weight: 700;
-			font-size: 16px;
+			font-size: 13px;
 		}
 		.eq {
 			position: absolute;
@@ -193,29 +202,39 @@ export class LokaMediaCard extends LitElement {
 			min-width: 0;
 			text-align: left;
 		}
-		.title,
+		/* Two lines for a long title, then the artist or site, small and quiet. */
+		.title {
+			display: -webkit-box;
+			-webkit-box-orient: vertical;
+			-webkit-line-clamp: 2;
+			overflow: hidden;
+			font-weight: 550;
+			line-height: 1.3;
+			overflow-wrap: anywhere;
+		}
 		small {
 			overflow: hidden;
 			white-space: nowrap;
 			text-overflow: ellipsis;
+			color: var(--loka-ink-3);
+			font-size: 11.5px;
+			margin-top: 1px;
 		}
-		.title {
-			font-weight: 550;
-		}
-		small {
-			color: var(--loka-ink-2);
-			font-size: 12px;
-		}
+		/* The four controls as one group on a faint pill. */
 		.controls {
 			display: flex;
 			flex: none;
+			gap: 1px;
+			padding: 2px;
+			border-radius: 10px;
+			background: var(--loka-fill);
 		}
 		.controls button {
 			display: grid;
 			place-items: center;
 			width: 28px;
-			height: 32px;
-			border-radius: 7px;
+			height: 28px;
+			border-radius: 8px;
 			color: var(--loka-ink-2);
 		}
 		.controls button:hover {
@@ -273,7 +292,8 @@ export class LokaMediaCard extends LitElement {
 				}
 			}
 			.eq i {
-				animation: bounce 900ms ease-in-out infinite alternate;
+				/* A few steps, not every frame: an equaliser reads the same, and the compositor rests between. */
+				animation: bounce 900ms steps(4) infinite alternate;
 				animation-play-state: var(--loka-play, running);
 			}
 			.eq i:nth-child(2) {

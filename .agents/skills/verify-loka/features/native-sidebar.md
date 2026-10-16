@@ -62,6 +62,9 @@ build:status` says which, and why.
 - **Your webui changes, no browser build.** `bun run verify:flows -- --webui=checkout` runs the same flows with this
   checkout's `webui/src` in the sidebar (after each launch, the restart's too), the command bar, Settings and History,
   through `useCheckoutWebui`. Setup stays the build's. A failure here can be your webui or the build's handler.
+- **Performance.** `bun run verify:perf` (`-- --webui=checkout` for this checkout's pages, `--runs N`, `--trace`,
+  `--blame` to pause each animation in turn) checks idle CPU, a 150-row scroll, space switches and the command bar
+  against the budgets atop `scripts/verify-perf.mjs`. Read its machine-load line first: another Chromium skews it.
 - **Your own drive.** Start chrome.exe with `--user-data-dir` under `C:\src\loka\profile-verify`,
   `--remote-debugging-port=<free port>` and `--disable-features=CalculateNativeWinOcclusion`. The sidebar target
   (type `browser_ui`) appears in `/json/list` once the window has a normal tab; connect to its

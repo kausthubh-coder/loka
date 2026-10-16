@@ -26,7 +26,7 @@ export function isSearch(url: string): boolean {
  * Where an address picked in the bar opens: a new tab (Ctrl+T, Ctrl+K, New tab) or the tab on screen (Ctrl+L, the
  * address field). The same names as the browser's own commands.
  */
-export type CommandMode = BrowserCommand;
+export type CommandMode = Extract<BrowserCommand, "new-tab" | "focus-location">;
 
 export type ActionId =
 	| "new-space"

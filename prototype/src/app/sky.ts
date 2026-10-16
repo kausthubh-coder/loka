@@ -60,9 +60,9 @@ function track(el: Element | undefined) {
 export function skyLayer(hue: number, scheme: Scheme): TemplateResult {
 	return html`<div class="sky ${scheme}" aria-hidden="true" style="--hue: ${hue}" ${ref(track)}>
 		<div class="nebula"></div>
-		<div class="stars far" style="background-image: ${FAR}"></div>
-		<div class="stars mid" style="background-image: ${MID}"></div>
-		<div class="stars near" style="background-image: ${NEAR}"></div>
+		<div class="sweep far"><div class="stars far" style="background-image: ${FAR}"></div></div>
+		<div class="sweep mid"><div class="stars mid" style="background-image: ${MID}"></div></div>
+		<div class="sweep near"><div class="stars near" style="background-image: ${NEAR}"></div></div>
 		<i class="meteor one"></i>
 		<i class="meteor two"></i>
 	</div>`;
@@ -71,8 +71,8 @@ export function skyLayer(hue: number, scheme: Scheme): TemplateResult {
 /**
  * Switching spaces: the old space's sky (ground and nebula, held where it was) fades away over the new one, and the
  * view turns, the star layers sweeping sideways and settling, the near ones further than the far ones, towards the
- * side the new space came from. The sweep uses `translate`, separate from the drift's `transform`. With reduced
- * motion only the fade happens.
+ * side the new space came from. The sweep moves a wrapper around each layer: on the layer itself, beside its drift,
+ * Chrome would run both on the main thread. With reduced motion only the fade happens.
  */
 export function skyTurn(root: ParentNode, forward: boolean, fromHue: number, fromScheme: Scheme) {
 	const sky = root.querySelector<HTMLElement>(".sky");
@@ -103,7 +103,7 @@ export function skyTurn(root: ParentNode, forward: boolean, fromHue: number, fro
 	for (const [name, distance] of layers) {
 		const x = forward ? -distance : distance;
 		root
-			.querySelector(`.sky .${name}`)
+			.querySelector(`.sky .sweep.${name}`)
 			?.animate([{ translate: "0 0" }, { translate: `${x}px 0`, offset: 0.35 }, { translate: "0 0" }], {
 				duration: 1100,
 				easing: "cubic-bezier(0.2, 0, 0, 1)",
@@ -184,6 +184,10 @@ export const skyStyles = css`
 		.sky.light::after {
 			background: linear-gradient(118deg, transparent 38%, hsl(0 0% 100% / 0.22) 50%, transparent 62%);
 		}
+		.sweep {
+			position: absolute;
+			inset: 0;
+		}
 		.stars {
 			position: absolute;
 			top: 0;
@@ -224,14 +228,17 @@ export const skyStyles = css`
 		}
 		@media (prefers-reduced-motion: no-preference) {
 			/* Each layer slides left by exactly one tile, so the loop has no seam. */
+			/* They move a pixel at a time (steps), not every frame: at two pixels a second a smooth slide looks the
+			   same, and each step is the only frame the compositor has to draw, where a smooth one draws sixty a
+			   second for ever. */
 			.stars.far {
-				animation: drift-far 260s linear infinite;
+				animation: drift-far 260s steps(480) infinite;
 			}
 			.stars.mid {
-				animation: drift-mid 210s linear infinite;
+				animation: drift-mid 210s steps(640) infinite;
 			}
 			.stars.near {
-				animation: drift-near 150s linear infinite;
+				animation: drift-near 150s steps(820) infinite;
 			}
 			@keyframes drift-far {
 				to {
@@ -249,7 +256,8 @@ export const skyStyles = css`
 				}
 			}
 			.nebula {
-				animation: breathe 40s ease-in-out infinite alternate;
+				/* In steps too, two a second: the change between two is far too small to see. */
+				animation: breathe 40s steps(80) infinite alternate;
 			}
 			@keyframes breathe {
 				to {

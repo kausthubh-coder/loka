@@ -43,7 +43,8 @@ export function planet(kind: PlanetKind, hue: number, size: number, horizon = fa
 
 	if (horizon) {
 		// Three layers so the planet can turn without repainting: the lit body (and the ring behind it), its surface
-		// on a strip twice as wide that slides sideways under a round clip (`.turn`, a transform the compositor runs),
+		// on a strip twice as wide that slides sideways under a round clip (`.turn`, a transform the compositor runs: on
+		// an HTML box, since Chrome runs an SVG element's transform animation on the main thread, every frame),
 		// and the shading and rim on top, which stay put like the light does.
 		const box = `position: absolute; inset: 0; width: 100%; height: 100%; stroke: none; fill: none`;
 		return html`<span class="planet-h" style="position: relative; display: block; width: ${size}px; height: ${size}px" aria-hidden="true">
@@ -52,9 +53,11 @@ export function planet(kind: PlanetKind, hue: number, size: number, horizon = fa
 				<circle cx="50" cy="50" r="46" fill="url(#${id}-lit)" />
 			</svg>
 			<span style="position: absolute; left: 4%; top: 4%; width: 92%; height: 92%; border-radius: 50%; overflow: hidden">
-				<svg class="turn" style="display: block; width: 200%; height: 100%; stroke: none" viewBox="4 4 184 92">
-					<g transform="translate(0 4) scale(1 0.2) translate(0 -4)">${horizonSurface(kind, hue)}</g>
-				</svg>
+				<span class="turn" style="display: block; width: 200%; height: 100%">
+					<svg style="display: block; width: 100%; height: 100%; stroke: none" viewBox="4 4 184 92">
+						<g transform="translate(0 4) scale(1 0.2) translate(0 -4)">${horizonSurface(kind, hue)}</g>
+					</svg>
+				</span>
 			</span>
 			<svg style=${box} viewBox="0 0 100 100">
 				<defs>

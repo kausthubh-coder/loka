@@ -17,6 +17,7 @@ import "../search/loka-sidebar-search";
 import { keys, PLATFORM } from "../../app/platform";
 import { playCue } from "../sound/sound";
 import type { Cue } from "../sound/sound.logic";
+import { autoScrollStep, type DropMode, dropModeAt } from "./drag.logic";
 import { essentialsDropSlots } from "./empty-states.logic";
 import { planet } from "./planet";
 import {
@@ -45,7 +46,19 @@ import {
 } from "./sidebar.logic";
 import { SWIPE_GAP, SWIPE_IDLE, type SwipeState, swipeWheel } from "./swipe.logic";
 
-type DropMode = "before" | "after" | "into";
+/**
+ * What a drop target takes: its key (for the drop line), where an item lands for each mode, what its middle does
+ * (`into`), which way it's laid out, or a space to switch to while hovering it.
+ */
+interface DropZone {
+	key: string;
+	place?: (mode: DropMode) => Place | null;
+	into?: "folder" | "tab" | null;
+	axis?: "x" | "y";
+	switchTo?: string;
+}
+/** A drop target element: the zone is set on it as a property by the template (`.dropZone=${...}`). */
+type ZoneElement = HTMLElement & { dropZone?: DropZone };
 interface Drop {
 	key: string;
 	mode: DropMode;
@@ -204,49 +217,184 @@ export class LokaSidebar extends LitElement {
 	}
 
 	// ---- drag and drop -------------------------------------------------------
+	//
+	// Dragging is pointer events, not HTML5 drag and drop: inside the browser's own window an HTML5 drag is an OS
+	// drag, which is cancelled by any layout change as it starts and can't be driven or checked without moving the
+	// real mouse. A press on a row that moves 5 px starts a drag: a copy of the row follows the pointer, the
+	// zone under it shows where it would land, the list scrolls near its edges, Escape cancels, and letting go drops.
 
-	private startDrag(e: DragEvent, id: string) {
-		this.dragId = id;
-		e.dataTransfer?.setData("text/plain", id);
-		if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+	/** The press that may become a drag, until it moves far enough or lets go. */
+	private press: { id: string; x: number; y: number; pointerId: number; source: HTMLElement } | null = null;
+	/** The copy of the dragged row under the pointer. */
+	private ghost: HTMLElement | null = null;
+	private pointer = { x: 0, y: 0 };
+	private scrollFrame = 0;
+	/** The space last switched to by hovering its planet, so hovering doesn't switch it again on every move. */
+	private hoveredSpace: string | null = null;
+
+	/** A press on a row, tile or folder: watched until it moves far enough to be a drag. */
+	private pressDrag(e: PointerEvent, id: string) {
+		if (e.button !== 0 || e.pointerType === "touch" || this.press || this.dragId) return;
+		// The row's own buttons (close, sound) and the rename field are pressed, not dragged.
+		if ((e.composedPath()[0] as Element).closest?.("button.close, button.sound, input")) return;
+		this.press = { id, x: e.clientX, y: e.clientY, pointerId: e.pointerId, source: e.currentTarget as HTMLElement };
+		window.addEventListener("pointermove", this.onDragMove, true);
+		window.addEventListener("pointerup", this.onDragUp, true);
+		window.addEventListener("pointercancel", this.cancelDrag, true);
+		window.addEventListener("keydown", this.onDragKey, true);
 	}
 
-	private endDrag() {
-		this.dragId = null;
-		this.drop = null;
+	private onDragMove = (e: PointerEvent) => {
+		const press = this.press;
+		if (!press || e.pointerId !== press.pointerId) return;
+		this.pointer = { x: e.clientX, y: e.clientY };
+		if (!this.dragId) {
+			if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < 5) return;
+			this.beginDrag(press);
+		}
+		e.preventDefault();
+		this.moveGhost();
+		this.overPoint(e.clientX, e.clientY);
+	};
+
+	private beginDrag(press: NonNullable<typeof this.press>) {
+		this.dragId = press.id;
+		this.hoveredSpace = this.state.activeSpaceId;
+		const rect = press.source.getBoundingClientRect();
+		const ghost = press.source.cloneNode(true) as HTMLElement;
+		ghost.classList.remove("active", "dragging");
+		ghost.classList.add("drag-ghost");
+		ghost.removeAttribute("data-key");
+		ghost.setAttribute("aria-hidden", "true");
+		ghost.inert = true;
+		Object.assign(ghost.style, { width: `${rect.width}px`, height: `${rect.height}px` });
+		ghost.dataset.dx = String(press.x - rect.left);
+		ghost.dataset.dy = String(press.y - rect.top);
+		this.renderRoot.querySelector("aside")?.append(ghost);
+		this.ghost = ghost;
+		try {
+			this.renderRoot.querySelector("aside")?.setPointerCapture(press.pointerId);
+		} catch {}
+		this.scrollFrame = requestAnimationFrame(this.autoScroll);
+	}
+
+	private moveGhost() {
+		const ghost = this.ghost;
+		if (!ghost) return;
+		const x = this.pointer.x - Number(ghost.dataset.dx);
+		const y = this.pointer.y - Number(ghost.dataset.dy);
+		ghost.style.translate = `${x}px ${y}px`;
+	}
+
+	/** The drop zone under a point, if any. */
+	private zoneAt(x: number, y: number): { zone: DropZone; el: HTMLElement } | null {
+		let el = (this.shadowRoot?.elementFromPoint(x, y) ?? null) as ZoneElement | null;
+		while (el && el !== this) {
+			if (el.dropZone) return { zone: el.dropZone, el };
+			el = el.parentElement as ZoneElement | null;
+		}
+		return null;
 	}
 
 	/**
-	 * Works out where a drag over a row would land. `into` says what the middle of the row does: on a folder it puts
+	 * Works out where the drag would land at a point. `into` says what the middle of a row does: on a folder it puts
 	 * the item inside; on a tab, when a tab is being dragged, it makes a new folder of the two.
 	 */
-	private over(
-		e: DragEvent,
-		key: string,
-		place: (mode: DropMode) => Place | null,
-		into: "folder" | "tab" | null = null,
-		axis: "x" | "y" = "y",
-	) {
-		if (!this.dragId || this.dragId === key) return;
-		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-		const ratio = axis === "y" ? (e.clientY - rect.top) / rect.height : (e.clientX - rect.left) / rect.width;
-		let mode: DropMode = ratio < 0.5 ? "before" : "after";
-		const grouping = into === "tab" && this.state.tabs[this.dragId] !== undefined && ratio > 0.3 && ratio < 0.7;
-		if ((into === "folder" && ratio > 0.25 && ratio < 0.75) || grouping) mode = "into";
-		const target = grouping ? place("before") : place(mode);
-		if (!target) return;
-		e.preventDefault();
-		if (this.drop?.key !== key || this.drop.mode !== mode) {
-			this.drop = { key, mode, place: target, groupWith: grouping ? key : undefined };
+	private overPoint(x: number, y: number) {
+		const dragId = this.dragId;
+		if (!dragId) return;
+		const found = this.zoneAt(x, y);
+		if (!found) {
+			this.drop = null;
+			return;
+		}
+		const { zone, el } = found;
+		if (zone.switchTo) {
+			// Hovering a space while dragging switches to it, like Arc.
+			if (this.hoveredSpace !== zone.switchTo) {
+				this.hoveredSpace = zone.switchTo;
+				this.switchTo(zone.switchTo);
+			}
+			this.drop = null;
+			return;
+		}
+		this.hoveredSpace = this.state.activeSpaceId;
+		if (!zone.place || dragId === zone.key) {
+			this.drop = null;
+			return;
+		}
+		const rect = el.getBoundingClientRect();
+		const ratio = zone.axis === "x" ? (x - rect.left) / rect.width : (y - rect.top) / rect.height;
+		const { mode, grouping } = dropModeAt(ratio, zone.into, this.state.tabs[dragId] !== undefined);
+		const target = grouping ? zone.place("before") : zone.place(mode);
+		if (!target) {
+			this.drop = null;
+			return;
+		}
+		if (this.drop?.key !== zone.key || this.drop.mode !== mode) {
+			this.drop = { key: zone.key, mode, place: target, groupWith: grouping ? zone.key : undefined };
 		}
 	}
 
-	private dropHere(e: DragEvent) {
-		e.preventDefault();
-		const id = this.dragId;
+	/** Near the list's top or bottom edge, the list scrolls towards it, faster the closer the pointer is. */
+	private autoScroll = () => {
+		if (!this.dragId) return;
+		const list = this.renderRoot.querySelector<HTMLElement>(".scroll:not(.leaving-list)");
+		if (list) {
+			const r = list.getBoundingClientRect();
+			const { x, y } = this.pointer;
+			const step = autoScrollStep(y, r.top, r.bottom);
+			if (step && x >= r.left && x <= r.right) {
+				list.scrollTop += step;
+				this.overPoint(x, y);
+			}
+		}
+		this.scrollFrame = requestAnimationFrame(this.autoScroll);
+	};
+
+	private onDragUp = (e: PointerEvent) => {
+		if (!this.press || e.pointerId !== this.press.pointerId) return;
+		const dragged = this.dragId !== null;
+		if (dragged) {
+			this.overPoint(e.clientX, e.clientY);
+			// The click that follows a drag isn't a click on whatever was under the pointer.
+			window.addEventListener("click", this.swallowClick, { capture: true, once: true });
+			setTimeout(() => window.removeEventListener("click", this.swallowClick, true), 0);
+		}
 		const drop = this.drop;
-		this.endDrag();
-		if (!id || !drop) return;
+		const id = this.dragId;
+		this.cancelDrag();
+		if (dragged && id && drop) this.dropItem(id, drop);
+	};
+
+	private swallowClick = (e: Event) => {
+		e.stopPropagation();
+		e.preventDefault();
+	};
+
+	private onDragKey = (e: KeyboardEvent) => {
+		if (e.key !== "Escape" || !this.press) return;
+		e.preventDefault();
+		e.stopPropagation();
+		this.cancelDrag();
+	};
+
+	/** Ends the press or drag without dropping: Escape, a cancelled pointer, or after a drop. */
+	private cancelDrag = () => {
+		window.removeEventListener("pointermove", this.onDragMove, true);
+		window.removeEventListener("pointerup", this.onDragUp, true);
+		window.removeEventListener("pointercancel", this.cancelDrag, true);
+		window.removeEventListener("keydown", this.onDragKey, true);
+		cancelAnimationFrame(this.scrollFrame);
+		this.ghost?.remove();
+		this.ghost = null;
+		this.press = null;
+		this.dragId = null;
+		this.drop = null;
+		this.hoveredSpace = null;
+	};
+
+	private dropItem(id: string, drop: Drop) {
 		if (drop.groupWith) {
 			const [next, folderId] = groupIntoFolder(this.state, drop.groupWith, id, "New folder");
 			if (!folderId) return;
@@ -570,12 +718,7 @@ export class LokaSidebar extends LitElement {
 			aria-label="${target.name} (${keys(`Ctrl ${number}`)})"
 			title="${target.name}, ${keys(`Ctrl+${number}`)}"
 			@click=${() => this.switchTo(target.id)}
-			@dragover=${(e: DragEvent) => {
-				// Hovering a space while dragging switches to it, like Arc.
-				if (!this.dragId) return;
-				e.preventDefault();
-				this.switchTo(target.id);
-			}}
+			.dropZone=${{ key: `space-${target.id}`, switchTo: target.id } satisfies DropZone}
 		>
 			${planet(target.planet, target.hue, 22)}
 		</button>`;
@@ -648,8 +791,38 @@ export class LokaSidebar extends LitElement {
 	/** The horizon's planets before a space switch, which set behind the new one. */
 	private horizonBefore: { els: HTMLElement[]; forward: boolean } | null = null;
 
+	/** The now-playing card on screen: what plays, or for a moment after the browser stops reporting it, what did. */
+	private shownPlaying: NowPlaying | null = null;
+	private lingerTimer = 0;
+
+	/**
+	 * A tab can drop out of the browser's media sessions for a moment (pausing, resuming, a new track): the card
+	 * stays 1.5 s after the last report before it leaves, so a short gap never makes it blink.
+	 */
+	private followPlaying() {
+		window.clearTimeout(this.lingerTimer);
+		if (this.playing) {
+			this.shownPlaying = this.playing;
+			return;
+		}
+		if (!this.shownPlaying) return;
+		this.lingerTimer = window.setTimeout(async () => {
+			if (this.playing) return;
+			const card = this.renderRoot.querySelector("loka-media-card");
+			await leave(card, 160);
+			if (this.playing) {
+				// It came back while fading: undo the fade, which otherwise holds it invisible.
+				for (const fade of card?.getAnimations() ?? []) fade.cancel();
+				return;
+			}
+			this.shownPlaying = null;
+			this.requestUpdate();
+		}, 1500);
+	}
+
 	protected override willUpdate(changed: Map<string, unknown>) {
 		if (changed.has("browser") && this.browser) this.watchBrowser();
+		if (changed.has("playing")) this.followPlaying();
 		const before = changed.get("state") as BrowserState | undefined;
 		if (!before) return;
 		if (before.activeSpaceId !== this.state.activeSpaceId) {
@@ -894,11 +1067,8 @@ export class LokaSidebar extends LitElement {
 				aria-level=${depth + 1}
 				aria-selected=${active}
 				tabindex="0"
-				draggable="true"
-				@dragstart=${(e: DragEvent) => this.startDrag(e, tabId)}
-				@dragend=${() => this.endDrag()}
-				@dragover=${(e: DragEvent) => this.over(e, tabId, place, "tab")}
-				@drop=${(e: DragEvent) => this.dropHere(e)}
+				@pointerdown=${(e: PointerEvent) => this.pressDrag(e, tabId)}
+				.dropZone=${{ key: tabId, place, into: "tab" } satisfies DropZone}
 				@click=${() => this.apply((s) => activateTab(s, tabId))}
 				@mousedown=${(e: MouseEvent) => e.button === 1 && e.preventDefault()}
 				@auxclick=${(e: MouseEvent) => {
@@ -912,6 +1082,7 @@ export class LokaSidebar extends LitElement {
 			>
 				${this.favicon(tabId, tab.url)}
 				<span class="label">${tab.title}</span>
+				<span class="trail">
 				${this.sound(tabId, tab.title)}
 				${
 					closable
@@ -928,6 +1099,7 @@ export class LokaSidebar extends LitElement {
 							</button>`
 						: nothing
 				}
+				</span>
 			</div>
 		`;
 	}
@@ -960,11 +1132,8 @@ export class LokaSidebar extends LitElement {
 				aria-level=${depth + 1}
 				aria-expanded=${node.open}
 				tabindex="0"
-				draggable=${renaming ? "false" : "true"}
-				@dragstart=${(e: DragEvent) => this.startDrag(e, node.id)}
-				@dragend=${() => this.endDrag()}
-				@dragover=${(e: DragEvent) => this.over(e, node.id, folderPlace, "folder")}
-				@drop=${(e: DragEvent) => this.dropHere(e)}
+				@pointerdown=${(e: PointerEvent) => !renaming && this.pressDrag(e, node.id)}
+				.dropZone=${{ key: node.id, place: folderPlace, into: "folder" } satisfies DropZone}
 				@click=${() => !renaming && this.toggle(node.id, node.open)}
 				@dblclick=${() => (this.renamingId = node.id)}
 				@keydown=${(e: KeyboardEvent) => !renaming && this.rowKey(e, () => this.toggle(node.id, node.open), node.open)}
@@ -1226,8 +1395,7 @@ export class LokaSidebar extends LitElement {
 													{ length: slots },
 													(_, i) => html`<div
 														class="essential ghost ${this.dropClass(`essentials-slot-${i}`)}"
-														@dragover=${(e: DragEvent) => this.over(e, `essentials-slot-${i}`, toEssentials)}
-														@drop=${(e: DragEvent) => this.dropHere(e)}
+														.dropZone=${{ key: `essentials-slot-${i}`, place: toEssentials } satisfies DropZone}
 													></div>`,
 												)}
 											</div>`
@@ -1249,18 +1417,17 @@ export class LokaSidebar extends LitElement {
 												role="listitem"
 												title=${tab.title}
 												aria-label=${tab.title}
-												draggable="true"
-												@dragstart=${(e: DragEvent) => this.startDrag(e, id)}
-												@dragend=${() => this.endDrag()}
-												@dragover=${(e: DragEvent) =>
-													this.over(
-														e,
-														id,
-														(mode) => ({ area: "essentials", index: mode === "before" ? index : index + 1 }),
-														null,
-														"x",
-													)}
-												@drop=${(e: DragEvent) => this.dropHere(e)}
+												@pointerdown=${(e: PointerEvent) => this.pressDrag(e, id)}
+												.dropZone=${
+													{
+														key: id,
+														place: (mode: DropMode): Place => ({
+															area: "essentials",
+															index: mode === "before" ? index : index + 1,
+														}),
+														axis: "x",
+													} satisfies DropZone
+												}
 												@click=${() => this.apply((s) => activateTab(s, id))}
 												@contextmenu=${(e: MouseEvent) => this.openMenu(e, this.tabMenu(id))}
 											>
@@ -1276,8 +1443,7 @@ export class LokaSidebar extends LitElement {
 										? html`<div
 												class="essential slot ${this.dropClass("essentials-end")}"
 												aria-hidden="true"
-												@dragover=${(e: DragEvent) => this.over(e, "essentials-end", toEssentials)}
-												@drop=${(e: DragEvent) => this.dropHere(e)}
+												.dropZone=${{ key: "essentials-end", place: toEssentials } satisfies DropZone}
 											></div>`
 										: nothing
 								}
@@ -1297,16 +1463,14 @@ export class LokaSidebar extends LitElement {
 						<div
 							class="end-zone ${draggingTab ? "ready" : ""} ${this.dropClass("pinned-end")}"
 							data-key="pinned-end"
-							@dragover=${(e: DragEvent) => this.over(e, "pinned-end", toPinnedEnd)}
-							@drop=${(e: DragEvent) => this.dropHere(e)}
+							.dropZone=${{ key: "pinned-end", place: toPinnedEnd } satisfies DropZone}
 						></div>
 					</div>
 
 					<div
 						class="divider"
 						data-key="divider"
-						@dragover=${(e: DragEvent) => this.over(e, "pinned-end", toPinnedEnd)}
-						@drop=${(e: DragEvent) => this.dropHere(e)}
+						.dropZone=${{ key: "pinned-end", place: toPinnedEnd } satisfies DropZone}
 					>
 						<span></span>
 						${
@@ -1330,8 +1494,7 @@ export class LokaSidebar extends LitElement {
 							class="row new-tab ${this.dropClass("open-start")}"
 							data-key="new-tab"
 							@click=${() => this.command("new-tab")}
-							@dragover=${(e: DragEvent) => this.over(e, "open-start", () => ({ area: "open", spaceId: space.id, index: 0 }))}
-							@drop=${(e: DragEvent) => this.dropHere(e)}
+							.dropZone=${{ key: "open-start", place: (): Place => ({ area: "open", spaceId: space.id, index: 0 }) } satisfies DropZone}
 						>
 							<svg class="plus" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" /></svg><span class="label">New tab</span>
 						</button>
@@ -1351,11 +1514,11 @@ export class LokaSidebar extends LitElement {
 				)}
 
 				${
-					this.playing
+					this.shownPlaying
 						? html`<loka-media-card
 								class="media"
-								.playing=${this.playing}
-								.live=${this.playing.tab ? this.live[this.playing.tab.id] : undefined}
+								.playing=${this.shownPlaying}
+								.live=${this.shownPlaying.tab ? this.live[this.shownPlaying.tab.id] : undefined}
 							></loka-media-card>`
 						: nothing
 				}
@@ -1871,6 +2034,9 @@ export class LokaSidebar extends LitElement {
 			box-sizing: border-box;
 			height: 40px;
 			padding: 0 6px 0 calc(11px + var(--depth, 0) * 18px);
+			/* Rows scrolled out of view skip style, layout and paint: a space with 150 tabs builds only what shows. */
+			content-visibility: auto;
+			contain-intrinsic-size: auto 40px;
 			border-radius: 10px;
 			color: var(--loka-ink);
 		}
@@ -1893,6 +2059,22 @@ export class LokaSidebar extends LitElement {
 		.essential.dragging {
 			opacity: 0.4;
 		}
+		/* The copy of a dragged row or tile that follows the pointer. */
+		.drag-ghost {
+			position: fixed;
+			z-index: 30;
+			left: 0;
+			top: 0;
+			margin: 0;
+			pointer-events: none;
+			background: var(--loka-selected);
+			box-shadow:
+				var(--loka-surface-edge),
+				0 8px 24px rgb(0 0 0 / 0.25);
+			opacity: 0.95;
+			rotate: -1deg;
+		}
+
 		/* A row that just left the list, fading where it was. */
 		.row.leaving {
 			position: absolute;
@@ -1909,11 +2091,12 @@ export class LokaSidebar extends LitElement {
 			border-radius: 1px;
 			background: var(--loka-accent);
 		}
+		/* Inside the row's edge: a row clips what it draws past it (content-visibility). */
 		.row.drop-before::before {
-			top: -1px;
+			top: 0;
 		}
 		.row.drop-after::after {
-			bottom: -1px;
+			bottom: 0;
 		}
 		.row.drop-into {
 			background: color-mix(in srgb, var(--loka-accent) 18%, transparent);
@@ -2010,13 +2193,24 @@ export class LokaSidebar extends LitElement {
 			padding: 3px 6px;
 			outline: none;
 		}
+		/* A row's own controls sit together at its right edge: the speaker while it plays, the x on hover. The x keeps
+		   its place while hidden, so the speaker never moves when the pointer comes and goes. */
+		.trail {
+			flex: none;
+			display: flex;
+			align-items: center;
+			gap: 4px;
+			margin-right: -2px;
+		}
+		.trail:empty {
+			display: none;
+		}
 		.close {
 			flex: none;
 			display: grid;
 			place-items: center;
 			width: 28px;
 			height: 28px;
-			margin-right: -2px;
 			border-radius: 7px;
 			color: var(--loka-ink-2);
 			opacity: 0;
@@ -2034,17 +2228,15 @@ export class LokaSidebar extends LitElement {
 			background: var(--loka-hover);
 			color: var(--loka-ink);
 		}
-		/* The gap above the divider: dropping a tab here (or on the divider) pins it. While a tab is dragged it opens
-		   to a row's height when nothing is pinned yet, so there's somewhere to aim; the drop line says where it lands. */
+		/* The gap above the divider: dropping a tab here or on the divider pins it, and the drop line says so. With
+		   nothing pinned it takes no room; the divider is the target. Nothing grows when a drag starts, so the rows
+		   don't jump from under the pointer. */
 		.end-zone {
 			height: 10px;
 			position: relative;
 		}
 		.pinned:not(:has(.row)) .end-zone {
 			height: 0;
-		}
-		.pinned:not(:has(.row)) .end-zone.ready {
-			height: 28px;
 		}
 		.end-zone.drop-before::before,
 		.end-zone.drop-after::before {
@@ -2391,7 +2583,8 @@ export class LokaSidebar extends LitElement {
 			}
 			/* The planet turns: its surface strip slides one body-width every four and a half minutes. */
 			.world .turn {
-				animation: turn 270s linear infinite;
+				/* A pixel at a time, not every frame (see the sky's drift). */
+				animation: turn 270s steps(330) infinite;
 				animation-play-state: var(--loka-play, running);
 			}
 			@keyframes turn {

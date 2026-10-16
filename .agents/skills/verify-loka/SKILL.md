@@ -82,7 +82,7 @@ await loka.close();                                    // throws if the page log
 | `loka.essential(title)` | an Essentials tile |
 | `loka.space(name)` | a neighbouring planet on the horizon (only the spaces next to the current one) |
 | `loka.menuItem(label)` | a context-menu item after a right-click |
-| `loka.drag(source, target, "before" \| "after" \| "into")` | a real HTML5 drag onto the target's top edge, bottom edge or middle |
+| `loka.drag(source, target, "before" \| "after" \| "into")` | a real mouse drag (press, move, let go; the sidebar drags with pointer events) onto the target's top edge, bottom edge or middle |
 | `loka.outline()` / `loka.state()` | the saved state, readable / raw |
 | `loka.proof(name)` | `<name>.png`, `<name>.aria.txt`, `<name>.outline.json` |
 

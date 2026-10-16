@@ -57,7 +57,17 @@
        NewTab(browser_, NewTabTypes::kNewTabCommand);
        break;
      }
-@@ -783,6 +790,11 @@
+@@ -779,10 +786,21 @@
+       break;
+     }
+     case IDC_CLOSE_TAB:
++      // Loka: Ctrl+W closes the shown tab the way the sidebar does, so the
++      // window stays when it was the last one (on an empty tab, it closes the
++      // window).
++      if (LokaSidebarHandler::DispatchCommand(browser_, "close-tab")) {
++        break;
++      }
+       base::RecordAction(base::UserMetricsAction("CloseTabByKey"));
        CloseTab(browser_);
        break;
      case IDC_SELECT_NEXT_TAB:
@@ -69,7 +79,7 @@
        base::RecordAction(base::UserMetricsAction("Accel_SelectNextTab"));
        SelectNextTab(
            browser_,
-@@ -790,6 +802,9 @@
+@@ -790,6 +808,9 @@
                TabStripUserGestureDetails::GestureType::kKeyboard, time_stamp));
        break;
      case IDC_SELECT_PREVIOUS_TAB:
@@ -79,7 +89,7 @@
        base::RecordAction(base::UserMetricsAction("Accel_SelectPreviousTab"));
        SelectPreviousTab(
            browser_,
-@@ -840,6 +855,12 @@
+@@ -840,6 +861,12 @@
      case IDC_SELECT_TAB_5:
      case IDC_SELECT_TAB_6:
      case IDC_SELECT_TAB_7:
@@ -92,7 +102,7 @@
        base::RecordAction(base::UserMetricsAction("Accel_SelectNumberedTab"));
        SelectNumberedTab(
            browser_, id - IDC_SELECT_TAB_0,
-@@ -847,6 +868,9 @@
+@@ -847,6 +874,9 @@
                TabStripUserGestureDetails::GestureType::kKeyboard, time_stamp));
        break;
      case IDC_SELECT_LAST_TAB:
@@ -102,7 +112,7 @@
        base::RecordAction(base::UserMetricsAction("Accel_SelectNumberedTab"));
        SelectLastTab(
            browser_,
-@@ -1137,6 +1161,10 @@
+@@ -1137,6 +1167,10 @@
        FocusToolbar(browser_);
        break;
      case IDC_FOCUS_LOCATION:
@@ -576,13 +586,18 @@
    map.AddWebUIConfig(std::make_unique<HistorySidePanelUIConfig>());
    map.AddWebUIConfig(std::make_unique<HistoryClustersSidePanelUIConfig>());
    map.AddWebUIConfig(std::make_unique<InfobarInternalsUIConfig>());
-@@ -492,6 +499,10 @@
+@@ -492,6 +499,15 @@
    map.AddWebUIConfig(std::make_unique<DefaultBrowserModalUIConfig>());
    map.AddWebUIConfig(std::make_unique<ManagedUserProfileNoticeUIConfig>());
    map.AddWebUIConfig(std::make_unique<HeliumOnboardingPageConfig>());
 +  map.AddWebUIConfig(std::make_unique<LokaSidebarUIConfig>());
 +  if (LokaSettingsUIConfig::HasPage()) {
 +    map.AddWebUIConfig(std::make_unique<LokaSettingsUIConfig>());
++  }
++  // Loka: the empty tab, where chrome://newtab goes (see
++  // LokaNewTabUIConfig::RewriteURL).
++  if (LokaNewTabUIConfig::HasPage()) {
++    map.AddWebUIConfig(std::make_unique<LokaNewTabUIConfig>());
 +  }
    map.AddWebUIConfig(std::make_unique<ProfileCustomizationUIConfig>());
    map.AddWebUIConfig(std::make_unique<ProfilePickerUIConfig>());
@@ -2627,7 +2642,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.cc
-@@ -0,0 +1,120 @@
+@@ -0,0 +1,192 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2643,6 +2658,7 @@
 +#include "chrome/browser/ui/webui/favicon_source.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h"
 +#include "chrome/browser/ui/webui/theme_source.h"
++#include "chrome/common/webui_url_constants.h"
 +#include "components/favicon_base/favicon_url_parser.h"
 +#include "components/loka_sidebar/resources/grit/loka_sidebar_generated.h"
 +#include "components/loka_sidebar/resources/grit/loka_sidebar_generated_map.h"
@@ -2654,6 +2670,7 @@
 +#include "content/public/common/url_constants.h"
 +#include "services/network/public/mojom/content_security_policy.mojom.h"
 +#include "ui/webui/webui_util.h"
++#include "url/gurl.h"
 +
 +LokaSidebarUIConfig::LokaSidebarUIConfig()
 +    : DefaultTopChromeWebUIConfig(content::kChromeUIScheme, kLokaSidebarHost) {}
@@ -2748,9 +2765,79 @@
 +LokaSettingsUI::~LokaSettingsUI() = default;
 +
 +WEB_UI_CONTROLLER_TYPE_IMPL(LokaSettingsUI)
++
++namespace {
++
++const webui::ResourcePath* NewTabPage() {
++  for (const auto& resource : kLokaSidebarGenerated) {
++    if (std::string_view(resource.path) == "newtab.html") {
++      return &resource;
++    }
++  }
++  return nullptr;
++}
++
++}  // namespace
++
++LokaNewTabUIConfig::LokaNewTabUIConfig()
++    : DefaultWebUIConfig(content::kChromeUIScheme, kLokaNewTabHost) {}
++
++// static
++bool LokaNewTabUIConfig::HasPage() {
++  return NewTabPage() != nullptr;
++}
++
++// static
++bool LokaNewTabUIConfig::RewriteURL(GURL* url,
++                                    content::BrowserContext* context) {
++  // Loka: chrome://new-tab-page too, where Chrome's own page would go, so
++  // nothing reaches Chrome's or Helium's new tab page. In incognito as well.
++  if (!url->SchemeIs(content::kChromeUIScheme) ||
++      (url->host() != chrome::kChromeUINewTabHost &&
++       url->host() != chrome::kChromeUINewTabPageHost)) {
++    return false;
++  }
++  *url = GURL(kLokaNewTabURL);
++  return true;
++}
++
++// static
++bool LokaNewTabUIConfig::ReverseRewriteURL(GURL* url,
++                                           content::BrowserContext* context) {
++  if (!url->SchemeIs(content::kChromeUIScheme) ||
++      url->host() != kLokaNewTabHost) {
++    return false;
++  }
++  *url = GURL(chrome::kChromeUINewTabURL);
++  return true;
++}
++
++LokaNewTabUI::LokaNewTabUI(content::WebUI* web_ui)
++    : content::WebUIController(web_ui) {
++  Profile* profile = Profile::FromWebUI(web_ui);
++  content::WebUIDataSource* source =
++      content::WebUIDataSource::CreateAndAdd(profile, kLokaNewTabHost);
++  webui::SetupWebUIDataSource(source, kLokaSidebarGenerated,
++                              NewTabPage()->id);
++  source->OverrideContentSecurityPolicy(
++      network::mojom::CSPDirectiveName::TrustedTypes,
++      "trusted-types lit-html;");
++  // The sky's star layers are SVG data images.
++  source->OverrideContentSecurityPolicy(
++      network::mojom::CSPDirectiveName::ImgSrc, "img-src data: 'self';");
++  // The space's hue is set as an inline style (--hue).
++  source->OverrideContentSecurityPolicy(
++      network::mojom::CSPDirectiveName::StyleSrc,
++      "style-src 'self' 'unsafe-inline';");
++  web_ui->AddMessageHandler(std::make_unique<LokaSidebarHandler>());
++}
++
++LokaNewTabUI::~LokaNewTabUI() = default;
++
++WEB_UI_CONTROLLER_TYPE_IMPL(LokaNewTabUI)
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h
-@@ -0,0 +1,81 @@
+@@ -0,0 +1,120 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2764,6 +2851,12 @@
 +#include "chrome/browser/ui/webui/top_chrome/top_chrome_webui_config.h"
 +#include "content/public/browser/web_ui_controller.h"
 +#include "content/public/browser/webui_config.h"
++
++class GURL;
++
++namespace content {
++class BrowserContext;
++}
 +
 +namespace user_prefs {
 +class PrefRegistrySyncable;
@@ -2806,6 +2899,39 @@
 +  LokaSettingsUI(const LokaSettingsUI&) = delete;
 +  LokaSettingsUI& operator=(const LokaSettingsUI&) = delete;
 +  ~LokaSettingsUI() override;
++
++ private:
++  WEB_UI_CONTROLLER_TYPE_DECL();
++};
++
++// Loka: Loka has no new tab page; the command bar is the new tab. A window
++// with nothing to show (a new window, a space with no tabs, its last tab
++// closed) shows chrome://newtab, which loads Loka's empty page: newtab.html
++// from the same resources at chrome://loka-newtab, the space's sky and
++// nothing else, answered by the sidebar's handler (store, command bar).
++inline constexpr char kLokaNewTabHost[] = "loka-newtab";
++inline constexpr char kLokaNewTabURL[] = "chrome://loka-newtab/";
++
++class LokaNewTabUI;
++
++class LokaNewTabUIConfig : public content::DefaultWebUIConfig<LokaNewTabUI> {
++ public:
++  LokaNewTabUIConfig();
++  // Whether the build has the page yet; Chrome's new tab page stays until it
++  // does.
++  static bool HasPage();
++  // A BrowserURLHandler pair: chrome://newtab and chrome://new-tab-page load
++  // chrome://loka-newtab/, which the address shows as chrome://newtab/.
++  static bool RewriteURL(GURL* url, content::BrowserContext* context);
++  static bool ReverseRewriteURL(GURL* url, content::BrowserContext* context);
++};
++
++class LokaNewTabUI : public content::WebUIController {
++ public:
++  explicit LokaNewTabUI(content::WebUI* web_ui);
++  LokaNewTabUI(const LokaNewTabUI&) = delete;
++  LokaNewTabUI& operator=(const LokaNewTabUI&) = delete;
++  ~LokaNewTabUI() override;
 +
 + private:
 +  WEB_UI_CONTROLLER_TYPE_DECL();
@@ -2987,7 +3113,7 @@
      "includes": [7510],
    },
 +  "<(SHARED_INTERMEDIATE_DIR)/components/loka_sidebar/resources.grd": {
-+   "META": {"sizes": {"includes": [20],}},
++   "META": {"sizes": {"includes": [40],}},
 +    "includes": [7560],
 +  },
    # END components/ section.

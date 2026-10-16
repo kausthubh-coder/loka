@@ -398,13 +398,14 @@
 +</svg>
 --- a/components/helium_onboarding/src/App.svelte
 +++ b/components/helium_onboarding/src/App.svelte
-@@ -1,32 +1,49 @@
+@@ -1,32 +1,51 @@
  <script lang="ts">
 -    import { onMount } from "svelte";
      import { SvelteSet } from "svelte/reactivity";
 -    import { GradientShimmer } from "@imput/helium-prism";
      import * as pages from "./pages";
      import * as Browser from "./lib/browser";
++    import { startWindowDrag, windowFrame } from "./lib/browser";
      import {
          currentPage,
 +        direction,
@@ -421,6 +422,7 @@
 +    import LokaMark from "./components/LokaMark.svelte";
 +    import SoundToggle from "./components/SoundToggle.svelte";
 +    import StepDots from "./components/StepDots.svelte";
++    import WindowControls from "./components/WindowControls.svelte";
  
      const OUT_ANIMATION_DURATION = 200;
  
@@ -458,7 +460,7 @@
  
      $effect(() => {
          const page = $currentPage;
-@@ -39,10 +56,6 @@
+@@ -39,10 +58,6 @@
          mountedPages.add(page);
          previousPage = page;
  
@@ -469,7 +471,7 @@
          window.setTimeout(() => {
              if ($currentPage !== leavingPage) {
                  mountedPages.delete(leavingPage);
-@@ -50,35 +63,33 @@
+@@ -50,35 +65,49 @@
          }, OUT_ANIMATION_DURATION);
      });
  
@@ -477,7 +479,13 @@
 -        if (introStarted) {
 -            return;
 -        }
--
++    // Without a title bar the top bar is one: pressing its empty space moves the window, as in the browser's sidebar.
++    const onTopBarPress = (event: MouseEvent) => {
++        const target = event.target as Element;
++        if (event.button !== 0 || event.detail !== 1 || target.closest("button, a, input")) return;
++        startWindowDrag();
++    };
+ 
 -        const timer = window.setTimeout(() => {
 -            introStarted = true;
 -        }, ONBOARDING_INTRO_DELAY_MS);
@@ -504,7 +512,13 @@
 +<Sky travel={$pageIndex} horizon={risen ? horizon : "below"} />
 +
 +<main>
-+    <header class="top-bar">
++    <!-- A mouse-only stand-in for the title bar: the keyboard moves the window with the system's keys (Win+arrows). -->
++    <!-- svelte-ignore a11y_no_static_element_interactions -->
++    <header
++        class="top-bar"
++        class:title-bar={$windowFrame === "page"}
++        onmousedown={$windowFrame === "page" ? onTopBarPress : undefined}
++    >
 +        <div class="corner">
 +            {#if $currentPage !== "Welcome"}
 +                <span class="wordmark-in">
@@ -523,12 +537,15 @@
 +        </div>
 +        <div class="corner end">
 +            <SoundToggle />
++            {#if $windowFrame === "page"}
++                <WindowControls />
++            {/if}
 +        </div>
 +    </header>
  
      {#each flow as page (page)}
          {#if mountedPages.has(page)}
-@@ -86,6 +97,12 @@
+@@ -86,6 +115,12 @@
              <Component />
          {/if}
      {/each}
@@ -541,7 +558,7 @@
  </main>
  
  <style>
-@@ -95,44 +112,48 @@
+@@ -95,44 +130,55 @@
          justify-content: center;
          width: 100vw;
          min-height: 100vh;
@@ -585,6 +602,12 @@
 -            opacity: 0.5;
 +        & > * {
 +            pointer-events: auto;
++        }
++
++        /* The whole bar takes presses, so its empty space can move the window. */
++        &.title-bar {
++            pointer-events: auto;
++            user-select: none;
          }
      }
  
@@ -598,6 +621,7 @@
 +
 +        &.end {
 +            justify-content: flex-end;
++            gap: var(--space-1);
          }
 +    }
  
@@ -2131,6 +2155,83 @@
 +        }
 +    }
 +</style>
+--- /dev/null
++++ b/components/helium_onboarding/src/components/WindowControls.svelte
+@@ -0,0 +1,65 @@
++<script lang="ts">
++    import { closeWindow, minimizeWindow } from "../lib/browser";
++</script>
++
++<!-- The setup window has no title bar on Windows, so these stand in for its buttons. Silent, like the system's own.
++     The labels are plain text, not grdp strings: a new string ID recompiles thousands of Chromium files. -->
++<div class="window-controls">
++    <button
++        class="button circle transparent"
++        aria-label="Minimize"
++        title="Minimize"
++        data-sound="none"
++        onclick={minimizeWindow}
++    >
++        <svg viewBox="0 0 24 24" aria-hidden="true">
++            <path d="M6.5 12h11" />
++        </svg>
++    </button>
++    <button
++        class="button circle transparent close"
++        aria-label="Close"
++        title="Close"
++        data-sound="none"
++        onclick={closeWindow}
++    >
++        <svg viewBox="0 0 24 24" aria-hidden="true">
++            <path d="m7 7 10 10M17 7 7 17" />
++        </svg>
++    </button>
++</div>
++
++<style>
++    .window-controls {
++        display: flex;
++        align-items: center;
++        gap: var(--space-1);
++    }
++
++    button {
++        --size: 44px;
++        color: var(--secondary);
++
++        @media (hover: hover) {
++            &:hover {
++                color: var(--primary);
++            }
++
++            /* Windows' own close button, as on the browser window's sidebar. */
++            &.close:hover {
++                background-color: #c42b1c;
++                color: #fff;
++            }
++        }
++    }
++
++    svg {
++        width: 20px;
++        height: 20px;
++        fill: none;
++        stroke: currentColor;
++        stroke-width: 1.8;
++        stroke-linecap: round;
++        stroke-linejoin: round;
++    }
++</style>
+--- a/components/helium_onboarding/src/lib/browser/index.ts
++++ b/components/helium_onboarding/src/lib/browser/index.ts
+@@ -4,5 +4,6 @@
+ export * from "./extensions";
+ export * from "./is-default";
+ export * from "./search-engines";
++export * from "./window-frame";
+ 
+ export { setup } from "./setup";
 --- a/components/helium_onboarding/src/lib/browser/prefs.ts
 +++ b/components/helium_onboarding/src/lib/browser/prefs.ts
 @@ -11,6 +11,9 @@
@@ -2143,6 +2244,47 @@
  };
  
  export type PrefKey = keyof Preferences;
+--- a/components/helium_onboarding/src/lib/browser/setup.ts
++++ b/components/helium_onboarding/src/lib/browser/setup.ts
+@@ -4,6 +4,7 @@
+ import * as Extensions from "./extensions";
+ import * as DefaultBrowser from "./is-default";
+ import * as SearchEngines from "./search-engines";
++import * as WindowFrame from "./window-frame";
+ 
+ let g_did_setup = false;
+ export const setup = () => {
+@@ -21,4 +22,5 @@
+     Extensions.setup();
+     SearchEngines.setup();
+     DefaultBrowser.setup();
++    WindowFrame.setup();
+ }
+--- /dev/null
++++ b/components/helium_onboarding/src/lib/browser/window-frame.ts
+@@ -0,0 +1,22 @@
++import { readonly, writable } from "svelte/store";
++import * as cr from "../cr";
++
++/**
++ * Who draws the window's controls. "page": the setup window has no title bar (Windows), so the page draws minimize
++ * and close and its top bar moves the window. "system": the window has its own title bar (macOS for now, or setup
++ * opened in a tab), so the page draws none.
++ */
++export type WindowFrame = "page" | "system";
++
++const _frame = writable<WindowFrame>("system");
++export const windowFrame = readonly(_frame);
++
++export const setup = () => {
++    cr.sendWithPromise<WindowFrame>("getWindowFrame").then(_frame.set);
++};
++
++export const minimizeWindow = () => chrome.send("windowAction", ["minimize"]);
++export const closeWindow = () => chrome.send("windowAction", ["close"]);
++
++/** Hands the press that's still down to the system's move loop, like pressing on a title bar. */
++export const startWindowDrag = () => chrome.send("startWindowDrag");
 --- a/components/helium_onboarding/src/lib/chrome-send-polyfill.ts
 +++ b/components/helium_onboarding/src/lib/chrome-send-polyfill.ts
 @@ -29,6 +29,7 @@
@@ -2162,6 +2304,19 @@
      [ "Dia", "Person 1", chrome_has ],
      [ "Microsoft Edge", "Profile 1", chrome_has ],
      [ "Microsoft Edge", "Bill Gates", chrome_has ],
+@@ -241,6 +242,12 @@
+                 : cr.ImportDataStatus.SUCCEEDED
+             );
+         }, 2000);
++    } else if (msg === 'getWindowFrame') {
++        // As in the setup window on Windows, which has no title bar. ?frame=system shows a window that has one.
++        const frame = new URLSearchParams(location.search).get('frame') === 'system' ? 'system' : 'page';
++        cr.webUIResponse(params![0], true, frame);
++    } else if (msg === 'windowAction' || msg === 'startWindowDrag') {
++        // Nothing to move or close in a dev tab; the console line above shows the call.
+     } else if (msg === 'getExtensions') {
+         cr.webUIResponse(params![0], true, structuredClone(extensionList));
+     } else if (msg === 'installExtension') {
 --- /dev/null
 +++ b/components/helium_onboarding/src/lib/motion.ts
 @@ -0,0 +1,11 @@

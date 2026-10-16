@@ -245,6 +245,8 @@ export async function launchBrowser({ name, chrome = chromePath(), args = [], ur
 		[
 			`--user-data-dir=${profile}`,
 			`--remote-debugging-port=${port}`,
+			// Test browsers stay silent: pages and the sidebar's sound cues still play, unheard.
+			"--mute-audio",
 			"--disable-features=CalculateNativeWinOcclusion",
 			"--no-first-run",
 			...args,

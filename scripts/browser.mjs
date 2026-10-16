@@ -237,6 +237,12 @@ function launch() {
 		console.error(`No build at ${chrome}. Run: bun run browser:build`);
 		process.exit(1);
 	}
+	// A running chrome.exe locks the files the build is about to link.
+	const busy = buildRunning();
+	if (busy.length) {
+		console.error(`A build is writing ${out} (${busy.join("; ")}). Run the snapshot instead: ${SNAPSHOT_BINARY}`);
+		process.exit(1);
+	}
 	writeFileSync(join(out, "initial_preferences"), JSON.stringify(INITIAL_PREFERENCES, null, 2));
 	// The Loka sidebar is part of the build (components/loka_sidebar; `bun run webui:build` refreshes it).
 	// A throwaway profile next to the build, never anyone's real browser profile.

@@ -2,7 +2,7 @@
 // first-run gate over raw CDP. The sidebar is a top-chrome WebUI page Playwright doesn't list, so this talks to
 // /json/list and the targets' websockets directly.
 //
-//   bun run verify:browser                    binary from LOKA_CHROME, else C:\src\loka\build\src\out\Default\chrome.exe
+//   bun run verify:browser                    binary from LOKA_CHROME, else the dev build, else the snapshot (testBinary)
 //   bun run verify:browser -- --no-first-run  skip setup (Chrome's --no-first-run): no setup page may show at all
 //
 // The checks, in order:

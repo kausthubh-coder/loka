@@ -27,16 +27,16 @@ import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { BUILD_DIR } from "./browser.mjs";
 import {
-	alive,
 	askExpression,
 	chromePath,
 	connect,
 	evaluate,
 	freePort,
-	processTree,
+	processes,
 	RECORD_EVENTS,
 	refuseWhileBuilding,
 	sleep,
+	stillRunning,
 	toneWav,
 	until,
 	windows,
@@ -181,6 +181,8 @@ async function launch() {
 	child.stdout.pipe(/** @type {import("node:fs").WriteStream} */ (log.stream), { end: false });
 	child.stderr.pipe(/** @type {import("node:fs").WriteStream} */ (log.stream), { end: false });
 	const pid = child.pid ?? 0;
+	// The browser process by pid and start time, so a quit never stops a process that took its pid later.
+	const root = processes(pid).slice(0, 1);
 	const http = `http://127.0.0.1:${port}`;
 	const version = await until(
 		() =>
@@ -195,6 +197,7 @@ async function launch() {
 	console.log(`Started ${chrome} (pid ${pid}), CDP on ${port}, profile ${profile}`);
 	return {
 		pid,
+		root,
 		http,
 		browserSession,
 		/** @returns {Promise<Target[]>} */
@@ -204,18 +207,26 @@ async function launch() {
 /** @typedef {Awaited<ReturnType<typeof launch>>} Browser */
 
 /**
- * Quits the browser the way a user would (closing it) and waits for its processes to end. Any it left are stopped
- * by pid: only the tree read from this browser just now, never anything found by name.
+ * Quits the browser as the app's Exit does (CDP's Browser.close) and waits until every one of its processes has
+ * ended: they all go within 2 s of it here (0.6 to 2 s, 26 quits). Whatever is still running after 30 s is
+ * stopped by pid and reported. "Its processes" are the browser's tree by pid and start time, never anything found by
+ * name, and never a process that took a pid the browser's had (see stillRunning).
  * @param {Browser} b
  */
 async function quit(b) {
-	const tree = processTree(b.pid);
+	const tree = stillRunning(b.root);
+	const asked = Date.now();
 	await b.browserSession.call("Browser.close", {}, 5000).catch(() => {});
 	b.browserSession.close();
-	const ended = await until(async () => !tree.some(alive), 15000);
-	const left = tree.filter(alive);
-	for (const p of left) spawnSync("taskkill", ["/T", "/F", "/PID", String(p)], { stdio: "ignore" });
-	return { ended, tree: tree.length, killed: left.length };
+	let left = tree;
+	const ended = await until(async () => {
+		left = stillRunning(left);
+		return left.length === 0;
+	}, 30000);
+	const waited = Date.now() - asked;
+	// No /T: Windows finds a tree by parent pid, which can lead to a stranger's process. `left` has the whole tree.
+	for (const p of left) spawnSync("taskkill", ["/F", "/PID", String(p.pid)], { stdio: "ignore" });
+	return { ended, waited, tree: tree.length, killed: left.length, left: left.map((p) => `${p.type} ${p.pid}`) };
 }
 
 // ---- driving a page -----------------------------------------------------------------------------------------------
@@ -1580,7 +1591,9 @@ async function restart() {
 	check(
 		"the browser quits",
 		quitted.ended,
-		quitted.ended ? "every process ended" : `${quitted.killed} processes stopped by pid`,
+		quitted.ended
+			? `all ${quitted.tree} processes ended ${quitted.waited} ms after Browser.close`
+			: `${quitted.killed} of ${quitted.tree} still running after ${quitted.waited} ms (${quitted.left.join(", ")}), stopped by pid`,
 	);
 	ctx.browser = await launch();
 	ctx.sidebar = await attachSidebar(ctx.browser);
@@ -1659,8 +1672,7 @@ async function main() {
 		}
 	} finally {
 		flow = "cleanup";
-		const stopped =
-			ctx?.browser && alive(ctx.browser.pid) ? await quit(ctx.browser) : { ended: true, tree: 0, killed: 0 };
+		const stopped = ctx?.browser ? await quit(ctx.browser) : { ended: true, tree: 0, killed: 0 };
 		server.close();
 		log.stream?.end();
 		await sleep(800);

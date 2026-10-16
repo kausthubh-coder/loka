@@ -233,6 +233,20 @@ describe("Loka tells the browser what to do", () => {
 		expect(ops).toEqual([{ op: "empty-tab" }, { op: "remove", browserId: 55 }]);
 	});
 
+	test("an empty tab on screen leaves the tab group it landed in, so that space's group can fold", () => {
+		// It was grouped with Research as a new tab, before its page committed and showed it was an empty tab.
+		const browser = [
+			tab(59, "https://example.org/", { groupId: 4 }),
+			tab(60, "chrome://loka-newtab/", { active: true, groupId: 4 }),
+		];
+		const [state, live] = adoptTabs(firstState(), browser, NOW);
+		const key = `${state.spaces[0]?.id}@1`;
+		expect(planReconcile(state, live, browser, { [key]: { id: 4, collapsed: false } })).toContainEqual({
+			op: "ungroup",
+			browserIds: [60],
+		});
+	});
+
 	test("an empty tab no longer on screen is closed; one on screen, or a Loka tab on chrome://newtab, stays", () => {
 		const browser = [
 			tab(56, "https://example.org/", { active: true }),

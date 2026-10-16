@@ -241,6 +241,7 @@ export function planReconcile(
 	}
 	const onScreen = tabs.find((t) => t.active);
 	const leaving = onScreen !== undefined && removes.some((op) => op.browserId === onScreen.id);
+	const onEmptyTab = onScreen !== undefined && !linked.has(onScreen.id) && isEmptyTab(onScreen.url);
 	const space = activeSpace(state);
 	const shown = space.activeTabId;
 	if (shown && state.tabs[shown]) {
@@ -252,7 +253,6 @@ export function planReconcile(
 		const first = [...space.open, ...pinnedIds(space.pinned)]
 			.map((id) => live[id])
 			.find((id) => id !== undefined && byId.has(id));
-		const onEmptyTab = onScreen !== undefined && !linked.has(onScreen.id) && isEmptyTab(onScreen.url);
 		if (first !== undefined) ops.push({ op: "activate", browserId: first });
 		// Already on an empty tab (from one empty space to another): it stays, and its page takes this space's sky.
 		else if (!onEmptyTab) ops.push({ op: "empty-tab" });
@@ -283,6 +283,9 @@ export function planReconcile(
 		const tab = byId.get(browserId);
 		if (tab && tab.groupId !== -1 && homeOf(state, id) === "essentials") ungroup.push(browserId);
 	}
+	// An empty tab is in no space, so in no space's group. It lands in one when it was taken in as a new tab before
+	// its page committed; left there, that space's group couldn't fold while it shows.
+	if (onScreen && onEmptyTab && onScreen.groupId !== -1) ungroup.push(onScreen.id);
 	if (ungroup.length) ops.push({ op: "ungroup", browserIds: ungroup });
 	for (const [key, group] of Object.entries(groups)) {
 		const collapsed = key.split("@")[0] !== space.id;

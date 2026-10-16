@@ -1863,10 +1863,12 @@ async function newTabs() {
 		}
 		return null;
 	}, 8000);
+	// The bar hides when it loses activation; a test browser behind other windows may not keep it.
+	const bars = (await ctx.browser.targets()).filter((t) => !known.has(t.id) && t.url.includes("command.html"));
 	check(
 		"and the command bar opens over it",
 		bar2Target,
-		bar2Target ? "showing" : "no command bar showing for the new window",
+		bar2Target ? "showing" : `not showing; the new window has ${bars.length} command bar pages (0: never opened)`,
 	);
 	if (bar2Target) {
 		await bar2Target.key("Escape");

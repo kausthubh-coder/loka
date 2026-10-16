@@ -1,5 +1,6 @@
 import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 import type { Browser, CommandPick, NativeSuggestion } from "../../../../webui/src/bridge";
+import { keys } from "../../app/platform";
 import { leave } from "../../app/theme";
 import { faviconBackground, faviconInner, hostOf, type LiveTabs } from "../sidebar/favicon";
 import { planet } from "../sidebar/planet";
@@ -241,7 +242,7 @@ export class LokaCommandBar extends LitElement {
 								<span class="icon" aria-hidden="true">${this.icon(r)}</span>
 								<span class="label">${r.label}</span>
 								<span class="detail">
-									${space ? html`${planet(space.planet, space.hue, 14)}` : nothing}<span class="detail-text">${r.detail}</span>
+									${space ? html`${planet(space.planet, space.hue, 14)}` : nothing}<span class="detail-text">${keys(r.detail)}</span>
 								</span>
 								<kbd aria-hidden="true">↵</kbd>
 							</div>`;

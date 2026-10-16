@@ -5,6 +5,7 @@ import type { Update } from "../../app/loka-app";
 import type { UiPrefs } from "../../app/ui-prefs.logic";
 import "../history/loka-history";
 import "../settings/loka-settings";
+import { keys } from "../../app/platform";
 import type { SetUi } from "../settings/loka-settings";
 import { faviconBackground, faviconInner, hostOf } from "../sidebar/favicon";
 import type { BrowserState, Tab } from "../sidebar/sidebar.logic";
@@ -62,7 +63,7 @@ export class LokaPage extends LitElement {
 		if (!tab) {
 			return html`<section class="frame empty">
 				<p class="hint">Nothing open in ${this.spaceName}.</p>
-				<p class="keys">Press <kbd>Ctrl K</kbd> to open a tab, <kbd>Ctrl 1–9</kbd> to switch spaces.</p>
+				<p class="keys">Press <kbd>${keys("Ctrl K")}</kbd> to open a tab, <kbd>${keys("Ctrl 1–9")}</kbd> to switch spaces.</p>
 			</section>`;
 		}
 		return html`

@@ -1,5 +1,6 @@
 import { css, html, LitElement, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
+import { MOD } from "../../app/platform";
 import {
 	type ArcImport,
 	countImported,
@@ -235,10 +236,10 @@ export class LokaOnboarding extends LitElement {
 			<h1>Three things to know</h1>
 			<div class="keys">
 				<div class="key ${this.tried ? "done" : ""}">
-					<span><kbd>Ctrl</kbd><kbd>K</kbd></span>
+					<span><kbd>${MOD}</kbd><kbd>K</kbd></span>
 					<span>Open or search anything ${this.tried ? html`<b class="check">Done</b>` : html`<em>Try it now</em>`}</span>
 				</div>
-				<div class="key"><span><kbd>Ctrl</kbd><kbd>1–9</kbd></span><span>Jump to a space</span></div>
+				<div class="key"><span><kbd>${MOD}</kbd><kbd>1–9</kbd></span><span>Jump to a space</span></div>
 				<div class="key"><span><kbd>Swipe</kbd></span><span>Two fingers sideways on the sidebar to turn to the next space</span></div>
 			</div>
 			<button class="primary" @click=${() => this.finish()}>Open Loka</button>

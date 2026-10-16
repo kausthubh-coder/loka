@@ -14,6 +14,7 @@ import { extensionIcon, extensionIconStyles } from "../extensions/loka-extension
 import "../media/loka-media-card";
 import type { NowPlaying } from "../media/loka-media-card";
 import "../search/loka-sidebar-search";
+import { keys, PLATFORM } from "../../app/platform";
 import { playCue } from "../sound/sound";
 import type { Cue } from "../sound/sound.logic";
 import { essentialsDropSlots } from "./empty-states.logic";
@@ -566,8 +567,8 @@ export class LokaSidebar extends LitElement {
 		const number = this.state.spaces.indexOf(target) + 1;
 		return html`<button
 			class="neighbour ${side}"
-			aria-label="${target.name} (Ctrl ${number})"
-			title="${target.name}, Ctrl+${number}"
+			aria-label="${target.name} (${keys(`Ctrl ${number}`)})"
+			title="${target.name}, ${keys(`Ctrl+${number}`)}"
 			@click=${() => this.switchTo(target.id)}
 			@dragover=${(e: DragEvent) => {
 				// Hovering a space while dragging switches to it, like Arc.
@@ -590,7 +591,7 @@ export class LokaSidebar extends LitElement {
 		return [
 			...this.state.spaces.map((s, i) => ({
 				label: s.name,
-				hint: `Ctrl+${i + 1}`,
+				hint: keys(`Ctrl+${i + 1}`),
 				run: () => this.switchTo(s.id),
 			})),
 			{ label: "Edit this space", divider: true, run: () => this.action("edit-space") },
@@ -1024,11 +1025,17 @@ export class LokaSidebar extends LitElement {
 
 	private topRow(): TemplateResult {
 		const hide = this.pinned;
+		const mac = PLATFORM === "mac";
 		return html`<div
 			class="top"
 			@mousedown=${(e: MouseEvent) => this.onTopPress(e)}
 			@dblclick=${(e: MouseEvent) => !(e.target as HTMLElement).closest("button") && this.browser.windowAction("maximize")}
 		>
+			${
+				// On a Mac the window's own buttons (the traffic lights) sit at the top left, drawn by macOS: the row leaves
+				// them room and draws no window buttons of its own.
+				mac ? html`<span class="traffic-lights" aria-hidden="true"></span>` : nothing
+			}
 			<button class="icon" aria-label="More" title="Menu" @click=${(e: MouseEvent) => this.moreMenu(e)}>
 				<svg viewBox="0 0 20 20"><path d="M4.5 10h.01M10 10h.01M15.5 10h.01" class="dots" /></svg>
 			</button>
@@ -1056,7 +1063,10 @@ export class LokaSidebar extends LitElement {
 				</button>
 			</span>
 			<span class="drag" aria-hidden="true"></span>
-			<button class="icon caption" aria-label="Minimize" title="Minimize" @click=${() => this.browser.windowAction("minimize")}>
+			${
+				mac
+					? nothing
+					: html`<button class="icon caption" aria-label="Minimize" title="Minimize" @click=${() => this.browser.windowAction("minimize")}>
 				<svg viewBox="0 0 20 20"><path d="M5 10h10" /></svg>
 			</button>
 			<button class="icon caption" aria-label="Maximize" title="Maximize" @click=${() => this.browser.windowAction("maximize")}>
@@ -1064,7 +1074,8 @@ export class LokaSidebar extends LitElement {
 			</button>
 			<button class="icon caption close-window" aria-label="Close window" title="Close" @click=${() => this.browser.windowAction("close")}>
 				<svg viewBox="0 0 20 20"><path d="m5.5 5.5 9 9m0-9-9 9" /></svg>
-			</button>
+			</button>`
+			}
 		</div>`;
 	}
 
@@ -1081,7 +1092,7 @@ export class LokaSidebar extends LitElement {
 			<button
 				class="address"
 				aria-label=${label ? `Address: ${label}` : "Search or enter address"}
-				title="Change the address (Ctrl+L)"
+				title=${keys("Change the address (Ctrl+L)")}
 				@click=${() => this.command(current ? "focus-location" : "new-tab")}
 			>
 				${
@@ -1495,6 +1506,11 @@ export class LokaSidebar extends LitElement {
 		}
 		.drag {
 			flex: 1;
+			align-self: stretch;
+		}
+		.traffic-lights {
+			flex: none;
+			width: 70px;
 			align-self: stretch;
 		}
 		.icon {

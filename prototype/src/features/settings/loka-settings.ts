@@ -24,6 +24,7 @@ import {
 } from "../sidebar/sidebar.logic";
 import { playCue, setSoundPrefs } from "../sound/sound";
 import "../sync/loka-sync-settings";
+import { keys as shortcutKeys } from "../../app/platform";
 import type { SyncHooks } from "../sync/loka-sync-settings";
 import { takeSpaces } from "../sync/sync.logic";
 
@@ -252,7 +253,7 @@ export class LokaSettings extends LitElement {
 					${this.state.spaces.map(
 						(s, i) => html`<div class="row space">
 							${planet(s.planet, s.hue, 30)}
-							<div><b>${s.name}</b><small>${countTabs(s)} ${countTabs(s) === 1 ? "tab" : "tabs"}. Ctrl+${i + 1}</small></div>
+							<div><b>${s.name}</b><small>${countTabs(s)} ${countTabs(s) === 1 ? "tab" : "tabs"}. ${shortcutKeys(`Ctrl+${i + 1}`)}</small></div>
 							<div class="segmented small" role="radiogroup" aria-label="${s.name}: light or dark">
 								${SPACE_SCHEMES.map(
 									(scheme) => html`<button
@@ -442,7 +443,7 @@ export class LokaSettings extends LitElement {
 
 				<section aria-labelledby="keys">
 					<h2 id="keys">Keyboard shortcuts</h2>
-					${shortcuts(this.native).map(([keys, what]) => html`<div class="row keys"><kbd>${keys}</kbd><span>${what}</span></div>`)}
+					${shortcuts(this.native).map(([keys, what]) => html`<div class="row keys"><kbd>${shortcutKeys(keys)}</kbd><span>${what}</span></div>`)}
 				</section>
 
 				<section aria-labelledby="about">

@@ -1,3 +1,5 @@
+<img src="site/public/icon.svg" alt="" width="72" height="72" />
+
 # Loka
 
 Loka is an open-source browser in the style of Arc and Zen, built on [Helium](https://github.com/imputnet/helium)
@@ -19,6 +21,18 @@ bun run dev     # open the printed localhost URL
 Drag tabs between Essentials, pinned folders and open tabs. Right-click for more. `Ctrl K` opens a tab and
 `Ctrl 1` to `Ctrl 9` switch spaces. The prototype saves to localStorage, and the `...` menu exports or imports
 spaces as JSON.
+
+## Landing page
+
+`site/` is Loka's landing page, with the live sidebar prototype in the hero, a waitlist and the roadmap.
+
+```
+bun run site:dev     # open the printed localhost URL
+bun run site:build   # static files in site/dist
+```
+
+Set `VITE_WAITLIST_URL` when building to send waitlist signups somewhere. The form posts JSON with `email`,
+`wants` (the roadmap ideas the person marked) and `source`.
 
 ## Build the browser
 

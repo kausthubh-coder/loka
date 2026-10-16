@@ -475,7 +475,7 @@
    map.AddWebUIConfig(std::make_unique<SigninErrorUIConfig>());
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/BUILD.gn
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,58 @@
 +# Copyright 2026 The Loka Authors
 +# You can use, redistribute, and/or modify this source code under
 +# the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -529,6 +529,7 @@
 +    "//components/tabs:public",
 +    "//ui/base",
 +    "//ui/color",
++    "//ui/display",
 +    "//ui/gfx",
 +    "//ui/webui",
 +  ]
@@ -820,7 +821,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_HISTORY_UI_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.cc
-@@ -0,0 +1,631 @@
+@@ -0,0 +1,652 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -873,6 +874,9 @@
 +#include <windows.h>
 +
 +#include "ui/views/win/hwnd_util.h"
++#else
++#include "ui/display/screen.h"
++#include "ui/views/widget/widget.h"
 +#endif
 +
 +namespace {
@@ -951,6 +955,7 @@
 +  add("setSidebarPinned", &LokaSidebarHandler::HandleSetSidebarPinned);
 +  add("getSidebarPinned", &LokaSidebarHandler::HandleGetSidebarPinned);
 +  add("setColorScheme", &LokaSidebarHandler::HandleSetColorScheme);
++  add("setThemeColor", &LokaSidebarHandler::HandleSetThemeColor);
 +  add("openCommandBar", &LokaSidebarHandler::HandleOpenCommandBar);
 +  add("closeCommandBar", &LokaSidebarHandler::HandleCloseCommandBar);
 +  add("commandPicked", &LokaSidebarHandler::HandleCommandPicked);
@@ -1450,11 +1455,28 @@
 +  }
 +  ::ReleaseCapture();
 +  ::SendMessage(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
++#else
++  // Elsewhere (macOS, Linux) views' own move loop moves the window with the
++  // press that's down, as tab dragging does. Untested off Windows so far.
++  BrowserWindowInterface* browser = GetBrowser();
++  views::Widget* widget =
++      browser ? views::Widget::GetWidgetForNativeWindow(
++                    browser->GetWindow()->GetNativeWindow())
++              : nullptr;
++  if (!widget || !widget->IsMoveLoopSupported() ||
++      browser->GetWindow()->IsFullscreen()) {
++    return;
++  }
++  const gfx::Point cursor =
++      display::Screen::Get()->GetCursorScreenPoint();
++  widget->RunMoveLoop(cursor - widget->GetWindowBoundsInScreen().origin(),
++                      views::Widget::MoveLoopSource::kMouse,
++                      views::Widget::MoveLoopEscapeBehavior::kDontHide);
 +#endif
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h
-@@ -0,0 +1,204 @@
+@@ -0,0 +1,205 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1588,6 +1610,7 @@
 +  void HandleSetSidebarPinned(const base::ListValue& args);
 +  void HandleGetSidebarPinned(const base::ListValue& args);
 +  void HandleSetColorScheme(const base::ListValue& args);
++  void HandleSetThemeColor(const base::ListValue& args);
 +  void HandleOpenCommandBar(const base::ListValue& args);
 +  void HandleCloseCommandBar(const base::ListValue& args);
 +  void HandleCommandPicked(const base::ListValue& args);
@@ -1661,7 +1684,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler_features.cc
-@@ -0,0 +1,667 @@
+@@ -0,0 +1,692 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1679,6 +1702,7 @@
 +#include "base/functional/callback_helpers.h"
 +#include "base/location.h"
 +#include "base/no_destructor.h"
++#include "base/strings/string_number_conversions.h"
 +#include "base/strings/stringprintf.h"
 +#include "base/strings/utf_string_conversions.h"
 +#include "base/task/sequenced_task_runner.h"
@@ -2327,6 +2351,30 @@
 +      ThemeServiceFactory::GetForProfile(Profile::FromWebUI(web_ui()));
 +  if (theme && theme->GetBrowserColorScheme() != color_scheme) {
 +    theme->SetBrowserColorScheme(color_scheme);
++  }
++}
++
++void LokaSidebarHandler::HandleSetThemeColor(const base::ListValue& args) {
++  // The window's frame (around the page) takes the space's color, so the
++  // sidebar's sky reads as the whole window, like Arc's. "#rrggbb", or null
++  // to go back to the default.
++  ThemeService* theme =
++      ThemeServiceFactory::GetForProfile(Profile::FromWebUI(web_ui()));
++  if (!theme || args.empty()) {
++    return;
++  }
++  std::optional<SkColor> color;
++  if (args[0].is_string()) {
++    const std::string& hex = args[0].GetString();
++    uint32_t rgb = 0;
++    if (hex.size() != 7 || hex[0] != '#' ||
++        !base::HexStringToUInt(std::string_view(hex).substr(1), &rgb)) {
++      return;
++    }
++    color = SkColorSetRGB((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
++  }
++  if (theme->GetUserColor() != color) {
++    theme->SetUserColor(color);
 +  }
 +}
 --- /dev/null

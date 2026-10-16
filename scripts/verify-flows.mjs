@@ -4,6 +4,8 @@
 //
 //   bun run verify:flows      binary from LOKA_CHROME, else the dev build, else the snapshot (testBinary)
 //   bun run verify:flows -- --only tabs   one flow, after first run and the flows it builds on (NEEDS below)
+//   bun run verify:flows -- --webui=checkout
+//                             the same flows with this checkout's webui in the browser's pages (no browser build)
 //
 // One throwaway profile (C:\src\loka\profile-qa-<time>) goes through the flows in order, since each builds on the
 // last; the last one quits and starts the browser again on it. A tiny unpacked extension with a popup and a badge is
@@ -28,18 +30,19 @@ import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { BUILD_DIR } from "./browser.mjs";
 import {
-	alive,
 	askExpression,
 	chromePath,
 	connect,
 	evaluate,
 	freePort,
-	processTree,
+	processes,
 	RECORD_EVENTS,
 	refuseWhileBuilding,
 	sleep,
+	stillRunning,
 	toneWav,
 	until,
+	useCheckoutWebui,
 	windows,
 } from "./browser-session.mjs";
 
@@ -55,6 +58,15 @@ import {
 
 const repo = resolve(import.meta.dirname, "..");
 const chrome = chromePath();
+/** --webui=checkout: the sidebar, command bar, Settings and History run this checkout's webui (see useCheckoutWebui). */
+const webui = process.argv.find((a) => a.startsWith("--webui="))?.slice("--webui=".length) ?? "build";
+if (webui !== "build" && webui !== "checkout") {
+	console.error(
+		`--webui=${webui}: use --webui=checkout (this checkout's webui) or leave it out (the build's own pages).`,
+	);
+	process.exit(2);
+}
+const checkoutWebui = webui === "checkout";
 const stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
 const evidence = join(repo, ".agents", "verify-runs", `${stamp}-flows`);
 const profile = join(BUILD_DIR, `profile-qa-${stamp}`);
@@ -182,6 +194,8 @@ async function launch() {
 	child.stdout.pipe(/** @type {import("node:fs").WriteStream} */ (log.stream), { end: false });
 	child.stderr.pipe(/** @type {import("node:fs").WriteStream} */ (log.stream), { end: false });
 	const pid = child.pid ?? 0;
+	// The browser process by pid and start time, so a quit never stops a process that took its pid later.
+	const root = processes(pid).slice(0, 1);
 	const http = `http://127.0.0.1:${port}`;
 	const version = await until(
 		() =>
@@ -196,6 +210,7 @@ async function launch() {
 	console.log(`Started ${chrome} (pid ${pid}), CDP on ${port}, profile ${profile}`);
 	return {
 		pid,
+		root,
 		http,
 		browserSession,
 		/** @returns {Promise<Target[]>} */
@@ -205,18 +220,26 @@ async function launch() {
 /** @typedef {Awaited<ReturnType<typeof launch>>} Browser */
 
 /**
- * Quits the browser the way a user would (closing it) and waits for its processes to end. Any it left are stopped
- * by pid: only the tree read from this browser just now, never anything found by name.
+ * Quits the browser as the app's Exit does (CDP's Browser.close) and waits until every one of its processes has
+ * ended: they all go within 2 s of it here (0.6 to 2 s, 26 quits). Whatever is still running after 30 s is
+ * stopped by pid and reported. "Its processes" are the browser's tree by pid and start time, never anything found by
+ * name, and never a process that took a pid the browser's had (see stillRunning).
  * @param {Browser} b
  */
 async function quit(b) {
-	const tree = processTree(b.pid);
+	const tree = stillRunning(b.root);
+	const asked = Date.now();
 	await b.browserSession.call("Browser.close", {}, 5000).catch(() => {});
 	b.browserSession.close();
-	const ended = await until(async () => !tree.some(alive), 15000);
-	const left = tree.filter(alive);
-	for (const p of left) spawnSync("taskkill", ["/T", "/F", "/PID", String(p)], { stdio: "ignore" });
-	return { ended, tree: tree.length, killed: left.length };
+	let left = tree;
+	const ended = await until(async () => {
+		left = stillRunning(left);
+		return left.length === 0;
+	}, 30000);
+	const waited = Date.now() - asked;
+	// No /T: Windows finds a tree by parent pid, which can lead to a stranger's process. `left` has the whole tree.
+	for (const p of left) spawnSync("taskkill", ["/F", "/PID", String(p.pid)], { stdio: "ignore" });
+	return { ended, waited, tree: tree.length, killed: left.length, left: left.map((p) => `${p.type} ${p.pid}`) };
 }
 
 // ---- driving a page -----------------------------------------------------------------------------------------------
@@ -253,6 +276,8 @@ const HELPERS = `window.__qa ??= (() => {
 		names(role) { return all().filter((el) => el.matches(role) && shown(el)).map(name); },
 		rows() { return all().filter((el) => el.getAttribute("role") === "treeitem" && shown(el)).map((el) => ({ label: name(el), level: Number(el.getAttribute("aria-level")), selected: el.getAttribute("aria-selected") === "true", expanded: el.getAttribute("aria-expanded"), tree: el.closest("[role=tree]")?.getAttribute("aria-label") ?? "" })); },
 		styleOf(label, role) { const el = find(label, role); return el ? style(el) : null; },
+		// After two frames, so a transition the last input started has begun.
+		still(label, role) { return new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => { const el = find(label, role); done(Boolean(el) && el.getAnimations().every((a) => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity)); }))); },
 		focused() { const el = deepActive(); return el ? { label: name(el), tag: el.tagName, ...style(el) } : null; },
 		text() { return all().map((el) => el.shadowRoot ? el.shadowRoot.textContent : "").join(" ") + " " + document.body.innerText; },
 	};
@@ -313,6 +338,9 @@ function driver(s) {
 		rows: () => run("window.__qa.rows()"),
 		/** @param {Label} label @param {string} [role] @returns {Promise<Record<string, string> | null>} */
 		styleOf: (label, role = "") => run(`window.__qa.styleOf(${JSON.stringify(label)}, ${JSON.stringify(role)})`),
+		/** Waits until its own transitions have finished, so its look can be read. @param {Label} label @param {string} [role] */
+		settled: (label, role = "") =>
+			until(() => run(`window.__qa.still(${JSON.stringify(label)}, ${JSON.stringify(role)})`), 3000),
 		/** @returns {Promise<Record<string, string> | null>} */
 		focused: () => run("window.__qa.focused()"),
 		/** @returns {Promise<string>} */
@@ -415,7 +443,12 @@ async function attachSidebar(b) {
 	const s = await connect(target.webSocketDebuggerUrl);
 	await s.call("Runtime.enable");
 	await s.call("Page.enable");
-	await until(() => evaluate(s, "Boolean(window.cr && document.querySelector('loka-panel')?.shadowRoot)"), 15000);
+	const panel = () => evaluate(s, "Boolean(window.cr && document.querySelector('loka-panel')?.shadowRoot)");
+	await until(panel, 15000);
+	if (checkoutWebui) {
+		await useCheckoutWebui(s, "sidebar");
+		if (!(await until(panel, 15000))) throw new Error("this checkout's sidebar never drew its panel");
+	}
 	await evaluate(s, RECORD_EVENTS);
 	const d = driver(s);
 	/** @param {string} message @param {unknown[]} args */
@@ -524,6 +557,20 @@ async function commandBar() {
 let bar = null;
 
 /**
+ * With --webui=checkout, after each launch: the browser makes the command bar's page the first time the bar opens,
+ * and a reload loses the command it opened with, so open it once, swap in this checkout's page, and close it again.
+ */
+async function checkoutCommandBar() {
+	await ctx.sidebar.tell("openCommandBar", "new-tab");
+	const b = await commandBar();
+	await useCheckoutWebui(b.s, "command");
+	await ctx.sidebar.tell("closeCommandBar");
+	const hidden = await until(() => b.run(`document.visibilityState === "hidden"`), 4000);
+	if (!hidden) throw new Error("this checkout's command bar didn't close");
+	bar = b;
+}
+
+/**
  * Opens the floating command bar from the sidebar (by clicking `opener`, or as Ctrl+T does) and waits until it shows,
  * focused, with `query` in it.
  * @param {string | null} opener @param {string} [query]
@@ -619,14 +666,17 @@ async function firstRun() {
 	);
 	// The rest of setup as it comes; never "Make Loka my default browser".
 	for (let i = 0; i < 10 && !(await setup.has("Open Loka")); i++) {
+		const page = await setup.text();
 		await setup.click("Next");
-		await sleep(400);
+		// The next step is in once the page says something else; only then is it time to look for its Next.
+		await until(async () => (await setup.text()) !== page, 5000);
 	}
 	await setup.picture(join(dir, "02-finish.png"));
 	await setup.click("Open Loka");
 	setup.s.close();
 
 	ctx.sidebar = await attachSidebar(b);
+	if (checkoutWebui) await checkoutCommandBar();
 	const st = await until(async () => {
 		const now = await ctx.sidebar.state();
 		return now?.spaces.length === SETUP_SPACES.length && now.spaces[0]?.name === SETUP_SPACES[0]?.name ? now : null;
@@ -897,16 +947,31 @@ async function tabs() {
 	check("and into Play's tab group in the browser", moved, show((await sb.groups()).map((g) => g.title)));
 
 	// Words search with the browser's engine; Ctrl+L changes the shown tab's address.
+	const tabsBefore = new Set((await sb.tabs()).map((t) => t.id));
 	await openBar("New tab");
 	await barPick("loka qa words", { re: "^loka qa words$" });
-	const searched = await until(
-		async () => (await sb.tabs()).find((t) => t.active && /[?&]q=loka(\+|%20)qa(\+|%20)words/.test(t.url)),
-		6000,
-	);
+	// getTabs has a tab's committed address, which for a search waits on the search engine's servers (0.3 s here,
+	// over 6 s in the runs that failed); until then it says about:blank. The browser's own target list has where the
+	// tab is going from the start. So: a new tab, shown, going to the search (committed, or still on its way there).
+	const isSearch = (/** @type {string} */ url) => /[?&]q=loka(\+|%20)qa(\+|%20)words/.test(url);
+	const searchedSince = Date.now();
+	const searched = await until(async () => {
+		const [tabsNow, targets] = await Promise.all([sb.tabs(), ctx.browser.targets()]);
+		const tab = tabsNow.find((t) => !tabsBefore.has(t.id) && t.active);
+		const going = targets.find((t) => t.type === "page" && isSearch(t.url))?.url;
+		if (!tab) return null;
+		if (isSearch(tab.url)) return { id: tab.id, url: tab.url, how: "committed" };
+		return (tab.url === "about:blank" || tab.url === "") && going
+			? { id: tab.id, url: going, how: "on its way" }
+			: null;
+	}, 10000);
+	const searchWaited = Date.now() - searchedSince;
 	check(
 		"words in the command bar search the web in a new tab",
 		searched,
-		searched ? searched.url : show((await sb.tabs()).map((t) => t.url)),
+		searched
+			? `${searched.url} (${searched.how}, after ${searchWaited} ms)`
+			: `tabs ${show((await sb.tabs()).map((t) => [t.url, t.active]))}; targets ${show((await ctx.browser.targets()).map((t) => t.url))}`,
 	);
 	// It needs the network to load; only where it went matters here.
 	if (searched) await sb.tell("closeTab", searched.id);
@@ -965,7 +1030,7 @@ async function states() {
 	/** @param {string} what @param {string | { re: string }} label @param {string} role @param {string[]} props */
 	const hoverChanges = async (what, label, role, props) => {
 		await sb.away();
-		await sleep(250);
+		await sb.settled(label, role);
 		const before = await sb.styleOf(label, role);
 		await sb.hover(label, role);
 		// Hover transitions run about 120 ms.
@@ -997,9 +1062,9 @@ async function states() {
 	const more = await sb.box("More", "button");
 	if (more) {
 		await sb.away();
-		await sleep(200);
+		await sb.settled("More", "button");
 		await sb.mouse("mouseMoved", more.x, more.y);
-		await sleep(250);
+		await sb.settled("More", "button");
 		const hovered = await sb.styleOf("More", "button");
 		await sb.mouse("mousePressed", more.x, more.y, "left");
 		const pressed = await until(async () => {
@@ -1022,7 +1087,7 @@ async function states() {
 	const row = await sb.box(quiet, "[role=treeitem]");
 	if (row) {
 		await sb.mouse("mouseMoved", row.x, row.y);
-		await sleep(250);
+		await sb.settled(quiet, "[role=treeitem]");
 		const hovered = await sb.styleOf(quiet, "[role=treeitem]");
 		await sb.mouse("mousePressed", row.x, row.y, "left");
 		const pressed = await until(async () => {
@@ -1421,6 +1486,7 @@ async function settings() {
 	if (!check("More > Settings opens chrome://loka-settings", target, target?.url ?? "no settings tab")) return;
 	const page = driver(await connect(/** @type {Target} */ (target).webSocketDebuggerUrl));
 	await page.s.call("Runtime.enable");
+	if (checkoutWebui) await useCheckoutWebui(page.s, "settings");
 	await until(() => page.has("Sound effects", "[role=switch]"), 8000);
 	const dir = join(evidence, flow);
 	mkdirSync(dir, { recursive: true });
@@ -1502,6 +1568,7 @@ async function settings() {
 	);
 	if (!check("Ctrl+H opens chrome://history", historyTarget, historyTarget?.url ?? "no history tab")) return;
 	const history = driver(await connect(/** @type {Target} */ (historyTarget).webSocketDebuggerUrl));
+	if (checkoutWebui) await useCheckoutWebui(history.s, "history");
 	await until(() => history.has("Search history", "input"), 8000);
 	await history.run(`(window.__qa.find("Search history", "input").focus(), true)`);
 	await history.type("QA Bravo");
@@ -1581,27 +1648,37 @@ async function restart() {
 	check(
 		"the browser quits",
 		quitted.ended,
-		quitted.ended ? "every process ended" : `${quitted.killed} processes stopped by pid`,
+		quitted.ended
+			? `all ${quitted.tree} processes ended ${quitted.waited} ms after Browser.close`
+			: `${quitted.killed} of ${quitted.tree} still running after ${quitted.waited} ms (${quitted.left.join(", ")}), stopped by pid`,
 	);
 	ctx.browser = await launch();
 	ctx.sidebar = await attachSidebar(ctx.browser);
-	await until(async () => (await ctx.sidebar.state())?.spaces.length === before.spaces.length, 10000);
-	await sleep(1500);
-	const after = await snapshot();
+	if (checkoutWebui) await checkoutCommandBar();
+	// What the restart brought back, once the sidebar has taken in the restored tabs (or 15 s have passed).
+	const keys = /** @type {(keyof typeof before)[]} */ (["spaces", "pinned", "essentials", "extensions", "ui"]);
+	const read = async () => {
+		const [after, tabsNow, st] = await Promise.all([snapshot(), ctx.sidebar.tabs(), ctx.sidebar.state()]);
+		const reattached = tabsNow.filter((t) => t.url.startsWith("http"));
+		const homes = reattached.map((t) => `${t.title}: ${homeIn(st, t.url)}`);
+		const wanted = reattached.map((t) => `${t.title}: ${homesBefore[t.url] ?? "?"}`);
+		const restored = show(reattached.map((t) => t.url).sort()) === show([...openBefore].sort());
+		const same = keys.every((key) => show(after[key]) === show(before[key]));
+		return { after, reattached, homes, wanted, restored, settled: same && restored && show(homes) === show(wanted) };
+	};
+	const back =
+		(await until(async () => {
+			const now = await read();
+			return now.settled ? now : null;
+		}, 15000)) ?? (await read());
+	const { after, reattached, homes, wanted, restored } = back;
 	writeFileSync(join(evidence, "restart-after.json"), JSON.stringify(after, null, 2));
-	for (const key of /** @type {(keyof typeof before)[]} */ (["spaces", "pinned", "essentials", "extensions", "ui"])) {
-		check(`${key} survive a restart`, show(after[key]) === show(before[key]), show(after[key]));
-	}
-	const tabsNow = await ctx.sidebar.tabs();
-	const st = await ctx.sidebar.state();
-	const reattached = tabsNow.filter((t) => t.url.startsWith("http"));
+	for (const key of keys) check(`${key} survive a restart`, show(after[key]) === show(before[key]), show(after[key]));
 	check(
 		"the browser restores the window's web tabs",
-		show(reattached.map((t) => t.url).sort()) === show([...openBefore].sort()),
+		restored,
 		`before ${openBefore.length}, after ${reattached.length}: ${reattached.map((t) => t.title).join(", ")}`,
 	);
-	const homes = reattached.map((t) => `${t.title}: ${homeIn(st, t.url)}`);
-	const wanted = reattached.map((t) => `${t.title}: ${homesBefore[t.url] ?? "?"}`);
 	check("each one is back in its own space", show(homes) === show(wanted), homes.join(", "));
 	await step("after-restart", true);
 }
@@ -1677,8 +1754,7 @@ async function main() {
 		}
 	} finally {
 		flow = "cleanup";
-		const stopped =
-			ctx?.browser && alive(ctx.browser.pid) ? await quit(ctx.browser) : { ended: true, tree: 0, killed: 0 };
+		const stopped = ctx?.browser ? await quit(ctx.browser) : { ended: true, tree: 0, killed: 0 };
 		server.close();
 		log.stream?.end();
 		await sleep(800);
@@ -1690,7 +1766,7 @@ async function main() {
 			gone && (stopped.ended || stopped.killed > 0),
 			`${stopped.killed} of ${stopped.tree} processes needed taskkill; profile ${gone ? "deleted" : "still there"}`,
 		);
-		writeFileSync(join(evidence, "checks.json"), JSON.stringify({ chrome, checks, notes }, null, 2));
+		writeFileSync(join(evidence, "checks.json"), JSON.stringify({ chrome, webui, checks, notes }, null, 2));
 	}
 	const failed = checks.filter((c) => !c.ok);
 	const byFlow = [...new Set(checks.map((c) => c.flow))].map((f) => {
@@ -1698,7 +1774,7 @@ async function main() {
 		return `${mine.every((c) => c.ok) ? "PASS" : "FAIL"} ${f} (${mine.filter((c) => c.ok).length}/${mine.length})`;
 	});
 	console.log(
-		`\n${byFlow.join("\n")}\n\n${failed.length ? "FAIL" : "PASS"}: ${checks.length - failed.length}/${checks.length} checks. Evidence: ${evidence}`,
+		`\n${byFlow.join("\n")}\n\n${failed.length ? "FAIL" : "PASS"}: ${checks.length - failed.length}/${checks.length} checks (webui: ${webui}). Evidence: ${evidence}`,
 	);
 	process.exit(failed.length ? 1 : 0);
 }

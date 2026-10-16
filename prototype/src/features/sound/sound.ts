@@ -8,6 +8,32 @@ let context: AudioContext | null = null;
 let output: GainNode | null = null;
 let noise: AudioBuffer | null = null;
 const gate = new CueGate();
+/** Suspends the audio context once the cues have played out: a running one renders silence on a thread forever. */
+let sleepTimer = 0;
+
+/**
+ * The context, made once. It costs tens of milliseconds to make, so it's made in an idle moment after the first
+ * input on the page, not inside the first action a cue confirms (the first space switch).
+ */
+function audio(): AudioContext {
+	context ??= new AudioContext({ latencyHint: "interactive" });
+	output ??= chain(context);
+	return context;
+}
+if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+	const warm = () => {
+		window.removeEventListener("pointerdown", warm, true);
+		window.removeEventListener("keydown", warm, true);
+		requestIdleCallback(() => {
+			if (!prefs.on || context) return;
+			try {
+				void audio().suspend();
+			} catch {}
+		});
+	};
+	window.addEventListener("pointerdown", warm, true);
+	window.addEventListener("keydown", warm, true);
+}
 
 /** The window passes the user's Settings in; the module only remembers them. */
 export function setSoundPrefs(next: { on: boolean; volume: number }) {
@@ -89,11 +115,13 @@ export function playCue(cue: Cue) {
 	if (!navigator.userActivation?.hasBeenActive) return;
 	if (!gate.allow(cue, performance.now())) return;
 	try {
-		context ??= new AudioContext({ latencyHint: "interactive" });
-		output ??= chain(context);
-		if (context.state === "suspended") void context.resume();
+		const ctx = audio();
+		if (ctx.state === "suspended") void ctx.resume();
 		// A few milliseconds ahead, so the first layer's envelope isn't cut by scheduling jitter.
-		const at = context.currentTime + 0.005;
-		for (const l of CUES[cue]) layer(context, output, l, at);
+		const at = ctx.currentTime + 0.005;
+		if (output) for (const l of CUES[cue]) layer(ctx, output, l, at);
+		// The longest cue and its echo are over in about a second and a half.
+		window.clearTimeout(sleepTimer);
+		sleepTimer = window.setTimeout(() => void ctx.suspend(), 2000);
 	} catch {}
 }

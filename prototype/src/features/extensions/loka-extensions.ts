@@ -119,6 +119,7 @@ export class LokaExtensions extends LitElement {
 			:host {
 				display: block;
 				font: 14px/1.4 system-ui, "Segoe UI", sans-serif;
+				/* Pressed is a deeper hover in both themes. --loka-fill-hover lightens, which vanishes on a light panel. */
 			}
 			header {
 				display: flex;
@@ -147,12 +148,12 @@ export class LokaExtensions extends LitElement {
 				position: absolute;
 				inset: -2px 0;
 			}
-			.quiet:active {
-				background: var(--loka-fill-hover);
-			}
 			.quiet:hover {
 				color: var(--loka-ink);
 				background: var(--loka-hover);
+			}
+			.quiet:active {
+				background: var(--loka-pressed);
 			}
 			ul {
 				list-style: none;
@@ -164,8 +165,12 @@ export class LokaExtensions extends LitElement {
 				align-items: center;
 				border-radius: 8px;
 			}
+			/* The whole row is one pill: hover lights it, pressing its main button presses it. */
 			li:hover {
 				background: var(--loka-hover);
+			}
+			li:has(.row:active) {
+				background: var(--loka-pressed);
 			}
 			.row {
 				flex: 1;
@@ -197,6 +202,9 @@ export class LokaExtensions extends LitElement {
 			.pin:hover {
 				background: var(--loka-hover);
 				color: var(--loka-ink);
+			}
+			.pin:active {
+				background: var(--loka-pressed);
 			}
 			.pin.on {
 				color: var(--loka-accent-ink);
@@ -251,9 +259,19 @@ export class LokaExtensions extends LitElement {
 			.primary:hover {
 				filter: brightness(1.06);
 			}
+			.primary:active {
+				filter: brightness(0.94);
+			}
 			:focus-visible {
 				outline: 2px solid var(--loka-accent);
 				outline-offset: -2px;
+			}
+			@media (prefers-reduced-motion: no-preference) {
+				li,
+				.pin,
+				.quiet {
+					transition: background-color 120ms;
+				}
 			}
 		`,
 	];

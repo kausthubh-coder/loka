@@ -4,6 +4,7 @@
 // /json/list and each target's websocket.
 
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { BUILD_DIR, BUILT_BINARY, buildRunning, requireWindowsBuild, testBinary } from "./browser.mjs";
@@ -174,27 +175,195 @@ export const RECORD_EVENTS = `(() => {
 	return true;
 })()`;
 
-/** Every pid in the tree under `root`, from Windows' process table. @param {number} root @returns {number[]} */
-export function processTree(root) {
+/**
+ * One process: its pid, parent, when it started (so a pid Windows has handed to a new process isn't mistaken for
+ * it) and its Chromium --type ("browser" for the main one).
+ * @typedef {{ pid: number, parent: number, started: string, type: string }} Proc
+ */
+
+/** Windows' process table, by pid. @returns {Map<number, Proc>} */
+function processTable() {
 	const ps = spawnSync(
 		"powershell",
 		[
 			"-NoProfile",
 			"-Command",
-			'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId)" }',
+			'Get-CimInstance Win32_Process | ForEach-Object { $t = if ($_.CommandLine -match "--type=([\\w-]+)") { $Matches[1] } else { "browser" }; "$($_.ProcessId) $($_.ParentProcessId) $($_.CreationDate.ToFileTimeUtc()) $t" }',
 		],
 		{ encoding: "utf8" },
 	);
-	/** @type {Map<number, number[]>} */
-	const children = new Map();
+	/** @type {Map<number, Proc>} */
+	const table = new Map();
 	for (const line of ps.stdout.split(/\r?\n/)) {
-		const [pid = 0, parent = 0] = line.trim().split(" ").map(Number);
-		if (!pid) continue;
-		children.set(parent, [...(children.get(parent) ?? []), pid]);
+		const [pid = "", parent = "", started = "", type = ""] = line.trim().split(" ");
+		if (Number(pid)) table.set(Number(pid), { pid: Number(pid), parent: Number(parent), started, type });
 	}
-	const tree = [root];
-	for (const at of tree) tree.push(...(children.get(at) ?? []));
-	return tree;
+	return table;
+}
+
+/**
+ * The processes of `tree` that still run, plus any they started since. Running means both: the pid answers, and
+ * Windows' table has it with the same start time. The pid alone isn't enough, since Windows hands a freed pid to a
+ * new process within seconds; the table alone isn't either, since it keeps listing an exited process for a second or
+ * two while something holds a handle to it. A child counts only if it started after its parent, since Windows keeps
+ * a dead parent's pid in its children.
+ * @param {Proc[]} tree @returns {Proc[]}
+ */
+export function stillRunning(tree) {
+	const table = processTable();
+	const running = (/** @type {Proc} */ p) => table.get(p.pid)?.started === p.started && alive(p.pid);
+	const left = tree.filter(running);
+	for (const at of left)
+		for (const p of table.values())
+			if (p.parent === at.pid && p.started >= at.started && !left.some((l) => l.pid === p.pid) && running(p))
+				left.push(p);
+	return left;
+}
+
+/** Every process in the tree under `root`, root first. @param {number} root @returns {Proc[]} */
+export function processes(root) {
+	const top = processTable().get(root);
+	return top ? stillRunning([top]) : [];
+}
+
+/**
+ * Starts the built browser on a throwaway profile (`C:\src\loka\profile-<name>-<time>`) with CDP on a free port,
+ * setup skipped, and one normal tab so the sidebar exists. `close()` stops only this process tree and deletes the
+ * profile.
+ * @param {{ name: string, chrome?: string, args?: string[], url?: string }} options
+ */
+export async function launchBrowser({ name, chrome = chromePath(), args = [], url = "about:blank" }) {
+	const { spawn } = await import("node:child_process");
+	const { mkdirSync, rmSync } = await import("node:fs");
+	refuseWhileBuilding(chrome);
+	const stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
+	const profile = join(BUILD_DIR, `profile-${name}-${stamp}-${process.pid}`);
+	mkdirSync(profile, { recursive: true });
+	const port = await freePort();
+	const child = spawn(
+		chrome,
+		[
+			`--user-data-dir=${profile}`,
+			`--remote-debugging-port=${port}`,
+			"--disable-features=CalculateNativeWinOcclusion",
+			"--no-first-run",
+			...args,
+			url,
+		],
+		{ stdio: "ignore" },
+	);
+	const pid = child.pid ?? 0;
+	const http = `http://127.0.0.1:${port}`;
+	/** @returns {Promise<Target[]>} */
+	const targets = () => fetch(`${http}/json/list`).then((r) => r.json());
+	const version = await until(
+		() =>
+			fetch(`${http}/json/version`).then(
+				(r) => r.json(),
+				() => null,
+			),
+		30000,
+	);
+	if (!version) throw new Error("the browser never opened its debugging port");
+	// The browser process as it is now (pid and start time), so close() never stops a process that took its pid later.
+	const root = processes(pid).slice(0, 1);
+	const browser = await connect(version.webSocketDebuggerUrl);
+	/** @param {(t: Target) => boolean} match @param {number} [ms] */
+	const target = async (match, ms = 20000) => {
+		const found = await until(async () => (await targets()).find(match), ms);
+		if (!found) throw new Error("no such target");
+		return found;
+	};
+	return {
+		pid,
+		profile,
+		http,
+		browser,
+		targets,
+		target,
+		/** The window's sidebar page. */
+		sidebar: async () => {
+			const t = await target((x) => x.url.startsWith("chrome://loka-sidebar.top-chrome"));
+			const session = await connect(t.webSocketDebuggerUrl);
+			await until(() => evaluate(session, "Boolean(document.querySelector('loka-panel'))").catch(() => false), 10000);
+			return session;
+		},
+		async close() {
+			const tree = stillRunning(root);
+			browser.close();
+			for (const p of tree) spawnSync("taskkill", ["/F", "/PID", String(p.pid)], { stdio: "ignore" });
+			await until(async () => stillRunning(tree).length === 0, 5000);
+			for (const p of stillRunning(tree)) spawnSync("taskkill", ["/F", "/PID", String(p.pid)], { stdio: "ignore" });
+			rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
+		},
+	};
+}
+
+/** Which webui/src module each of Loka's built-in pages starts from. */
+const WEBUI_ENTRIES = { sidebar: "main.ts", history: "history.ts", command: "command.ts", settings: "settings.ts" };
+
+/**
+ * Runs this checkout's webui in one page of the built browser, without rebuilding the browser: the page's own entry
+ * is built here as one classic script, the page's own module scripts are stopped before they run (the parser gives
+ * a MutationObserver its turn before it starts a script), and the page reloads. The browser's handler, window and
+ * hit testing stay the real ones; only the page's code is this checkout's. chrome.send is installed after the
+ * document starts, so the code waits for DOMContentLoaded.
+ * @param {Session} session a page's target session @param {keyof typeof WEBUI_ENTRIES} page
+ */
+export async function useCheckoutWebui(session, page) {
+	const { build } = await import("vite");
+	const outDir = join(repo, ".agents", "verify-runs", "webui-inject", page);
+	await build({
+		configFile: false,
+		root: join(repo, "webui"),
+		logLevel: "warn",
+		publicDir: false,
+		build: {
+			outDir,
+			emptyOutDir: true,
+			target: "chrome140",
+			minify: false,
+			lib: {
+				entry: join(repo, "webui", "src", WEBUI_ENTRIES[page]),
+				formats: ["iife"],
+				name: "lokaCheckout",
+				fileName: () => "page.js",
+			},
+		},
+	});
+	const code = readFileSync(join(outDir, "page.js"), "utf8");
+	const css = readFileSync(join(repo, "webui", "src", "page.css"), "utf8");
+	const source = `(() => {
+	new MutationObserver((records) => {
+		for (const record of records)
+			for (const node of record.addedNodes) {
+				if (node.tagName === "SCRIPT" && node.type === "module") {
+					node.type = "text/plain";
+					node.remove();
+				}
+			}
+	}).observe(document, { childList: true, subtree: true });
+	window.__lokaCheckoutWebui = ${JSON.stringify(page)};
+	document.addEventListener("DOMContentLoaded", () => {
+		document.head.append(Object.assign(document.createElement("style"), { textContent: ${JSON.stringify(css)} }));
+		${code}
+	});
+})();
+//# sourceURL=loka-checkout-${page}.js`;
+	await session.call("Page.enable");
+	await session.call("Page.addScriptToEvaluateOnNewDocument", { source });
+	// Marks the document that's there now, so only the reloaded one counts as started.
+	await evaluate(session, "(window.__lokaBeforeReload = true)");
+	await session.call("Page.reload", {});
+	const ready = await until(
+		() =>
+			evaluate(
+				session,
+				"!window.__lokaBeforeReload && document.readyState === 'complete' && window.__lokaCheckoutWebui",
+			).catch(() => false),
+		15000,
+	);
+	if (!ready) throw new Error(`this checkout's ${page} page never started in the browser`);
 }
 
 /** @param {number} pid */

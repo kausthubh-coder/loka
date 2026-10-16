@@ -54,21 +54,41 @@ export function faviconSrc(url: string, live?: LiveTab): string | null {
 	return faviconSource ? faviconSource(url) : null;
 }
 
-/** What goes inside a favicon tile: the site's own icon when there is one, else its first letter. */
+/**
+ * What goes inside a favicon tile: the site's own icon when there is one, else its first letter. The letter is
+ * there behind the image too, for when neither the page's icon nor the cache's can be drawn: the cache answers
+ * nothing (an error) rather than a stand-in globe for a page it doesn't know, and the tile turns into the letter.
+ */
 export function faviconInner(url: string, live?: LiveTab): TemplateResult | string {
 	const src = faviconSrc(url, live);
 	if (!src) return faviconLetter(url);
 	const cached = faviconSource?.(url);
 	return html`<img
-		src=${src}
-		alt=""
-		style="width: 100%; height: 100%; object-fit: contain"
-		@error=${(e: Event) => {
-			// A page's own icon can fail to load from here (blocked, gone); the cache's answer is the next best.
-			const img = e.target as HTMLImageElement;
-			if (cached && img.src !== cached) img.src = cached;
-		}}
-	/>`;
+			src=${src}
+			alt=""
+			style="width: 100%; height: 100%; object-fit: contain"
+			@load=${(e: Event) => {
+				// A new icon after a letter (the page loaded one): the image comes back.
+				const img = e.target as HTMLImageElement;
+				if (!img.hidden) return;
+				img.hidden = false;
+				const letter = img.nextElementSibling;
+				if (letter instanceof HTMLElement) letter.hidden = true;
+				img.parentElement?.style.setProperty("--fav", "transparent");
+			}}
+			@error=${(e: Event) => {
+				const img = e.target as HTMLImageElement;
+				// A page's own icon can fail to load from here (blocked, gone); the cache's answer is the next best.
+				if (cached && img.src !== cached) {
+					img.src = cached;
+					return;
+				}
+				img.hidden = true;
+				const letter = img.nextElementSibling;
+				if (letter instanceof HTMLElement) letter.hidden = false;
+				img.parentElement?.style.setProperty("--fav", faviconColor(url));
+			}}
+		/><span hidden>${faviconLetter(url)}</span>`;
 }
 
 /** The tile's background: the letter tile's color, or none behind a real icon. */

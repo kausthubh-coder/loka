@@ -9,8 +9,6 @@ export interface UiPrefs {
 	/** Interface sounds: on unless turned off, at a quiet volume from 0 to 1. */
 	sound: boolean;
 	soundVolume: number;
-	/** The one-time hint about dragging a tab into Essentials was dismissed. */
-	essentialsHintDismissed: boolean;
 }
 
 export const SIDEBAR_MIN = 220;
@@ -22,7 +20,6 @@ export const DEFAULT_UI: UiPrefs = {
 	archiveAfterHours: null,
 	sound: true,
 	soundVolume: 0.5,
-	essentialsHintDismissed: false,
 };
 
 export function clampWidth(width: number): number {
@@ -47,6 +44,5 @@ export function parseUiPrefs(json: string | null): UiPrefs {
 			typeof d.soundVolume === "number" && Number.isFinite(d.soundVolume)
 				? Math.min(1, Math.max(0, d.soundVolume))
 				: DEFAULT_UI.soundVolume,
-		essentialsHintDismissed: d.essentialsHintDismissed === true,
 	};
 }

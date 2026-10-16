@@ -92,8 +92,9 @@ export class LokaSidebarSearch extends LitElement {
 	static override styles = css`
 		:host {
 			display: block;
-			color: #ececf1;
 			font: 14px/1.4 system-ui, "Segoe UI", sans-serif;
+			/* Pressed is a deeper hover in both themes. --loka-fill-hover lightens, which vanishes on a light panel. */
+			--press: color-mix(in srgb, var(--loka-ink) 12%, transparent);
 		}
 		input {
 			width: 100%;
@@ -104,15 +105,20 @@ export class LokaSidebarSearch extends LitElement {
 			color: inherit;
 			border: 0;
 			border-radius: 9px;
-			background: hsl(var(--hue) 30% 85% / 0.08);
+			background: var(--loka-fill);
+			box-shadow: inset 0 0 0 1px var(--loka-line);
 			outline: none;
 		}
+		input::placeholder {
+			color: var(--loka-ink-3);
+		}
 		input:focus {
-			box-shadow: inset 0 0 0 1.5px hsl(var(--hue) 85% 72%);
+			box-shadow: inset 0 0 0 1.5px var(--loka-accent);
 		}
 		#matches {
 			margin-top: 6px;
 		}
+		/* The pointer moves the highlight (mousemove selects), so hover and the arrow keys light the same row. */
 		.match {
 			display: flex;
 			align-items: center;
@@ -121,7 +127,10 @@ export class LokaSidebarSearch extends LitElement {
 			border-radius: 8px;
 		}
 		.match.on {
-			background: hsl(var(--hue) 40% 85% / 0.13);
+			background: var(--loka-hover);
+		}
+		.match:active {
+			background: var(--press);
 		}
 		.fav {
 			flex: none;
@@ -149,13 +158,18 @@ export class LokaSidebarSearch extends LitElement {
 			display: flex;
 			align-items: center;
 			gap: 5px;
-			color: #a7a8b4;
+			color: var(--loka-ink-2);
 			font-size: 12px;
 		}
 		.empty {
 			margin: 8px;
-			color: #b4b6c2;
+			color: var(--loka-ink-2);
 			font-size: 13px;
+		}
+		@media (prefers-reduced-motion: no-preference) {
+			.match {
+				transition: background-color 120ms;
+			}
 		}
 	`;
 }

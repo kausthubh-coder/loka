@@ -1,11 +1,21 @@
 import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 import type { Browser, CommandPick, NativeSuggestion } from "../../../../webui/src/bridge";
+import { keys } from "../../app/platform";
 import { leave } from "../../app/theme";
 import { faviconBackground, faviconInner, hostOf, type LiveTabs } from "../sidebar/favicon";
 import { planet } from "../sidebar/planet";
 import type { BrowserState, TabId } from "../sidebar/sidebar.logic";
 import { playCue } from "../sound/sound";
-import { type CommandMode, type CommandResult, commandResults, dotCom } from "./command-bar.logic";
+import {
+	type CommandMode,
+	type CommandResult,
+	commandResults,
+	continueAnswer,
+	dotCom,
+	inlineCompletion,
+	keepAnswer,
+	type SuggestionAnswer,
+} from "./command-bar.logic";
 
 /**
  * The command bar: open an address or search, jump to any tab in any space, switch space, or run a command. Results
@@ -28,6 +38,7 @@ export class LokaCommandBar extends LitElement {
 		query: { state: true },
 		selected: { state: true },
 		suggestions: { state: true },
+		inlineOff: { state: true },
 	};
 
 	declare state: BrowserState;
@@ -41,17 +52,22 @@ export class LokaCommandBar extends LitElement {
 	layout: "embedded" | "page" = "embedded";
 	/** Filled in and selected when the bar opens: the current address, for Ctrl+L. */
 	initialQuery = "";
+	/** What the person typed. The field shows it with the completion after it, selected. */
 	query = "";
 	selected = 0;
-	suggestions: { for: string; list: NativeSuggestion[] } = { for: "", list: [] };
+	suggestions: SuggestionAnswer = { for: "", list: [] };
+	/** Set by a deletion, cleared by the next character typed: see ResultContext.inlineOff. */
+	inlineOff = false;
+	/** The completion the last render showed, which the next keystroke may continue. */
+	private shownInline = "";
 	private stopSuggestions = () => {};
 
 	override connectedCallback() {
 		super.connectedCallback();
 		this.query = this.initialQuery;
 		this.stopSuggestions =
-			this.browser?.onSuggestions((query, list) => {
-				this.suggestions = { for: query, list };
+			this.browser?.onSuggestions((query, list: NativeSuggestion[]) => {
+				this.suggestions = keepAnswer(this.suggestions, { for: query, list }, this.query);
 			}) ?? (() => {});
 		if (this.query.trim()) this.browser?.suggest(this.query);
 	}
@@ -104,7 +120,18 @@ export class LokaCommandBar extends LitElement {
 		}
 	}
 
-	private onInput(value: string) {
+	/**
+	 * Typing over the selected completion replaces it, so the field's text is what was typed. A deletion turns
+	 * completing off until the next character; a character that continues the completion keeps it right away.
+	 */
+	private onInput(e: InputEvent) {
+		const input = e.target as HTMLInputElement;
+		const value = input.value;
+		// Typing in the middle of the text isn't the start of an address either, as in Chrome's address bar.
+		const stopCompleting = e.inputType.startsWith("delete") || input.selectionEnd !== value.length;
+		const continued = !stopCompleting && this.shownInline ? continueAnswer(this.suggestions, value) : null;
+		if (continued) this.suggestions = continued;
+		this.inlineOff = stopCompleting;
 		this.query = value;
 		this.selected = 0;
 		if (value.trim()) this.browser?.suggest(value);
@@ -112,13 +139,23 @@ export class LokaCommandBar extends LitElement {
 
 	protected override firstUpdated() {
 		const input = this.renderRoot.querySelector("input");
-		input?.focus();
-		input?.select();
+		if (!input) return;
+		input.value = this.query;
+		input.focus();
+		input.select();
 	}
 
 	protected override updated(changed: Map<string, unknown>) {
 		if (changed.has("selected")) {
 			this.renderRoot.querySelector(".result.on")?.scrollIntoView({ block: "nearest" });
+		}
+		// The field is set here rather than bound, so the completion can follow the caret, selected, and so a render
+		// that changes nothing leaves the caret where the person put it.
+		const input = this.renderRoot.querySelector("input");
+		const shown = this.query + this.shownInline;
+		if (input && input.value !== shown) {
+			input.value = shown;
+			input.setSelectionRange(this.query.length, shown.length);
 		}
 	}
 
@@ -148,17 +185,21 @@ export class LokaCommandBar extends LitElement {
 		// Ctrl+L starts with the address on screen: until it's edited, Enter goes there again and the list below is
 		// the same as an empty bar's.
 		const untouched = this.initialQuery !== "" && this.query === this.initialQuery;
-		const results = commandResults(this.state, untouched ? "" : this.query, {
+		const query = untouched ? "" : this.query;
+		const context = {
 			suggestions: this.suggestions.list,
 			suggestionsFor: this.suggestions.for,
 			links: this.links,
 			pinned: this.pinned,
-		});
+			inlineOff: this.inlineOff,
+		};
+		const results = commandResults(this.state, query, context);
 		if (untouched) {
 			const url = this.initialQuery;
 			results.unshift({ kind: "go", url, icon: "globe", label: `Go to ${hostOf(url)}`, detail: url, group: "" });
 		}
 		const selected = Math.min(this.selected, results.length - 1);
+		this.shownInline = inlineCompletion(this.state, query, context, selected);
 		let lastGroup = "";
 		return html`
 			<div class="scrim" @click=${() => void this.close()}></div>
@@ -174,8 +215,7 @@ export class LokaCommandBar extends LitElement {
 						aria-activedescendant="result-${selected}"
 						autocomplete="off"
 						spellcheck="false"
-						.value=${this.query}
-						@input=${(e: Event) => this.onInput((e.target as HTMLInputElement).value)}
+						@input=${(e: InputEvent) => this.onInput(e)}
 						@keydown=${(e: KeyboardEvent) => this.onKey(e, results)}
 					/>
 					<span class="mode" title=${this.mode === "focus-location" ? "Addresses open in this tab" : "Addresses open in a new tab"}>
@@ -202,7 +242,7 @@ export class LokaCommandBar extends LitElement {
 								<span class="icon" aria-hidden="true">${this.icon(r)}</span>
 								<span class="label">${r.label}</span>
 								<span class="detail">
-									${space ? html`${planet(space.planet, space.hue, 14)}` : nothing}<span class="detail-text">${r.detail}</span>
+									${space ? html`${planet(space.planet, space.hue, 14)}` : nothing}<span class="detail-text">${keys(r.detail)}</span>
 								</span>
 								<kbd aria-hidden="true">↵</kbd>
 							</div>`;
@@ -240,26 +280,46 @@ export class LokaCommandBar extends LitElement {
 		:host([layout="page"]) .scrim {
 			background: transparent;
 		}
+		/* Frosted glass: the dialog surface, tinted by the space's hue, at about three quarters so what's behind shows
+		   through blurred and a little more saturated. The edge is a hairline inside the panel, light on dark and dark
+		   on light (--loka-line is both). The blur radius is never animated: it's costly on every frame. */
 		.panel {
 			position: relative;
 			box-sizing: border-box;
 			width: min(680px, calc(100% - 24px));
 			padding: 8px;
 			border-radius: 20px;
-			/* The space's hue as a faint tint over the dialog surface, frosted where there's something behind it. */
-			background: color-mix(in srgb, var(--loka-dialog) 88%, hsl(var(--hue) 70% 55% / 0.6));
-			backdrop-filter: blur(24px) saturate(1.3);
+			background: color-mix(
+				in srgb,
+				color-mix(in srgb, var(--loka-dialog) 90%, hsl(var(--hue) 70% 55%)) 76%,
+				transparent
+			);
+			backdrop-filter: blur(24px) saturate(1.6);
 			box-shadow:
-				0 0 0 1px var(--loka-line),
-				0 24px 64px -12px rgb(0 0 0 / 0.45),
-				0 8px 20px -8px rgb(0 0 0 / 0.25);
+				inset 0 0 0 1px var(--loka-line),
+				0 20px 56px -16px rgb(0 0 0 / 0.4),
+				0 6px 16px -8px rgb(0 0 0 / 0.2);
 			overflow: hidden;
 		}
+		/* The browser's floating window has nothing behind the page to blur (the web page under it is another
+		   window), so glass there would only let text show through sharp. It's near solid instead. */
 		:host([layout="page"]) .panel {
 			width: calc(100% - 40px);
+			background: color-mix(in srgb, var(--loka-dialog) 94%, hsl(var(--hue) 70% 55%));
 			box-shadow:
-				0 0 0 1px var(--loka-line),
+				inset 0 0 0 1px var(--loka-line),
 				0 12px 28px rgb(0 0 0 / 0.3);
+		}
+		@supports not (backdrop-filter: blur(1px)) {
+			.panel {
+				background: color-mix(in srgb, var(--loka-dialog) 94%, hsl(var(--hue) 70% 55%));
+			}
+		}
+		@media (prefers-reduced-transparency: reduce) {
+			.panel {
+				background: color-mix(in srgb, var(--loka-dialog) 94%, hsl(var(--hue) 70% 55%));
+				backdrop-filter: none;
+			}
 		}
 		svg {
 			width: 18px;
@@ -313,6 +373,7 @@ export class LokaCommandBar extends LitElement {
 		}
 		/* Every row keeps the Enter key's room, shown only on the selected one, so moving never shifts the details. */
 		.mode {
+			font-size: 13px;
 			color: var(--loka-ink);
 		}
 		kbd {
@@ -370,8 +431,8 @@ export class LokaCommandBar extends LitElement {
 			display: none;
 		}
 		.group {
-			margin: 10px 12px 4px;
-			font-size: 12px;
+			margin: 10px 14px 4px;
+			font-size: 13px;
 			font-weight: 600;
 			letter-spacing: 0.02em;
 			color: var(--loka-ink-3);
@@ -382,11 +443,12 @@ export class LokaCommandBar extends LitElement {
 			gap: 12px;
 			height: 44px;
 			padding: 0 10px 0 14px;
-			border-radius: 12px;
+			border-radius: 22px;
 		}
+		/* Rows are flat; the selected one sits on a soft pill of the space's accent, which reads on light glass and
+		   dark glass alike (the light theme's white card would vanish on a white panel). */
 		.result.on {
-			background: var(--loka-selected);
-			box-shadow: var(--loka-selected-edge);
+			background: color-mix(in srgb, var(--loka-accent) 16%, transparent);
 		}
 		.icon {
 			display: grid;

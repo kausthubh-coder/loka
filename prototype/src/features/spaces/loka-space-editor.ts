@@ -17,6 +17,10 @@ const PLANET_NAMES: Record<PlanetKind, string> = {
 
 const SCHEME_NAMES: Record<SpaceScheme, string> = { light: "Light", dark: "Dark", system: "System" };
 
+// A ring reaches three quarters of the planet's size past each side. In the 300px browser sidebar a picker tile is
+// ~52px wide, so the ringed planet is drawn smaller than the others (its ring ~45px across) to stay inside its tile.
+const RINGED_THUMB = 30;
+
 const SCHEME_ICONS = {
 	light: html`<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="3" /><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1" /></svg>`,
 	dark: html`<svg viewBox="0 0 16 16"><path d="M13 9.5A5.5 5.5 0 1 1 6.5 3a4.5 4.5 0 0 0 6.5 6.5z" /></svg>`,
@@ -133,7 +137,7 @@ export class LokaSpaceEditor extends LitElement {
 								aria-pressed=${k === kind}
 								@click=${() => this.change({ planet: k })}
 							>
-								${planet(k, hue, 40)}
+								<span class="thumb">${planet(k, hue, k === "ringed" ? RINGED_THUMB : 40)}</span>
 								<span>${PLANET_NAMES[k]}</span>
 							</button>`,
 						)}
@@ -161,7 +165,11 @@ export class LokaSpaceEditor extends LitElement {
 				<div class="actions">
 					${
 						this.mode === "edit" && this.deletable
-							? html`<button type="button" class="quiet delete" @click=${() => this.askToDelete()}>
+							? html`<button
+									type="button"
+									class="quiet delete ${this.confirmingDelete ? "confirming" : ""}"
+									@click=${() => this.askToDelete()}
+								>
 									${this.confirmingDelete ? "Delete it and its tabs" : "Delete space"}
 								</button>`
 							: nothing
@@ -201,6 +209,8 @@ export class LokaSpaceEditor extends LitElement {
 			box-shadow: var(--loka-dialog-edge);
 			color: var(--loka-ink);
 			font: 14px/1.4 system-ui, "Segoe UI", sans-serif;
+			/* Pressed is a deeper hover in both themes. --loka-fill-hover lightens, which vanishes on a light dialog. */
+			--press: color-mix(in srgb, var(--loka-ink) 12%, transparent);
 		}
 		.preview {
 			display: grid;
@@ -292,6 +302,9 @@ export class LokaSpaceEditor extends LitElement {
 				0 0 0 2.5px var(--loka-dialog),
 				0 0 0 4.5px hsl(var(--s) 75% 55%);
 		}
+		.swatch:active {
+			scale: 0.9;
+		}
 		.kinds {
 			display: grid;
 			grid-template-columns: repeat(4, 1fr);
@@ -309,6 +322,13 @@ export class LokaSpaceEditor extends LitElement {
 			line-height: 1.25;
 			text-align: center;
 			color: var(--loka-ink-2);
+		}
+		/* Every planet gets the same 40px stage, so the names under them line up whatever size each is drawn at. */
+		.thumb {
+			display: grid;
+			place-items: center;
+			width: 40px;
+			height: 40px;
 		}
 		.kind:hover,
 		.scheme:hover {
@@ -366,8 +386,10 @@ export class LokaSpaceEditor extends LitElement {
 			color: var(--loka-ink-3);
 			text-wrap: pretty;
 		}
+		/* In the 300px browser sidebar Delete takes a line of its own, above Cancel and Save, instead of squeezing. */
 		.actions {
 			display: flex;
+			flex-wrap: wrap;
 			justify-content: flex-end;
 			gap: 8px;
 			margin-top: 4px;
@@ -377,14 +399,40 @@ export class LokaSpaceEditor extends LitElement {
 			padding: 0 16px;
 			border-radius: 10px;
 			font-weight: 600;
+			white-space: nowrap;
 		}
 		.quiet:hover {
 			background: var(--loka-hover);
 		}
 		.quiet:active,
-		.kind:active,
+		.kind:not(.on):active,
 		.scheme:not(.on):active {
-			background: var(--loka-fill-hover);
+			background: var(--press);
+		}
+		/* Delete is set apart on the left in the danger color; its second click, which deletes, is filled. */
+		.actions .delete {
+			margin-right: auto;
+			padding: 0 12px;
+			color: var(--loka-danger);
+		}
+		.delete:hover {
+			background: color-mix(in srgb, var(--loka-danger) 12%, transparent);
+		}
+		.delete:active {
+			background: color-mix(in srgb, var(--loka-danger) 20%, transparent);
+		}
+		.delete.confirming {
+			background: var(--loka-danger);
+			color: var(--loka-on-danger);
+		}
+		.delete.confirming:hover {
+			filter: brightness(1.06);
+		}
+		.delete.confirming:active {
+			filter: brightness(0.92);
+		}
+		.delete:focus-visible {
+			outline-color: var(--loka-danger);
 		}
 		.primary {
 			background: var(--loka-accent);
@@ -405,6 +453,14 @@ export class LokaSpaceEditor extends LitElement {
 			outline-offset: 2px;
 		}
 		@media (prefers-reduced-motion: no-preference) {
+			.kind,
+			.scheme,
+			.actions button {
+				transition: background-color 120ms;
+			}
+			.swatch {
+				transition: scale 120ms cubic-bezier(0.2, 0, 0, 1);
+			}
 			.scrim {
 				transition: opacity 150ms cubic-bezier(0.2, 0, 0, 1);
 				@starting-style {

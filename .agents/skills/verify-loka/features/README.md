@@ -57,7 +57,8 @@ disagree, or a recipe or flow it names doesn't exist.
 - [Essentials](./essentials.md): the shared icon grid. Drag in, reorder, remove; the tray and the one-time hint.
 - [Export and import](./export-import.md): JSON export, import (the alpha's too), reset, rejecting bad files.
 - [Command bar](./command-bar.md): Ctrl+T, Ctrl+K, Ctrl+L and the address field: addresses, searches with the
-  browser's suggestions, tabs, spaces and commands; the floating `command.html`.
+  browser's suggestions, going to an open tab or known site with the address completed, tabs, spaces and commands;
+  the floating `command.html`.
 - [Space editor](./space-editor.md): create or change a space's name, color, planet and light or dark.
 - [Light and dark](./theme.md): each space's scheme, the crossfade, and `setColorScheme`.
 - [Window layout and pages](./layout.md): resize, side, hide and pin back, peek, the window buttons, real input;

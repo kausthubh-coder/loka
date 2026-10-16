@@ -14,9 +14,10 @@ import { extensionIcon, extensionIconStyles } from "../extensions/loka-extension
 import "../media/loka-media-card";
 import type { NowPlaying } from "../media/loka-media-card";
 import "../search/loka-sidebar-search";
+import { keys, PLATFORM } from "../../app/platform";
 import { playCue } from "../sound/sound";
 import type { Cue } from "../sound/sound.logic";
-import { essentialsDropSlots, showEssentialsHint, showPinnedHint } from "./empty-states.logic";
+import { essentialsDropSlots } from "./empty-states.logic";
 import { planet } from "./planet";
 import {
 	activateTab,
@@ -30,6 +31,7 @@ import {
 	groupIntoFolder,
 	importState,
 	moveItem,
+	openTab,
 	type PinnedRow,
 	type Place,
 	pinnedRows,
@@ -41,6 +43,7 @@ import {
 	toggleFolder,
 	ungroupFolder,
 } from "./sidebar.logic";
+import { SWIPE_GAP, SWIPE_IDLE, type SwipeState, swipeWheel } from "./swipe.logic";
 
 type DropMode = "before" | "after" | "into";
 interface Drop {
@@ -54,7 +57,11 @@ interface Drop {
 export type Panel = "extensions" | "downloads" | "archive" | "search";
 interface MenuItem {
 	label: string;
-	run: () => void;
+	/** What it does; an item with `items` opens them as a submenu instead. */
+	run?: () => void;
+	items?: MenuItem[];
+	/** Styled as destructive (Close tab, Close others). */
+	danger?: boolean;
 	/** Starts a new group in the menu: a line above it. */
 	divider?: boolean;
 	/** Its shortcut, shown quietly on the right. */
@@ -88,8 +95,8 @@ export class LokaSidebar extends LitElement {
 		dragId: { state: true },
 		drop: { state: true },
 		menu: { state: true },
+		submenu: { state: true },
 		renamingId: { state: true },
-		swipe: { state: true },
 		panel: { state: true },
 		extensions: { state: true },
 		downloads: { state: true },
@@ -97,7 +104,6 @@ export class LokaSidebar extends LitElement {
 		live: { attribute: false },
 		browser: { attribute: false },
 		pinned: { attribute: false },
-		hintDismissed: { attribute: false },
 		demo: { type: Boolean },
 	};
 
@@ -107,9 +113,9 @@ export class LokaSidebar extends LitElement {
 	dragId: string | null = null;
 	drop: Drop | null = null;
 	menu: { x: number; y: number; items: MenuItem[] } | null = null;
+	/** The submenu open beside the menu: which item opened it. */
+	submenu: number | null = null;
 	renamingId: string | null = null;
-	/** Sideways swipe distance so far, in wheel pixels (negative is towards the previous space). */
-	swipe = 0;
 	/** The popover open under the address field, if any. */
 	panel: Panel | null = null;
 	/** The installed extensions and the downloads, as the browser last said. Null until it has answered. */
@@ -123,8 +129,6 @@ export class LokaSidebar extends LitElement {
 	pinned = true;
 	/** The prototype: shows "Reset demo data". The real browser leaves it out. */
 	demo = true;
-	/** The one-time Essentials hint was dismissed (a window pref the window saves). */
-	hintDismissed = false;
 
 	/** Opens a panel from outside (Ctrl+Shift+F, the command bar). */
 	openPanel(panel: Panel) {
@@ -279,26 +283,41 @@ export class LokaSidebar extends LitElement {
 		e.stopPropagation();
 		this.menuOpener = e.currentTarget as HTMLElement;
 		this.focusMenu = true;
+		this.submenu = null;
 		this.menu = { x: e.clientX, y: e.clientY, items };
 	}
 
 	private closeMenu = () => {
 		this.menu = null;
+		this.submenu = null;
 	};
 
-	/** Keys in a menu: Up, Down, Home and End move; Escape and Tab close it and go back to what opened it. */
+	/**
+	 * Keys in a menu: Up, Down, Home and End move; Right on an item with a submenu opens it and Left closes it again;
+	 * Escape and Tab close the menu and go back to what opened it.
+	 */
 	private menuKey(e: KeyboardEvent) {
 		const items = [...this.renderRoot.querySelectorAll<HTMLElement>('.menu [role="menuitem"]')];
-		const at = items.indexOf(this.shadowRoot?.activeElement as HTMLElement);
+		const current = this.shadowRoot?.activeElement as HTMLElement | null;
+		const at = current ? items.indexOf(current) : -1;
+		const nested = current?.classList.contains("nested") ?? false;
 		let next: number;
 		if (e.key === "ArrowDown") next = (at + 1) % items.length;
 		else if (e.key === "ArrowUp") next = (at - 1 + items.length) % items.length;
 		else if (e.key === "Home") next = 0;
 		else if (e.key === "End") next = items.length - 1;
-		else if (e.key === "Escape" || e.key === "Tab") {
+		else if (e.key === "ArrowRight" && current?.getAttribute("aria-haspopup") === "menu") {
+			e.preventDefault();
+			void this.openSubmenu(Number(current.dataset.index), true);
+			return;
+		} else if (e.key === "ArrowLeft" && (nested || current?.getAttribute("aria-expanded") === "true")) {
+			e.preventDefault();
+			void this.openSubmenu(null, true);
+			return;
+		} else if (e.key === "Escape" || e.key === "Tab") {
 			e.preventDefault();
 			e.stopPropagation();
-			this.menu = null;
+			this.closeMenu();
 			this.menuOpener?.focus();
 			return;
 		} else return;
@@ -306,9 +325,41 @@ export class LokaSidebar extends LitElement {
 		items[next]?.focus();
 	}
 
+	/**
+	 * Opens item `index`'s submenu inside the menu, under it (the sidebar is too narrow for one beside it), or closes
+	 * it with null. From the keyboard, focus goes to its first item, or back to the item that opened it.
+	 */
+	private async openSubmenu(index: number | null, focus: boolean) {
+		const parent = this.submenu;
+		this.submenu = index;
+		if (!focus) return;
+		await this.updateComplete;
+		const selector = index === null ? `.menu [data-index="${parent}"]` : ".menu .nested";
+		this.renderRoot.querySelector<HTMLElement>(selector)?.focus();
+	}
+
+	/** Asks the window to act on the page a tab shows; the sidebar has no page of its own. */
+	private tabEvent(name: "loka-tab-mute" | "loka-tab-reload", tabId: TabId) {
+		this.dispatchEvent(new CustomEvent(name, { detail: tabId, bubbles: true, composed: true }));
+	}
+
+	/** Puts a tab's address on the clipboard; the old copy command covers a page the clipboard API refuses. */
+	private async copyLink(url: string) {
+		try {
+			await navigator.clipboard.writeText(url);
+		} catch {
+			const area = Object.assign(document.createElement("textarea"), { value: url });
+			this.renderRoot.appendChild(area);
+			area.select();
+			document.execCommand("copy");
+			area.remove();
+		}
+	}
+
 	private tabMenu(tabId: TabId): MenuItem[] {
 		const state = this.state;
 		const space = activeSpace(state);
+		const tab = state.tabs[tabId];
 		const isEssential = state.essentials.includes(tabId);
 		const isOpen = space.open.includes(tabId);
 		const items: MenuItem[] = [];
@@ -332,17 +383,22 @@ export class LokaSidebar extends LitElement {
 				run: move("unpin", { area: "open", spaceId: space.id, index: 0 }),
 			});
 		}
-		for (const [i, other] of state.spaces.filter((s) => s.id !== space.id).entries()) {
+		const others = state.spaces.filter((s) => s.id !== space.id);
+		if (others.length && !isEssential) {
 			items.push({
-				label: `Move to ${other.name}`,
-				divider: i === 0,
-				run: () => this.apply((s) => moveItem(s, tabId, { area: "open", spaceId: other.id, index: 0 })),
+				label: "Move to space",
+				items: others.map((other) => ({
+					label: other.name,
+					run: () => {
+						playCue("space");
+						this.apply((s) => moveItem(s, tabId, { area: "open", spaceId: other.id, index: 0 }));
+					},
+				})),
 			});
 		}
 		if (!isEssential) {
 			items.push({
 				label: "New folder with this tab",
-				divider: true,
 				run: () => {
 					const [made, folderId] = createFolder(this.state, space.id, null, "New folder");
 					playCue("into-folder");
@@ -351,16 +407,71 @@ export class LokaSidebar extends LitElement {
 				},
 			});
 		}
-		items.push({ label: isOpen ? "Close tab" : "Unload tab", divider: true, run: () => this.closeTabFor(tabId) });
+		if (tab) {
+			items.push(
+				{
+					label: "Duplicate",
+					divider: true,
+					run: () => {
+						playCue("tab-open");
+						this.apply((s) => openTab(s, tab.url, tab.title));
+					},
+				},
+				{ label: "Copy link", run: () => void this.copyLink(tab.url) },
+			);
+		}
+		items.push(
+			{
+				label: this.live[tabId]?.muted ? "Unmute tab" : "Mute tab",
+				run: () => this.tabEvent("loka-tab-mute", tabId),
+			},
+			{ label: "Reload", run: () => this.tabEvent("loka-tab-reload", tabId) },
+			{
+				label: isOpen ? "Close tab" : "Unload tab",
+				divider: true,
+				danger: isOpen,
+				run: () => this.closeTabFor(tabId),
+			},
+		);
+		const closable = space.open.filter((id) => id !== tabId);
+		if (closable.length) {
+			items.push({
+				label: "Close other tabs",
+				danger: true,
+				run: () => {
+					playCue("clear");
+					this.apply((s) => closable.reduce((acc, id) => closeTab(acc, id), s));
+				},
+			});
+		}
 		return items;
 	}
 
-	/** Right-click on empty sidebar space. Folders are made here, from a tab's menu, or by dropping a tab on a tab. */
+	/** Right-click on the sidebar's background: what you'd make here, and the space and sidebar themselves. */
 	private emptyMenu(): MenuItem[] {
+		const space = activeSpace(this.state);
 		return [
-			{ label: "New folder", run: () => this.newFolder(null) },
 			{ label: "New tab", run: () => this.command("new-tab") },
+			{ label: "New folder", run: () => this.newFolder(null) },
+			{ label: "New space", divider: true, run: () => this.action("new-space") },
+			{ label: `Edit ${space.name}`, run: () => this.action("edit-space") },
+			{
+				label: this.pinned ? "Hide sidebar" : "Keep sidebar open",
+				divider: true,
+				run: () => this.action("toggle-sidebar"),
+			},
 		];
+	}
+
+	/** Right-click anywhere on the sidebar without a menu of its own (rows stop the event) opens the background's. */
+	private backgroundMenu(e: MouseEvent) {
+		const target = e.composedPath()[0];
+		if (target instanceof Element && target.closest("input")) return;
+		if (target instanceof Element && target.closest(".top, .panel, .menu")) {
+			e.preventDefault();
+			return;
+		}
+		this.openMenu(e, this.emptyMenu());
 	}
 
 	/** The bottom row's +: what you'd make next. */
@@ -456,8 +567,8 @@ export class LokaSidebar extends LitElement {
 		const number = this.state.spaces.indexOf(target) + 1;
 		return html`<button
 			class="neighbour ${side}"
-			aria-label="${target.name} (Ctrl ${number})"
-			title="${target.name}, Ctrl+${number}"
+			aria-label="${target.name} (${keys(`Ctrl ${number}`)})"
+			title="${target.name}, ${keys(`Ctrl+${number}`)}"
 			@click=${() => this.switchTo(target.id)}
 			@dragover=${(e: DragEvent) => {
 				// Hovering a space while dragging switches to it, like Arc.
@@ -466,7 +577,7 @@ export class LokaSidebar extends LitElement {
 				this.switchTo(target.id);
 			}}
 		>
-			${planet(target.planet, target.hue, 30)}
+			${planet(target.planet, target.hue, 22)}
 		</button>`;
 	}
 
@@ -480,7 +591,7 @@ export class LokaSidebar extends LitElement {
 		return [
 			...this.state.spaces.map((s, i) => ({
 				label: s.name,
-				hint: `Ctrl+${i + 1}`,
+				hint: keys(`Ctrl+${i + 1}`),
 				run: () => this.switchTo(s.id),
 			})),
 			{ label: "Edit this space", divider: true, run: () => this.action("edit-space") },
@@ -488,40 +599,52 @@ export class LokaSidebar extends LitElement {
 		];
 	}
 
-	private lastSwipe = 0;
+	/** The sideways swipe in progress (swipe.logic.ts). */
+	private gesture: SwipeState = SWIPE_IDLE;
 	private settleTimer = 0;
 
 	/**
-	 * A sideways two-finger swipe anywhere on the sidebar drags the space's list with the fingers. Past the threshold
-	 * it turns to the next or previous space; let go before that and it springs back.
+	 * A sideways two-finger swipe anywhere on the sidebar drags the space's list with the fingers. Far enough and it
+	 * turns to the next or previous space, one space per swipe however hard; let go before that and it springs back.
 	 */
 	private onWheel = {
 		passive: false,
 		handleEvent: (e: WheelEvent) => {
-			if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+			// Lines and pages (a mouse's tilt wheel on some setups) count as about 16 px a line, like a scroll would.
+			const unit = e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? 1 : 16;
+			const step = swipeWheel(this.gesture, { dx: e.deltaX * unit, dy: e.deltaY * unit, time: e.timeStamp });
+			this.gesture = step.state;
+			if (!step.claimed) return;
 			e.preventDefault();
-			// One swipe sends dozens of wheel events; after a switch, ignore the rest of that gesture.
-			if (e.timeStamp - this.lastSwipe < 450) return;
-			const target = this.neighbourAt(this.swipe + e.deltaX > 0 ? 1 : -1) ?? this.neighbourAt(1);
-			this.swipe = target ? Math.max(-90, Math.min(90, this.swipe + e.deltaX)) : 0;
 			window.clearTimeout(this.settleTimer);
-			if (Math.abs(this.swipe) >= 60 && target) {
-				this.swipe = 0;
-				this.lastSwipe = e.timeStamp;
-				this.switchTo(target.id);
-				return;
-			}
-			this.settleTimer = window.setTimeout(() => {
-				this.swipe = 0;
-			}, 140);
+			// A pause springs the list back; whether the next event starts a new swipe is the gesture's to say.
+			this.settleTimer = window.setTimeout(() => this.showSwipe(0), SWIPE_GAP);
+			const target = step.turn ? (this.neighbourAt(step.turn) ?? this.neighbourAt(1)) : null;
+			// With one space there is nowhere to go: the list stays put rather than following the fingers.
+			this.showSwipe(this.neighbourAt(1) ? step.offset : 0);
+			if (target) this.switchTo(target.id);
 		},
 	};
+
+	/**
+	 * Draws the list and the planet following the fingers. Straight onto the page's style, not through a render: a
+	 * swipe sends an event a frame, and re-rendering the whole sidebar for each would be most of that frame.
+	 */
+	private showSwipe(offset: number) {
+		const aside = this.renderRoot.querySelector("aside");
+		if (!aside) return;
+		aside.style.setProperty("--swipe", String(offset));
+		aside.style.setProperty("--swipe-size", String(Math.abs(offset)));
+		aside.classList.toggle("swiping", offset !== 0);
+	}
 
 	/** Which way the list slides in after a switch: from the right when moving forward, as if turning a page. */
 	private slideFrom: "left" | "right" | null = null;
 
 	/** Where each row and Essential was before this update, to animate from. Null when nothing should move. */
 	private rowsBefore: Map<string, Was> | null = null;
+	/** The space's list before a switch, which slides out as the new one slides in. */
+	private listBefore: { el: HTMLElement; rect: DOMRect; forward: boolean } | null = null;
 	/** The horizon's planets before a space switch, which set behind the new one. */
 	private horizonBefore: { els: HTMLElement[]; forward: boolean } | null = null;
 
@@ -532,6 +655,8 @@ export class LokaSidebar extends LitElement {
 		if (before.activeSpaceId !== this.state.activeSpaceId) {
 			const forward = switchesForward(this.state, before.activeSpaceId, this.state.activeSpaceId);
 			this.slideFrom = forward ? "right" : "left";
+			const list = this.renderRoot.querySelector<HTMLElement>(".scroll:not(.leaving-list)");
+			this.listBefore = list ? { el: list, rect: list.getBoundingClientRect(), forward } : null;
 			const horizon = this.renderRoot.querySelector(".horizon");
 			this.horizonBefore = horizon
 				? {
@@ -545,7 +670,11 @@ export class LokaSidebar extends LitElement {
 		}
 		// Same space, new state: the DOM still shows the old rows, so this is where they are now.
 		this.rowsBefore = new Map(
-			[...this.renderRoot.querySelectorAll<HTMLElement>(".scroll [data-key], .essentials [data-key]")].map((el) => [
+			[
+				...this.renderRoot.querySelectorAll<HTMLElement>(
+					".scroll:not(.leaving-list) [data-key], .essentials [data-key]",
+				),
+			].map((el) => [
 				el.dataset.key ?? "",
 				{ el, rect: el.getBoundingClientRect(), tile: el.classList.contains("essential") },
 			]),
@@ -561,15 +690,16 @@ export class LokaSidebar extends LitElement {
 	private animateRows() {
 		const before = this.rowsBefore;
 		this.rowsBefore = null;
-		const scroll = this.renderRoot.querySelector<HTMLElement>(".scroll");
+		const scroll = this.renderRoot.querySelector<HTMLElement>(".scroll:not(.leaving-list)");
 		const grid = this.renderRoot.querySelector<HTMLElement>(".essentials");
 		if (!before || !scroll || !grid) return;
 		const still = reducedMotion();
 		const now = new Map(
-			[...this.renderRoot.querySelectorAll<HTMLElement>(".scroll [data-key], .essentials [data-key]")].map((el) => [
-				el.dataset.key ?? "",
-				el,
-			]),
+			[
+				...this.renderRoot.querySelectorAll<HTMLElement>(
+					".scroll:not(.leaving-list) [data-key], .essentials [data-key]",
+				),
+			].map((el) => [el.dataset.key ?? "", el]),
 		);
 		for (const [key, el] of now) {
 			for (const a of el.getAnimations()) if (a.id === "row") a.cancel();
@@ -877,7 +1007,47 @@ export class LokaSidebar extends LitElement {
 		`;
 	}
 
+	/**
+	 * Switching spaces turns the page, like Arc: the old space's list slides out to one side as the new one slides in
+	 * from the other. The old list is the element Lit just let go of, put back where it was for its exit.
+	 */
+	private animateListExit() {
+		const before = this.listBefore;
+		this.listBefore = null;
+		const aside = this.renderRoot.querySelector("aside");
+		if (!before || !aside || before.el.isConnected || reducedMotion()) return;
+		const { el, rect } = before;
+		const box = aside.getBoundingClientRect();
+		const scrolled = el.scrollTop;
+		el.classList.remove("from-left", "from-right");
+		el.classList.add("leaving-list");
+		el.inert = true;
+		el.setAttribute("aria-hidden", "true");
+		Object.assign(el.style, {
+			top: `${rect.top - box.top}px`,
+			left: `${rect.left - box.left}px`,
+			width: `${rect.width}px`,
+			height: `${rect.height}px`,
+		});
+		aside.append(el);
+		el.scrollTop = scrolled;
+		void el
+			.animate(
+				[
+					{ opacity: 1, translate: "0 0" },
+					{ opacity: 0, translate: `${before.forward ? -56 : 56}px 0` },
+				],
+				{
+					duration: 220,
+					easing: EASE_IN,
+					fill: "forwards",
+				},
+			)
+			.finished.then(() => el.remove());
+	}
+
 	protected override updated() {
+		this.animateListExit();
 		this.animateRows();
 		this.animateHorizon();
 		const input = this.renderRoot.querySelector<HTMLInputElement>("input.rename");
@@ -904,11 +1074,17 @@ export class LokaSidebar extends LitElement {
 
 	private topRow(): TemplateResult {
 		const hide = this.pinned;
+		const mac = PLATFORM === "mac";
 		return html`<div
 			class="top"
 			@mousedown=${(e: MouseEvent) => this.onTopPress(e)}
 			@dblclick=${(e: MouseEvent) => !(e.target as HTMLElement).closest("button") && this.browser.windowAction("maximize")}
 		>
+			${
+				// On a Mac the window's own buttons (the traffic lights) sit at the top left, drawn by macOS: the row leaves
+				// them room and draws no window buttons of its own.
+				mac ? html`<span class="traffic-lights" aria-hidden="true"></span>` : nothing
+			}
 			<button class="icon" aria-label="More" title="Menu" @click=${(e: MouseEvent) => this.moreMenu(e)}>
 				<svg viewBox="0 0 20 20"><path d="M4.5 10h.01M10 10h.01M15.5 10h.01" class="dots" /></svg>
 			</button>
@@ -936,7 +1112,10 @@ export class LokaSidebar extends LitElement {
 				</button>
 			</span>
 			<span class="drag" aria-hidden="true"></span>
-			<button class="icon caption" aria-label="Minimize" title="Minimize" @click=${() => this.browser.windowAction("minimize")}>
+			${
+				mac
+					? nothing
+					: html`<button class="icon caption" aria-label="Minimize" title="Minimize" @click=${() => this.browser.windowAction("minimize")}>
 				<svg viewBox="0 0 20 20"><path d="M5 10h10" /></svg>
 			</button>
 			<button class="icon caption" aria-label="Maximize" title="Maximize" @click=${() => this.browser.windowAction("maximize")}>
@@ -944,7 +1123,8 @@ export class LokaSidebar extends LitElement {
 			</button>
 			<button class="icon caption close-window" aria-label="Close window" title="Close" @click=${() => this.browser.windowAction("close")}>
 				<svg viewBox="0 0 20 20"><path d="m5.5 5.5 9 9m0-9-9 9" /></svg>
-			</button>
+			</button>`
+			}
 		</div>`;
 	}
 
@@ -961,7 +1141,7 @@ export class LokaSidebar extends LitElement {
 			<button
 				class="address"
 				aria-label=${label ? `Address: ${label}` : "Search or enter address"}
-				title="Change the address (Ctrl+L)"
+				title=${keys("Change the address (Ctrl+L)")}
 				@click=${() => this.command(current ? "focus-location" : "new-tab")}
 			>
 				${
@@ -1019,6 +1199,8 @@ export class LokaSidebar extends LitElement {
 		// Essentials fill the row they're in, so one is one big tile; a drag adds the free cell to drop in.
 		const columns = Math.min(4, Math.max(1, count + slots));
 		const toEssentials = (): Place => ({ area: "essentials", index: Infinity });
+		// Above the divider is pinned: a tab dropped on the gap or the divider itself goes to the end of the pinned list.
+		const toPinnedEnd = (): Place => ({ area: "pinned", spaceId: space.id, parentId: null, index: Infinity });
 
 		return html`
 			<aside
@@ -1028,7 +1210,8 @@ export class LokaSidebar extends LitElement {
 					void this.closePanel();
 				}}
 				@loka-close-panel=${() => void this.closePanel()}
-				@wheel=${this.onWheel} @contextmenu=${(e: MouseEvent) => e.target === e.currentTarget && e.preventDefault()}>
+				@wheel=${this.onWheel}
+				@contextmenu=${(e: MouseEvent) => this.backgroundMenu(e)}>
 				${this.topRow()}
 				${this.addressField()}
 
@@ -1047,7 +1230,6 @@ export class LokaSidebar extends LitElement {
 														@drop=${(e: DragEvent) => this.dropHere(e)}
 													></div>`,
 												)}
-												<p>Drop here to keep it in every space</p>
 											</div>`
 										: nothing
 								}
@@ -1101,44 +1283,11 @@ export class LokaSidebar extends LitElement {
 								}
 							</div>`
 				}
-				${
-					showEssentialsHint(state, this.hintDismissed)
-						? html`<div
-								class="essentials-hint ${this.dropClass("essentials-hint")}"
-								@dragover=${(e: DragEvent) => this.over(e, "essentials-hint", toEssentials)}
-								@drop=${(e: DragEvent) => this.dropHere(e)}
-							>
-								<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1.6" /><rect x="11" y="3" width="6" height="6" rx="1.6" /><rect x="3" y="11" width="6" height="6" rx="1.6" /><rect x="11" y="11" width="6" height="6" rx="1.6" /></svg>
-								<span>Drag a tab up here to keep it in every space</span>
-								<button
-									class="dismiss"
-									aria-label="Dismiss the Essentials hint"
-									title="Got it"
-									@click=${(e: Event) => {
-										e.stopPropagation();
-										this.dispatchEvent(new CustomEvent("loka-dismiss-hint", { bubbles: true, composed: true }));
-									}}
-								>
-									<svg viewBox="0 0 16 16"><path d="m4.5 4.5 7 7m0-7-7 7" /></svg>
-								</button>
-							</div>`
-						: nothing
-				}
-
 				${keyed(
 					space.id,
 					html`<div
-				class="scroll ${this.slideFrom ? `from-${this.slideFrom}` : ""} ${this.swipe ? "swiping" : ""}"
-				style="translate: ${-this.swipe * 0.5}px 0; opacity: ${1 - Math.abs(this.swipe) / 180}"
-				@contextmenu=${(e: MouseEvent) => this.openMenu(e, this.emptyMenu())}
+				class="scroll ${this.slideFrom ? `from-${this.slideFrom}` : ""}"
 			>
-					<button
-						class="space-label"
-						title="${space.name}: switch or edit spaces"
-						@click=${(e: MouseEvent) => this.openMenu(e, this.spacesMenu())}
-					>
-						${planet(space.planet, space.hue, 14)}<span>${space.name}</span>
-					</button>
 					<div class="pinned" role="tree" aria-label="Pinned in ${space.name}">
 						${repeat(
 							rows,
@@ -1146,27 +1295,19 @@ export class LokaSidebar extends LitElement {
 							(row) => this.pinnedRow(row, space.id),
 						)}
 						<div
-							class="end-zone ${showPinnedHint(space) ? "hint" : ""} ${draggingTab ? "ready" : ""} ${this.dropClass("pinned-end")}"
+							class="end-zone ${draggingTab ? "ready" : ""} ${this.dropClass("pinned-end")}"
 							data-key="pinned-end"
-							@dragover=${(e: DragEvent) =>
-								this.over(e, "pinned-end", () => ({
-									area: "pinned",
-									spaceId: space.id,
-									parentId: null,
-									index: Infinity,
-								}))}
+							@dragover=${(e: DragEvent) => this.over(e, "pinned-end", toPinnedEnd)}
 							@drop=${(e: DragEvent) => this.dropHere(e)}
-						>
-							${
-								showPinnedHint(space)
-									? html`<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11.8 3.2 16.8 8.2 13.6 9.4 10.6 12.4l-.6 3.6L4 10l3.6-.6 3-3z" /><path d="M6.8 13.2 3.5 16.5" /></svg>
-											<span>Pin tabs to keep them in this space</span>`
-									: nothing
-							}
-						</div>
+						></div>
 					</div>
 
-					<div class="divider" data-key="divider">
+					<div
+						class="divider"
+						data-key="divider"
+						@dragover=${(e: DragEvent) => this.over(e, "pinned-end", toPinnedEnd)}
+						@drop=${(e: DragEvent) => this.dropHere(e)}
+					>
 						<span></span>
 						${
 							space.open.length > 0
@@ -1224,12 +1365,11 @@ export class LokaSidebar extends LitElement {
 						space.id,
 						html`<button
 								class="world"
-								style="translate: ${-this.swipe * 0.6}px 0"
 								aria-label="Spaces: ${space.name}"
 								title="All spaces"
 								@click=${(e: MouseEvent) => this.openMenu(e, this.spacesMenu())}
 							>
-								${planet(space.planet, space.hue, 400, true)}
+								${planet(space.planet, space.hue, 360, true)}
 							</button>
 							<span class="world-name" aria-hidden="true">${space.name}</span>`,
 					)}
@@ -1254,33 +1394,69 @@ export class LokaSidebar extends LitElement {
 							</div>`
 						: nothing
 				}
-				${
-					this.menu
-						? html`<div
-								class="menu"
-								role="menu"
-								style="left: ${Math.max(4, Math.min(this.menu.x, this.getBoundingClientRect().right - 204))}px; top: ${Math.max(4, Math.min(this.menu.y, window.innerHeight - 16 - 34 * this.menu.items.length - 9 * this.menu.items.filter((i) => i.divider).length))}px"
-								@keydown=${(e: KeyboardEvent) => this.menuKey(e)}
-							>
-								${this.menu.items.map(
-									(item) => html`${item.divider ? html`<hr role="separator" />` : nothing}<button
-											role="menuitem"
-											tabindex="-1"
-											@click=${(e: Event) => {
-												e.stopPropagation();
-												this.closeMenu();
-												this.refocus = true;
-												item.run();
-											}}
-										>
-											${item.label}${item.hint ? html`<kbd>${item.hint}</kbd>` : nothing}
-										</button>`,
-								)}
-							</div>`
-						: nothing
-				}
+				${this.menu ? this.menuView(this.menu) : nothing}
 			</aside>
 		`;
+	}
+
+	/** Where a menu of `items` fits on screen, nearest to (x, y): kept inside the sidebar and above its bottom. */
+	private menuPlace(x: number, y: number, items: MenuItem[]): { left: number; top: number } {
+		const open = this.submenu === null ? [] : (items[this.submenu]?.items ?? []);
+		const height = 8 + 34 * (items.length + open.length) + 9 * items.filter((i) => i.divider).length;
+		return {
+			left: Math.max(4, Math.min(x, this.getBoundingClientRect().right - 204)),
+			top: Math.max(4, Math.min(y, window.innerHeight - 8 - height)),
+		};
+	}
+
+	private menuItem(item: MenuItem, index: number, nested: boolean): TemplateResult {
+		const opens = item.items !== undefined;
+		return html`${item.divider ? html`<hr role="separator" />` : nothing}<button
+				class="${item.danger ? "danger" : ""} ${nested ? "nested" : ""} ${opens && this.submenu === index ? "open" : ""}"
+				role="menuitem"
+				tabindex="-1"
+				data-index=${index}
+				aria-haspopup=${opens ? "menu" : nothing}
+				aria-expanded=${opens ? this.submenu === index : nothing}
+				@click=${(e: Event) => {
+					e.stopPropagation();
+					if (opens) {
+						void this.openSubmenu(this.submenu === index ? null : index, true);
+						return;
+					}
+					this.closeMenu();
+					this.refocus = true;
+					item.run?.();
+				}}
+			>
+				<span>${item.label}</span>${item.hint ? html`<kbd>${item.hint}</kbd>` : nothing}${
+					opens
+						? html`<svg class="more" viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg>`
+						: nothing
+				}
+			</button>`;
+	}
+
+	/** The open menu; an item with a submenu opens it in place, its items indented under it. */
+	private menuView(menu: { x: number; y: number; items: MenuItem[] }): TemplateResult {
+		const at = this.menuPlace(menu.x, menu.y, menu.items);
+		return html`<div
+			class="menu"
+			role="menu"
+			style="left: ${at.left}px; top: ${at.top}px"
+			@keydown=${(e: KeyboardEvent) => this.menuKey(e)}
+		>
+			${menu.items.map(
+				(item, i) =>
+					html`${this.menuItem(item, i, false)}${
+						this.submenu === i && item.items
+							? html`<div role="group" aria-label=${item.label}>
+									${item.items.map((child) => this.menuItem(child, i, true))}
+								</div>`
+							: nothing
+					}`,
+			)}
+		</div>`;
 	}
 
 	private panelButton(panel: Panel, label: string, icon: TemplateResult): TemplateResult {
@@ -1320,7 +1496,7 @@ export class LokaSidebar extends LitElement {
 		:host {
 			display: block;
 			min-height: 0;
-			font-size: 15px;
+			font-size: 14px;
 			--text: var(--loka-ink);
 			--muted: var(--loka-ink-2);
 			--accent: var(--loka-accent);
@@ -1381,6 +1557,11 @@ export class LokaSidebar extends LitElement {
 			flex: 1;
 			align-self: stretch;
 		}
+		.traffic-lights {
+			flex: none;
+			width: 70px;
+			align-self: stretch;
+		}
 		.icon {
 			display: grid;
 			place-items: center;
@@ -1398,10 +1579,8 @@ export class LokaSidebar extends LitElement {
 		.tool:active,
 		.close:active,
 		.sound:active,
-		.dismiss:active,
-		.clear:active,
-		.space-label:active {
-			background: var(--loka-fill-hover);
+		.clear:active {
+			background: var(--loka-pressed);
 		}
 		.icon .dots {
 			stroke-width: 2.4;
@@ -1409,13 +1588,11 @@ export class LokaSidebar extends LitElement {
 		/* Small controls inside dense rows keep their size and take clicks a little past their edge: 32px targets. */
 		.close,
 		.sound,
-		.dismiss,
 		.clear {
 			position: relative;
 		}
 		.close::after,
 		.sound::after,
-		.dismiss::after,
 		.clear::after {
 			content: "";
 			position: absolute;
@@ -1457,6 +1634,9 @@ export class LokaSidebar extends LitElement {
 		}
 		.url:hover {
 			background: var(--loka-fill-hover);
+		}
+		.url:has(.address:active) {
+			background: var(--loka-pressed);
 		}
 		.address {
 			flex: 1;
@@ -1563,6 +1743,10 @@ export class LokaSidebar extends LitElement {
 		.essential:hover {
 			background: var(--loka-fill-hover);
 		}
+		.essential:active {
+			background: var(--loka-pressed);
+			scale: 0.97;
+		}
 		.essential.active {
 			background: var(--loka-selected);
 			box-shadow:
@@ -1576,7 +1760,7 @@ export class LokaSidebar extends LitElement {
 			outline: 1.5px dashed color-mix(in srgb, var(--loka-accent) 55%, transparent);
 			outline-offset: -1.5px;
 		}
-		/* No Essentials: no room taken (the sidebar's gap is given back); the tray only exists while a tab is dragged. */
+		/* No Essentials: no room taken (the sidebar's gap is given back). While a tab is dragged, tiles grow in place. */
 		.essentials.empty {
 			display: block;
 		}
@@ -1590,17 +1774,6 @@ export class LokaSidebar extends LitElement {
 			display: grid;
 			grid-template-columns: repeat(3, 1fr);
 			gap: 8px;
-			padding: 6px;
-			border-radius: 16px;
-			background: var(--loka-surface);
-			box-shadow: var(--loka-surface-edge);
-		}
-		.tray p {
-			grid-column: 1 / -1;
-			margin: 0 0 2px;
-			text-align: center;
-			font-size: 12px;
-			color: var(--loka-ink-2);
 		}
 		.essential.ghost {
 			height: 56px;
@@ -1616,50 +1789,6 @@ export class LokaSidebar extends LitElement {
 		.essential.ghost::before,
 		.essential.slot::before {
 			display: none;
-		}
-		/* The one-time hint: a small row, not a box, with its own way out. */
-		.essentials-hint {
-			flex: none;
-			display: flex;
-			align-items: center;
-			gap: 10px;
-			min-height: 36px;
-			padding: 0 4px 0 12px;
-			margin-top: -2px;
-			border-radius: 10px;
-			color: var(--loka-ink-2);
-			font-size: 13px;
-		}
-		.essentials-hint > svg {
-			width: 16px;
-			height: 16px;
-			color: var(--loka-accent-ink);
-		}
-		.essentials-hint span {
-			flex: 1;
-			text-wrap: pretty;
-		}
-		.essentials-hint.drop-before,
-		.essentials-hint.drop-after {
-			background: color-mix(in srgb, var(--loka-accent) 16%, transparent);
-			box-shadow: inset 0 0 0 1.5px var(--loka-accent);
-		}
-		.dismiss {
-			display: grid;
-			place-items: center;
-			flex: none;
-			width: 28px;
-			height: 28px;
-			border-radius: 7px;
-			color: var(--loka-ink-3);
-		}
-		.dismiss svg {
-			width: 14px;
-			height: 14px;
-		}
-		.dismiss:hover {
-			background: var(--loka-hover);
-			color: var(--loka-ink);
 		}
 		.essential.drop-before::before,
 		.essential.drop-after::before {
@@ -1690,12 +1819,16 @@ export class LokaSidebar extends LitElement {
 		/* The list fades at an edge only while there's more to scroll past it (a scroll-driven mask). */
 		.scroll {
 			position: relative;
+			/* A sideways swipe drags the list with the fingers (--swipe, set while swiping). */
+			translate: calc(var(--swipe, 0) * -0.5px) 0;
+			opacity: calc(1 - var(--swipe-size, 0) / 180);
 			flex: 1;
 			min-height: 0;
 			overflow-y: auto;
 			margin: 0 -4px;
 			padding: 0 4px;
-			scrollbar-width: thin;
+			/* No scrollbar: the edge fades say there's more, and wheel, trackpad and keys still scroll it. */
+			scrollbar-width: none;
 			--fade-top: 0px;
 			--fade-bottom: 0px;
 			mask-image: linear-gradient(
@@ -1729,22 +1862,6 @@ export class LokaSidebar extends LitElement {
 				--fade-bottom: 0px;
 			}
 		}
-		.space-label {
-			display: flex;
-			align-items: center;
-			gap: 8px;
-			height: 32px;
-			padding: 0 8px;
-			margin-bottom: 0;
-			border-radius: 7px;
-			color: var(--loka-ink-3);
-			font-size: 13px;
-			font-weight: 550;
-		}
-		.space-label:hover {
-			color: var(--loka-ink);
-			background: var(--loka-hover);
-		}
 		.row {
 			position: relative;
 			display: flex;
@@ -1752,13 +1869,21 @@ export class LokaSidebar extends LitElement {
 			gap: 12px;
 			width: 100%;
 			box-sizing: border-box;
-			height: 42px;
+			height: 40px;
 			padding: 0 6px 0 calc(11px + var(--depth, 0) * 18px);
 			border-radius: 10px;
 			color: var(--loka-ink);
 		}
 		.row:hover {
 			background: var(--loka-hover);
+		}
+		/* Pressed: a step past hover, so a click is felt before the page answers. */
+		.row:active {
+			background: var(--loka-pressed);
+		}
+		.row.active:active {
+			background: var(--loka-selected);
+			filter: brightness(0.96);
 		}
 		.row.active {
 			background: var(--loka-selected);
@@ -1909,35 +2034,28 @@ export class LokaSidebar extends LitElement {
 			background: var(--loka-hover);
 			color: var(--loka-ink);
 		}
+		/* The gap above the divider: dropping a tab here (or on the divider) pins it. While a tab is dragged it opens
+		   to a row's height when nothing is pinned yet, so there's somewhere to aim; the drop line says where it lands. */
 		.end-zone {
 			height: 10px;
 			position: relative;
 		}
-		/* Nothing pinned: one quiet row, which becomes the drop slot when a tab is dragged over it. */
-		.end-zone.hint {
-			display: flex;
-			align-items: center;
-			gap: 12px;
-			height: 36px;
-			padding: 0 11px;
-			border-radius: 10px;
-			color: var(--loka-ink-3);
-			font-size: 13px;
+		.pinned:not(:has(.row)) .end-zone {
+			height: 0;
 		}
-		.end-zone.hint svg {
-			width: 16px;
-			height: 16px;
-			flex: none;
+		.pinned:not(:has(.row)) .end-zone.ready {
+			height: 28px;
 		}
-		.end-zone.hint.ready {
-			box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--loka-accent) 40%, transparent);
-		}
-		.end-zone.drop-before,
-		.end-zone.drop-after {
-			color: var(--loka-ink);
-			background: color-mix(in srgb, var(--loka-accent) 16%, transparent);
-			box-shadow: inset 0 0 0 1.5px var(--loka-accent);
-			border-radius: 10px;
+		.end-zone.drop-before::before,
+		.end-zone.drop-after::before {
+			content: "";
+			position: absolute;
+			left: 11px;
+			right: 6px;
+			bottom: 4px;
+			height: 2px;
+			border-radius: 1px;
+			background: var(--loka-accent);
 		}
 		.divider {
 			display: flex;
@@ -1991,19 +2109,23 @@ export class LokaSidebar extends LitElement {
 		.horizon {
 			position: relative;
 			flex: none;
-			/* Tall enough above the planet for a ring's arc and its glow, which would otherwise be cut off flat. */
-			height: 140px;
-			margin: -24px -8px -8px -10px;
-			overflow: hidden;
+			/* A low horizon: a thin cap of the planet with the name on it. Tall enough above the planet for a ring's arc
+			   and its glow, which would otherwise be cut off flat at the top. */
+			height: 86px;
+			margin: -12px -8px -8px -10px;
+			/* clip, not hidden: a hidden box can still be scrolled, and focusing the big planet button (after the space
+			   editor closes) scrolled the planets up under the media card. */
+			overflow: clip;
 		}
 		.world {
 			position: absolute;
 			z-index: 1;
+			translate: calc(var(--swipe, 0) * -0.6px) 0;
 			left: 50%;
-			top: 56px;
-			width: 400px;
-			height: 400px;
-			margin-left: -200px;
+			top: 36px;
+			width: 360px;
+			height: 360px;
+			margin-left: -180px;
 			border-radius: 50%;
 		}
 		.world svg,
@@ -2015,7 +2137,7 @@ export class LokaSidebar extends LitElement {
 		}
 		/* The glow follows the planet's own edge (the body is 92% of the box), not the button's. */
 		.world svg.planet {
-			filter: drop-shadow(0 -4px 22px hsl(var(--hue) 85% 65% / 0.35));
+			filter: drop-shadow(0 -3px 14px hsl(var(--hue) 85% 65% / 0.35));
 		}
 		/* Only the planet's round body takes clicks: its ring and glow reach over the neighbours, which sit behind it. */
 		.world,
@@ -2033,9 +2155,9 @@ export class LokaSidebar extends LitElement {
 			z-index: 2;
 			left: 0;
 			right: 0;
-			top: 92px;
+			top: 55px;
 			text-align: center;
-			font-size: 14px;
+			font-size: 13px;
 			font-weight: 650;
 			color: #fff;
 			text-shadow: var(--loka-label-shadow);
@@ -2044,16 +2166,16 @@ export class LokaSidebar extends LitElement {
 		.neighbour {
 			position: absolute;
 			z-index: 0;
-			top: 62px;
-			width: 30px;
-			height: 30px;
+			top: 20px;
+			width: 22px;
+			height: 22px;
 			border-radius: 50%;
 		}
 		/* The small planets take clicks a little past their edge. */
 		.neighbour::after {
 			content: "";
 			position: absolute;
-			inset: -5px;
+			inset: -6px;
 			border-radius: 50%;
 		}
 		.neighbour.left {
@@ -2065,6 +2187,9 @@ export class LokaSidebar extends LitElement {
 		.neighbour:hover {
 			filter: brightness(1.15);
 		}
+		.neighbour:active {
+			filter: brightness(0.92);
+		}
 		.horizon .leaving {
 			pointer-events: none;
 		}
@@ -2073,12 +2198,12 @@ export class LokaSidebar extends LitElement {
 			position: absolute;
 			z-index: 3;
 			left: 12px;
-			bottom: 10px;
+			bottom: 6px;
 			display: grid;
 			place-items: center;
-			width: 32px;
-			height: 32px;
-			border-radius: 9px;
+			width: 28px;
+			height: 28px;
+			border-radius: 8px;
 			color: #fff;
 			background: hsl(var(--hue) 40% 10% / 0.28);
 			box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 0.16);
@@ -2089,23 +2214,52 @@ export class LokaSidebar extends LitElement {
 		}
 		@keyframes in-right {
 			from {
-				translate: 36px 0;
+				translate: 56px 0;
 				opacity: 0;
 			}
 		}
 		@keyframes in-left {
 			from {
-				translate: -36px 0;
+				translate: -56px 0;
 				opacity: 0;
 			}
 		}
+		/* The list being left, sliding out over where the new one comes in. */
+		.scroll.leaving-list {
+			position: absolute;
+			box-sizing: border-box;
+			z-index: 1;
+			margin: 0;
+			flex: none;
+			pointer-events: none;
+		}
 
-		/* Panels and menus float over the list as tinted glass: what passes under them turns to fog, not ghost text. */
+		/* Panels and menus float over the list as frosted glass, opaque enough that rows behind never show through
+		   their text: what passes under them is only a tint. */
 		.panel,
 		.menu {
-			background: color-mix(in srgb, var(--loka-surface) 88%, transparent);
-			box-shadow: var(--loka-surface-edge);
-			backdrop-filter: blur(20px) saturate(1.3);
+			background: hsl(from var(--loka-surface) h s l / 0.96);
+			box-shadow:
+				inset 0 0 0 1px var(--glass-edge),
+				var(--loka-surface-edge);
+			backdrop-filter: blur(20px) saturate(1.4);
+		}
+		:host {
+			--glass-edge: light-dark(hsl(var(--hue) 40% 20% / 0.1), hsl(0 0% 100% / 0.12));
+		}
+		/* Without blur, or for people who ask for less transparency: solid. */
+		@supports not (backdrop-filter: blur(1px)) {
+			.panel,
+			.menu {
+				background: hsl(from var(--loka-surface) h s l / 1);
+			}
+		}
+		@media (prefers-reduced-transparency: reduce) {
+			.panel,
+			.menu {
+				background: hsl(from var(--loka-surface) h s l / 1);
+				backdrop-filter: none;
+			}
 		}
 		.panel {
 			position: absolute;
@@ -2142,13 +2296,46 @@ export class LokaSidebar extends LitElement {
 			border-radius: 8px;
 			font-size: 14px;
 		}
+		.menu button > span {
+			flex: 1;
+			overflow: hidden;
+			white-space: nowrap;
+			text-overflow: ellipsis;
+		}
+		/* Hover and keyboard focus look the same: one lit row at a time. */
 		.menu button:hover,
-		.menu button:focus-visible {
-			background: var(--loka-hover);
+		.menu button:focus-visible,
+		.menu button.open {
+			background: var(--loka-fill-hover);
 			outline: none;
 		}
 		.menu button:active {
-			background: var(--loka-fill-hover);
+			background: var(--loka-pressed);
+		}
+		.menu button.danger {
+			color: var(--loka-danger);
+		}
+		.menu button.danger:hover,
+		.menu button.danger:focus-visible {
+			background: color-mix(in srgb, var(--loka-danger) 14%, transparent);
+		}
+		.menu button.danger:active {
+			background: color-mix(in srgb, var(--loka-danger) 22%, transparent);
+		}
+		.menu .more {
+			width: 14px;
+			height: 14px;
+			color: var(--loka-ink-3);
+		}
+		.menu [role="group"] {
+			display: flex;
+			flex-direction: column;
+		}
+		.menu button.nested {
+			padding-left: 24px;
+		}
+		.menu .open .more {
+			rotate: 90deg;
 		}
 		.menu kbd {
 			font: 12px system-ui, "Segoe UI", sans-serif;
@@ -2170,8 +2357,12 @@ export class LokaSidebar extends LitElement {
 
 		@media (prefers-reduced-motion: no-preference) {
 			.row,
-			.essential {
-				transition: background-color 120ms;
+			.essential,
+			.url,
+			.menu button {
+				transition:
+					background-color 120ms,
+					scale 120ms;
 			}
 			.fav.loading::after {
 				animation: spin 800ms linear infinite;
@@ -2214,7 +2405,7 @@ export class LokaSidebar extends LitElement {
 				animation:
 					fade-top linear both,
 					fade-bottom linear both,
-					in-right 260ms cubic-bezier(0.2, 0, 0, 1);
+					in-right 300ms cubic-bezier(0.2, 0, 0, 1);
 				animation-timeline: scroll(self), scroll(self), auto;
 				animation-range:
 					0 24px,
@@ -2225,7 +2416,7 @@ export class LokaSidebar extends LitElement {
 				animation-name: fade-top, fade-bottom, in-left;
 			}
 			/* Springs back when a swipe stops short; follows the fingers exactly while swiping. */
-			.scroll:not(.swiping),
+			aside:not(.swiping) .scroll,
 			.world {
 				transition:
 					translate 220ms cubic-bezier(0.2, 0, 0, 1),

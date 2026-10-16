@@ -36,10 +36,4 @@ describe("window preferences", () => {
 		expect(parseUiPrefs('{"archiveAfterHours": 24}').archiveAfterHours).toBe(24);
 		expect(parseUiPrefs('{"archiveAfterHours": -5}').archiveAfterHours).toBeNull();
 	});
-
-	test("the Essentials hint stays dismissed once it was, and only then", () => {
-		expect(parseUiPrefs(null).essentialsHintDismissed).toBe(false);
-		expect(parseUiPrefs('{"essentialsHintDismissed": true}').essentialsHintDismissed).toBe(true);
-		expect(parseUiPrefs('{"essentialsHintDismissed": "yes"}').essentialsHintDismissed).toBe(false);
-	});
 });

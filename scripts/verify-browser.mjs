@@ -30,16 +30,16 @@ import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { BUILD_DIR } from "./browser.mjs";
 import {
-	alive,
 	askExpression,
 	chromePath,
 	connect,
 	evaluate,
 	freePort,
-	processTree,
+	processes,
 	RECORD_EVENTS,
 	refuseWhileBuilding,
 	sleep,
+	stillRunning,
 	toneWav,
 	until,
 	windows as windowsOf,
@@ -243,7 +243,8 @@ async function main() {
 	const pid = browserProcess.pid ?? 0;
 	console.log(`Started ${chrome} (pid ${pid}), CDP on ${port}, profile ${profile}`);
 	const http = `http://127.0.0.1:${port}`;
-	let tree = [pid];
+	// The browser process by pid and start time, so cleanup never stops a process that took its pid later.
+	let tree = processes(pid).slice(0, 1);
 	/** @type {Awaited<ReturnType<typeof connect>>[]} */
 	const sessions = [];
 	/** The browser's visible window titles, and with `shot` a PNG of the first one titled like `match`. */
@@ -265,7 +266,7 @@ async function main() {
 		await sleep(5000); // let first-run pages open
 		const startup = await targets();
 		writeFileSync(join(evidence, "startup-targets.json"), JSON.stringify(startup, null, 2));
-		tree = processTree(pid);
+		tree = stillRunning(tree);
 
 		// 1. First run: Loka's setup alone, in its own window, never saying Helium; "Use defaults" finishes it.
 		/** @param {Target} t */
@@ -556,7 +557,8 @@ async function main() {
 		// window, which CDP input (it skips this step) can't see.
 		/** @type {{ w: number, h: number, dpr: number }} */
 		const size = await evaluate(sidebar, "({ w: innerWidth, h: innerHeight, dpr: devicePixelRatio })");
-		const points = [0.12, 0.25, 0.38, 0.5, 0.62, 0.74].map(
+		// Down to the bottom row: the planets of the space switcher sit in the last few pixels.
+		const points = [0.12, 0.25, 0.38, 0.5, 0.62, 0.74, 0.86, 0.97].map(
 			(f) => `${Math.round((size.w / 2) * size.dpr)},${Math.round(size.h * f * size.dpr)}`,
 		);
 		const hits = spawnSync(
@@ -682,7 +684,8 @@ async function main() {
 		const after = checks.at(-1)?.name ?? "the start";
 		check("run finished", false, `${e instanceof Error ? e.message : e} (after "${after}")`);
 	} finally {
-		tree = [...new Set([...tree, ...processTree(pid)])];
+		// Those still running, with any they started since.
+		tree = stillRunning(tree);
 		for (const s of sessions) s.close();
 		await fetch(`http://127.0.0.1:${port}/json/version`)
 			.then((r) => r.json())
@@ -692,10 +695,11 @@ async function main() {
 				s.close();
 			})
 			.catch(() => {});
-		await until(async () => !alive(pid), 10000);
-		const left = tree.filter(alive);
-		// Only pids this run started (the browser and its children), never anything found by name.
-		for (const p of left) spawnSync("taskkill", ["/T", "/F", "/PID", String(p)], { stdio: "ignore" });
+		await until(async () => stillRunning(tree).length === 0, 10000);
+		const left = stillRunning(tree);
+		// Only processes this run started (the browser and its children, by pid and start time), never anything
+		// found by name. No /T: Windows finds a tree by parent pid, which can lead to a stranger's process.
+		for (const p of left) spawnSync("taskkill", ["/F", "/PID", String(p.pid)], { stdio: "ignore" });
 		server.close();
 		log.end();
 		await sleep(500);
@@ -704,7 +708,7 @@ async function main() {
 		const profileGone = !existsSync(profile);
 		check(
 			"cleanup",
-			profileGone && !tree.some(alive),
+			profileGone && stillRunning(tree).length === 0,
 			`${left.length} of ${tree.length} processes needed taskkill; profile ${profileGone ? "deleted" : "still there"}`,
 		);
 		writeFileSync(join(evidence, "checks.json"), JSON.stringify({ chrome, noFirstRun, checks, notes }, null, 2));

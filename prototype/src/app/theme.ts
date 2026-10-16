@@ -19,6 +19,8 @@ export const themeTokens = css`
 		--loka-selected-edge: 0 0 0 0 transparent;
 		--loka-fill: hsl(var(--hue) 30% 85% / 0.07);
 		--loka-fill-hover: hsl(var(--hue) 30% 85% / 0.12);
+		/* Pressed: the ink itself, faintly, so a press shows on any surface in either scheme. */
+		--loka-pressed: color-mix(in srgb, var(--loka-ink) 12%, transparent);
 		--loka-line: hsl(var(--hue) 30% 85% / 0.12);
 		--loka-accent: hsl(var(--hue) 85% 72%);
 		--loka-accent-ink: hsl(var(--hue) 85% 76%);
@@ -42,6 +44,7 @@ export const themeTokens = css`
 		--loka-selected-edge: 0 1px 2px hsl(var(--hue) 50% 20% / 0.14), 0 0 0 0.5px hsl(var(--hue) 40% 20% / 0.1);
 		--loka-fill: hsl(0 0% 100% / 0.42);
 		--loka-fill-hover: hsl(0 0% 100% / 0.66);
+		--loka-pressed: color-mix(in srgb, var(--loka-ink) 12%, transparent);
 		--loka-line: hsl(var(--hue) 40% 20% / 0.13);
 		--loka-accent: oklch(from hsl(var(--hue) 80% 50%) 0.52 0.15 h);
 		--loka-accent-ink: oklch(from hsl(var(--hue) 80% 50%) 0.45 0.14 h);

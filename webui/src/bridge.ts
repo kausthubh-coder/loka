@@ -230,6 +230,8 @@ export const browser = {
 	autoplay: () => ask<"block" | "block-audible" | "allow">("getAutoplay"),
 	/** Light or dark for the browser and the pages that follow it (prefers-color-scheme). */
 	setColorScheme: (scheme: ColorScheme) => tell("setColorScheme", scheme),
+	/** The window frame around the page takes this color ("#rrggbb"), or the theme's own with null. */
+	setThemeColor: (color: string | null) => tell("setThemeColor", color),
 	onCommand: (listener: (command: BrowserCommand) => void) => on("command", (c) => listener(c as BrowserCommand)),
 	/**
 	 * Shows the floating command bar: a frameless, transparent window (about 680x520) centered over this one, loading

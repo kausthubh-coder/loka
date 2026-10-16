@@ -238,6 +238,7 @@ export const fakeBrowser: Browser = {
 		autoplay = mode;
 	},
 	autoplay: async () => autoplay,
+	setThemeColor: (color) => log("setThemeColor", color),
 	setColorScheme: (next) => {
 		log("setColorScheme", next);
 		scheme = next;

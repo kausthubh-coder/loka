@@ -35,6 +35,7 @@ import "../../prototype/src/features/spaces/loka-space-editor";
 import type { LookPreview } from "../../prototype/src/features/spaces/loka-space-editor";
 import { type BrowserCommand, browser, type CommandPick, type NativeMedia, type NativeTab } from "./bridge";
 import { faviconUrl } from "./favicon-url";
+import { frameColor } from "./frame-color.logic";
 import { applyOnboarding, onboardingSpaces } from "./onboarding.logic";
 import {
 	markOnboardingApplied,
@@ -87,6 +88,7 @@ export class LokaPanel extends LitElement {
 	/** The last icon each Loka tab's page had, so a pinned tab keeps it after it unloads. */
 	private icons = new Map<TabId, string>();
 	private sentScheme: string | null = null;
+	private sentFrame: string | null = null;
 
 	/**
 	 * A change saved but not yet drawn, while the crossfade captures the old look (one frame). Later changes build on
@@ -202,10 +204,19 @@ export class LokaPanel extends LitElement {
 			skyTurn(this.renderRoot, forward, activeSpace(before).hue, this.schemeOf(before, null));
 		}
 		this.followScheme(this.pending ?? state);
+		this.followFrame(this.pending ?? state);
 		// Scrollbars and form controls in this page match what it shows.
 		document.documentElement.style.colorScheme = this.schemeOf(state);
 		// Unpinned, the browser floats this page over the window: its rounded corners show what's behind.
 		document.body.style.background = this.pinned ? "" : "transparent";
+	}
+
+	/** The window's frame around the page takes the space's sky, so the sidebar reads as the whole window. */
+	private followFrame(state: BrowserState) {
+		const color = frameColor(activeSpace(state).hue, this.schemeOf(state));
+		if (color === this.sentFrame) return;
+		this.sentFrame = color;
+		browser.setThemeColor(color);
 	}
 
 	/** The browser and its pages follow the space's own choice; "system" hands it back to the computer. */

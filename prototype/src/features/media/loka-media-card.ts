@@ -91,17 +91,34 @@ export class LokaMediaCard extends LitElement {
 		:host {
 			display: block;
 			font: 13px/1.35 system-ui, "Segoe UI", sans-serif;
+			/* Pressed is a deeper hover in both themes. --loka-fill-hover lightens, which vanishes on light glass. */
+			--press: color-mix(in srgb, var(--loka-ink) 12%, transparent);
 		}
+		/* Frosted glass over the sky and the planet's glow: the surface tint keeps the text readable on any of them.
+		   One small blurred box, never animated; light-dark() follows the color-scheme the theme class sets. */
 		section {
 			display: flex;
 			align-items: center;
 			gap: 10px;
 			padding: 7px 6px 7px 7px;
 			border-radius: 12px;
-			background: var(--loka-fill);
+			background: color-mix(in srgb, var(--loka-surface) 68%, transparent);
 			box-shadow:
-				inset 0 0 0 1px var(--loka-line),
-				var(--loka-selected-edge);
+				inset 0 0 0 1px light-dark(hsl(var(--hue) 40% 20% / 0.1), hsl(0 0% 100% / 0.12)),
+				0 6px 20px light-dark(hsl(var(--hue) 50% 20% / 0.14), rgb(0 0 0 / 0.32));
+			backdrop-filter: blur(20px) saturate(1.4);
+		}
+		/* No blur to read through, or the user asked for less of it: the same surface, solid. */
+		@supports not (backdrop-filter: blur(1px)) {
+			section {
+				background: hsl(from var(--loka-surface) h s l / 1);
+			}
+		}
+		@media (prefers-reduced-transparency: reduce) {
+			section {
+				background: hsl(from var(--loka-surface) h s l / 1);
+				backdrop-filter: none;
+			}
 		}
 		button {
 			font: inherit;
@@ -205,6 +222,22 @@ export class LokaMediaCard extends LitElement {
 			background: var(--loka-hover);
 			color: var(--loka-ink);
 		}
+		.controls button:active {
+			background: var(--press);
+		}
+		/* The artwork and the title go to the tab: hover says so, a press dims them. */
+		.art:hover {
+			filter: brightness(1.08);
+		}
+		.info:hover .title {
+			text-decoration: underline;
+			text-decoration-color: var(--loka-ink-3);
+			text-underline-offset: 2px;
+		}
+		.art:active,
+		.info:active {
+			opacity: 0.75;
+		}
 		.controls .play {
 			color: var(--loka-ink);
 		}
@@ -226,8 +259,12 @@ export class LokaMediaCard extends LitElement {
 			border-radius: 7px;
 		}
 		@media (prefers-reduced-motion: no-preference) {
-			:host {
+			/* On the glass itself, not the host: a fading ancestor would cut the blur off from what's behind it. */
+			section {
 				animation: card-in 260ms cubic-bezier(0.2, 0, 0, 1);
+			}
+			.controls button {
+				transition: background-color 120ms;
 			}
 			@keyframes card-in {
 				from {

@@ -21,7 +21,8 @@
 //                  of a pinned folder and back
 //   6 extensions   the panel lists them; pin and unpin reach the address field; the icon opens its popup; badges;
 //                  right-click (and Shift+F10) opens its own menu, whose Manage and Options open their pages
-//   7 panels       Downloads with a real download, the media card on a playing page, Archive and Search
+//   7 panels       Downloads in the bottom row with a real download (its toast and dot), the media card on a playing
+//                  page, Archive and Search
 //   8 settings     each setting changes what it says; History search, delete and clear today
 //   9 restart      quit and start again: spaces, pinned, folders, Essentials, extension pins and settings stay
 //  10 new tab      no new tab page: New tab opens the bar and makes no tab, Escape leaves the tabs, a pick makes one;
@@ -1629,9 +1630,30 @@ async function panels() {
 		return Array.isArray(list) && list.find((d) => d.name === "qa-download.txt" && d.state === "complete");
 	}, 10000);
 	check("a download arrives", done, show(done));
+	// Downloads sits in the bottom row beside the +, not in the address field; a finished file says so there.
+	const inPill = (await sb.names(".url button")).includes("Downloads");
+	const inBottom = (await sb.names(".bottom button")).includes("Downloads");
+	check(
+		"Downloads is in the bottom row, not the address field",
+		inBottom && !inPill,
+		`bottom ${inBottom}, address field ${inPill}`,
+	);
+	/** @returns {Promise<{ toast: string, dot: boolean }>} */
+	const downloadNews = () =>
+		sb.run(
+			`(() => { const r = ${SIDEBAR_ROOT}; return { toast: r.querySelector(".toast")?.textContent.replace(/\\s+/g, " ").trim() ?? "", dot: Boolean(r.querySelector(".downloads .dot")) }; })()`,
+		);
+	const told = await until(async () => {
+		const now = await downloadNews();
+		return now.toast.includes("qa-download.txt") && now.dot;
+	}, 4000);
+	check("the finished download shows briefly and leaves a dot on Downloads", told, show(await downloadNews()));
+	await step("download-finished");
 	await sb.click("Downloads");
 	const listed = await until(async () => (await sb.text()).includes("qa-download.txt"), 5000);
 	check("the Downloads panel lists it", listed, listed ? "qa-download.txt" : "not in the panel");
+	const seen = await downloadNews();
+	check("opening it clears the dot and the toast", !seen.dot && !seen.toast, show(seen));
 	await step("downloads-panel");
 	await sb.key("Escape");
 

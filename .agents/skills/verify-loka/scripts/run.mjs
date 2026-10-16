@@ -323,8 +323,12 @@ const recipes = {
 		await loka.page.keyboard.press("Control+s");
 		assert.deepEqual(await demoCalls(loka, "setSidebarPinned"), [[false], [true], [false], [true]]);
 
-		// Downloads is a panel in the address field, like Extensions.
-		await loka.sidebar.getByRole("button", { name: "Downloads", exact: true }).click();
+		// Downloads sits in the bottom row beside the +, not in the address field; its panel rises from there.
+		const pill = await loka.sidebar.locator(".url button").evaluateAll((els) => els.map((e) => e.ariaLabel));
+		assert.ok(!pill.includes("Downloads"), `no Downloads in the address field: ${pill}`);
+		const downloadsButton = loka.sidebar.locator(".bottom").getByRole("button", { name: "Downloads", exact: true });
+		assert.equal(await downloadsButton.locator(".ring").count(), 1, "a ring while a file comes in");
+		await downloadsButton.click();
 		const downloads = loka.sidebar.getByRole("dialog", { name: "Downloads" });
 		assert.equal(await downloads.getByRole("progressbar").count(), 2, "one running, one paused");
 		await downloads.getByRole("button", { name: "Try again lofi-cover.png" }).click();
@@ -339,6 +343,10 @@ const recipes = {
 		// It plays its exit first; on a busy machine that can outlast a fixed wait.
 		await downloads.waitFor({ state: "detached", timeout: 3000 }).catch(() => {});
 		assert.equal(await downloads.count(), 0, "Escape closes the panel");
+		await loka.sidebar.getByRole("button", { name: "More" }).click();
+		await loka.menuItem("Downloads").click();
+		await downloads.waitFor();
+		await loka.page.keyboard.press("Escape");
 	},
 
 	async "make-folders"(loka) {

@@ -3,8 +3,8 @@
 The sidebar's top row is the window's title bar, like Zen's: the menu, hide or pin, back, forward, reload, then the
 window's own minimize, maximize and close; its empty space drags the window. The sidebar can be resized, moved to the
 right, or unpinned so the browser slides it away and back in at the window's edge (`setSidebarPinned`). Settings
-(`loka://settings` here, `chrome://loka-settings` in the browser) is Loka's own page. Downloads and Extensions are
-panels opened from inside the address field.
+(`loka://settings` here, `chrome://loka-settings` in the browser) is Loka's own page. Extensions is a panel opened
+from inside the address field; Downloads is a button in the bottom row beside the +, whose panel rises from there.
 
 ## Sub-features
 
@@ -20,13 +20,15 @@ panels opened from inside the address field.
 - `page-settings`: Sidebar, Spaces (each space's light or dark, edit, new), Sound, Tabs (archiving), Extensions,
   Sync, Import, Privacy and Search, shortcuts, about.
 - `downloads-panel`: every state's actions (pause, resume, cancel, try again, open, show in folder, remove), live
-  progress, and a progress ring on the Downloads button. Escape closes any panel.
+  progress, a progress ring on the bottom row's Downloads button, a dot on it when a file finished while the panel
+  was closed (opening the panel clears it), and a 4 s toast above the bottom row naming the file
+  (`newlyFinished` in downloads.logic.ts). Escape closes any panel.
 - `pages-once`: opening Settings again goes to the existing tab, even from another space.
 
 ## How to get to it (user POV)
 
-- The sidebar's edge; the top row's buttons; Ctrl+S; `...` > Settings; the Downloads button in the address field;
-  the command bar's `Settings`, `Downloads`, `Hide the sidebar`.
+- The sidebar's edge; the top row's buttons; Ctrl+S; `...` > Settings; the Downloads button in the bottom row;
+  `...` > Downloads; the command bar's `Settings`, `Downloads`, `Hide the sidebar`.
 
 ## Driving it with loka.mjs
 
@@ -38,13 +40,15 @@ Preconditions: seed data.
 - **Hide and peek.** Click `Hide sidebar`: `window.lokaDemo.calls` has `setSidebarPinned` with `false` and the
   sidebar is off screen. Move the mouse to x=2; after ~350 ms the sidebar's box starts at x >= 0. Click
   `Keep sidebar open` to pin it back.
-- **Downloads.** Click `Downloads`; in `getByRole("dialog", { name: "Downloads" })` there are two progress bars
+- **Downloads.** Click `Downloads` in `.bottom` (the address field has none); in `getByRole("dialog", { name: "Downloads" })` there are two progress bars
   (running, paused); `Try again lofi-cover.png` makes three. Escape closes it.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs layout`.
 - **In the browser.** `bun run verify -- --ux layout` runs it, verify:browser ("setSidebarPinned(false) reads
   back", "the sidebar answers Windows' hit test as page, not title bar", "a real click (posted WM_LBUTTONDOWN/UP) on
   a tab's row switches to it") and verify:flows `states` (hover, press, focus). `settings` checks "Keep the sidebar
-  open off unpins the sidebar in the browser"; `panels` checks the Downloads panel. Not checked in the browser: the
+  open off unpins the sidebar in the browser"; `panels` checks Downloads with a real download: "Downloads is in the bottom row, not the address field",
+  "the finished download shows briefly and leaves a dot on Downloads", "opening it clears the dot and the toast".
+  Not checked in the browser: the
   top row's Hide button, edge peek, Minimize, Maximize, Close, dragging the window by the top row, Reload, and
   download actions.
 - **Real input by hand.** To check a point the way Windows does: `powershell -NoProfile -File

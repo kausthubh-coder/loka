@@ -653,7 +653,7 @@
    map.AddWebUIConfig(std::make_unique<SigninErrorUIConfig>());
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/BUILD.gn
-@@ -0,0 +1,58 @@
+@@ -0,0 +1,65 @@
 +# Copyright 2026 The Loka Authors
 +# You can use, redistribute, and/or modify this source code under
 +# the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -663,6 +663,8 @@
 +    "loka_sidebar_handler.cc",
 +    "loka_history_ui.cc",
 +    "loka_history_ui.h",
++    "loka_media_watcher.cc",
++    "loka_media_watcher.h",
 +    "loka_sidebar_handler.h",
 +    "loka_sidebar_handler_features.cc",
 +    "loka_sidebar_ui.cc",
@@ -709,7 +711,12 @@
 +    "//ui/color",
 +    "//ui/display",
 +    "//ui/gfx",
++    "//ui/gfx/codec",
 +    "//ui/webui",
++    "//mojo/public/cpp/bindings",
++    "//services/media_session/public/cpp",
++    "//services/media_session/public/mojom",
++    "//skia",
 +  ]
 +}
 --- /dev/null
@@ -997,6 +1004,210 @@
 +};
 +
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_HISTORY_UI_H_
+--- /dev/null
++++ b/chrome/browser/ui/webui/loka_sidebar/loka_media_watcher.cc
+@@ -0,0 +1,118 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#include "chrome/browser/ui/webui/loka_sidebar/loka_media_watcher.h"
++
++#include <algorithm>
++#include <utility>
++
++#include "base/base64.h"
++#include "base/functional/bind.h"
++#include "content/public/browser/media_session.h"
++#include "content/public/browser/web_contents.h"
++#include "services/media_session/public/cpp/media_image_manager.h"
++#include "third_party/skia/include/core/SkBitmap.h"
++#include "ui/gfx/codec/png_codec.h"
++
++namespace {
++
++// The card shows artwork at 40 px; this is sharp on a 2x screen.
++constexpr int kArtworkMinSize = 40;
++constexpr int kArtworkDesiredSize = 96;
++
++}  // namespace
++
++LokaMediaWatcher::LokaMediaWatcher(content::WebContents* contents,
++                                   base::RepeatingClosure on_change)
++    : contents_(contents), on_change_(std::move(on_change)) {
++  // The session reports its current state to a new observer straight away.
++  content::MediaSession::Get(contents)->AddObserver(
++      receiver_.BindNewPipeAndPassRemote());
++}
++
++LokaMediaWatcher::~LokaMediaWatcher() = default;
++
++bool LokaMediaWatcher::IsActive() const {
++  return info_ &&
++         info_->state !=
++             media_session::mojom::MediaSessionInfo::SessionState::kInactive;
++}
++
++bool LokaMediaWatcher::IsPlaying() const {
++  return info_ && info_->playback_state ==
++                      media_session::mojom::MediaPlaybackState::kPlaying;
++}
++
++bool LokaMediaWatcher::Can(
++    media_session::mojom::MediaSessionAction action) const {
++  return std::ranges::find(actions_, action) != actions_.end();
++}
++
++std::u16string LokaMediaWatcher::title() const {
++  return metadata_ ? metadata_->title : std::u16string();
++}
++
++std::u16string LokaMediaWatcher::artist() const {
++  return metadata_ ? metadata_->artist : std::u16string();
++}
++
++void LokaMediaWatcher::MediaSessionInfoChanged(
++    media_session::mojom::MediaSessionInfoPtr info) {
++  info_ = std::move(info);
++  on_change_.Run();
++}
++
++void LokaMediaWatcher::MediaSessionMetadataChanged(
++    const std::optional<media_session::MediaMetadata>& metadata) {
++  metadata_ = metadata;
++  on_change_.Run();
++}
++
++void LokaMediaWatcher::MediaSessionActionsChanged(
++    const std::vector<media_session::mojom::MediaSessionAction>& actions) {
++  actions_ = actions;
++  on_change_.Run();
++}
++
++void LokaMediaWatcher::MediaSessionImagesChanged(
++    const base::flat_map<media_session::mojom::MediaSessionImageType,
++                         std::vector<media_session::MediaImage>>& images) {
++  const int request = ++artwork_request_;
++  auto it = images.find(media_session::mojom::MediaSessionImageType::kArtwork);
++  std::optional<media_session::MediaImage> image;
++  if (it != images.end()) {
++    image = media_session::MediaImageManager(kArtworkMinSize,
++                                             kArtworkDesiredSize)
++                .SelectImage(it->second);
++  }
++  if (!image) {
++    if (!artwork_.empty()) {
++      artwork_.clear();
++      on_change_.Run();
++    }
++    return;
++  }
++  content::MediaSession::Get(contents_)->GetMediaImageBitmap(
++      *image, kArtworkMinSize, kArtworkDesiredSize,
++      base::BindOnce(&LokaMediaWatcher::OnArtwork, weak_factory_.GetWeakPtr(),
++                     request));
++}
++
++void LokaMediaWatcher::OnArtwork(int request, const SkBitmap& bitmap) {
++  if (request != artwork_request_) {
++    return;
++  }
++  std::string artwork;
++  if (!bitmap.drawsNothing()) {
++    if (std::optional<std::vector<uint8_t>> png =
++            gfx::PNGCodec::EncodeBGRASkBitmap(bitmap,
++                                              /*discard_transparency=*/false)) {
++      artwork = "data:image/png;base64," + base::Base64Encode(*png);
++    }
++  }
++  if (artwork != artwork_) {
++    artwork_ = std::move(artwork);
++    on_change_.Run();
++  }
++}
+--- /dev/null
++++ b/chrome/browser/ui/webui/loka_sidebar/loka_media_watcher.h
+@@ -0,0 +1,80 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_MEDIA_WATCHER_H_
++#define CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_MEDIA_WATCHER_H_
++
++#include <map>
++#include <optional>
++#include <string>
++#include <vector>
++
++#include "base/containers/flat_map.h"
++#include "base/functional/callback.h"
++#include "base/memory/raw_ptr.h"
++#include "base/memory/weak_ptr.h"
++#include "mojo/public/cpp/bindings/receiver.h"
++#include "services/media_session/public/cpp/media_metadata.h"
++#include "services/media_session/public/mojom/media_session.mojom.h"
++
++class SkBitmap;
++
++namespace content {
++class WebContents;
++}
++
++// What one tab's page says it is playing, from its Media Session: the title,
++// artist and artwork the page set (navigator.mediaSession), whether it plays
++// or is paused, and which buttons it supports. This is what Chrome's own
++// media controls read. `on_change` runs whenever any of it changes.
++class LokaMediaWatcher : public media_session::mojom::MediaSessionObserver {
++ public:
++  LokaMediaWatcher(content::WebContents* contents,
++                   base::RepeatingClosure on_change);
++  LokaMediaWatcher(const LokaMediaWatcher&) = delete;
++  LokaMediaWatcher& operator=(const LokaMediaWatcher&) = delete;
++  ~LokaMediaWatcher() override;
++
++  // The page has media that holds or held audio focus: playing, or paused
++  // where it can play again. False once it stops or navigates away.
++  bool IsActive() const;
++  bool IsPlaying() const;
++  bool Can(media_session::mojom::MediaSessionAction action) const;
++  // The page's own title and artist, empty when it set none.
++  std::u16string title() const;
++  std::u16string artist() const;
++  // The page's artwork as a data: URL, empty when it set none.
++  const std::string& artwork() const { return artwork_; }
++
++  // media_session::mojom::MediaSessionObserver:
++  void MediaSessionInfoChanged(
++      media_session::mojom::MediaSessionInfoPtr info) override;
++  void MediaSessionMetadataChanged(
++      const std::optional<media_session::MediaMetadata>& metadata) override;
++  void MediaSessionActionsChanged(
++      const std::vector<media_session::mojom::MediaSessionAction>& actions)
++      override;
++  void MediaSessionImagesChanged(
++      const base::flat_map<media_session::mojom::MediaSessionImageType,
++                           std::vector<media_session::MediaImage>>& images)
++      override;
++  void MediaSessionPositionChanged(
++      const std::optional<media_session::MediaPosition>& position) override {}
++
++ private:
++  void OnArtwork(int request, const SkBitmap& bitmap);
++
++  raw_ptr<content::WebContents> contents_;
++  base::RepeatingClosure on_change_;
++  media_session::mojom::MediaSessionInfoPtr info_;
++  std::optional<media_session::MediaMetadata> metadata_;
++  std::vector<media_session::mojom::MediaSessionAction> actions_;
++  std::string artwork_;
++  // Artwork downloads finish out of order; only the latest one counts.
++  int artwork_request_ = 0;
++  mojo::Receiver<media_session::mojom::MediaSessionObserver> receiver_{this};
++  base::WeakPtrFactory<LokaMediaWatcher> weak_factory_{this};
++};
++
++#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_MEDIA_WATCHER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.cc
 @@ -0,0 +1,656 @@
@@ -1658,7 +1869,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h
-@@ -0,0 +1,236 @@
+@@ -0,0 +1,239 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1680,6 +1891,7 @@
 +#include "base/scoped_observation.h"
 +#include "base/values.h"
 +#include "chrome/browser/extensions/extension_uninstall_dialog.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_media_watcher.h"
 +#include "chrome/browser/extensions/extension_action_dispatcher.h"
 +#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 +#include "chrome/browser/ui/toolbar/toolbar_actions_model.h"
@@ -1793,6 +2005,8 @@
 +  base::ListValue ExtensionList();
 +  base::ListValue DownloadList();
 +  base::ListValue MediaList();
++  void ScheduleMediaChanged();
++  void SendMediaChanged();
 +  void ScheduleExtensionsChanged();
 +  void ScheduleDownloadsChanged();
 +  void HandleGetExtensions(const base::ListValue& args);
@@ -1876,12 +2090,12 @@
 +  std::string suggest_query_;
 +  bool extensions_change_pending_ = false;
 +  bool downloads_change_pending_ = false;
-+  // Tabs that have played sound, and the origin they played it on: they stay
-+  // in the media list while paused, until they navigate elsewhere or close.
-+  std::map<int32_t, std::string> media_tabs_;
-+  // Tabs the sidebar just resumed: they count as playing until sound starts
-+  // again (or a few seconds pass), so the card doesn't blink.
-+  std::map<int32_t, base::TimeTicks> resuming_;
++  // What each tab's page says it plays, for the media card (see
++  // LokaMediaWatcher), and the tabs whose card was put away until they play
++  // again.
++  std::map<int32_t, std::unique_ptr<LokaMediaWatcher>> media_watchers_;
++  std::set<int32_t> media_dismissed_;
++  bool media_change_pending_ = false;
 +  // When each extension's popup last closed: clicking its button while the
 +  // popup is open closes the popup first, and that same click mustn't open
 +  // it again.
@@ -1897,7 +2111,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler_features.cc
-@@ -0,0 +1,850 @@
+@@ -0,0 +1,879 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1997,8 +2211,6 @@
 +
 +constexpr size_t kMaxDownloads = 30;
 +
-+// How long a resumed tab counts as playing before its sound is back.
-+constexpr base::TimeDelta kResumeWait = base::Seconds(3);
 +
 +std::string CssColor(SkColor color) {
 +  if (SkColorGetA(color) == 0) {
@@ -2519,41 +2731,80 @@
 +  if (!tab_strip) {
 +    return list;
 +  }
-+  const base::TimeTicks now = base::TimeTicks::Now();
-+  std::map<int32_t, std::string> still_here;
++  using media_session::mojom::MediaSessionAction;
++  std::map<int32_t, std::unique_ptr<LokaMediaWatcher>> watchers;
 +  for (int i = 0; i < tab_strip->count(); ++i) {
 +    tabs::TabInterface* tab = tab_strip->GetTabAtIndex(i);
 +    content::WebContents* contents = tab->GetContents();
 +    const int32_t id = tab->GetHandle().raw_value();
 +    const bool audible = contents->IsCurrentlyAudible();
-+    const std::string origin =
-+        contents->GetLastCommittedURL().DeprecatedGetOriginAsURL().spec();
-+    if (audible) {
-+      media_tabs_[id] = origin;
-+      resuming_.erase(id);
++    // Watch a tab once it has media (a session) or makes sound.
++    auto known = media_watchers_.find(id);
++    if (known != media_watchers_.end()) {
++      watchers[id] = std::move(known->second);
++    } else if (audible || content::MediaSession::GetIfExists(contents)) {
++      watchers[id] = std::make_unique<LokaMediaWatcher>(
++          contents,
++          base::BindRepeating(&LokaSidebarHandler::ScheduleMediaChanged,
++                              weak_factory_.GetWeakPtr()));
 +    }
-+    auto known = media_tabs_.find(id);
-+    // Only tabs that played here; a tab that went to another site is done.
-+    if (known == media_tabs_.end() || known->second != origin) {
++    auto watched = watchers.find(id);
++    const LokaMediaWatcher* media =
++        watched != watchers.end() ? watched->second.get() : nullptr;
++    // Sound with no media session (a game, Web Audio) still shows, as
++    // playing, while it sounds.
++    const bool active = (media && media->IsActive()) || audible;
++    const bool playing = media && media->IsActive() ? media->IsPlaying()
++                                                    : audible;
++    if (playing) {
++      media_dismissed_.erase(id);
++    }
++    if (!active || media_dismissed_.contains(id)) {
 +      continue;
 +    }
-+    still_here.insert(*known);
-+    auto resumed = resuming_.find(id);
-+    const bool playing =
-+        audible ||
-+        (resumed != resuming_.end() && now - resumed->second < kResumeWait);
 +    TabUIHelper* helper = TabUIHelper::From(tab);
++    const std::u16string title = media && !media->title().empty()
++                                     ? media->title()
++                                     : (helper ? helper->GetTitle()
++                                               : std::u16string());
 +    base::DictValue data;
 +    data.Set("tabId", id);
-+    data.Set("title",
-+             helper ? base::UTF16ToUTF8(helper->GetTitle()) : std::string());
-+    data.Set("artist", contents->GetLastCommittedURL().host());
-+    data.Set("artwork", FaviconDataUrl(tab));
++    data.Set("title", base::UTF16ToUTF8(title));
++    data.Set("artist", media && !media->artist().empty()
++                           ? base::UTF16ToUTF8(media->artist())
++                           : contents->GetLastCommittedURL().host());
++    data.Set("artwork", media && !media->artwork().empty()
++                            ? media->artwork()
++                            : FaviconDataUrl(tab));
 +    data.Set("playing", playing);
++    data.Set("canPrevious",
++             media && media->Can(MediaSessionAction::kPreviousTrack));
++    data.Set("canNext", media && media->Can(MediaSessionAction::kNextTrack));
 +    list.Append(std::move(data));
 +  }
-+  media_tabs_ = std::move(still_here);
++  // Tabs that closed take their watchers with them.
++  media_watchers_ = std::move(watchers);
++  std::erase_if(media_dismissed_, [this](int32_t id) {
++    return !media_watchers_.contains(id);
++  });
 +  return list;
++}
++
++void LokaSidebarHandler::ScheduleMediaChanged() {
++  if (media_change_pending_ || !IsJavascriptAllowed()) {
++    return;
++  }
++  media_change_pending_ = true;
++  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
++      FROM_HERE, base::BindOnce(&LokaSidebarHandler::SendMediaChanged,
++                                weak_factory_.GetWeakPtr()));
++}
++
++void LokaSidebarHandler::SendMediaChanged() {
++  media_change_pending_ = false;
++  if (IsJavascriptAllowed()) {
++    FireWebUIListener("media-changed", MediaList());
++  }
 +}
 +
 +void LokaSidebarHandler::HandleGetMedia(const base::ListValue& args) {
@@ -2568,29 +2819,21 @@
 +  }
 +  content::MediaSession* session =
 +      content::MediaSession::Get(tab->GetContents());
-+  const int32_t id = tab->GetHandle().raw_value();
 +  const std::string& action = args[1].GetString();
++  // The page's media session reports the new state back (LokaMediaWatcher),
++  // which updates the card.
 +  if (action == "pause") {
 +    session->Suspend(content::MediaSession::SuspendType::kUI);
-+    resuming_.erase(id);
 +  } else if (action == "play") {
 +    session->Resume(content::MediaSession::SuspendType::kUI);
-+    resuming_[id] = base::TimeTicks::Now();
-+    // If sound hasn't come back by then, report it paused again.
-+    base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
-+        FROM_HERE,
-+        base::BindOnce(&LokaSidebarHandler::ScheduleTabsChanged,
-+                       weak_factory_.GetWeakPtr()),
-+        kResumeWait + base::Milliseconds(100));
-+  } else if (action == "dismiss") {
-+    media_tabs_.erase(id);
-+    resuming_.erase(id);
 +  } else if (action == "next") {
 +    session->NextTrack();
 +  } else if (action == "previous") {
 +    session->PreviousTrack();
++  } else if (action == "dismiss") {
++    media_dismissed_.insert(tab->GetHandle().raw_value());
++    ScheduleMediaChanged();
 +  }
-+  ScheduleTabsChanged();
 +}
 +
 +// ---- Address field suggestions ----------------------------------------------

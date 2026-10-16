@@ -158,9 +158,15 @@ const cover = (hue: number, moon: boolean) =>
 	);
 
 export const DEMO_PLAYLIST: Omit<NativeMedia, "tabId" | "playing">[] = [
-	{ title: "Snowman", artist: "Lofi Girl, WYS", artwork: cover(250, true) },
-	{ title: "Coffee Break", artist: "Lofi Girl, Kupla", artwork: cover(20, false) },
-	{ title: "Night Walk", artist: "Lofi Girl, Sleepy Fish", artwork: cover(210, true) },
+	{ title: "Snowman", artist: "Lofi Girl, WYS", artwork: cover(250, true), canPrevious: true, canNext: true },
+	{ title: "Coffee Break", artist: "Lofi Girl, Kupla", artwork: cover(20, false), canPrevious: true, canNext: true },
+	{
+		title: "Night Walk",
+		artist: "Lofi Girl, Sleepy Fish",
+		artwork: cover(210, true),
+		canPrevious: true,
+		canNext: true,
+	},
 ];
 
 export const DEMO_HISTORY: NativeSuggestion[] = [

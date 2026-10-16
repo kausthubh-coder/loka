@@ -520,6 +520,32 @@ async function main() {
 		check("mediaAction pause stops it within 3 s", await mediaPlaying(false, 3000), "getMedia playing=false");
 		await tell("mediaAction", audioTabId, "play");
 		check("mediaAction play starts it again", await mediaPlaying(true, 3000), "getMedia playing=true");
+
+		// What the page says it plays (navigator.mediaSession) is what the card shows, and it follows the page: a new
+		// title replaces the old one (a site moving to the next episode without changing the tab's title), and the
+		// track buttons come and go with the page's own handlers.
+		/** @param {(m: { title: string, artist: string, canNext: boolean, canPrevious: boolean }) => boolean} test */
+		const mediaWhere = (test) =>
+			until(async () => {
+				/** @type {any[] | string} */
+				const media = await ask("getMedia");
+				const mine = Array.isArray(media) ? media.find((m) => m.tabId === audioTabId) : undefined;
+				return mine && test(mine) ? mine : null;
+			}, 4000);
+		await evaluate(
+			page,
+			`(navigator.mediaSession.metadata = new MediaMetadata({ title: "Episode one", artist: "Loka verify" }), true)`,
+		);
+		const episodeOne = await mediaWhere((m) => m.title === "Episode one" && m.artist === "Loka verify");
+		check("the card takes the page's own title and artist", Boolean(episodeOne), JSON.stringify(episodeOne));
+		await evaluate(page, `(navigator.mediaSession.metadata = new MediaMetadata({ title: "Episode two" }), true)`);
+		const episodeTwo = await mediaWhere((m) => m.title === "Episode two");
+		check("a new title from the page replaces the old one", Boolean(episodeTwo), JSON.stringify(episodeTwo));
+		const noTrackButtons = await mediaWhere((m) => !m.canNext && !m.canPrevious);
+		check("no next or previous until the page handles them", Boolean(noTrackButtons), JSON.stringify(noTrackButtons));
+		await evaluate(page, `(navigator.mediaSession.setActionHandler("nexttrack", () => {}), true)`);
+		const withNext = await mediaWhere((m) => m.canNext && !m.canPrevious);
+		check("next appears once the page handles it", Boolean(withNext), JSON.stringify(withNext));
 		await evaluate(page, "(document.getElementById('a').pause(), true)");
 
 		// 7. Extensions: the installed ones, as their toolbar buttons would show, and the same list in the sidebar.

@@ -56,9 +56,13 @@ export class LokaMediaCard extends LitElement {
 					<small>${artist}</small>
 				</button>
 				<div class="controls" role="group" aria-label="Playback" @pointerdown=${keepFocus}>
-					<button aria-label="Previous track" title="Previous" @click=${() => this.send("previous")}>
-						<svg viewBox="0 0 16 16"><path d="M4 3.5v9M12 3.5 6.5 8l5.5 4.5z" /></svg>
-					</button>
+					${
+						media.canPrevious
+							? html`<button aria-label="Previous track" title="Previous" @click=${() => this.send("previous")}>
+									<svg viewBox="0 0 16 16"><path d="M4 3.5v9M12 3.5 6.5 8l5.5 4.5z" /></svg>
+								</button>`
+							: nothing
+					}
 					<button
 						class="play"
 						aria-label=${media.playing ? "Pause" : "Play"}
@@ -71,9 +75,13 @@ export class LokaMediaCard extends LitElement {
 								: html`<svg viewBox="0 0 16 16"><path class="fill" d="M5 3.5v9l7.5-4.5z" /></svg>`
 						}
 					</button>
-					<button aria-label="Next track" title="Next" @click=${() => this.send("next")}>
-						<svg viewBox="0 0 16 16"><path d="M12 3.5v9M4 3.5 9.5 8 4 12.5z" /></svg>
-					</button>
+					${
+						media.canNext
+							? html`<button aria-label="Next track" title="Next" @click=${() => this.send("next")}>
+									<svg viewBox="0 0 16 16"><path d="M12 3.5v9M4 3.5 9.5 8 4 12.5z" /></svg>
+								</button>`
+							: nothing
+					}
 					<button
 						aria-label=${muted ? "Unmute" : "Mute"}
 						title=${muted ? "Unmute" : "Mute"}

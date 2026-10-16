@@ -36,6 +36,8 @@ export const PLANNED_MESSAGES = [
 	"getExtensions",
 	"runExtension",
 	"setExtensionPinned",
+	// An extension's right-click menu: its options page, its chrome://extensions page, or Chrome's Remove dialog.
+	"extensionAction",
 	"getDownloads",
 	"downloadAction",
 	"getMedia",

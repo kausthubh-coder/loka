@@ -82,6 +82,9 @@ export interface NativeMedia {
 	/** The page's artwork as a data: URL, or "". */
 	artwork: string;
 	playing: boolean;
+	/** Whether the page handles previous and next track (its media session's actions). */
+	canPrevious: boolean;
+	canNext: boolean;
 }
 
 /** One row of the address field's suggestions, from the browser's own autocomplete (history, bookmarks, tabs). */

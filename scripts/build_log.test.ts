@@ -110,7 +110,7 @@ test("build:status reads both files back", () => {
 	build();
 	const run = spawnSync("bun", [join(import.meta.dirname, "browser.mjs"), "status"], {
 		encoding: "utf8",
-		env: { ...process.env, LOKA_BUILD_DIR: dir },
+		env: { ...process.env, LOKA_CHROME: "", LOKA_BUILD_DIR: dir },
 	});
 	const out = run.stdout
 		.replace(/\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d/g, "<time>")

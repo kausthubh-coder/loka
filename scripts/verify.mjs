@@ -274,9 +274,13 @@ if (import.meta.main) {
 		await stage("check", "bun", ["run", "check"], {
 			detail: (out, code) => {
 				const tests = /Ran (\d+) tests/.exec(out)?.[1];
-				return code === 0
-					? `lint, types, ${tests ?? "all"} tests, both builds`
-					: (out.trim().split(/\r?\n/).at(-1) ?? "");
+				if (code === 0) return `lint, types, ${tests ?? "all"} tests, both builds`;
+				// The failing tests, type errors or lint count, not bun's closing "exited with code 1".
+				const why = out
+					.split(/\r?\n/)
+					.filter((l) => /^\(fail\) |error TS\d+|^Found \d+ errors?\./.test(l))
+					.map((l) => l.replace(/ \[[\d.]+ms\]$/, ""));
+				return why.slice(0, 4).join("; ") || (out.trim().split(/\r?\n/).at(-1) ?? "");
 			},
 		});
 		await patchesCheck();

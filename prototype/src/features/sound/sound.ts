@@ -12,8 +12,9 @@ const gate = new CueGate();
 let sleepTimer = 0;
 
 /**
- * The context, made once. It costs tens of milliseconds to make, so it's made in an idle moment after the first
- * input on the page, not inside the first action a cue confirms (the first space switch).
+ * The context, made once. Making one opens the audio device, which held the sidebar's main thread for 340 ms in
+ * the real browser, so it's made in an idle moment after the first input on the page, never inside an action a cue
+ * confirms. A cue before then stays silent; the action itself is what matters.
  */
 function audio(): AudioContext {
 	context ??= new AudioContext({ latencyHint: "interactive" });
@@ -114,6 +115,7 @@ export function playCue(cue: Cue) {
 	if (typeof document === "undefined" || document.visibilityState !== "visible") return;
 	if (!navigator.userActivation?.hasBeenActive) return;
 	if (!gate.allow(cue, performance.now())) return;
+	if (!context) return;
 	try {
 		const ctx = audio();
 		if (ctx.state === "suspended") void ctx.resume();

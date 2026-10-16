@@ -2391,7 +2391,8 @@ export class LokaSidebar extends LitElement {
 			}
 			/* The planet turns: its surface strip slides one body-width every four and a half minutes. */
 			.world .turn {
-				animation: turn 270s linear infinite;
+				/* A pixel at a time, not every frame (see the sky's drift). */
+				animation: turn 270s steps(330) infinite;
 				animation-play-state: var(--loka-play, running);
 			}
 			@keyframes turn {

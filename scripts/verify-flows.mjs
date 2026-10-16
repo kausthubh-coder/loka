@@ -188,6 +188,8 @@ async function launch() {
 			`--remote-debugging-port=${port}`,
 			// Test browsers stay silent: audio plays to a fake device, so tabs still count as audible but nothing is heard.
 			"--disable-audio-output",
+			// Off every screen, so the pointer of whoever is using the computer never moves over it mid-check.
+			"--window-position=-4000,0",
 			// Pictures work behind other windows; Chromium 137+ only takes --load-extension with this feature off.
 			"--disable-features=CalculateNativeWinOcclusion,DisableLoadExtensionCommandLineSwitch",
 			`--load-extension=${extensionDir}`,

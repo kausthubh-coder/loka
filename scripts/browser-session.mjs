@@ -247,6 +247,8 @@ export async function launchBrowser({ name, chrome = chromePath(), args = [], ur
 			`--remote-debugging-port=${port}`,
 			// Test browsers stay silent: audio plays to a fake device, so tabs still count as audible but nothing is heard.
 			"--disable-audio-output",
+			// Off every screen, so the pointer of whoever is using the computer never moves over it mid-check.
+			"--window-position=-4000,0",
 			"--disable-features=CalculateNativeWinOcclusion",
 			"--no-first-run",
 			...args,

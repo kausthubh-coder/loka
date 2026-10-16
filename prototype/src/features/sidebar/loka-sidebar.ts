@@ -1500,7 +1500,8 @@ export class LokaSidebar extends LitElement {
 
 				${
 					count === 0
-						? // None yet: no room taken. While a tab is dragged, a tray of slots eases open at the top.
+						? // None yet: no room taken. While a tab is dragged, three slots fade in where the address field is, so
+							// no row moves under the pointer.
 							html`<div class="essentials empty" role="list" aria-label="Essentials">
 								${
 									slots
@@ -2090,20 +2091,30 @@ export class LokaSidebar extends LitElement {
 			outline: 1.5px dashed color-mix(in srgb, var(--loka-accent) 55%, transparent);
 			outline-offset: -1.5px;
 		}
-		/* No Essentials: no room taken (the sidebar's gap is given back). While a tab is dragged, tiles grow in place. */
+		/* No Essentials: no room taken (the sidebar's gap is given back). While a tab is dragged, the address field
+		   fades out and three slots fade in over it, from its top to where the list starts: nothing in the list moves
+		   and no row is covered. Dropping in one makes the first Essential; only then does the grid take room. */
 		.essentials.empty {
 			display: block;
-		}
-		.essentials.empty:not(:has(.tray)) {
 			margin-bottom: -8px;
 		}
 		.tray {
-			box-sizing: border-box;
-			overflow: hidden;
-			interpolate-size: allow-keywords;
+			position: absolute;
+			z-index: 5;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			height: 48px;
 			display: grid;
 			grid-template-columns: repeat(3, 1fr);
 			gap: 8px;
+		}
+		.tray .essential.ghost {
+			height: auto;
+		}
+		aside:has(> .essentials .tray) > .url {
+			opacity: 0;
+			pointer-events: none;
 		}
 		.essential.ghost {
 			height: 56px;
@@ -2911,7 +2922,6 @@ export class LokaSidebar extends LitElement {
 		@media (prefers-reduced-motion: no-preference) {
 			.row,
 			.essential,
-			.url,
 			.menu button {
 				transition:
 					background-color 120ms,
@@ -2977,17 +2987,18 @@ export class LokaSidebar extends LitElement {
 			.neighbour {
 				transition: transform 160ms cubic-bezier(0.2, 0, 0, 1);
 			}
-			/* The Essentials tray slides down from under the address field, and its slots breathe gently. */
+			/* The Essentials slots fade in over the address field as it fades out, and breathe gently. */
 			.tray {
-				transition:
-					opacity 160ms cubic-bezier(0.2, 0, 0, 1),
-					height 200ms cubic-bezier(0.2, 0, 0, 1),
-					padding 200ms cubic-bezier(0.2, 0, 0, 1);
+				transition: opacity 160ms cubic-bezier(0.2, 0, 0, 1);
 				@starting-style {
 					opacity: 0;
-					height: 0;
-					padding-block: 0;
 				}
+			}
+			.url {
+				transition:
+					background-color 120ms,
+					scale 120ms,
+					opacity 160ms cubic-bezier(0.2, 0, 0, 1);
 			}
 			.essential.ghost {
 				animation: breathe-slot 1.6s ease-in-out infinite alternate;

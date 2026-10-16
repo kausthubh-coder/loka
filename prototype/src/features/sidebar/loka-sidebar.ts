@@ -2002,6 +2002,9 @@ export class LokaSidebar extends LitElement {
 			box-sizing: border-box;
 			height: 40px;
 			padding: 0 6px 0 calc(11px + var(--depth, 0) * 18px);
+			/* Rows scrolled out of view skip style, layout and paint: a space with 150 tabs builds only what shows. */
+			content-visibility: auto;
+			contain-intrinsic-size: auto 40px;
 			border-radius: 10px;
 			color: var(--loka-ink);
 		}
@@ -2062,11 +2065,12 @@ export class LokaSidebar extends LitElement {
 			border-radius: 1px;
 			background: var(--loka-accent);
 		}
+		/* Inside the row's edge: a row clips what it draws past it (content-visibility). */
 		.row.drop-before::before {
-			top: -1px;
+			top: 0;
 		}
 		.row.drop-after::after {
-			bottom: -1px;
+			bottom: 0;
 		}
 		.row.drop-into {
 			background: color-mix(in srgb, var(--loka-accent) 18%, transparent);

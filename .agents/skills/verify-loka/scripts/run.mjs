@@ -652,9 +652,10 @@ const recipes = {
 			});
 		};
 		assert.equal(await tones(), 0, "nothing plays as the page loads");
-		// The first input opens the audio device in an idle moment afterwards (it's slow), so cues start after it.
+		// After the first input the audio device opens once the page has been quiet for 3 s (it's slow to open), so
+		// cues start after that.
 		await loka.page.mouse.click(800, 600);
-		await loka.page.waitForTimeout(600);
+		await loka.page.waitForTimeout(3600);
 		await tones();
 		await loka.row("Docs").click();
 		assert.ok((await tones()) > 0, "closing a folder plays a cue");

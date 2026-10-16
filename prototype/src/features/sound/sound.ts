@@ -13,27 +13,33 @@ let sleepTimer = 0;
 
 /**
  * The context, made once. Making one opens the audio device, which held the sidebar's main thread for 340 ms in
- * the real browser, so it's made in an idle moment after the first input on the page, never inside an action a cue
- * confirms. A cue before then stays silent; the action itself is what matters.
+ * the real browser, so it's never made inside an action a cue confirms: after the first input on the page (sound
+ * needs one anyway), it's made once the person has left the page alone for a few seconds and the browser is idle.
+ * Cues before then stay silent; the action itself is what matters.
  */
 function audio(): AudioContext {
 	context ??= new AudioContext({ latencyHint: "interactive" });
 	output ??= chain(context);
 	return context;
 }
+const QUIET_BEFORE_AUDIO = 3000;
 if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-	const warm = () => {
-		window.removeEventListener("pointerdown", warm, true);
-		window.removeEventListener("keydown", warm, true);
+	let timer = 0;
+	const inputs = ["pointerdown", "pointermove", "keydown", "wheel"] as const;
+	const make = () =>
 		requestIdleCallback(() => {
-			if (!prefs.on || context) return;
+			if (context || !prefs.on) return;
+			for (const type of inputs) window.removeEventListener(type, wait, true);
 			try {
 				void audio().suspend();
 			} catch {}
 		});
+	// Every input (after the first) puts the moment off again, until the page has been quiet for long enough.
+	const wait = () => {
+		window.clearTimeout(timer);
+		if (navigator.userActivation?.hasBeenActive) timer = window.setTimeout(make, QUIET_BEFORE_AUDIO);
 	};
-	window.addEventListener("pointerdown", warm, true);
-	window.addEventListener("keydown", warm, true);
+	for (const type of inputs) window.addEventListener(type, wait, { capture: true, passive: true });
 }
 
 /** The window passes the user's Settings in; the module only remembers them. */

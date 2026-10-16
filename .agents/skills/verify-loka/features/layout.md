@@ -8,10 +8,13 @@ panels opened from inside the address field.
 
 ## Sub-features
 
-- `sidebar-resize`: drag the sidebar's inner edge (220 to 420 px). Double-click the edge resets to 300.
+- `sidebar-resize`: in the prototype, drag the sidebar's inner edge (220 to 420 px; double-click resets to 300) or
+  Settings > Sidebar width. The real browser uses Chromium's own resize edge on the column.
 - `sidebar-side`: Settings > Sidebar > Sidebar side, Left or Right (the prototype's window only).
-- `sidebar-hide`: the top row's `Hide sidebar` button, Ctrl+S, the command bar, or Settings > Keep the sidebar open.
-  The same button, now `Keep sidebar open`, pins it back. Reaching the window edge slides it in; leaving hides it.
+- `sidebar-hide`: the top row's `Hide sidebar` button, the command bar, or Settings > Keep the sidebar open (Ctrl+S
+  too, in the prototype only). The same button, now `Keep sidebar open`, pins it back. Reaching the window edge
+  slides it in; leaving hides it.
+- `sidebar-narrow`: below 286 px the top row drops Reload, below 254 px Forward too.
 - `window-buttons`: `Minimize`, `Maximize` and `Close window` call `windowAction`; empty top-row space calls
   `startWindowDrag`, and a double-click maximizes.
 - `page-settings`: Sidebar, Spaces (each space's light or dark, edit, new), Sound, Tabs (archiving), Extensions,
@@ -38,9 +41,23 @@ Preconditions: seed data.
 - **Downloads.** Click `Downloads`; in `getByRole("dialog", { name: "Downloads" })` there are two progress bars
   (running, paused); `Try again lofi-cover.png` makes three. Escape closes it.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs layout`.
+- **In the browser.** `bun run verify -- --ux layout` runs it, verify:browser ("setSidebarPinned(false) reads
+  back", "the sidebar answers Windows' hit test as page, not title bar", "a real click (posted WM_LBUTTONDOWN/UP) on
+  a tab's row switches to it") and verify:flows `states` (hover, press, focus). `settings` checks "Keep the sidebar
+  open off unpins the sidebar in the browser"; `panels` checks the Downloads panel. Not checked in the browser: the
+  top row's Hide button, edge peek, Minimize, Maximize, Close, dragging the window by the top row, Reload, and
+  download actions.
+- **Real input by hand.** To check a point the way Windows does: `powershell -NoProfile -File
+  scripts/window-hittest.ps1 -ProcId <pid> -Points "x,y"` in physical client px (1 page, 2 title bar). To click or
+  drag like a mouse: `powershell -NoProfile -File scripts/window-input.ps1 -ProcId <pid> -Kind click -X <x> -Y <y>`
+  in client DIPs (`-Kind drag` takes `-X2 -Y2`). Post a `move` first and read the page's `mousemove` clientX/Y to
+  find where the sidebar sits in the window.
 
 ## Gotchas
 
+- CDP's Input events start inside the page and skip Windows' hit test, so a CDP click passes on a sidebar that a
+  real mouse would drag the window from. A change to the top row, the frame or the hit test needs the hit-test and
+  real-click checks, not a CDP drive.
 - Fresh runs set `loka.ui.v1` to `{ onboarded: true }`, so the tour doesn't cover the window. Pass
   `openLoka(name, { onboarding: true })` to see it.
 - The fake browser keeps the pinned state in `loka.demo.sidebarPinned`, not in the window prefs.

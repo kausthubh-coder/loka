@@ -26,9 +26,14 @@ Preconditions: seed data.
 - **Tree.** Focus `loka.row("Loka")`, ArrowLeft: `0:Loka (closed)`. ArrowRight, ArrowDown, Enter: `activeTab` is
   `imputnet/helium-windows`.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs search-and-keys`.
+- **In the browser.** `bun run verify -- --ux search-and-keys` runs it and verify:flows `panels` ("Search the
+  sidebar finds a tab") and `tabs`; `states` checks "Tab moves focus with a visible ring". Not checked in the
+  browser: going to a result, Ctrl+Shift+F itself, Ctrl+Alt+arrows, and the tree and menu keys.
 
 ## Gotchas
 
 - A web page can't take Ctrl+Tab, so the prototype uses Arc's Ctrl+Alt+arrows, and so does the real
   browser's sidebar today (`webui/src/main.ts`). Mapping Ctrl+Tab and Ctrl+PgDn to the same step is not built.
+- In the real browser Ctrl+Shift+F and Ctrl+Alt+arrows come from the sidebar page's own key handler, so they work
+  only while the sidebar has focus.
 - Ctrl+F stays find-in-page; sidebar search is Ctrl+Shift+F.

@@ -23,6 +23,10 @@ Preconditions: seed data. Build is dark, School light, Home follows the system (
   `setColorScheme` with `dark`, `light`, `system` in that order.
 - **Choose.** Edit Home, pick `Dark` (a `radio`), Save: `state().spaces` has Home's `scheme: "dark"`.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs theme`.
+- **In the browser.** `bun run verify -- --ux theme` runs it, verify:browser ('setColorScheme("light") reaches
+  pages', 'setColorScheme("dark") reaches pages') and verify:flows `spaces`: "pages in a dark space are dark", "and
+  its pages turn light". Not checked in the browser: the scheme after a space switch, System, the preview and the
+  crossfade.
 
 ## Gotchas
 

@@ -6,15 +6,15 @@ saved and survives a reload.
 
 ## Sub-features
 
-- `folder-new` creates a folder at the end of the pinned list: right-click empty sidebar space > `New folder`, or
-  Ctrl+K > `New folder` (this one doesn't start in rename mode).
+- `folder-new` creates a folder at the end of the pinned list: right-click empty sidebar space > `New folder`, the
+  `+` (`New`) button on the horizon > `New folder`, or Ctrl+K > `New folder` (this one doesn't start in rename mode).
 - `folder-from-tabs`: drop a tab on the middle of another tab to make a folder of both (pinned: in the target's
   place; open: at the end of pinned), or a tab's menu > `New folder with this tab`. Both start in rename mode.
 - `folder-new-inside` creates a folder inside another one (right-click > `New folder inside`).
 - `folder-rename` renames with an inline box (double-click, or right-click > `Rename`). Enter saves, Escape cancels.
 - `folder-toggle` opens and closes by clicking. There is no arrow: the icon is an open or a closed folder. A closed
   folder shows how many items it holds.
-- `folder-holds-active` puts a white dot on a closed folder's icon when the active tab is somewhere inside it.
+- `folder-holds-active` puts a dot in the space's ink color on a closed folder's icon when the active tab is somewhere inside it.
 - `folder-drop-into` puts a dragged tab or folder at the end of the folder (middle of the row).
 - `folder-reorder` drops before or after a row (top or bottom edge of the row).
 - `folder-no-cycle` refuses to drop a folder into itself or its own subfolders.
@@ -22,8 +22,8 @@ saved and survives a reload.
 
 ## How to get to it (user POV)
 
-- Right-click empty space in the sidebar, a tab's menu, Ctrl+K > `New folder`, or drop a tab on a tab. There is no
-  toolbar button.
+- Right-click empty space in the sidebar, the `+` (`New`) button, a tab's menu, Ctrl+K > `New folder`, or drop a tab
+  on a tab.
 - Right-click a folder: `Rename`, `New folder inside`, `Ungroup (keep tabs)`.
 - Double-click a folder name to rename it.
 - Drag any tab row or folder row onto a folder row.
@@ -47,6 +47,10 @@ Preconditions: seed data, `Build` space active.
 - **Tab on tab.** `loka.drag(loka.row("Zen Browser"), loka.row("Arc: what we learned"), "into")`, type a name,
   Enter. `pinned` ends with the folder holding both, and `open` lost them.
 - **Recipes.** `node .agents/skills/verify-loka/scripts/run.mjs folders` and `make-folders`.
+- **In the browser.** `bun run verify -- --ux folders` runs both recipes and verify:flows `pinning`: "New folder
+  asks for its name", "folders nest two deep and take a tab", "Rename renames and a click folds the folder", "a
+  folded folder hides what's inside"; `restart` keeps them. The browser never sees folders, only each space's tab
+  group. Not checked in the browser: Ungroup, the no-cycle rule, tab-on-tab folders, Escape on a rename.
 
 ## Gotchas
 

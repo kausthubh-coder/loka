@@ -120,7 +120,6 @@ export class LokaExtensions extends LitElement {
 				display: block;
 				font: 14px/1.4 system-ui, "Segoe UI", sans-serif;
 				/* Pressed is a deeper hover in both themes. --loka-fill-hover lightens, which vanishes on a light panel. */
-				--press: color-mix(in srgb, var(--loka-ink) 12%, transparent);
 			}
 			header {
 				display: flex;
@@ -154,7 +153,7 @@ export class LokaExtensions extends LitElement {
 				background: var(--loka-hover);
 			}
 			.quiet:active {
-				background: var(--press);
+				background: var(--loka-pressed);
 			}
 			ul {
 				list-style: none;
@@ -171,7 +170,7 @@ export class LokaExtensions extends LitElement {
 				background: var(--loka-hover);
 			}
 			li:has(.row:active) {
-				background: var(--press);
+				background: var(--loka-pressed);
 			}
 			.row {
 				flex: 1;
@@ -205,7 +204,7 @@ export class LokaExtensions extends LitElement {
 				color: var(--loka-ink);
 			}
 			.pin:active {
-				background: var(--press);
+				background: var(--loka-pressed);
 			}
 			.pin.on {
 				color: var(--loka-accent-ink);

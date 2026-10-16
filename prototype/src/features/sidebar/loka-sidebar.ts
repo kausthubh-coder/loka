@@ -643,6 +643,8 @@ export class LokaSidebar extends LitElement {
 
 	/** Where each row and Essential was before this update, to animate from. Null when nothing should move. */
 	private rowsBefore: Map<string, Was> | null = null;
+	/** The space's list before a switch, which slides out as the new one slides in. */
+	private listBefore: { el: HTMLElement; rect: DOMRect; forward: boolean } | null = null;
 	/** The horizon's planets before a space switch, which set behind the new one. */
 	private horizonBefore: { els: HTMLElement[]; forward: boolean } | null = null;
 
@@ -653,6 +655,8 @@ export class LokaSidebar extends LitElement {
 		if (before.activeSpaceId !== this.state.activeSpaceId) {
 			const forward = switchesForward(this.state, before.activeSpaceId, this.state.activeSpaceId);
 			this.slideFrom = forward ? "right" : "left";
+			const list = this.renderRoot.querySelector<HTMLElement>(".scroll:not(.leaving-list)");
+			this.listBefore = list ? { el: list, rect: list.getBoundingClientRect(), forward } : null;
 			const horizon = this.renderRoot.querySelector(".horizon");
 			this.horizonBefore = horizon
 				? {
@@ -666,7 +670,11 @@ export class LokaSidebar extends LitElement {
 		}
 		// Same space, new state: the DOM still shows the old rows, so this is where they are now.
 		this.rowsBefore = new Map(
-			[...this.renderRoot.querySelectorAll<HTMLElement>(".scroll [data-key], .essentials [data-key]")].map((el) => [
+			[
+				...this.renderRoot.querySelectorAll<HTMLElement>(
+					".scroll:not(.leaving-list) [data-key], .essentials [data-key]",
+				),
+			].map((el) => [
 				el.dataset.key ?? "",
 				{ el, rect: el.getBoundingClientRect(), tile: el.classList.contains("essential") },
 			]),
@@ -682,15 +690,16 @@ export class LokaSidebar extends LitElement {
 	private animateRows() {
 		const before = this.rowsBefore;
 		this.rowsBefore = null;
-		const scroll = this.renderRoot.querySelector<HTMLElement>(".scroll");
+		const scroll = this.renderRoot.querySelector<HTMLElement>(".scroll:not(.leaving-list)");
 		const grid = this.renderRoot.querySelector<HTMLElement>(".essentials");
 		if (!before || !scroll || !grid) return;
 		const still = reducedMotion();
 		const now = new Map(
-			[...this.renderRoot.querySelectorAll<HTMLElement>(".scroll [data-key], .essentials [data-key]")].map((el) => [
-				el.dataset.key ?? "",
-				el,
-			]),
+			[
+				...this.renderRoot.querySelectorAll<HTMLElement>(
+					".scroll:not(.leaving-list) [data-key], .essentials [data-key]",
+				),
+			].map((el) => [el.dataset.key ?? "", el]),
 		);
 		for (const [key, el] of now) {
 			for (const a of el.getAnimations()) if (a.id === "row") a.cancel();
@@ -998,7 +1007,47 @@ export class LokaSidebar extends LitElement {
 		`;
 	}
 
+	/**
+	 * Switching spaces turns the page, like Arc: the old space's list slides out to one side as the new one slides in
+	 * from the other. The old list is the element Lit just let go of, put back where it was for its exit.
+	 */
+	private animateListExit() {
+		const before = this.listBefore;
+		this.listBefore = null;
+		const aside = this.renderRoot.querySelector("aside");
+		if (!before || !aside || before.el.isConnected || reducedMotion()) return;
+		const { el, rect } = before;
+		const box = aside.getBoundingClientRect();
+		const scrolled = el.scrollTop;
+		el.classList.remove("from-left", "from-right");
+		el.classList.add("leaving-list");
+		el.inert = true;
+		el.setAttribute("aria-hidden", "true");
+		Object.assign(el.style, {
+			top: `${rect.top - box.top}px`,
+			left: `${rect.left - box.left}px`,
+			width: `${rect.width}px`,
+			height: `${rect.height}px`,
+		});
+		aside.append(el);
+		el.scrollTop = scrolled;
+		void el
+			.animate(
+				[
+					{ opacity: 1, translate: "0 0" },
+					{ opacity: 0, translate: `${before.forward ? -56 : 56}px 0` },
+				],
+				{
+					duration: 220,
+					easing: EASE_IN,
+					fill: "forwards",
+				},
+			)
+			.finished.then(() => el.remove());
+	}
+
 	protected override updated() {
+		this.animateListExit();
 		this.animateRows();
 		this.animateHorizon();
 		const input = this.renderRoot.querySelector<HTMLInputElement>("input.rename");
@@ -1447,7 +1496,7 @@ export class LokaSidebar extends LitElement {
 		:host {
 			display: block;
 			min-height: 0;
-			font-size: 15px;
+			font-size: 14px;
 			--text: var(--loka-ink);
 			--muted: var(--loka-ink-2);
 			--accent: var(--loka-accent);
@@ -1531,7 +1580,7 @@ export class LokaSidebar extends LitElement {
 		.close:active,
 		.sound:active,
 		.clear:active {
-			background: var(--loka-fill-hover);
+			background: var(--loka-pressed);
 		}
 		.icon .dots {
 			stroke-width: 2.4;
@@ -1587,7 +1636,7 @@ export class LokaSidebar extends LitElement {
 			background: var(--loka-fill-hover);
 		}
 		.url:has(.address:active) {
-			background: var(--loka-selected);
+			background: var(--loka-pressed);
 		}
 		.address {
 			flex: 1;
@@ -1695,7 +1744,7 @@ export class LokaSidebar extends LitElement {
 			background: var(--loka-fill-hover);
 		}
 		.essential:active {
-			background: var(--loka-selected);
+			background: var(--loka-pressed);
 			scale: 0.97;
 		}
 		.essential.active {
@@ -1820,7 +1869,7 @@ export class LokaSidebar extends LitElement {
 			gap: 12px;
 			width: 100%;
 			box-sizing: border-box;
-			height: 42px;
+			height: 40px;
 			padding: 0 6px 0 calc(11px + var(--depth, 0) * 18px);
 			border-radius: 10px;
 			color: var(--loka-ink);
@@ -1830,7 +1879,7 @@ export class LokaSidebar extends LitElement {
 		}
 		/* Pressed: a step past hover, so a click is felt before the page answers. */
 		.row:active {
-			background: var(--loka-fill-hover);
+			background: var(--loka-pressed);
 		}
 		.row.active:active {
 			background: var(--loka-selected);
@@ -2064,7 +2113,9 @@ export class LokaSidebar extends LitElement {
 			   and its glow, which would otherwise be cut off flat at the top. */
 			height: 86px;
 			margin: -12px -8px -8px -10px;
-			overflow: hidden;
+			/* clip, not hidden: a hidden box can still be scrolled, and focusing the big planet button (after the space
+			   editor closes) scrolled the planets up under the media card. */
+			overflow: clip;
 		}
 		.world {
 			position: absolute;
@@ -2163,24 +2214,52 @@ export class LokaSidebar extends LitElement {
 		}
 		@keyframes in-right {
 			from {
-				translate: 36px 0;
+				translate: 56px 0;
 				opacity: 0;
 			}
 		}
 		@keyframes in-left {
 			from {
-				translate: -36px 0;
+				translate: -56px 0;
 				opacity: 0;
 			}
+		}
+		/* The list being left, sliding out over where the new one comes in. */
+		.scroll.leaving-list {
+			position: absolute;
+			box-sizing: border-box;
+			z-index: 1;
+			margin: 0;
+			flex: none;
+			pointer-events: none;
 		}
 
 		/* Panels and menus float over the list as frosted glass, opaque enough that rows behind never show through
 		   their text: what passes under them is only a tint. */
 		.panel,
 		.menu {
-			background: color-mix(in srgb, var(--loka-surface) 95%, transparent);
-			box-shadow: var(--loka-surface-edge);
-			backdrop-filter: blur(24px) saturate(1.4);
+			background: hsl(from var(--loka-surface) h s l / 0.96);
+			box-shadow:
+				inset 0 0 0 1px var(--glass-edge),
+				var(--loka-surface-edge);
+			backdrop-filter: blur(20px) saturate(1.4);
+		}
+		:host {
+			--glass-edge: light-dark(hsl(var(--hue) 40% 20% / 0.1), hsl(0 0% 100% / 0.12));
+		}
+		/* Without blur, or for people who ask for less transparency: solid. */
+		@supports not (backdrop-filter: blur(1px)) {
+			.panel,
+			.menu {
+				background: hsl(from var(--loka-surface) h s l / 1);
+			}
+		}
+		@media (prefers-reduced-transparency: reduce) {
+			.panel,
+			.menu {
+				background: hsl(from var(--loka-surface) h s l / 1);
+				backdrop-filter: none;
+			}
 		}
 		.panel {
 			position: absolute;
@@ -2231,8 +2310,7 @@ export class LokaSidebar extends LitElement {
 			outline: none;
 		}
 		.menu button:active {
-			background: var(--loka-selected);
-			box-shadow: var(--loka-selected-edge);
+			background: var(--loka-pressed);
 		}
 		.menu button.danger {
 			color: var(--loka-danger);
@@ -2327,7 +2405,7 @@ export class LokaSidebar extends LitElement {
 				animation:
 					fade-top linear both,
 					fade-bottom linear both,
-					in-right 260ms cubic-bezier(0.2, 0, 0, 1);
+					in-right 300ms cubic-bezier(0.2, 0, 0, 1);
 				animation-timeline: scroll(self), scroll(self), auto;
 				animation-range:
 					0 24px,

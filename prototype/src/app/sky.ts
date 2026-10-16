@@ -120,9 +120,15 @@ export const skyStyles = css`
 			overflow: hidden;
 			pointer-events: none;
 		}
+		/* The space's own color as the whole sky, like Arc's sidebar: deepest at the horizon, where the planet rises. */
 		.sky,
 		.sky-was {
-			background: linear-gradient(165deg, hsl(var(--hue) 32% 8%), hsl(var(--hue) 38% 4%));
+			background: linear-gradient(
+				172deg,
+				hsl(var(--hue) 44% 16%),
+				hsl(var(--hue) 40% 9%) 55%,
+				hsl(calc(var(--hue) - 20) 40% 5%)
+			);
 		}
 		/* Day: a pale atmosphere, brightest under the sun at the top left, deepening towards the horizon. */
 		.sky.light,
@@ -144,7 +150,7 @@ export const skyStyles = css`
 			position: absolute;
 			inset: -10%;
 			background:
-				radial-gradient(48% 40% at 10% 6%, hsl(var(--hue) 58% 34% / 0.5), transparent 70%),
+				radial-gradient(48% 40% at 10% 6%, hsl(var(--hue) 62% 38% / 0.55), transparent 70%),
 				radial-gradient(30% 22% at 32% 30%, hsl(calc(var(--hue) + 40) 60% 45% / 0.16), transparent 70%),
 				radial-gradient(34% 28% at 30% 60%, hsl(calc(var(--hue) + 40) 45% 32% / 0.22), transparent 70%),
 				radial-gradient(26% 40% at 72% 38%, hsl(calc(var(--hue) - 50) 50% 40% / 0.15), transparent 70%),

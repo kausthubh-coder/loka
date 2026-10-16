@@ -66,17 +66,51 @@ describe("the browser's tab events update the spaces", () => {
 		expect(titles(state, school?.open ?? [])).toEqual(["https://docs.example.edu/"]);
 	});
 
-	test("the new tab Loka opens on switching to an empty space joins that space, not its opener's", () => {
+	test("an empty tab never joins a space, wherever it was opened from", () => {
 		const [s0, live0] = start();
 		const home = switchSpace(s0, "s-home");
-		// The browser names the tab that was showing (School's) as the new tab's opener.
-		const opened = tab(23, "chrome://newtab/", { openerTabId: 21, active: true });
-		const [state, live] = tabCreated(home, live0, opened, NOW, undefined, "s-home");
-		const lokaId = Object.keys(live).find((id) => live[id] === 23) ?? "";
+		for (const url of ["chrome://loka-newtab/", "chrome://newtab/", "chrome://new-tab-page/"]) {
+			const [state, live] = tabCreated(home, live0, tab(23, url, { openerTabId: 21, active: true }), NOW);
+			expect([state, live]).toEqual([home, live0]);
+		}
+	});
+
+	test("a page picked on an empty tab joins the space on screen, not the empty tab's opener's", () => {
+		const [s0, live0] = start();
+		const home = switchSpace(s0, "s-home");
+		// The empty tab (24) was opened from School's tab (21); the picked page names the empty tab as its opener.
+		const [state, live] = tabCreated(home, live0, tab(25, "https://picked.example/", { openerTabId: 24 }), NOW);
+		const lokaId = Object.keys(live).find((id) => live[id] === 25) ?? "";
 		expect(homeOf(state, lokaId)).toBe("s-home");
-		expect(state.spaces.find((s) => s.id === "s-school")?.open).toEqual(
-			s0.spaces.find((s) => s.id === "s-school")?.open,
-		);
+	});
+
+	test("a new tab that turns out to be an empty tab leaves its space once its page commits", () => {
+		const [s0, live0] = start();
+		// Before its first page commits, the browser says about:blank, so the tab was taken in as an open tab.
+		const [withNew, live1] = tabCreated(s0, live0, tab(26, "about:blank", { active: true }), NOW);
+		const newId = Object.keys(live1).find((id) => live1[id] === 26) ?? "";
+		expect(homeOf(withNew, newId)).toBe("s-build");
+		const [state, live] = tabUpdated(withNew, live1, tab(26, "chrome://loka-newtab/", { active: true }), NOW);
+		expect(state.tabs[newId]).toBeUndefined();
+		expect(state.spaces.find((s) => s.id === "s-build")?.open).toEqual(s0.spaces.find((s) => s.id === "s-build")?.open);
+		expect(live).toEqual(live0);
+	});
+
+	test("an empty tab that goes to a page joins the space on screen; until then it stays out", () => {
+		const [s0, live0] = start();
+		const home = switchSpace(s0, "s-home");
+		expect(tabUpdated(home, live0, tab(27, "chrome://loka-newtab/"), NOW)).toEqual([home, live0]);
+		const [state, live] = tabUpdated(home, live0, tab(27, "https://dropped.example/", { title: "Dropped" }), NOW);
+		const lokaId = Object.keys(live).find((id) => live[id] === 27) ?? "";
+		expect([homeOf(state, lokaId), state.tabs[lokaId]?.title]).toEqual(["s-home", "Dropped"]);
+	});
+
+	test("a pinned tab saved on chrome://newtab keeps its place", () => {
+		const [s0, live0] = start();
+		// Canvas (21) is pinned in School; whatever its page does, a pinned tab stays.
+		const [state, live] = tabUpdated(s0, live0, tab(21, "chrome://newtab/"), NOW);
+		expect(homeOf(state, "t-canvas")).toBe("s-school");
+		expect(live).toEqual(live0);
 	});
 
 	test("a tab Loka asked for is only linked, not added a second time", () => {
@@ -100,10 +134,10 @@ describe("the browser's tab events update the spaces", () => {
 	test("an open tab follows its page; a pinned tab keeps the address it was pinned with", () => {
 		const [s0, live0] = start();
 		const [withNew, live1] = tabCreated(s0, live0, tab(50, "https://x.example/"), NOW);
-		const moved = tabUpdated(withNew, live1, tab(50, "https://y.example/", { title: "Y" }));
+		const [moved] = tabUpdated(withNew, live1, tab(50, "https://y.example/", { title: "Y" }), NOW);
 		const newId = Object.keys(live1).find((id) => live1[id] === 50) ?? "";
 		expect([moved.tabs[newId]?.url, moved.tabs[newId]?.title]).toEqual(["https://y.example/", "Y"]);
-		const away = tabUpdated(s0, live0, tab(21, "https://canvas.example.edu/inbox", { title: "Inbox" }));
+		const [away] = tabUpdated(s0, live0, tab(21, "https://canvas.example.edu/inbox", { title: "Inbox" }), NOW);
 		expect([away.tabs["t-canvas"]?.url, away.tabs["t-canvas"]?.title]).toEqual([
 			"https://canvas.example.edu/courses/281",
 			"Canvas: CSC 281",
@@ -157,7 +191,7 @@ describe("Loka tells the browser what to do", () => {
 		expect(planReconcile(state, live, grouped, folded)).toEqual([]);
 	});
 
-	test("switching to a space with nothing showing shows its first loaded tab, or a new tab if it has none", () => {
+	test("switching to a space with nothing showing shows its first loaded tab, or an empty tab if it has none", () => {
 		const [state, live] = adoptTabs(
 			seedState(NOW),
 			[
@@ -183,8 +217,50 @@ describe("Loka tells the browser what to do", () => {
 			{ op: "group", key: "s-build@1", browserIds: [81], title: "Build", color: "blue" },
 			{ op: "group", key: "s-school@1", browserIds: [82], title: "School", color: "orange" },
 		];
-		expect(planReconcile(home, live, browser, {}, true)).toEqual([{ op: "new-tab", spaceId: "s-home" }, ...groups]);
+		expect(planReconcile(home, live, browser, {}, true)).toEqual([{ op: "empty-tab" }, ...groups]);
 		expect(planReconcile(home, live, browser, {}, false)).toEqual(groups);
+		// From one empty space to another, the empty tab on screen stays.
+		const onEmpty = [{ ...browser[0], active: false } as BrowserTab, browser[1] as BrowserTab];
+		const emptyTab = tab(83, "chrome://loka-newtab/", { active: true });
+		expect(planReconcile(home, live, [...onEmpty, emptyTab], {}, true)).toEqual(groups);
+	});
+
+	test("closing the last tab of the space on screen shows an empty tab before it goes, so the window stays", () => {
+		const browser = [tab(55, "https://example.org/", { active: true })];
+		const [adopted, live] = adoptTabs(firstState(), browser, NOW);
+		const only = Object.keys(live)[0] ?? "";
+		const ops = planReconcile(closeTab(adopted, only), live, browser, {}).filter((o) => o.op !== "group");
+		expect(ops).toEqual([{ op: "empty-tab" }, { op: "remove", browserId: 55 }]);
+	});
+
+	test("an empty tab no longer on screen is closed; one on screen, or a Loka tab on chrome://newtab, stays", () => {
+		const browser = [
+			tab(56, "https://example.org/", { active: true }),
+			tab(57, "chrome://loka-newtab/"),
+			tab(58, "chrome://newtab/"),
+		];
+		const [state, live] = adoptTabs(firstState(), browser, NOW);
+		// Taking over the window leaves the empty tabs out of the sidebar.
+		expect(Object.values(live)).toEqual([56]);
+		expect(state.spaces[0]?.open.map((id) => state.tabs[id]?.url)).toEqual(["https://example.org/"]);
+		const ops = planReconcile(state, live, browser, {}).filter((o) => o.op !== "group");
+		expect(ops).toEqual([
+			{ op: "remove", browserId: 57 },
+			{ op: "remove", browserId: 58 },
+		]);
+		const onEmpty = browser.map((t) => ({ ...t, active: t.id === 57 }));
+		expect(planReconcile(state, live, onEmpty, {}).filter((o) => o.op === "remove")).toEqual([
+			{ op: "remove", browserId: 58 },
+		]);
+		// A tab pinned on chrome://newtab before Loka had empty tabs, loaded in 58.
+		const withPinned = {
+			...state,
+			tabs: { ...state.tabs, saved: { id: "saved", title: "Start", url: "chrome://newtab/" } },
+			spaces: state.spaces.map((s) => ({ ...s, pinned: [{ kind: "tab" as const, id: "saved" }] })),
+		};
+		expect(planReconcile(withPinned, { ...live, saved: 58 }, browser, {}).filter((o) => o.op === "remove")).toEqual([
+			{ op: "remove", browserId: 57 },
+		]);
 	});
 
 	test("a space open in two windows gets a tab group in each, since a group can't span windows", () => {

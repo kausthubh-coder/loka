@@ -10,6 +10,15 @@ too, not a cleanup.
   URLs in `webui/` and `prototype/src/features/`.
 - **Sample data lives only in `prototype/src/demo/`.** Fake extensions and downloads once shipped in the build because
   a component had defaults. Components take their data from a bridge; only the demo bridge has samples.
+- **There is no new tab page; the command bar is the new tab.** Ctrl+T, the sidebar's New tab and the + menu open
+  the bar and make no tab, as in Zen (`zen.urlbar.replace-newtab`). Chromium can't show a window with no tab, so a
+  window with nothing to show (a new window, a space with no tabs, its last tab closed) shows an empty tab:
+  chrome://newtab, which the browser rewrites to Loka's page at chrome://loka-newtab (the space's sky, nothing else).
+  Like Zen's empty tab, it is never a sidebar row, never navigated (a pick opens a tab of its own), and the sync
+  closes it once it's off screen, so a window holds at most one. The bar opens over it only when a window starts on
+  it, as Zen does on startup; switching to an empty space doesn't pop the bar. Closing a window's last tab keeps the
+  window (Zen sets `browser.tabs.closeWindowWithLastTab` off); Ctrl+W on the empty tab closes the window, as Zen
+  does. An extension that overrides the new tab page still wins over Loka's: the user installed it on purpose.
 - **Loka's strings live in the webui bundle, not in `.grdp` files.** A new `<message>` adds a resource ID and
   recompiles thousands of files (about 25 minutes). Editing an existing message's text is cheap.
 

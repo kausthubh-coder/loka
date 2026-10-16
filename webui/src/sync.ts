@@ -34,10 +34,11 @@ let queue: Promise<unknown> = Promise.resolve();
 /** The tabs as last seen, to turn each new snapshot into created, removed, updated and activated. */
 let seen = new Map<number, NativeTab>();
 /**
- * New tabs this window opened for a space (switching to an empty one), by browser tab id, until the browser reports
- * them. The tab's creation event is queued behind the job that opened it, so the id is always here by then.
+ * Empty tabs this window opened, by browser tab id, until the browser reports them. They start on about:blank, so
+ * their address can't say yet that they are never one of Loka's tabs. The tab's creation event is queued behind the
+ * job that opened it, so the id is always here by then.
  */
-const openedFor = new Map<number, string>();
+const emptyTabs = new Set<number>();
 /** This window, as far as the planner cares: every tab here shares it. */
 const WINDOW = 1;
 
@@ -100,19 +101,23 @@ async function reconcile(state: BrowserState, pass: Pass) {
 	const switched = pass === "ui" && (shownSpace !== state.activeSpaceId || elsewhere);
 	shownSpace = state.activeSpaceId;
 	const ops = planReconcile(state, live, tabs, groups, switched).filter(
-		(op) => pass === "ui" || (op.op !== "activate" && op.op !== "create" && op.op !== "new-tab"),
+		(op) => pass === "ui" || (op.op !== "activate" && op.op !== "create" && op.op !== "empty-tab"),
 	);
 	for (const op of ops) await run(op);
 	await writeSession({ live, groups });
+}
+
+async function openEmpty() {
+	const made = await browser.createTab("", true);
+	if (made !== null) emptyTabs.add(made);
 }
 
 async function run(op: Op) {
 	if (op.op === "create") {
 		const made = await browser.createTab(op.url, true);
 		if (made !== null) live = { ...live, [op.tabId]: made };
-	} else if (op.op === "new-tab") {
-		const made = await browser.createTab("", true);
-		if (made !== null) openedFor.set(made, op.spaceId);
+	} else if (op.op === "empty-tab") {
+		await openEmpty();
 	} else if (op.op === "activate") {
 		browser.activateTab(op.browserId);
 	} else if (op.op === "remove") {
@@ -145,16 +150,19 @@ function onTabs(tabs: NativeTab[]) {
 		const old = before.get(t.id);
 		if (!old) {
 			void serial("browser", (s) => {
-				const spaceId = openedFor.get(t.id);
-				openedFor.delete(t.id);
-				const [state, next] = tabCreated(s, live, asBrowserTab(t), Date.now(), undefined, spaceId);
+				if (emptyTabs.delete(t.id)) return s;
+				const [state, next] = tabCreated(s, live, asBrowserTab(t), Date.now());
 				live = next;
 				return state;
 			});
 			continue;
 		}
 		if (old.title !== t.title || old.url !== t.url) {
-			void serial("browser", (s) => tabUpdated(s, live, asBrowserTab(t)));
+			void serial("browser", (s) => {
+				const [state, next] = tabUpdated(s, live, asBrowserTab(t), Date.now());
+				live = next;
+				return state;
+			});
 		}
 		if (t.active && !old.active) void serial("browser", (s) => tabActivated(s, live, t.id, Date.now()));
 	}
@@ -187,6 +195,15 @@ export function startSync() {
  */
 export function changeSpaces(change: (state: BrowserState) => BrowserState): Promise<unknown> {
 	return serial("ui", change);
+}
+
+/**
+ * Opens an empty tab in this window, in the sync's queue so its creation is never taken for one of Loka's tabs. For
+ * when the window's last tab is about to close and the window should stay.
+ */
+export function openEmptyTab(): Promise<unknown> {
+	queue = queue.then(openEmpty).catch((error) => console.error("loka:", error));
+	return queue;
 }
 
 /** The sidebar changed the spaces: make the browser follow. Changes this window wrote itself are skipped. */

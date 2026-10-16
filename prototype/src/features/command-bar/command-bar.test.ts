@@ -74,10 +74,16 @@ test("new tab pages aren't offered as tabs to go to", () => {
 	const state = seedState();
 	const withBlank = {
 		...state,
-		tabs: { ...state.tabs, blank: { id: "blank", title: "New tab", url: "chrome://newtab/" } },
-		spaces: state.spaces.map((s) => (s.id === "s-build" ? { ...s, open: ["blank", ...s.open] } : s)),
+		tabs: {
+			...state.tabs,
+			blank: { id: "blank", title: "New tab", url: "chrome://newtab/" },
+			empty: { id: "empty", title: "New tab", url: "chrome://loka-newtab/" },
+		},
+		spaces: state.spaces.map((s) => (s.id === "s-build" ? { ...s, open: ["blank", "empty", ...s.open] } : s)),
 	};
-	expect(commandResults(withBlank, "").some((r) => r.kind === "tab" && r.tabId === "blank")).toBe(false);
+	const offered = commandResults(withBlank, "").flatMap((r) => (r.kind === "tab" ? [r.tabId] : []));
+	expect(offered.filter((id) => id === "blank" || id === "empty")).toEqual([]);
+	expect(offered.length).toBeGreaterThan(0);
 });
 
 const HISTORY: NativeSuggestion[] = [

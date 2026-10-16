@@ -16,8 +16,10 @@ import "../../prototype/src/features/command-bar/loka-command-bar";
 import { setFaviconSource } from "../../prototype/src/features/sidebar/favicon";
 import { activeSpace, type BrowserState } from "../../prototype/src/features/sidebar/sidebar.logic";
 import { playCue, setSoundPrefs } from "../../prototype/src/features/sound/sound";
+import { isEmptyTab } from "../../prototype/src/features/tabs/live.logic";
 import { browser, type CommandPick, type NativeTab } from "./bridge";
 import { faviconUrl } from "./favicon-url";
+import { shownAddress } from "./new-tab.logic";
 import { readState, readUi, watch } from "./store";
 
 setFaviconSource(faviconUrl);
@@ -64,7 +66,7 @@ export class LokaCommandPage extends LitElement {
 		void browser.tabs().then((tabs) => {
 			this.tabs = tabs;
 			if (this.mode === "focus-location" && this.opened === 0) {
-				this.query = this.shownTab()?.url ?? "";
+				this.query = shownAddress(this.shownTab());
 				this.opened++;
 			}
 		});
@@ -88,7 +90,7 @@ export class LokaCommandPage extends LitElement {
 	private async open(mode: CommandMode) {
 		this.tabs = await browser.tabs();
 		this.mode = mode;
-		this.query = mode === "focus-location" ? (this.shownTab()?.url ?? "") : "";
+		this.query = mode === "focus-location" ? shownAddress(this.shownTab()) : "";
 		this.opened++;
 		playCue("command");
 	}
@@ -99,7 +101,8 @@ export class LokaCommandPage extends LitElement {
 		const shown = this.shownTab();
 		const state = this.state;
 		if (pick.kind === "open") {
-			const newTab = pick.newTab || !shown;
+			// An empty tab is never navigated: what's picked there opens in a tab of its own, and the empty one goes.
+			const newTab = pick.newTab || !shown || isEmptyTab(shown.url);
 			if (pick.search !== undefined) browser.search(pick.search, newTab);
 			else if (newTab || !shown) void browser.createTab(pick.url, true);
 			else browser.navigateTab(shown.id, pick.url);

@@ -1,6 +1,7 @@
 import type { BrowserCommand, NativeSuggestion } from "../../../../webui/src/bridge";
 import { hostOf } from "../sidebar/favicon";
 import type { BrowserState, TabId } from "../sidebar/sidebar.logic";
+import { isEmptyTab } from "../tabs/live.logic";
 
 const SEARCH_URL = "https://duckduckgo.com/?q=";
 
@@ -373,8 +374,8 @@ export function commandResults(state: BrowserState, query: string, context: Resu
 	const tabIds = q ? Object.keys(state.tabs) : (current?.open ?? []);
 	const tabs = tabIds
 		.map((id) => state.tabs[id])
-		// A new tab page is where the bar itself is showing; offering to go there goes nowhere.
-		.filter((tab) => tab && !tab.url.startsWith("chrome://newtab"))
+		// An empty tab is where the bar itself is showing; offering to go there goes nowhere.
+		.filter((tab) => tab && !isEmptyTab(tab.url))
 		.filter((tab) => tab && !(pick?.row.kind === "tab" && pick.row.tabId === tab.id))
 		.filter((tab) => tab && (!q || tab.title.toLowerCase().includes(q) || hostOf(tab.url).includes(q)))
 		.slice(0, 6);

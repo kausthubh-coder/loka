@@ -62,6 +62,13 @@ function send(message: string, args: unknown[]) {
 	} else if (message === "activateTab") {
 		for (const t of browserSide.tabs) t.active = t.id === first;
 		push("tabs-changed", copyTabs());
+	} else if (message === "closeTab") {
+		const closed = browserSide.tabs.find((t) => t.id === first);
+		browserSide.tabs = browserSide.tabs.filter((t) => t.id !== first);
+		// When the tab on screen closes, the browser shows another one itself (here the last).
+		const last = browserSide.tabs.at(-1);
+		if (closed?.active && last) last.active = true;
+		push("tabs-changed", copyTabs());
 	} else if (message === "groupTabs") {
 		const [ids, asked] = rest as [number[], number];
 		const groupId = asked > 0 ? asked : browserSide.nextGroup++;
@@ -92,7 +99,7 @@ test("a first run takes in setup's spaces while the sync takes over the window's
 			{ name: "Play", hue: 330, planet: "cratered" },
 		],
 	});
-	newTab("chrome://newtab/");
+	newTab("https://first.example/");
 	const { startSync, changeSpaces } = await import("./sync");
 	const { readState, pendingOnboarding, markOnboardingApplied } = await import("./store");
 	const { applyOnboarding, onboardingSpaces } = await import("./onboarding.logic");
@@ -111,50 +118,87 @@ test("a first run takes in setup's spaces while the sync takes over the window's
 	expect(state.activeSpaceId).toBe(state.spaces[0]?.id ?? "");
 	// The page's first copy and the sync's are the same space, so neither writes over the other.
 	expect(pageCopy.spaces[0]?.id).toBe(state.spaces[0]?.id ?? "");
-	expect(spaceOf(state, "chrome://newtab/")).toBe("Research");
+	expect(spaceOf(state, "https://first.example/")).toBe("Research");
 	expect(browserSide.groups.map((g) => g.title)).toEqual(["Research"]);
 	expect(await pendingOnboarding()).toBeNull();
 });
 
-test("switching to an empty space opens its new tab in that space, not the one just left", async () => {
+const shownTab = () => browserSide.tabs.find((t) => t.active);
+const openCounts = () => saved().spaces.map((s) => [s.name, s.open.length]);
+
+test("switching to an empty space shows an empty tab, which is none of its tabs", async () => {
 	const { changeSpaces } = await import("./sync");
 	const { switchSpace } = await import("../../prototype/src/features/sidebar/sidebar.logic");
 	const play = saved().spaces[1]?.id ?? "";
 	await changeSpaces((s) => switchSpace(s, play));
 	await settle();
 
-	const state = saved();
-	const shown = browserSide.tabs.find((t) => t.active);
-	expect(browserSide.tabs.length).toBe(2);
-	expect(shown?.openerId).toBe(1);
-	expect(state.spaces.map((s) => [s.name, s.open.length])).toEqual([
+	expect(browserSide.tabs.map((t) => t.url)).toEqual(["https://first.example/", "chrome://newtab/"]);
+	expect(shownTab()?.url).toBe("chrome://newtab/");
+	expect(openCounts()).toEqual([
+		["Research", 1],
+		["Play", 0],
+	]);
+	expect(saved().spaces[1]?.activeTabId).toBeNull();
+	expect(browserSide.groups.map((g) => [g.title, g.collapsed])).toEqual([["Research", true]]);
+});
+
+test("a page picked on the empty tab is one new tab in the space on screen, and the empty tab goes", async () => {
+	// What the command bar does with a pick (command.ts): open it in a tab of its own.
+	const { browser } = await import("./bridge");
+	await browser.createTab("https://picked.example/", true);
+	await settle();
+
+	expect(browserSide.tabs.map((t) => t.url)).toEqual(["https://first.example/", "https://picked.example/"]);
+	expect(shownTab()?.url).toBe("https://picked.example/");
+	expect(spaceOf(saved(), "https://picked.example/")).toBe("Play");
+	expect(openCounts()).toEqual([
 		["Research", 1],
 		["Play", 1],
 	]);
-	expect(state.spaces[1]?.activeTabId && state.tabs[state.spaces[1].activeTabId]?.url).toBe("chrome://newtab/");
-	expect(browserSide.groups.map((g) => [g.title, g.collapsed])).toEqual([
-		["Research", true],
-		["Play", false],
+	expect(browserSide.groups.find((g) => g.id === shownTab()?.groupId)?.title).toBe("Play");
+});
+
+test("closing the last tab of the space on screen shows an empty tab, so the window keeps one", async () => {
+	const { changeSpaces } = await import("./sync");
+	const { closeTab } = await import("../../prototype/src/features/sidebar/sidebar.logic");
+	const picked = saved().spaces[1]?.open[0] ?? "";
+	await changeSpaces((s) => closeTab(s, picked));
+	await settle();
+
+	expect(browserSide.tabs.map((t) => t.url)).toEqual(["https://first.example/", "chrome://newtab/"]);
+	expect(shownTab()?.url).toBe("chrome://newtab/");
+	expect(openCounts()).toEqual([
+		["Research", 1],
+		["Play", 0],
 	]);
+	expect(saved().activeSpaceId).toBe(saved().spaces[1]?.id ?? "");
+});
+
+test("leaving the empty tab for a space with tabs closes it", async () => {
+	const { changeSpaces } = await import("./sync");
+	const { switchSpace } = await import("../../prototype/src/features/sidebar/sidebar.logic");
+	const research = saved().spaces[0]?.id ?? "";
+	await changeSpaces((s) => switchSpace(s, research));
+	await settle();
+
+	expect(browserSide.tabs.map((t) => [t.url, t.active])).toEqual([["https://first.example/", true]]);
 });
 
 test("moving the tab on screen to another space leaves the browser on this space, not on the moved tab", async () => {
 	const { changeSpaces } = await import("./sync");
 	const { moveItem } = await import("../../prototype/src/features/sidebar/sidebar.logic");
 	const [research, play] = saved().spaces;
-	const shownId = play?.activeTabId ?? "";
-	await changeSpaces((s) => moveItem(s, shownId, { area: "open", spaceId: research?.id ?? "", index: 0 }));
+	const shownId = research?.activeTabId ?? "";
+	await changeSpaces((s) => moveItem(s, shownId, { area: "open", spaceId: play?.id ?? "", index: 0 }));
 	await settle();
 
-	const state = saved();
-	const shown = browserSide.tabs.find((t) => t.active);
-	const playNow = state.spaces[1];
-	// Play had nothing else loaded, so the browser opens a new tab in it, as on a switch to an empty space.
-	expect(state.spaces.map((s) => [s.name, s.open.length])).toEqual([
-		["Research", 2],
+	// Research had nothing else loaded, so the browser shows an empty tab, as on a switch to an empty space.
+	expect(openCounts()).toEqual([
+		["Research", 0],
 		["Play", 1],
 	]);
-	expect(playNow?.activeTabId && state.tabs[playNow.activeTabId]?.url).toBe("chrome://newtab/");
-	expect(shown?.id).toBe(3);
-	expect(browserSide.groups.find((g) => g.id === shown?.groupId)?.title).toBe("Play");
+	expect(saved().activeSpaceId).toBe(research?.id ?? "");
+	expect(shownTab()?.url).toBe("chrome://newtab/");
+	expect(browserSide.groups.find((g) => g.id === shownTab()?.groupId)).toBeUndefined();
 });

@@ -41,6 +41,21 @@ export function homeOf(state: BrowserState, tabId: TabId): string | null {
 	return space?.id ?? null;
 }
 
+/**
+ * Whether a browser tab is an empty tab. Loka has no new tab page: Ctrl+T opens the command bar and makes no tab. A
+ * window that has nothing to show (a new window, a space with no tabs, its last tab closed) shows chrome://newtab,
+ * which the browser loads as Loka's empty page (chrome://loka-newtab, the space's sky). Like Zen's empty tab, it is
+ * never one of Loka's tabs. chrome://new-tab-page is where Chrome's own page commits, in builds before Loka's.
+ */
+export function isEmptyTab(url: string): boolean {
+	return /^chrome:\/\/(loka-newtab|newtab|new-tab-page)(\/|$)/.test(url);
+}
+
+/** A tab still on its way to its first page: the browser says about:blank until one commits. */
+function isBlank(url: string): boolean {
+	return url === "" || url === "about:blank";
+}
+
 function lokaIdOf(live: LiveMap, browserId: number): TabId | null {
 	return Object.entries(live).find(([, id]) => id === browserId)?.[0] ?? null;
 }
@@ -76,7 +91,7 @@ function addOpenTab(
 /**
  * When Loka starts, links the tabs the browser already has to Loka's tabs by address. A browser tab with no match
  * becomes an open tab in the current space; a Loka open tab with no browser tab left is dropped (it was closed while
- * Loka wasn't running). Pinned tabs and Essentials stay either way.
+ * Loka wasn't running). Pinned tabs and Essentials stay either way. Empty tabs are left out.
  */
 export function adoptTabs(state: BrowserState, tabs: BrowserTab[], now: number): [BrowserState, LiveMap] {
 	let live: LiveMap = {};
@@ -93,6 +108,7 @@ export function adoptTabs(state: BrowserState, tabs: BrowserTab[], now: number):
 		];
 	};
 	for (const tab of tabs) {
+		if (isEmptyTab(tab.url)) continue;
 		const match = candidates().find((id) => !taken.has(id) && next.tabs[id]?.url === tab.url);
 		if (match) {
 			taken.add(match);
@@ -120,10 +136,9 @@ function showTab(state: BrowserState, tabId: TabId, now: number): BrowserState {
 }
 
 /**
- * A tab the browser opened. If Loka asked for it (`forTabId`), it only gets linked. A new tab Loka opened for a space
- * (`forSpaceId`, a "new-tab" op) joins that space: the browser names the tab that was showing as its opener, and
- * that tab is in the space the user just left. Otherwise it joins the open tabs of the space it was opened from (a
- * link's opener), or the current space.
+ * A tab the browser opened. If Loka asked for it (`forTabId`), it only gets linked. An empty tab stays out.
+ * Otherwise it joins the open tabs of the space it was opened from (a link's opener), or the current space: a page
+ * picked on an empty tab names that tab as its opener, which is in no space, so it joins the space on screen.
  */
 export function tabCreated(
 	state: BrowserState,
@@ -131,13 +146,9 @@ export function tabCreated(
 	tab: BrowserTab,
 	now: number,
 	forTabId?: TabId,
-	forSpaceId?: string,
 ): [BrowserState, LiveMap] {
 	if (forTabId && state.tabs[forTabId]) return [state, { ...live, [forTabId]: tab.id }];
-	if (lokaIdOf(live, tab.id)) return [state, live];
-	if (forSpaceId && state.spaces.some((s) => s.id === forSpaceId)) {
-		return addOpenTab(state, live, tab, forSpaceId, now);
-	}
+	if (lokaIdOf(live, tab.id) || isEmptyTab(tab.url)) return [state, live];
 	const opener = tab.openerTabId === undefined ? null : lokaIdOf(live, tab.openerTabId);
 	const openerHome = opener ? homeOf(state, opener) : null;
 	const spaceId = openerHome && openerHome !== "essentials" ? openerHome : state.activeSpaceId;
@@ -154,18 +165,22 @@ export function tabRemoved(state: BrowserState, live: LiveMap, browserId: number
 
 /**
  * A tab's title or address changed. Open tabs follow the page. A pinned tab or Essential keeps the address it was
- * pinned with, so it can go back there, and only takes the new title while on that address.
+ * pinned with, so it can go back there, and only takes the new title while on that address. An open tab that turns
+ * into an empty tab (chrome://newtab typed in, or a new tab whose page has just committed) leaves the spaces; an
+ * empty tab that goes to a page (a link dropped on it) joins them, as a tab opened there would.
  */
-export function tabUpdated(state: BrowserState, live: LiveMap, tab: BrowserTab): BrowserState {
+export function tabUpdated(state: BrowserState, live: LiveMap, tab: BrowserTab, now: number): [BrowserState, LiveMap] {
 	const id = lokaIdOf(live, tab.id);
-	const current = id ? state.tabs[id] : undefined;
-	if (!id || !current) return state;
+	if (!id) return isEmptyTab(tab.url) || isBlank(tab.url) ? [state, live] : tabCreated(state, live, tab, now);
+	const current = state.tabs[id];
+	if (!current) return [state, live];
 	const isOpen = state.spaces.some((s) => s.open.includes(id));
+	if (isOpen && isEmptyTab(tab.url)) return tabRemoved(state, live, tab.id);
 	const next = isOpen
 		? { ...current, url: tab.url, title: tab.title || tab.url }
 		: { ...current, title: tab.url === current.url && tab.title ? tab.title : current.title };
-	if (next.url === current.url && next.title === current.title) return state;
-	return { ...state, tabs: { ...state.tabs, [id]: next } };
+	if (next.url === current.url && next.title === current.title) return [state, live];
+	return [{ ...state, tabs: { ...state.tabs, [id]: next } }, live];
 }
 
 /** The user picked a tab in the browser (its tab strip, a shortcut, a link): show it in Loka too. */
@@ -179,7 +194,7 @@ export function tabActivated(state: BrowserState, live: LiveMap, browserId: numb
 
 export type Op =
 	| { op: "create"; tabId: TabId; url: string }
-	| { op: "new-tab"; spaceId: string }
+	| { op: "empty-tab" }
 	| { op: "activate"; browserId: number }
 	| { op: "remove"; browserId: number }
 	| { op: "group"; key: string; browserIds: number[]; title: string; color: GroupColor }
@@ -202,8 +217,10 @@ export interface GroupRecord {
  * the groups of the other spaces. Running it again on its own result plans nothing.
  * `groups` is the tab group each space already has in each window, by `groupKey`, and whether it's folded (a tab
  * group can't span windows, so a space open in two windows has a group in each). `switched` says the user
- * just changed spaces: if the new space shows nothing, the browser shows its first loaded tab, or a new tab (the
- * command bar), so the browser is never left on another space's tab, the way Arc does it.
+ * just changed spaces: if the new space shows nothing, the browser shows its first loaded tab, or an empty tab, so
+ * the browser is never left on another space's tab, the way Arc does it. The same goes when the tab on screen is
+ * closed and its space has nothing left to show: an empty tab takes its place, so the window stays open (Zen keeps
+ * the window too). An empty tab that isn't on screen any more is closed.
  */
 export function planReconcile(
 	state: BrowserState,
@@ -214,10 +231,16 @@ export function planReconcile(
 ): Op[] {
 	const ops: Op[] = [];
 	const byId = new Map(tabs.map((t) => [t.id, t]));
-	const removes: Op[] = [];
+	const linked = new Set(Object.values(live));
+	const removes: Extract<Op, { op: "remove" }>[] = [];
 	for (const [id, browserId] of Object.entries(live)) {
 		if (!state.tabs[id] && byId.has(browserId)) removes.push({ op: "remove", browserId });
 	}
+	for (const t of tabs) {
+		if (!t.active && !linked.has(t.id) && isEmptyTab(t.url)) removes.push({ op: "remove", browserId: t.id });
+	}
+	const onScreen = tabs.find((t) => t.active);
+	const leaving = onScreen !== undefined && removes.some((op) => op.browserId === onScreen.id);
 	const space = activeSpace(state);
 	const shown = space.activeTabId;
 	if (shown && state.tabs[shown]) {
@@ -225,11 +248,14 @@ export function planReconcile(
 		const tab = browserId === undefined ? undefined : byId.get(browserId);
 		if (!tab) ops.push({ op: "create", tabId: shown, url: state.tabs[shown]?.url ?? "" });
 		else if (!tab.active) ops.push({ op: "activate", browserId: tab.id });
-	} else if (switched) {
+	} else if (switched || leaving) {
 		const first = [...space.open, ...pinnedIds(space.pinned)]
 			.map((id) => live[id])
 			.find((id) => id !== undefined && byId.has(id));
-		ops.push(first === undefined ? { op: "new-tab", spaceId: space.id } : { op: "activate", browserId: first });
+		const onEmptyTab = onScreen !== undefined && !linked.has(onScreen.id) && isEmptyTab(onScreen.url);
+		if (first !== undefined) ops.push({ op: "activate", browserId: first });
+		// Already on an empty tab (from one empty space to another): it stays, and its page takes this space's sky.
+		else if (!onEmptyTab) ops.push({ op: "empty-tab" });
 	}
 	ops.push(...removes);
 	const ungroup: number[] = [];

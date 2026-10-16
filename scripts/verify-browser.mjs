@@ -8,6 +8,8 @@
 // The checks, in order:
 //   first run   setup (chrome://setup) is the only page and "Welcome to Loka" the only window; any Helium or
 //               Chromium in its text is a NOTE; "Use defaults" finishes it and no setup or helium:// page is left
+//   setup frame the setup window has no title bar: its top strip answers Windows' hit test as page, its top edge
+//               still resizes, the page draws Minimize and Close, and Minimize minimizes it
 //   sidebar     the chrome://loka-sidebar target lists the opened tabs as rows
 //   icons       a local page's icon reaches getTabs and its row (a cached icon is compared with the default globe)
 //   sound       a playing <audio> tab is audible with a speaker on its row, and stops after pause
@@ -170,6 +172,41 @@ const CLICK_USE_DEFAULTS = `(() => {
 	return true;
 })()`;
 
+// In the setup page: the labels of the window buttons it draws, in order.
+const SETUP_WINDOW_CONTROLS = `[...document.querySelectorAll(".window-controls button")]
+	.map((b) => b.getAttribute("aria-label")).join()`;
+
+// In the setup page: its width and scale, and how far above it the window starts (no title bar: about 1 px).
+const SETUP_FRAME = `({
+	w: innerWidth,
+	dpr: devicePixelRatio,
+	top: (outerHeight - innerHeight) - (outerWidth - innerWidth) / 2,
+})`;
+
+/** Windows' answers to WM_NCHITTEST (winuser.h). */
+const HIT = { page: "1", top: "12" };
+
+/** What Windows' WM_NCHITTEST answers at each client point ("x,y", physical px) of `pid`'s main window. @param {number} pid @param {string[]} points */
+function hitTest(pid, points) {
+	const run = spawnSync(
+		"powershell",
+		[
+			"-NoProfile",
+			"-File",
+			join(repo, "scripts", "window-hittest.ps1"),
+			"-ProcId",
+			String(pid),
+			"-Points",
+			points.join(";"),
+		],
+		{ encoding: "utf8" },
+	);
+	return run.stdout
+		.trim()
+		.split(/\r?\n/)
+		.map((h) => h.trim());
+}
+
 // In the sidebar page: keeps the last trusted mouse events (where the page saw them) in window.__verifyMouse.
 const RECORD_MOUSE = `(() => {
 	if (window.__verifyMouse) return true;
@@ -303,6 +340,42 @@ async function main() {
 				note("setup mentions Helium or Chromium", leftovers.join(" | ") || "none");
 				const shot = await page.call("Page.captureScreenshot", { format: "png" }, 20000).catch(() => null);
 				if (shot) writeFileSync(join(evidence, "setup.png"), Buffer.from(shot.data, "base64"));
+
+				// The setup window has no title bar: the page fills it and draws its own Minimize and Close.
+				const controls = await until(() => evaluate(page, SETUP_WINDOW_CONTROLS), 5000);
+				check(
+					"setup draws its own Minimize and Close",
+					controls === "Minimize,Close",
+					controls || 'none (getWindowFrame didn\'t answer "page")',
+				);
+				// Windows asks the window what's under the mouse before every real mouse event. Across where the title
+				// bar was (its caption buttons included) the answer must be the page, not the title bar or a caption
+				// button; the window's top edge still resizes.
+				/** @type {{ w: number, dpr: number, top: number }} */
+				const frame = await evaluate(page, SETUP_FRAME);
+				const strip = [0.05, 0.35, 0.65, 0.97].map(
+					(f) => `${Math.round(frame.w * f * frame.dpr)},${Math.round(16 * frame.dpr)}`,
+				);
+				const edge = `${Math.round((frame.w / 2) * frame.dpr)},0`;
+				const hits = hitTest(pid, [...strip, edge]);
+				check(
+					"the setup window has no title bar (its top strip answers Windows' hit test as page)",
+					hits.slice(0, strip.length).every((h) => h === HIT.page),
+					strip.map((p, i) => `${p}=${hits[i]}`).join(" "),
+				);
+				check(
+					"the setup window's top edge still resizes",
+					hits[strip.length] === HIT.top,
+					`${edge}=${hits[strip.length]}`,
+				);
+				// What the page sees: the window's height over its own, less the side border (the bottom one is as wide).
+				check("the setup page reaches the window's top", frame.top <= 2, `${frame.top} px above the page`);
+				windows("setup-window.png", "Welcome to Loka");
+				// Minimize goes through windowAction; a minimized window's page is hidden. Setup finishes from there.
+				await evaluate(page, `(document.querySelector('button[aria-label="Minimize"]')?.click(), true)`);
+				const minimized = await until(() => evaluate(page, "document.visibilityState === 'hidden'"), 5000);
+				check("setup's Minimize minimizes the window", minimized, minimized ? "page hidden" : "page still visible");
+
 				const clicked = await evaluate(page, CLICK_USE_DEFAULTS, true);
 				check('"Use defaults" finishes setup', clicked, clicked ? "clicked" : 'no "Use defaults" button');
 			}
@@ -565,25 +638,11 @@ async function main() {
 		const points = [0.12, 0.25, 0.38, 0.5, 0.62, 0.74, 0.86, 0.97].map(
 			(f) => `${Math.round((size.w / 2) * size.dpr)},${Math.round(size.h * f * size.dpr)}`,
 		);
-		const hits = spawnSync(
-			"powershell",
-			[
-				"-NoProfile",
-				"-File",
-				join(repo, "scripts", "window-hittest.ps1"),
-				"-ProcId",
-				String(pid),
-				"-Points",
-				points.join(";"),
-			],
-			{ encoding: "utf8" },
-		)
-			.stdout.trim()
-			.split(/\r?\n/);
+		const hits = hitTest(pid, points);
 		check(
 			"the sidebar answers Windows' hit test as page, not title bar",
-			hits.length === points.length && hits.every((h) => h.trim() === "1"),
-			points.map((p, i) => `${p}=${hits[i]?.trim()}`).join(" "),
+			hits.length === points.length && hits.every((h) => h === HIT.page),
+			points.map((p, i) => `${p}=${hits[i]}`).join(" "),
 		);
 
 		// Real mouse input on top of the hit test: a click posted to the window as WM_LBUTTONDOWN/UP goes through

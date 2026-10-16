@@ -9,7 +9,7 @@ import { faviconBackground, faviconInner, hostOf, type LiveTabs } from "./favico
 import "../archive/loka-archive-panel";
 import { overallProgress } from "../downloads/downloads.logic";
 import "../downloads/loka-downloads";
-import { toolbarExtensions, withPinned } from "../extensions/extensions.logic";
+import { extensionMenuItems, toolbarExtensions, withPinned } from "../extensions/extensions.logic";
 import { extensionIcon, extensionIconStyles } from "../extensions/loka-extensions";
 import "../media/loka-media-card";
 import type { NowPlaying } from "../media/loka-media-card";
@@ -83,6 +83,14 @@ interface MenuItem {
 	hint?: string;
 }
 
+/** An open menu: where it was asked for, its items, and a header naming what it's for (an extension's menu). */
+interface Menu {
+	x: number;
+	y: number;
+	items: MenuItem[];
+	title?: string;
+}
+
 const PANEL_NAMES: Record<Panel, string> = {
 	extensions: "Extensions",
 	downloads: "Downloads",
@@ -128,7 +136,7 @@ export class LokaSidebar extends LitElement {
 	declare browser: Browser;
 	dragId: string | null = null;
 	drop: Drop | null = null;
-	menu: { x: number; y: number; items: MenuItem[] } | null = null;
+	menu: Menu | null = null;
 	/** The submenu open beside the menu: which item opened it. */
 	submenu: number | null = null;
 	renamingId: string | null = null;
@@ -438,14 +446,37 @@ export class LokaSidebar extends LitElement {
 	/** A menu item ran: if nothing took focus after it, focus goes back to the opener. */
 	private refocus = false;
 
-	private openMenu(e: MouseEvent, items: MenuItem[]) {
+	private openMenu(e: MouseEvent, items: MenuItem[], title?: string) {
 		e.preventDefault();
 		e.stopPropagation();
-		this.menuOpener = e.currentTarget as HTMLElement;
+		const opener = e.currentTarget as HTMLElement;
+		this.menuOpener = opener;
 		this.focusMenu = true;
 		this.submenu = null;
-		this.menu = { x: e.clientX, y: e.clientY, items };
+		// The context-menu key and Shift+F10 open it from the keyboard, where the point isn't on what's focused:
+		// it opens under that instead.
+		const r = opener.getBoundingClientRect();
+		const onIt = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+		this.menu = onIt ? { x: e.clientX, y: e.clientY, items, title } : { x: r.left, y: r.bottom + 4, items, title };
 	}
+
+	/** Right-click on an extension's icon, in the address field or the Extensions panel: its own menu. */
+	private extensionMenu = (e: MouseEvent, id: string) => {
+		const x = this.extensions?.find((each) => each.id === id);
+		if (!x) return;
+		const items = extensionMenuItems(x).map(
+			({ action, label }): MenuItem => ({
+				label,
+				danger: action === "remove",
+				divider: action === "remove",
+				run: () => {
+					if (action === "pin" || action === "unpin") this.pinExtension(id, action === "pin");
+					else this.browser.extensionAction(id, action);
+				},
+			}),
+		);
+		this.openMenu(e, items, x.name);
+	};
 
 	private closeMenu = () => {
 		this.menu = null;
@@ -1387,6 +1418,7 @@ export class LokaSidebar extends LitElement {
 							aria-label=${x.name}
 							title=${x.badge ? `${x.name}: ${x.badge}` : x.name}
 							@click=${(e: Event) => this.runExtension(e, x.id)}
+							@contextmenu=${(e: MouseEvent) => this.extensionMenu(e, x.id)}
 						>
 							${extensionIcon(x, 18)}
 						</button>`,
@@ -1633,9 +1665,11 @@ export class LokaSidebar extends LitElement {
 	}
 
 	/** Where a menu of `items` fits on screen, nearest to (x, y): kept inside the sidebar and above its bottom. */
-	private menuPlace(x: number, y: number, items: MenuItem[]): { left: number; top: number } {
+	private menuPlace(menu: Menu): { left: number; top: number } {
+		const { x, y, items } = menu;
 		const open = this.submenu === null ? [] : (items[this.submenu]?.items ?? []);
-		const height = 8 + 34 * (items.length + open.length) + 9 * items.filter((i) => i.divider).length;
+		const height =
+			8 + 34 * (items.length + open.length) + 9 * items.filter((i) => i.divider).length + (menu.title ? 39 : 0);
 		return {
 			left: Math.max(4, Math.min(x, this.getBoundingClientRect().right - 204)),
 			top: Math.max(4, Math.min(y, window.innerHeight - 8 - height)),
@@ -1671,14 +1705,16 @@ export class LokaSidebar extends LitElement {
 	}
 
 	/** The open menu; an item with a submenu opens it in place, its items indented under it. */
-	private menuView(menu: { x: number; y: number; items: MenuItem[] }): TemplateResult {
-		const at = this.menuPlace(menu.x, menu.y, menu.items);
+	private menuView(menu: Menu): TemplateResult {
+		const at = this.menuPlace(menu);
 		return html`<div
 			class="menu"
 			role="menu"
+			aria-label=${menu.title ?? nothing}
 			style="left: ${at.left}px; top: ${at.top}px"
 			@keydown=${(e: KeyboardEvent) => this.menuKey(e)}
 		>
+			${menu.title ? html`<div class="menu-title" aria-hidden="true">${menu.title}</div><hr role="separator" />` : nothing}
 			${menu.items.map(
 				(item, i) =>
 					html`${this.menuItem(item, i, false)}${
@@ -1720,6 +1756,7 @@ export class LokaSidebar extends LitElement {
 			.extensions=${this.extensions}
 			.browser=${this.browser}
 			.pin=${this.pinExtension}
+			.menu=${this.extensionMenu}
 		></loka-extensions>`;
 	}
 
@@ -2620,6 +2657,19 @@ export class LokaSidebar extends LitElement {
 		.menu kbd {
 			font: 12px system-ui, "Segoe UI", sans-serif;
 			color: var(--loka-ink-3);
+		}
+		/* What the menu is for (an extension's name): quiet, not a choice, so the keys skip it. */
+		.menu-title {
+			flex: none;
+			height: 30px;
+			padding: 0 10px;
+			line-height: 30px;
+			font-size: 12px;
+			font-weight: 600;
+			color: var(--loka-ink-2);
+			overflow: hidden;
+			white-space: nowrap;
+			text-overflow: ellipsis;
 		}
 		.menu hr {
 			flex: none;

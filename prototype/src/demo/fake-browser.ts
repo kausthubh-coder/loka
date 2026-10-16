@@ -183,6 +183,13 @@ export const fakeBrowser: Browser = {
 		// The browser answers a moment later, as the real one does.
 		window.setTimeout(() => emit("extensions-changed", extensions), 30);
 	},
+	extensionAction: (id, action) => {
+		log("extensionAction", id, action);
+		if (action !== "remove") return;
+		// The real browser asks first with Chrome's own dialog; the fake takes the yes, and answers a moment later.
+		extensions = extensions.filter((x) => x.id !== id);
+		window.setTimeout(() => emit("extensions-changed", extensions), 30);
+	},
 	onExtensionsChanged: (listener) => on("extensions-changed", (e) => listener(e as NativeExtension[])),
 
 	downloads: async () => {

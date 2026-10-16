@@ -23,6 +23,7 @@ export const MESSAGES = [
 	"openPage",
 	"windowAction",
 	"startWindowDrag",
+	"extensionAction",
 ] as const;
 
 /** News the handler pushes with FireWebUIListener. */

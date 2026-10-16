@@ -22,6 +22,7 @@ export const DEMO_EXTENSIONS: NativeExtension[] = [
 		badge: "12",
 		badgeColor: "#5f6368",
 		pinned: true,
+		hasOptions: true,
 	},
 	{
 		id: "nngceckbapebfimnlniiiahkandclblb",
@@ -32,6 +33,7 @@ export const DEMO_EXTENSIONS: NativeExtension[] = [
 		badge: "",
 		badgeColor: "",
 		pinned: true,
+		hasOptions: false,
 	},
 	{
 		id: "eimadpbcbfnmbkopoojfekhnkhdbieeh",
@@ -42,6 +44,7 @@ export const DEMO_EXTENSIONS: NativeExtension[] = [
 		badge: "",
 		badgeColor: "",
 		pinned: false,
+		hasOptions: true,
 	},
 	{
 		id: "ldgfbffkinooeloadekpmfoklnobpien",
@@ -52,6 +55,7 @@ export const DEMO_EXTENSIONS: NativeExtension[] = [
 		badge: "",
 		badgeColor: "",
 		pinned: false,
+		hasOptions: false,
 	},
 	{
 		id: "hlepfoohegkhhmjieoechaddaejaokhf",
@@ -62,6 +66,7 @@ export const DEMO_EXTENSIONS: NativeExtension[] = [
 		badge: "3",
 		badgeColor: "#2da44e",
 		pinned: false,
+		hasOptions: true,
 	},
 ];
 

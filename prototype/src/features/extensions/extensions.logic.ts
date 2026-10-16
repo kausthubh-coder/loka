@@ -13,6 +13,21 @@ export function withPinned(list: NativeExtension[], id: string, pinned: boolean)
 	return list.map((x) => (x.id === id ? { ...x, pinned } : x));
 }
 
+export type ExtensionMenuAction = "pin" | "unpin" | "options" | "manage" | "remove";
+
+/**
+ * An extension's right-click menu, as Chrome's and Arc's have it: pin or unpin, its options page when it has one,
+ * its page in chrome://extensions, and removing it last.
+ */
+export function extensionMenuItems(x: NativeExtension): { action: ExtensionMenuAction; label: string }[] {
+	return [
+		x.pinned ? { action: "unpin", label: "Unpin from address bar" } : { action: "pin", label: "Pin to address bar" },
+		...(x.hasOptions ? [{ action: "options" as const, label: "Options" }] : []),
+		{ action: "manage", label: "Manage extension" },
+		{ action: "remove", label: "Remove from Loka…" },
+	];
+}
+
 /** A badge as Chrome draws it: at most four characters. */
 export function badgeText(badge: string): string {
 	return badge.trim().slice(0, 4);

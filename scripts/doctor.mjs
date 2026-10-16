@@ -1,11 +1,11 @@
 // Is this checkout healthy? Run it before trusting a failure.
 //   bun run doctor            prototype checks (deps, port, git)
-//   bun run doctor --browser  also the Windows toolchain needed to build Chromium
+//   bun run doctor --browser  also the Windows toolchain needed to build Chromium (skipped off Windows)
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, statfsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { BUILD_DIR } from "./browser.mjs";
+import { BUILD_DIR, browsersHoldingBuild, buildRunning, testBinary } from "./browser.mjs";
 import { portIsFree, readPort, staleDependencies, worktrees } from "./setup.mjs";
 
 const root = resolve(import.meta.dirname, "..");
@@ -57,6 +57,13 @@ if (port !== null) {
 	);
 }
 check(existsSync(join(root, ".claude", "skills")), ".claude/skills links to .agents/skills", "bun run setup");
+// Imported only now: it loads playwright, which is missing until the install above is fixed.
+const testBrowser = stale.includes("playwright") ? null : (await import("./test-browser.mjs")).findBrowser();
+check(
+	testBrowser !== null,
+	`a browser for verify-loka${testBrowser ? `: ${testBrowser.name}` : ""}`,
+	"node node_modules/playwright/cli.js install chromium",
+);
 info("no backend: the prototype keeps its data in localStorage for its own port");
 
 const base = out("git", ["describe", "--tags", "--abbrev=0"]);
@@ -64,13 +71,42 @@ info(`Helium base: ${base || "unknown"}; branch ${out("git", ["branch", "--show-
 if (out("git", ["remote"]).split("\n").includes("origin")) {
 	const behind = out("git", ["rev-list", "--count", "HEAD..origin/main"]);
 	info(`behind origin/main by ${behind || "?"} commits (as of the last fetch)`);
+	const upstream = out("git", ["rev-parse", "--abbrev-ref", "@{upstream}"]);
+	if (upstream && upstream !== "origin/main")
+		info(`behind ${upstream} by ${out("git", ["rev-list", "--count", "HEAD..@{upstream}"]) || "?"} commits`);
 } else {
 	info("no origin remote yet (the GitHub repo isn't connected)");
 }
 
+// ---- build checkout (shared by every worktree) -------------------------------
+
+console.log("\nBuild checkout");
+if (process.platform !== "win32") {
+	info(
+		`skipped: the browser builds and runs on Windows only today (${process.platform} here). Setup, check and the ` +
+			"prototype's verify-loka recipes work; bun run verify skips the browser suites. macOS: docs/cross-platform.md",
+	);
+} else if (!existsSync(BUILD_DIR)) {
+	info(`none at ${BUILD_DIR}: no browser to test. bun run browser:setup makes one (ask first: hours)`);
+} else {
+	const busy = buildRunning();
+	info(busy.length ? `a build is running: ${busy.join("; ")}` : "no build running");
+	const test = testBinary();
+	info(`tests drive ${test.path || "nothing"} (${test.why})`);
+	const holding = browsersHoldingBuild();
+	if (holding.length)
+		info(
+			`${holding.length} browser(s) run from out\\Default; the next build can't link until they close: ${holding
+				.map((b) => `${b.pid} (${b.profile})`)
+				.join(", ")}`,
+		);
+}
+
 // ---- browser toolchain -----------------------------------------------------
 
-if (process.argv.includes("--browser")) {
+if (process.argv.includes("--browser") && process.platform !== "win32") {
+	console.log("\nBrowser toolchain: skipped. The browser builds on Windows only: on my machine, or in CI (main.yml).");
+} else if (process.argv.includes("--browser")) {
 	console.log("\nBrowser toolchain (Chromium's Windows guide + Helium's README)");
 	const vswhere = "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe";
 	const vsVersions = existsSync(vswhere)

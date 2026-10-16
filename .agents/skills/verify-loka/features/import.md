@@ -1,17 +1,17 @@
 # Import
 
 Chrome and Edge bookmarks arrive as one closed pinned folder, keeping their folder tree: in the current space from
-Settings > Import, in the first space from the tour. Each Arc
-space becomes a Loka space with its name, color and nested pinned folders, and Arc's Favorites join Essentials.
-The user picks the file, in the prototype and in the real browser alike; finding it with Helium's importers is planned,
-not built.
+Settings > Import, in the first space from the prototype's tour. Each Arc space becomes a Loka space with its name,
+color and nested pinned folders, and Arc's Favorites join Essentials. In Settings the user picks the file, in the
+prototype and the real browser alike. The real browser's first-run setup (`chrome://setup`) uses Helium's own import
+page instead, which brings bookmarks in as Chromium bookmarks, not as Loka spaces.
 
 ## Sub-features
 
 - `import-chrome` / `import-edge`: the `Bookmarks` file. Bookmarks bar first, then Other and Mobile as folders;
   `chrome://` and other non-web entries are skipped.
 - `import-arc`: `StorableSidebar.json`. Old (`containerIDs`) and new (`newContainerIDs`) formats; `arc://` skipped.
-- `import-tour`: the tour's import step, applied when the tour finishes.
+- `import-tour`: the prototype tour's import step, applied when the tour finishes.
 - `import-settings`: Settings > Import > From Chrome / Edge / Arc, applied at once, with a result line.
 - Passwords are a CSV export from the other browser (Chrome's App-Bound Encryption blocks reading them directly).
 
@@ -30,6 +30,8 @@ Preconditions: seed data. Sample files in `../fixtures/` (shaped like the real o
 - **Tour.** `Import from Chrome` and `Import from Arc` with the same files show `Ready: 4 bookmarks` and
   `Ready: 2 spaces, 3 pinned tabs`.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs import` (and `onboarding`).
+- **In the browser.** `bun run verify -- --ux import` runs the recipe and reports the gap: no browser check covers
+  Settings > Import or setup's import step yet. verify:flows `first-run` only clicks past setup's import page.
 
 ## Gotchas
 

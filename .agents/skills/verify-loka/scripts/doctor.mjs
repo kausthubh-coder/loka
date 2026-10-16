@@ -4,6 +4,7 @@
 // from this checkout (not another worktree's server on a reused port).
 
 import { spawnSync } from "node:child_process";
+import { readFileSync, readlinkSync } from "node:fs";
 import { prototypePort, ROOT } from "./loka.mjs";
 
 const port = prototypePort();
@@ -18,15 +19,32 @@ const html = await fetch(`http://localhost:${port}/`)
 	.catch(() => "");
 report(html.includes("<title>Loka prototype</title>"), `http://localhost:${port}/ serves the Loka prototype`);
 
-const owner = spawnSync(
-	"powershell",
-	[
-		"-NoProfile",
-		"-Command",
-		`Get-NetTCPConnection -State Listen -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { (Get-CimInstance Win32_Process -Filter "ProcessId=$($_.OwningProcess)").CommandLine } | Select-Object -First 1`,
-	],
-	{ encoding: "utf8" },
-).stdout.trim();
+/** The listener's command line on Windows; on Linux (cloud VMs), its working directory and command line. */
+function listener() {
+	if (process.platform === "win32") {
+		return spawnSync(
+			"powershell",
+			[
+				"-NoProfile",
+				"-Command",
+				`Get-NetTCPConnection -State Listen -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { (Get-CimInstance Win32_Process -Filter "ProcessId=$($_.OwningProcess)").CommandLine } | Select-Object -First 1`,
+			],
+			{ encoding: "utf8" },
+		).stdout.trim();
+	}
+	const pid = spawnSync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"], { encoding: "utf8" })
+		.stdout.split("\n")[0]
+		?.trim();
+	if (!pid) return "";
+	try {
+		const command = readFileSync(`/proc/${pid}/cmdline`, "utf8").replaceAll("\0", " ").trim();
+		return `${readlinkSync(`/proc/${pid}/cwd`)}: ${command}`;
+	} catch {
+		return "";
+	}
+}
+
+const owner = listener();
 report(owner.toLowerCase().includes(ROOT.toLowerCase()), `port ${port} is owned by this checkout's server`);
 if (!ok) {
 	console.log(`      listener: ${owner || "none"}`);

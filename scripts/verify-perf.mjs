@@ -30,10 +30,9 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { cpus } from "node:os";
 import { join, resolve } from "node:path";
-import { BUILD_DIR } from "./browser.mjs";
+import { BUILD_DIR, buildRunning } from "./browser.mjs";
 import {
 	askExpression,
-	buildActivity,
 	connect,
 	evaluate,
 	launchBrowser,
@@ -1011,7 +1010,7 @@ async function main() {
 		console.error("verify:perf runs a copy (dist\\snapshot), never the build's own out\\ binary.");
 		process.exit(2);
 	}
-	const building = buildActivity();
+	const building = buildRunning();
 	if (building.length) {
 		console.error(`A build is running (${building.join("; ")}): it would starve the browser. Try again after it.`);
 		process.exit(2);

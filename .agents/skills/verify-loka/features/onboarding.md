@@ -7,10 +7,11 @@ Arc's spaces as new spaces. It shows once, and again on request.
 
 ## Sub-features
 
-- `tour-first-run` shows when `loka.ui.v1` has no `onboarded: true`.
+- `tour-first-run` shows when `loka.ui.v1` has no `onboarded: true` (and the URL has no `?skip-tour`).
 - `tour-import`: each `Import from <browser>` button opens a file picker and parses the file (Chrome or Edge
   `Bookmarks`, Arc's `StorableSidebar.json`); the button below says how many browsers are ready.
-- `tour-spaces` edits up to five spaces; clicking a planet cycles its kind; the sky follows the focused space's color.
+- `tour-spaces` edits up to five spaces (`Add a space`, `Remove <name>`); clicking a planet cycles its kind; the sky
+  follows the focused space's color. Spaces left without a name are dropped on finish.
 - `tour-try-keys` marks Ctrl+K `Done` when pressed, without opening the command bar.
 - `tour-finish` applies the spaces, switches to the first, and saves `onboarded: true`. `Skip` saves it and changes
   nothing else.
@@ -31,6 +32,12 @@ Preconditions: `openLoka(name, { onboarding: true })` (the recipe runner does th
   `Done`; `Open Loka`. The first space is `{ name: "Code", hue: 260, planet: "cratered" }`.
 - **Once.** Reload: no `loka-onboarding` element.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs onboarding`.
+- **In the browser.** The real first run is Loka's setup (`chrome://setup`), not this tour.
+  `bun run verify -- --ux onboarding` runs the recipe, verify:browser ("first run opens only Loka's setup", 'the only window is "Welcome to
+  Loka"', '"Use defaults" finishes setup', "no setup or helium:// page left") and verify:flows `first-run`: "setup's
+  orbit shows the three spaces", "the sidebar has exactly setup's spaces", "with setup's colors and planets", "its
+  tab is in a tab group named Research". Add `bun run verify:browser -- --no-first-run` to check setup stays away.
+  Not checked in the browser: setup's import step, reopening setup later, Skip.
 
 ## Gotchas
 

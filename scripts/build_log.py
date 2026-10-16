@@ -6,6 +6,10 @@ While a build runs, build-status.json in the build checkout says what it is doin
 When it ends, one line is appended to build-times.log:
   start=2026-10-15T15:35:54 end=2026-10-15T15:37:15 seconds=81 exit=0 jobs=6 mode=incremental
 `bun run build:status` prints both.
+
+build.lock in the build checkout holds {"pid", "started", "mode", "from"} while a build runs, so a second build (another
+agent, compile.bat, browser:build) refuses instead of fighting over out/Default. A lock whose pid is gone is stale and
+is taken over.
 """
 import json
 import os
@@ -37,8 +41,59 @@ def _write_status(path: Path, status: dict):
             time.sleep(0.05)
 
 
+def _alive(pid: int) -> bool:
+    if sys.platform == 'win32':
+        # os.kill(pid, 0) on Windows sends CTRL_C_EVENT, so ask for the process's exit code instead.
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        code = ctypes.c_ulong()
+        kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+        kernel32.CloseHandle(handle)
+        return code.value == 259  # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def take_lock(lock: Path, mode: str) -> str | None:
+    """Creates build.lock, or returns why it can't (another build holds it)."""
+    record = json.dumps({'pid': os.getpid(), 'started': _stamp(time.time()), 'mode': mode, 'from': os.getcwd()})
+    for _ in range(2):
+        try:
+            with open(lock, 'x', encoding='utf-8') as f:
+                f.write(record + '\n')
+            return None
+        except FileExistsError:
+            try:
+                held = json.loads(lock.read_text(encoding='utf-8'))
+            except (OSError, ValueError):
+                held = {}
+            if held.get('pid') and _alive(int(held['pid'])):
+                return f"build.lock is held by pid {held['pid']} ({held.get('mode')} build since {held.get('started')})"
+            lock.unlink(missing_ok=True)  # stale: its build is gone
+    return 'build.lock could not be created'
+
+
 def run(argv: list[str], stdin_text: str, *, build_dir: Path, mode: str, jobs: int) -> int:
-    """Runs argv with stdin_text as its input, passing its output through, and returns its exit code."""
+    """Runs argv with stdin_text as its input, passing its output through, and returns its exit code (1 without
+    running anything when another build holds build.lock)."""
+    lock = build_dir / 'build.lock'
+    refused = take_lock(lock, mode)
+    if refused:
+        print(f'Not building: {refused}. One build at a time; `bun run build:status` says how it is going.', flush=True)
+        return 1
+    try:
+        return _run(argv, stdin_text, build_dir=build_dir, mode=mode, jobs=jobs)
+    finally:
+        lock.unlink(missing_ok=True)
+
+
+def _run(argv: list[str], stdin_text: str, *, build_dir: Path, mode: str, jobs: int) -> int:
     status_path = build_dir / 'build-status.json'
     started = time.time()
     status = {'phase': 'compiling', 'mode': mode, 'jobs': jobs, 'pid': os.getpid(), 'started': _stamp(started),

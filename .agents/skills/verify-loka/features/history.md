@@ -18,6 +18,7 @@ headings that stay put while the day scrolls. It loads 100 visits at a time as y
   visits", `groupRuns`). Click, Enter or Right opens it; its visits hang under it. Left closes it.
 - `history-pick`: a row's box, Shift for a run, Space on the keyboard; a site row picks all its visits. A bar at the
   bottom says "N selected" with Cancel and Delete. Delete removes every visit to those pages.
+- `history-remove`: each row's `Remove <title> from history` button (what verify:flows uses).
 - `history-clear`: the menu and its confirm (it can't be undone). The menu takes focus and moves with the arrows;
   the confirm focuses its Clear button, makes the page behind it inert, and gives focus back to "Clear history…".
 - `history-keys`: arrows, Home and End, Enter (Ctrl for a new tab), Right/Left into and out of a site, Delete,
@@ -41,6 +42,10 @@ runs on one site, redirect links and a page with no title mixed in.
 - **Search.** Fill the `searchbox` "Search history" with `lit:`: every row is a Lit page or lit.dev folded.
 - **Delete.** Click the first row's checkbox, Shift-click the third: "N selected"; click `Delete`.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs history`.
+- **In the browser.** `bun run verify -- --ux history` runs it and verify:flows `settings`: "Ctrl+H opens
+  chrome://history", "History search finds a visited page", "Remove from history deletes it", "Clear history: today
+  empties it". Not checked in the browser: picking rows, the last hour and everything, Cancel on the confirm,
+  loading more, and the keys.
 
 ## Gotchas
 

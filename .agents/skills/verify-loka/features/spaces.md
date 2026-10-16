@@ -13,7 +13,10 @@ the previous and next spaces are small planets on the left and right.
 - `space-switch-drag` switches when a dragged tab hovers over a neighbouring planet.
 - `space-list` lists every space when the current planet is clicked, plus `New space`.
 - `space-memory` keeps one active tab per space.
-- `space-empty` shows "Nothing open in <space>." in the page area when the space has no active tab.
+- `space-empty`: in the prototype the page area says "Nothing open in <space>." when the space has no active tab;
+  the real browser opens a new tab in it instead.
+- `space-tab-group`: in the real browser each space's tabs are one tab group named and colored after it, and the
+  other spaces' groups are folded away.
 - `space-new` opens the space editor with `Space N` and the next color; creating switches to it.
 
 ## How to get to it (user POV)
@@ -22,7 +25,8 @@ the previous and next spaces are small planets on the left and right.
 - Ctrl+1 to Ctrl+9.
 - A sideways swipe on the sidebar.
 - Drag a tab and hold it over a small planet.
-- Click the big planet for the list of spaces and `New space`, or `...` > `New space`.
+- Click the big planet, or the space's name at the top of the list, for the list of spaces and `New space`; the `+`
+  (`New`) button > `New space`; or `...` > `New space`.
 
 ## Driving it with loka.mjs
 
@@ -38,6 +42,10 @@ Preconditions: seed data (Build, School, Home).
 - **Tint.** Compare `proof()` screenshots of Build (blue) and School (amber). The sky, the big planet and the accents
   change hue.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs spaces`.
+- **In the browser.** `bun run verify -- --ux spaces` runs it and verify:flows `spaces`: "clicking Play's planet
+  shows Play", "the browser follows to Play", "Ctrl+3 shows Code Lab", "picking Code Lab in the command bar shows
+  it", "the browser shows Work's tab group, the rest folded", "switching to the empty space opens a new tab in it".
+  Not checked in the browser: the swipe, drag-hover switching, and each space keeping its own active tab.
 
 ## Gotchas
 

@@ -53,7 +53,14 @@ def first(jobs):
         sys.exit(f'{SOURCE_TREE} already exists. Use "incremental", or delete build\\src (keep build\\download_cache) to start over.')
     builtins.input = apply_all_patches
     sys.argv = ['build.py', '--dev', '-j', str(jobs)]
-    build.main()
+    lock = ROOT / 'build.lock'
+    refused = build_log.take_lock(lock, 'first')
+    if refused:
+        sys.exit(f'Not building: {refused}.')
+    try:
+        build.main()
+    finally:
+        lock.unlink(missing_ok=True)
 
 
 def incremental(jobs):

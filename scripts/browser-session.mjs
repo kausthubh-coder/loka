@@ -364,10 +364,15 @@ export async function useCheckoutWebui(session, page) {
 //# sourceURL=loka-checkout-${page}.js`;
 	await session.call("Page.enable");
 	await session.call("Page.addScriptToEvaluateOnNewDocument", { source });
+	// Marks the document that's there now, so only the reloaded one counts as started.
+	await evaluate(session, "(window.__lokaBeforeReload = true)");
 	await session.call("Page.reload", {});
-	await sleep(500);
 	const ready = await until(
-		() => evaluate(session, "document.readyState === 'complete' && window.__lokaCheckoutWebui").catch(() => false),
+		() =>
+			evaluate(
+				session,
+				"!window.__lokaBeforeReload && document.readyState === 'complete' && window.__lokaCheckoutWebui",
+			).catch(() => false),
 		15000,
 	);
 	if (!ready) throw new Error(`this checkout's ${page} page never started in the browser`);

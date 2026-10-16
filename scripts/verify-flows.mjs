@@ -263,6 +263,8 @@ const HELPERS = `window.__qa ??= (() => {
 		names(role) { return all().filter((el) => el.matches(role) && shown(el)).map(name); },
 		rows() { return all().filter((el) => el.getAttribute("role") === "treeitem" && shown(el)).map((el) => ({ label: name(el), level: Number(el.getAttribute("aria-level")), selected: el.getAttribute("aria-selected") === "true", expanded: el.getAttribute("aria-expanded"), tree: el.closest("[role=tree]")?.getAttribute("aria-label") ?? "" })); },
 		styleOf(label, role) { const el = find(label, role); return el ? style(el) : null; },
+		// After two frames, so a transition the last input started has begun.
+		still(label, role) { return new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => { const el = find(label, role); done(Boolean(el) && el.getAnimations().every((a) => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity)); }))); },
 		focused() { const el = deepActive(); return el ? { label: name(el), tag: el.tagName, ...style(el) } : null; },
 		text() { return all().map((el) => el.shadowRoot ? el.shadowRoot.textContent : "").join(" ") + " " + document.body.innerText; },
 	};
@@ -323,6 +325,9 @@ function driver(s) {
 		rows: () => run("window.__qa.rows()"),
 		/** @param {Label} label @param {string} [role] @returns {Promise<Record<string, string> | null>} */
 		styleOf: (label, role = "") => run(`window.__qa.styleOf(${JSON.stringify(label)}, ${JSON.stringify(role)})`),
+		/** Waits until its own transitions have finished, so its look can be read. @param {Label} label @param {string} [role] */
+		settled: (label, role = "") =>
+			until(() => run(`window.__qa.still(${JSON.stringify(label)}, ${JSON.stringify(role)})`), 3000),
 		/** @returns {Promise<Record<string, string> | null>} */
 		focused: () => run("window.__qa.focused()"),
 		/** @returns {Promise<string>} */
@@ -629,8 +634,10 @@ async function firstRun() {
 	);
 	// The rest of setup as it comes; never "Make Loka my default browser".
 	for (let i = 0; i < 10 && !(await setup.has("Open Loka")); i++) {
+		const page = await setup.text();
 		await setup.click("Next");
-		await sleep(400);
+		// The next step is in once the page says something else; only then is it time to look for its Next.
+		await until(async () => (await setup.text()) !== page, 5000);
 	}
 	await setup.picture(join(dir, "02-finish.png"));
 	await setup.click("Open Loka");
@@ -990,7 +997,7 @@ async function states() {
 	/** @param {string} what @param {string | { re: string }} label @param {string} role @param {string[]} props */
 	const hoverChanges = async (what, label, role, props) => {
 		await sb.away();
-		await sleep(250);
+		await sb.settled(label, role);
 		const before = await sb.styleOf(label, role);
 		await sb.hover(label, role);
 		// Hover transitions run about 120 ms.
@@ -1022,9 +1029,9 @@ async function states() {
 	const more = await sb.box("More", "button");
 	if (more) {
 		await sb.away();
-		await sleep(200);
+		await sb.settled("More", "button");
 		await sb.mouse("mouseMoved", more.x, more.y);
-		await sleep(250);
+		await sb.settled("More", "button");
 		const hovered = await sb.styleOf("More", "button");
 		await sb.mouse("mousePressed", more.x, more.y, "left");
 		const pressed = await until(async () => {
@@ -1047,7 +1054,7 @@ async function states() {
 	const row = await sb.box(quiet, "[role=treeitem]");
 	if (row) {
 		await sb.mouse("mouseMoved", row.x, row.y);
-		await sleep(250);
+		await sb.settled(quiet, "[role=treeitem]");
 		const hovered = await sb.styleOf(quiet, "[role=treeitem]");
 		await sb.mouse("mousePressed", row.x, row.y, "left");
 		const pressed = await until(async () => {
@@ -1612,23 +1619,30 @@ async function restart() {
 	);
 	ctx.browser = await launch();
 	ctx.sidebar = await attachSidebar(ctx.browser);
-	await until(async () => (await ctx.sidebar.state())?.spaces.length === before.spaces.length, 10000);
-	await sleep(1500);
-	const after = await snapshot();
+	// What the restart brought back, once the sidebar has taken in the restored tabs (or 15 s have passed).
+	const keys = /** @type {(keyof typeof before)[]} */ (["spaces", "pinned", "essentials", "extensions", "ui"]);
+	const read = async () => {
+		const [after, tabsNow, st] = await Promise.all([snapshot(), ctx.sidebar.tabs(), ctx.sidebar.state()]);
+		const reattached = tabsNow.filter((t) => t.url.startsWith("http"));
+		const homes = reattached.map((t) => `${t.title}: ${homeIn(st, t.url)}`);
+		const wanted = reattached.map((t) => `${t.title}: ${homesBefore[t.url] ?? "?"}`);
+		const restored = show(reattached.map((t) => t.url).sort()) === show([...openBefore].sort());
+		const same = keys.every((key) => show(after[key]) === show(before[key]));
+		return { after, reattached, homes, wanted, restored, settled: same && restored && show(homes) === show(wanted) };
+	};
+	const back =
+		(await until(async () => {
+			const now = await read();
+			return now.settled ? now : null;
+		}, 15000)) ?? (await read());
+	const { after, reattached, homes, wanted, restored } = back;
 	writeFileSync(join(evidence, "restart-after.json"), JSON.stringify(after, null, 2));
-	for (const key of /** @type {(keyof typeof before)[]} */ (["spaces", "pinned", "essentials", "extensions", "ui"])) {
-		check(`${key} survive a restart`, show(after[key]) === show(before[key]), show(after[key]));
-	}
-	const tabsNow = await ctx.sidebar.tabs();
-	const st = await ctx.sidebar.state();
-	const reattached = tabsNow.filter((t) => t.url.startsWith("http"));
+	for (const key of keys) check(`${key} survive a restart`, show(after[key]) === show(before[key]), show(after[key]));
 	check(
 		"the browser restores the window's web tabs",
-		show(reattached.map((t) => t.url).sort()) === show([...openBefore].sort()),
+		restored,
 		`before ${openBefore.length}, after ${reattached.length}: ${reattached.map((t) => t.title).join(", ")}`,
 	);
-	const homes = reattached.map((t) => `${t.title}: ${homeIn(st, t.url)}`);
-	const wanted = reattached.map((t) => `${t.title}: ${homesBefore[t.url] ?? "?"}`);
 	check("each one is back in its own space", show(homes) === show(wanted), homes.join(", "));
 	await step("after-restart", true);
 }

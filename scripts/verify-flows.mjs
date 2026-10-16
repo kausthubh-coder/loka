@@ -71,6 +71,8 @@ const evidence = join(repo, ".agents", "verify-runs", `${stamp}-flows`);
 const profile = join(BUILD_DIR, `profile-qa-${stamp}`);
 const extensionDir = join(BUILD_DIR, `profile-qa-${stamp}-extension`);
 const SIDEBAR_URL = "chrome://loka-sidebar.top-chrome/";
+/** In the sidebar page: the sidebar component's shadow root. */
+const SIDEBAR_ROOT = `document.querySelector("loka-panel")?.shadowRoot?.querySelector("loka-sidebar")?.shadowRoot`;
 const UBLOCK = "blockjmkbacgjkknlgpkjjiijinjdanf";
 const QA_EXTENSION = "Loka QA popup";
 /** What setup makes: name, the planet's and color's names on the Spaces step, and what the sidebar stores. */
@@ -385,23 +387,31 @@ function driver(s) {
 		/** @param {string} text */
 		type: (text) => s.call("Input.insertText", { text }),
 		/**
-		 * A real HTML5 drag: press on `from`, move, and drop on `to` at `at` (0 top edge .. 1 bottom edge). The browser
-		 * hands the drag back to CDP (Input.setInterceptDrags) so it never becomes an OS drag.
+		 * A drag the way a mouse does it: press on `from`, move past the 5 px threshold, and let go on `to` at `at` (0
+		 * top edge .. 1 bottom edge). The sidebar drags with pointer events (a copy of the row, .drag-ghost, follows the
+		 * pointer). A build whose sidebar still uses HTML5 drag and drop gets that instead: the browser hands the drag
+		 * back to CDP (Input.setInterceptDrags) so it never becomes an OS drag.
 		 * @param {Label} from @param {Label} to @param {number} at @param {string} [toRole]
 		 */
 		async drag(from, to, at, toRole = "") {
 			const a = await until(() => box(from), 6000);
 			const b = await until(() => box(to, toRole), 6000);
 			if (!a || !b) throw new Error(`can't drag ${show(from)} to ${show(to)}`);
+			const held = (/** @type {number} */ x, /** @type {number} */ y) =>
+				s.call("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, button: "left", buttons: 1 });
+			const ghost = () => evaluate(s, `Boolean(${SIDEBAR_ROOT}?.querySelector(".drag-ghost"))`);
 			await s.call("Input.setInterceptDrags", { enabled: true });
 			/** @type {Promise<any>} */
 			const intercepted = new Promise((done) => s.on("Input.dragIntercepted", (p) => done(p.data)));
 			await mouse("mouseMoved", a.x, a.y);
 			await mouse("mousePressed", a.x, a.y, "left");
-			await s.call("Input.dispatchMouseEvent", { type: "mouseMoved", x: a.x, y: a.y + 6, button: "left", buttons: 1 });
-			await s.call("Input.dispatchMouseEvent", { type: "mouseMoved", x: b.x, y: b.y, button: "left", buttons: 1 });
-			const data = await Promise.race([intercepted, sleep(3000).then(() => null)]);
-			if (!data) {
+			await held(a.x, a.y + 6);
+			await held(b.x, b.y);
+			const started = await Promise.race([
+				intercepted.then((data) => ({ html5: data })),
+				until(ghost, 3000).then((on) => (on ? { pointer: true } : null)),
+			]);
+			if (!started) {
 				await mouse("mouseReleased", b.x, b.y, "left");
 				await s.call("Input.setInterceptDrags", { enabled: false });
 				throw new Error(`dragging ${show(from)} never started`);
@@ -418,9 +428,15 @@ function driver(s) {
 			}
 			if (!target) throw new Error(`${show(to)} went away during the drag`);
 			const ty = target.top + target.height * at;
-			for (const type of ["dragEnter", "dragOver", "dragOver", "drop"]) {
-				await s.call("Input.dispatchDragEvent", { type, x: target.x, y: ty, data });
-				if (type === "dragOver") await sleep(60);
+			if ("pointer" in started) {
+				await held(target.x, ty - 2);
+				await held(target.x, ty);
+				await sleep(60);
+			} else {
+				for (const type of ["dragEnter", "dragOver", "dragOver", "drop"]) {
+					await s.call("Input.dispatchDragEvent", { type, x: target.x, y: ty, data: started.html5 });
+					if (type === "dragOver") await sleep(60);
+				}
 			}
 			await mouse("mouseReleased", target.x, ty, "left");
 			await s.call("Input.setInterceptDrags", { enabled: false });

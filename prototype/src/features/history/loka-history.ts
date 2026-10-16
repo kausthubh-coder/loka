@@ -543,6 +543,7 @@ export class LokaHistory extends LitElement {
 		return html`<div class="clear-wrap">
 			<button
 				class="quiet"
+				aria-label="Clear history"
 				aria-haspopup="menu"
 				aria-expanded=${this.clearMenu}
 				@click=${(e: Event) => {

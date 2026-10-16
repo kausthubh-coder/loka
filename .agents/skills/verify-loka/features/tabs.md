@@ -12,7 +12,13 @@ deletes it. Closing a pinned or essential tab only unloads it, so it stays in th
   becomes active. A middle click on a pinned row unloads it.
 - `tab-pin` uses right-click > `Pin to space`; `Unpin` moves it back to the top of the open tabs.
 - `tab-unload` uses right-click > `Unload tab` on a pinned tab. It stays pinned, with no active tab.
-- `tab-move-space` uses right-click > `Move to <space>`.
+- `tab-move-space` uses right-click > `Move to space` > `<space>` (the submenu opens under its item; Right opens it,
+  Left closes it).
+- `tab-menu` also has Duplicate, Copy link, Mute or Unmute, Reload, Close tab and Close other tabs. Right-click on the
+  sidebar's background (a gap, the divider) gives New tab, New folder, New space, Edit `<space>` and Hide sidebar.
+- `tab-drag` drags with pointer events, not HTML5 drag and drop: press and move 5 px, a copy of the row follows the
+  pointer, the row under it shows the drop line (or folder highlight), the list scrolls near its edges, hovering a
+  neighbour planet switches space, and Escape cancels. Dropping on the divider or just above it pins the tab.
 - `tab-clear` closes every open tab in the space with `Clear`.
 
 ## How to get to it (user POV)

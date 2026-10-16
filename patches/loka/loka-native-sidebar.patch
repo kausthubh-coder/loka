@@ -176,7 +176,7 @@
  
  VerticalTabStripRegionView::VerticalTabStripRegionView(
      tabs::VerticalTabStripStateController* state_controller,
-@@ -175,6 +188,19 @@
+@@ -175,6 +188,23 @@
      focus_swipe_controller_ =
          std::make_unique<VerticalTabStripFocusSwipeController>(this);
    }
@@ -193,10 +193,14 @@
 +  loka_sidebar->LoadInitialURL(GURL(kLokaSidebarURL));
 +  loka_sidebar->SetProperty(views::kViewIgnoredByLayoutKey, true);
 +  loka_sidebar_ = AddChildView(std::move(loka_sidebar));
++  auto anchor = std::make_unique<views::View>();
++  anchor->SetProperty(views::kViewIgnoredByLayoutKey, true);
++  anchor->SetCanProcessEventsWithinSubtree(false);
++  loka_anchor_ = AddChildView(std::move(anchor));
  
    SetNotifyEnterExitOnChild(true);
    UpdateColors();
-@@ -264,6 +290,16 @@
+@@ -264,6 +294,16 @@
      return false;
    }
  
@@ -213,7 +217,7 @@
    if (IsHitInView(bottom_button_container_, point)) {
      gfx::Point point_in_child = point;
      views::View::ConvertPointToTarget(this, bottom_button_container_,
-@@ -318,7 +354,8 @@
+@@ -318,7 +358,8 @@
    if (floating) {
      CustomCornersBackground::Corner rounded_corner;
      rounded_corner.type = CustomCornersBackground::CornerType::kRounded;
@@ -223,7 +227,7 @@
      corners[CornerOrientation::kTopLeading] = rounded_corner;
      corners[CornerOrientation::kTopTrailing] = rounded_corner;
      corners[CornerOrientation::kBottomLeading] = rounded_corner;
-@@ -334,6 +371,16 @@
+@@ -334,6 +375,16 @@
    background->SetCorners(corners);
    background->SetOutline(outline);
    background->SetPaintWithNativeFrameMaterials(floating);
@@ -240,7 +244,7 @@
  }
  
  void VerticalTabStripRegionView::AddedToWidget() {
-@@ -368,6 +415,22 @@
+@@ -368,6 +419,23 @@
    resize_area_->SetBoundsRect(
        gfx::Rect(resize_area_x, 0, resize_area_width_, bounds().height()));
    shadow_frame_->SetBoundsRect(GetLocalBounds());
@@ -254,7 +258,8 @@
 +                             : gfx::Insets::TLBR(0, 0, 0, resize_area_width_));
 +    loka_sidebar_->SetBoundsRect(sidebar_bounds);
 +    for (views::View* child : children()) {
-+      if (child != loka_sidebar_ && child != resize_area_ &&
++      if (child != loka_sidebar_ && child != loka_anchor_ &&
++          child != resize_area_ &&
 +          child != shadow_frame_ && child->GetVisible()) {
 +        child->SetVisible(false);
 +      }
@@ -263,14 +268,43 @@
  
    // Ensure that we update the drop arrow position so that it does not render in
    // the collapsed state when expand on hover is active.
+@@ -1141,3 +1209,14 @@
+ 
+ BEGIN_METADATA(VerticalTabStripRegionView)
+ END_METADATA
++
++views::View* VerticalTabStripRegionView::GetLokaAnchor(const gfx::Rect& rect) {
++  if (!loka_sidebar_ || !loka_anchor_) {
++    return nullptr;
++  }
++  gfx::Rect bounds = rect;
++  bounds.Offset(loka_sidebar_->bounds().OffsetFromOrigin());
++  bounds.Intersect(GetLocalBounds());
++  loka_anchor_->SetBoundsRect(bounds);
++  return loka_anchor_;
++}
 --- a/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h
 +++ b/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h
-@@ -235,6 +235,8 @@
+@@ -142,6 +142,10 @@
+     return focus_swipe_controller_.get();
+   }
+ 
++  // Loka: a view over `rect` (in the sidebar page's coordinates) for a bubble
++  // to anchor to, or null when the column shows no sidebar.
++  views::View* GetLokaAnchor(const gfx::Rect& rect);
++
+  private:
+   // Since VerticalTabStripRegionView inherits from AccessiblePaneView, which is
+   // a FocusChangeListener, we need to have a separate focus listener to avoid
+@@ -235,6 +239,11 @@
    raw_ptr<VerticalTabStripBottomContainer> bottom_button_container_ = nullptr;
    raw_ptr<views::View> gemini_button_ = nullptr;
    raw_ptr<views::ResizeArea> resize_area_ = nullptr;
 +  // Loka: the sidebar page that fills the column in place of the tab list.
 +  raw_ptr<views::View> loka_sidebar_ = nullptr;
++  // Loka: an empty view placed over a button of the sidebar page, so bubbles
++  // (extension popups) open from that button.
++  raw_ptr<views::View> loka_anchor_ = nullptr;
    raw_ptr<ShadowFrameView> shadow_frame_ = nullptr;
    int resize_area_width_;
    raw_ptr<views::FlexLayout> flex_layout_ = nullptr;
@@ -1770,7 +1804,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler_features.cc
-@@ -0,0 +1,726 @@
+@@ -0,0 +1,736 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2162,13 +2196,23 @@
 +      extensions::ExtensionViewHostFactory::CreatePopupHost(*extension,
 +                                                            popup_url, browser);
 +  BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser);
-+  views::View* anchor =
++  VerticalTabStripRegionView* region =
 +      browser_view ? browser_view->vertical_tab_strip_region_view_for_testing()
 +                   : nullptr;
++  // The button the user clicked, in the sidebar page's CSS pixels (which are
++  // the column's DIPs: the page isn't zoomed).
++  gfx::Rect button;
++  if (args.size() > 1 && args[1].is_dict()) {
++    const base::DictValue& r = args[1].GetDict();
++    button = gfx::Rect(r.FindDouble("x").value_or(0), r.FindDouble("y").value_or(0),
++                       r.FindDouble("width").value_or(1),
++                       r.FindDouble("height").value_or(1));
++  }
++  views::View* anchor = region ? region->GetLokaAnchor(button) : nullptr;
 +  if (!host || !anchor) {
 +    return;
 +  }
-+  // The popup opens beside the sidebar, level with its top.
++  // The popup opens beside the sidebar, level with the button.
 +  ExtensionPopup::ShowPopup(browser, std::move(host), views::BubbleAnchor(anchor),
 +                            views::BubbleBorder::LEFT_TOP,
 +                            PopupShowAction::kShow, base::DoNothing());

@@ -4,7 +4,7 @@ Loka's `main` is Helium's history plus Loka's commits. Helium tags a release abo
 with a new Chromium version. Merge each tag (never rebase: `main` is public).
 
 ```
-git fetch upstream --tags
+git fetch helium --tags
 git tag --sort=-creatordate | head -5          # newest Helium tags
 git switch -c helium/<tag> main
 git merge <tag>                                # e.g. 0.19.3.1

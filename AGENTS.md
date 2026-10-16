@@ -15,7 +15,7 @@ TypeScript). The browser build is Helium's Python build plus Loka's patches.
 - **essentials**: the icon grid at the top of the sidebar. It is shared by every space.
 - **pinned**: a space's saved tabs and folders. Folders can hold folders. Closing a pinned tab unloads it.
 - **open tabs**: a space's temporary tabs, under the divider. Closing one deletes it.
-- **Helium**: the upstream browser (`upstream` remote, tags like `0.19.2.1`). **helium-chromium**: its core
+- **Helium**: the upstream browser (the `helium` remote, tags like `0.19.2.1`). **helium-chromium**: its core
   patch submodule.
 - **build checkout**: `C:\src\loka`, a git worktree of this repo where Chromium is unpacked and built. One, shared
   by every worktree.

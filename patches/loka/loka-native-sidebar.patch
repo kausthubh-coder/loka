@@ -36,16 +36,17 @@
        "//chrome/browser/ui/webui/settings",
 --- a/chrome/browser/ui/browser_command_controller.cc
 +++ b/chrome/browser/ui/browser_command_controller.cc
-@@ -3,6 +3,8 @@
+@@ -3,6 +3,9 @@
  // found in the LICENSE file.
  
  #include "chrome/browser/ui/browser_command_controller.h"
 +
++#include "base/strings/string_number_conversions.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h"
  
  #include <stddef.h>
  
-@@ -771,6 +773,10 @@
+@@ -771,6 +774,10 @@
        CloseWindow(browser_);
        break;
      case IDC_NEW_TAB: {
@@ -56,7 +57,52 @@
        NewTab(browser_, NewTabTypes::kNewTabCommand);
        break;
      }
-@@ -1137,6 +1143,10 @@
+@@ -783,6 +790,11 @@
+       CloseTab(browser_);
+       break;
+     case IDC_SELECT_NEXT_TAB:
++      // Loka: Ctrl+Tab steps through the tabs of the current space, in the
++      // sidebar's order.
++      if (LokaSidebarHandler::DispatchCommand(browser_, "next-tab")) {
++        break;
++      }
+       base::RecordAction(base::UserMetricsAction("Accel_SelectNextTab"));
+       SelectNextTab(
+           browser_,
+@@ -790,6 +802,9 @@
+               TabStripUserGestureDetails::GestureType::kKeyboard, time_stamp));
+       break;
+     case IDC_SELECT_PREVIOUS_TAB:
++      if (LokaSidebarHandler::DispatchCommand(browser_, "previous-tab")) {
++        break;
++      }
+       base::RecordAction(base::UserMetricsAction("Accel_SelectPreviousTab"));
+       SelectPreviousTab(
+           browser_,
+@@ -840,6 +855,12 @@
+     case IDC_SELECT_TAB_5:
+     case IDC_SELECT_TAB_6:
+     case IDC_SELECT_TAB_7:
++      // Loka: Ctrl+1..8 go to that space.
++      if (LokaSidebarHandler::DispatchCommand(
++              browser_,
++              "space-" + base::NumberToString(id - IDC_SELECT_TAB_0 + 1))) {
++        break;
++      }
+       base::RecordAction(base::UserMetricsAction("Accel_SelectNumberedTab"));
+       SelectNumberedTab(
+           browser_, id - IDC_SELECT_TAB_0,
+@@ -847,6 +868,9 @@
+               TabStripUserGestureDetails::GestureType::kKeyboard, time_stamp));
+       break;
+     case IDC_SELECT_LAST_TAB:
++      if (LokaSidebarHandler::DispatchCommand(browser_, "space-9")) {
++        break;
++      }
+       base::RecordAction(base::UserMetricsAction("Accel_SelectNumberedTab"));
+       SelectLastTab(
+           browser_,
+@@ -1137,6 +1161,10 @@
        FocusToolbar(browser_);
        break;
      case IDC_FOCUS_LOCATION:
@@ -67,6 +113,40 @@
        if (!window()->IsLocationBarVisible()) {
          break;
        }
+--- a/chrome/browser/ui/color/chrome_color_mixers.cc
++++ b/chrome/browser/ui/color/chrome_color_mixers.cc
+@@ -3,6 +3,14 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/ui/color/chrome_color_mixers.h"
++
++#include "ui/color/color_id.h"
++
++#include "ui/gfx/color_utils.h"
++
++#include "ui/color/color_mixer.h"
++#include "ui/color/color_provider.h"
++#include "ui/color/color_recipe.h"
+ 
+ #include <memory>
+ #include <string_view>
+@@ -95,4 +103,16 @@
+   if (key.app_controller) {
+     key.app_controller->AddColorMixers(provider, key);
+   }
++
++  // Loka: the window frame around the page is the space's color, which the
++  // sidebar sets as the user color, so the sidebar's sky reads as the whole
++  // window, like Arc's.
++  if (key.user_color.has_value() && !key.custom_theme) {
++    ui::ColorMixer& mixer = provider->AddMixer();
++    mixer[ui::kColorFrameActive] = {*key.user_color};
++    mixer[ui::kColorFrameInactive] = {
++        color_utils::AlphaBlend(*key.user_color, SK_ColorBLACK, 0.85f)};
++    // The strips beside the page (and the hidden toolbar) are toolbar-colored.
++    mixer[kColorToolbar] = {*key.user_color};
++  }
+ }
 --- a/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc
 +++ b/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc
 @@ -77,6 +77,14 @@
@@ -1476,7 +1556,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h
-@@ -0,0 +1,205 @@
+@@ -0,0 +1,211 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1489,6 +1569,8 @@
 +
 +#include <memory>
 +#include <set>
++
++#include "base/time/time.h"
 +
 +#include "base/memory/raw_ptr.h"
 +#include "base/memory/weak_ptr.h"
@@ -1676,15 +1758,19 @@
 +  std::string suggest_query_;
 +  bool extensions_change_pending_ = false;
 +  bool downloads_change_pending_ = false;
-+  // Tabs whose media the sidebar paused: they're quiet, but still have media.
-+  std::set<int32_t> paused_media_;
++  // Tabs that have played sound, and the origin they played it on: they stay
++  // in the media list while paused, until they navigate elsewhere or close.
++  std::map<int32_t, std::string> media_tabs_;
++  // Tabs the sidebar just resumed: they count as playing until sound starts
++  // again (or a few seconds pass), so the card doesn't blink.
++  std::map<int32_t, base::TimeTicks> resuming_;
 +  base::WeakPtrFactory<LokaSidebarHandler> weak_factory_{this};
 +};
 +
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler_features.cc
-@@ -0,0 +1,692 @@
+@@ -0,0 +1,726 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1778,6 +1864,9 @@
 +
 +constexpr size_t kMaxDownloads = 30;
 +
++// How long a resumed tab counts as playing before its sound is back.
++constexpr base::TimeDelta kResumeWait = base::Seconds(3);
++
 +std::string CssColor(SkColor color) {
 +  if (SkColorGetA(color) == 0) {
 +    return std::string();
@@ -1827,7 +1916,8 @@
 +// static
 +bool LokaSidebarHandler::DispatchCommand(BrowserWindowInterface* browser,
 +                                         const std::string& command) {
-+  if (HasCommandBarPage() && Sidebars().contains(browser)) {
++  const bool address = command == "new-tab" || command == "focus-location";
++  if (address && HasCommandBarPage() && Sidebars().contains(browser)) {
 +    LokaCommandBar::Show(browser, command);
 +    return true;
 +  }
@@ -1836,7 +1926,11 @@
 +    return false;
 +  }
 +  LokaSidebarHandler* handler = it->second;
-+  handler->web_ui()->GetWebContents()->Focus();
++  // Typing goes to the sidebar's own command bar; tab and space switches
++  // leave the keyboard where it was.
++  if (address) {
++    handler->web_ui()->GetWebContents()->Focus();
++  }
 +  handler->FireWebUIListener("command", base::Value(command));
 +  return true;
 +}
@@ -2212,14 +2306,29 @@
 +  if (!tab_strip) {
 +    return list;
 +  }
++  const base::TimeTicks now = base::TimeTicks::Now();
++  std::map<int32_t, std::string> still_here;
 +  for (int i = 0; i < tab_strip->count(); ++i) {
 +    tabs::TabInterface* tab = tab_strip->GetTabAtIndex(i);
 +    content::WebContents* contents = tab->GetContents();
 +    const int32_t id = tab->GetHandle().raw_value();
-+    const bool playing = contents->IsCurrentlyAudible();
-+    if (!playing && !paused_media_.contains(id)) {
++    const bool audible = contents->IsCurrentlyAudible();
++    const std::string origin =
++        contents->GetLastCommittedURL().DeprecatedGetOriginAsURL().spec();
++    if (audible) {
++      media_tabs_[id] = origin;
++      resuming_.erase(id);
++    }
++    auto known = media_tabs_.find(id);
++    // Only tabs that played here; a tab that went to another site is done.
++    if (known == media_tabs_.end() || known->second != origin) {
 +      continue;
 +    }
++    still_here.insert(*known);
++    auto resumed = resuming_.find(id);
++    const bool playing =
++        audible ||
++        (resumed != resuming_.end() && now - resumed->second < kResumeWait);
 +    TabUIHelper* helper = TabUIHelper::From(tab);
 +    base::DictValue data;
 +    data.Set("tabId", id);
@@ -2230,6 +2339,7 @@
 +    data.Set("playing", playing);
 +    list.Append(std::move(data));
 +  }
++  media_tabs_ = std::move(still_here);
 +  return list;
 +}
 +
@@ -2249,10 +2359,19 @@
 +  const std::string& action = args[1].GetString();
 +  if (action == "pause") {
 +    session->Suspend(content::MediaSession::SuspendType::kUI);
-+    paused_media_.insert(id);
++    resuming_.erase(id);
 +  } else if (action == "play") {
 +    session->Resume(content::MediaSession::SuspendType::kUI);
-+    paused_media_.erase(id);
++    resuming_[id] = base::TimeTicks::Now();
++    // If sound hasn't come back by then, report it paused again.
++    base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
++        FROM_HERE,
++        base::BindOnce(&LokaSidebarHandler::ScheduleTabsChanged,
++                       weak_factory_.GetWeakPtr()),
++        kResumeWait + base::Milliseconds(100));
++  } else if (action == "dismiss") {
++    media_tabs_.erase(id);
++    resuming_.erase(id);
 +  } else if (action == "next") {
 +    session->NextTrack();
 +  } else if (action == "previous") {
@@ -2357,7 +2476,8 @@
 +void LokaSidebarHandler::HandleSetThemeColor(const base::ListValue& args) {
 +  // The window's frame (around the page) takes the space's color, so the
 +  // sidebar's sky reads as the whole window, like Arc's. "#rrggbb", or null
-+  // to go back to the default.
++  // to go back to the theme's frame. AddChromeColorMixers paints the frame
++  // with it.
 +  ThemeService* theme =
 +      ThemeServiceFactory::GetForProfile(Profile::FromWebUI(web_ui()));
 +  if (!theme || args.empty()) {

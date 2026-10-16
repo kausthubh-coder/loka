@@ -169,7 +169,7 @@ export class LokaPanel extends LitElement {
 			this.pinned = pinned;
 		});
 		// Ctrl+T and Ctrl+L, when the browser hands them to this page rather than to its floating command bar.
-		browser.onCommand((mode) => this.openOwnCommandBar(mode));
+		browser.onCommand((command) => this.onBrowserCommand(command));
 		browser.onCommandPicked((pick) => this.runPick(pick));
 		void browser.media().then((media) => {
 			this.media = media;
@@ -244,7 +244,25 @@ export class LokaPanel extends LitElement {
 		return this.tabs.find((t) => t.active);
 	}
 
-	private openOwnCommandBar(mode: BrowserCommand) {
+	/** A browser shortcut, handed over by the browser (see BrowserCommand). */
+	private onBrowserCommand(command: BrowserCommand) {
+		if (command === "next-tab" || command === "previous-tab") {
+			this.apply((s) => stepTab(s, command === "next-tab" ? 1 : -1));
+		} else if (command !== "new-tab" && command !== "focus-location") {
+			const spaces = this.state?.spaces ?? [];
+			const n = Number(command.slice("space-".length));
+			// Ctrl+9 is the last space, like the last tab in other browsers.
+			const target = n === 9 ? spaces.at(-1) : spaces[n - 1];
+			if (target && target.id !== this.state?.activeSpaceId) {
+				playCue("space");
+				this.apply((s) => switchSpace(s, target.id));
+			}
+		} else {
+			this.openOwnCommandBar(command);
+		}
+	}
+
+	private openOwnCommandBar(mode: "new-tab" | "focus-location") {
 		if (!this.command) playCue("command");
 		this.command = { mode, query: mode === "focus-location" ? (this.shownTab()?.url ?? "") : "" };
 	}

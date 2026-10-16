@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Decide what v1 is before branding it</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #fafaf9; --text: #1c1c1e; --muted: #57575c; --line: #dcdcd8; --soft: #f0f0ed;
+  --accent: #1f5fbf; --accent-soft: #e6eefa; --ok: #1d6b3a; --warn: #8a5a00;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161618; --text: #e8e8ea; --muted: #a3a3a9; --line: #333338; --soft: #1f1f22;
+    --accent: #7fb0f5; --accent-soft: #1c2738; --ok: #74c793; --warn: #e0b45c;
+  }
+}
+html { background: var(--bg); color: var(--text); }
+body { margin: 0; font: 1.0625rem/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+h1 { font-size: 2rem; line-height: 1.15; margin: 0 0 0.6rem; text-wrap: balance; }
+h2 { font-size: 1.3rem; margin: 2.6rem 0 0.7rem; text-wrap: balance; }
+p, li { max-width: 60ch; text-wrap: pretty; }
+p { margin: 0 0 0.8rem; }
+.lede { color: var(--muted); font-size: 1.125rem; margin-bottom: 1.6rem; }
+code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.9em; }
+a { color: var(--accent); }
+::selection { background: var(--accent-soft); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.asks { background: var(--accent-soft); border-radius: 10px; padding: 1rem 1.25rem 0.6rem; margin: 0 0 2rem; }
+.asks h2 { margin: 0 0 0.5rem; font-size: 1.0625rem; color: var(--accent); }
+.asks ol { margin: 0; padding-left: 1.3rem; }
+.asks li { margin-bottom: 0.45rem; }
+
+ol.track { list-style: none; margin: 0; padding: 0; counter-reset: step -1; }
+ol.track > li { counter-increment: step; position: relative; padding: 0 0 1.1rem 2.6rem; max-width: 60ch; }
+ol.track > li::before {
+  content: counter(step); position: absolute; left: 0; top: 0.05rem;
+  width: 1.75rem; height: 1.75rem; border-radius: 50%; border: 1.5px solid var(--line);
+  display: grid; place-items: center; font-size: 0.9375rem; font-weight: 600; background: var(--bg);
+  font-variant-numeric: tabular-nums;
+}
+ol.track > li::after { content: ""; position: absolute; left: 0.87rem; top: 1.9rem; bottom: 0.1rem; border-left: 1.5px solid var(--line); }
+ol.track > li:last-child::after { display: none; }
+.step { font-weight: 600; }
+.out { color: var(--muted); font-size: 0.9375rem; display: block; }
+.par { color: var(--muted); font-size: 0.9375rem; margin: -0.4rem 0 1rem 2.6rem; }
+
+details { border-top: 1px solid var(--line); }
+details:last-of-type { border-bottom: 1px solid var(--line); }
+summary { padding-block: 0.7rem; cursor: pointer; font-weight: 500; }
+details > *:not(summary) { margin-left: 0.2rem; }
+details[open] { padding-bottom: 0.8rem; }
+
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9375rem; margin: 0.3rem 0 0.8rem; }
+th, td { text-align: left; vertical-align: top; padding: 0.45rem 0.6rem 0.45rem 0; border-bottom: 1px solid var(--line); }
+th { font-weight: 600; }
+.ok { color: var(--ok); } .warn { color: var(--warn); }
+@media print {
+  :root { color-scheme: light; --bg: #fff; --text: #000; --muted: #444; --accent: #1f5fbf; --accent-soft: #eef3fb; }
+  h2 { break-after: avoid; } table { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<main>
+<h1>Decide what v1 is before branding it</h1>
+<p class="lede">Loka is already a native browser at alpha.10 (<a href="https://github.com/kausthubh-coder/loka/pull/14">PR #14</a>), but three threads planned against the old prototype on <code>main</code>. Fix that, then go in order, since each step feeds the next.</p>
+
+<section class="asks">
+<h2>Needs your answer</h2>
+<ol>
+<li>Review and merge PR #14 so <code>main</code> is the real browser? Every later step reads <code>main</code>.</li>
+<li>AI in v1: I recommend none built in, and an opt-in tab sorter later. Agree?</li>
+<li>Which “Aside” do you mean? I couldn’t tell from the threads.</li>
+<li>Start steps 1 and 2 now, in parallel?</li>
+</ol>
+</section>
+
+<h2>Clean up, then six steps</h2>
+<ol class="track">
+<li><span class="step">Make <code>main</code> true.</span> Merge #14, close #3, #4, #6 and #8, and commit the five uncommitted pages.
+<span class="out">Gives: one source of truth for every agent.</span></li>
+<li><span class="step">Learn how a browser works.</span> Rewrite the architecture page against Loka’s real 7 patches.
+<span class="out">Gives: you can read each patch and say why it exists.</span></li>
+<li><span class="step">Map the field.</span> Arc, Dia, Comet, Zen, Atlas, Aside and others, feature by feature.
+<span class="out">Gives: every feature tagged “have”, “v1”, “later” or “never”.</span></li>
+<li><span class="step">Define v1 and the AI stance.</span> Who it’s for, the one promise, the feature cut, what “done” means.
+<span class="out">Gives: the filter for every choice after it.</span></li>
+<li><span class="step">Brand.</span> Pick a logo, sky, type and voice from what’s already drawn.
+<span class="out">Gives: one direction file that every mockup follows.</span></li>
+<li><span class="step">UI/UX on the native browser.</span> Close the audit gaps and build the v1 features.
+<span class="out">Gives: the v1 build.</span></li>
+<li><span class="step">One landing page.</span> Merge #5 and #15 into a single site that sells v1.
+<span class="out">Gives: a waitlist that sends signups somewhere real.</span></li>
+</ol>
+<p class="par">Steps 1 and 2 don’t depend on each other. Brand work (4) can start while UI (5) is underway.</p>
+
+<details>
+<summary>Why this order: three things went wrong today</summary>
+<p>Two audits and the architecture review ran on <code>main</code>, which predates the planets, the horizon and the native browser. The architecture page says <code>patches/loka/</code> is empty. On <code>feat/native-sidebar</code> it holds 7 patches, and spaces are built on Chromium tab groups.</p>
+<p>Two landing pages exist (#5, live at loka-browser.vercel.app, and #15). Both were built before v1 or the logo was settled, so both will need redoing.</p>
+<p>Brand work produced 9 logos, 7 skies, 9 styles and 6 concepts, with nothing to choose between them. A v1 promise is what makes that choice possible.</p>
+</details>
+
+<h2>Leave AI out of v1</h2>
+<p>Loka promises calm tab sorting, as private as Helium. A built-in assistant sends page content to a model, and Dia, Comet and Atlas already race on that.</p>
+<details>
+<summary>What AI could look like later, and what would change my mind</summary>
+<p>Funded teams are competing on agents. Loka’s opening is the calm, private Arc for Windows.</p>
+<p>Later: an opt-in sorter that files open tabs into folders and names spaces, run on a local model or your own key, off by default. It serves the sorting promise instead of competing with Dia.</p>
+<p>What would change this: if step 2 shows Arc users leaving mainly for Dia’s AI features, AI belongs in the v1 discussion. That evidence doesn’t exist yet.</p>
+</details>
+
+<h2>Most inputs already exist</h2>
+<details>
+<summary>What each thread left behind, and where</summary>
+<div class="scroll">
+<table>
+<thead><tr><th scope="col">Thread</th><th scope="col">Output</th><th scope="col">State</th></tr></thead>
+<tbody>
+<tr><td>Architecture for a Helium-based browser</td><td>Explainer page; Astra’s review (window ownership, tab lifecycle, crash restore)</td><td class="warn">Uncommitted in <code>t3-0aeafa1b</code>; describes old <code>main</code></td></tr>
+<tr><td>Design Loka’s icon and landing page</td><td>“Sliced world” logo, T3 icon, Vite landing page, 10 roadmap ideas</td><td>PR #15, waitlist has no destination</td></tr>
+<tr><td>Audit Loka UI usability (×2)</td><td>Gaps left on <code>feat/ux3</code>: no undo, one tab at a time, too many Tab stops; 9 logo variations</td><td class="warn">Uncommitted in <code>t3-802c28ed</code>, <code>t3-66f3d336</code></td></tr>
+<tr><td>Explore browser design variations</td><td>7 skies, 9 styles in a theme lab, 6 concepts (Rail, Dock, Canvas, Outline, Command, Columns)</td><td>Committed on <code>t3/browser-design-variants</code>, not pushed</td></tr>
+<tr><td>Designing a browser UX/UI</td><td>Method: borrow behaviours, keep a swipe file, one idea per branch</td><td class="ok">Advice only</td></tr>
+<tr><td>Cloud-ready prototype</td><td>Prototype runs in cloud sessions</td><td class="ok">Merged, PR #7</td></tr>
+</tbody>
+</table>
+</div>
+</details>
+<details>
+<summary>Open questions carried forward from the architecture review</summary>
+<ul>
+<li>Which window owns a space when two windows show it.</li>
+<li>A tab’s lifecycle: live, unloaded, closed, and how extensions see unloaded ones.</li>
+<li>How tabs come back after a crash when Loka’s save and Chromium’s session log disagree.</li>
+<li>Code signing before real users.</li>
+</ul>
+<p>Step 1 should check which of these the native branch already answers.</p>
+</details>
+</main>
+<script>
+addEventListener("beforeprint", () => document.querySelectorAll("details").forEach((d) => { d.dataset.wasOpen = d.open; d.open = true; }));
+addEventListener("afterprint", () => document.querySelectorAll("details").forEach((d) => (d.open = d.dataset.wasOpen === "true")));
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+--- a/chrome/browser/chrome_content_browser_client.cc
++++ b/chrome/browser/chrome_content_browser_client.cc
+@@ -992,6 +992,25 @@
+     return blink::mojom::AutoplayPolicy::kNoUserGestureRequired;
+   }
+ 
++  // Loka: videos and sound on websites wait for a click on the page, like
++  // Zen. "loka.autoplay" is "block" (the default), "block-audible" (Chrome's
++  // rule: muted video may play, sound waits for the page to be used) or
++  // "allow".
++  // An explicit --autoplay-policy (tests, debugging) still wins.
++  if (web_contents->GetLastCommittedURL().SchemeIsHTTPOrHTTPS() &&
++      prefs->FindPreference("loka.autoplay") &&
++      !base::CommandLine::ForCurrentProcess()->HasSwitch(
++          switches::kAutoplayPolicy)) {
++    const std::string& mode = prefs->GetString("loka.autoplay");
++    if (mode == "allow") {
++      return blink::mojom::AutoplayPolicy::kNoUserGestureRequired;
++    }
++    if (mode != "block-audible") {
++      observer->SetPolicyStatus(PolicyStatus::kBlockedByUserPreference);
++      return blink::mojom::AutoplayPolicy::kUserGestureRequired;
++    }
++  }
++
+ #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
+     BUILDFLAG(IS_CHROMEOS)
+   // If a user requests Read Aloud audio playbaback through the "Listen to this

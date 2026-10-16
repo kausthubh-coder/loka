@@ -2543,7 +2543,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.cc
-@@ -0,0 +1,116 @@
+@@ -0,0 +1,120 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2613,6 +2613,10 @@
 +    user_prefs::PrefRegistrySyncable* registry) {
 +  registry->RegisterDictionaryPref(kLokaSidebarStorePref);
 +  registry->RegisterStringPref(kLokaOnboardingSpacesPref, std::string());
++  // Whether websites may play video and sound before you click on them:
++  // "block" (like Zen), "block-audible" or "allow". See
++  // DetermineWebContentsAutoplayPolicy.
++  registry->RegisterStringPref("loka.autoplay", "block");
 +}
 +
 +WEB_UI_CONTROLLER_TYPE_IMPL(LokaSidebarUI)

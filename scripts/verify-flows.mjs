@@ -16,7 +16,9 @@
 //   3 tabs         open pages from the command bar, switch by row, close by x and middle click, reorder by drag,
 //                  move to a space, search words, Ctrl+L, back, forward, reload
 //   4 states       hover and press change rows, buttons, planets and the address field; Tab shows a focus ring
-//   5 pinning      pin by menu and drag, unpin, folders two deep, unload a pinned tab and load it back, Essentials
+//   5 pinning      pin by menu and drag, unpin, folders two deep, unload a pinned tab and load it back, Essentials;
+//                  a real mouse (posted messages) grabbing rows by their icons reorders Pinned and moves a tab out
+//                  of a pinned folder and back
 //   6 extensions   the panel lists them; pin and unpin reach the address field; the icon opens its popup; badges
 //   7 panels       Downloads with a real download, the media card on a playing page, Archive and Search
 //   8 settings     each setting changes what it says; History search, delete and clear today
@@ -58,6 +60,7 @@ import {
 /** @typedef {import("../webui/src/bridge").NativeGroup} NativeGroup */
 /** @typedef {import("../webui/src/bridge").NativeExtension} NativeExtension */
 /** @typedef {{ label: string, level: number, selected: boolean, expanded: string | null, tree: string }} Row */
+/** Something found by its accessible name: the whole name, or a pattern. @typedef {string | { re: string }} Label */
 
 const repo = resolve(import.meta.dirname, "..");
 const chrome = chromePath();
@@ -299,7 +302,6 @@ const HELPERS = `window.__qa ??= (() => {
 function driver(s) {
 	/** @param {string} expression @param {boolean} [gesture] */
 	const run = (expression, gesture = false) => evaluate(s, `(${HELPERS}, ${expression})`, gesture);
-	/** @typedef {string | { re: string }} Label */
 	/** @param {Label} label @param {string} [role] @returns {Promise<{ x: number, y: number, top: number, bottom: number, left: number, right: number, height: number, width: number } | null>} */
 	const box = (label, role = "") => run(`window.__qa.box(${JSON.stringify(label)}, ${JSON.stringify(role)})`);
 	/**
@@ -499,7 +501,77 @@ async function attachSidebar(b, pick = () => true) {
 		groups: () => ask("getGroups"),
 		/** @returns {Promise<NativeExtension[]>} */
 		extensions: () => ask("getExtensions"),
+		/**
+		 * A drag with a real mouse, grabbing the row by its icon the way people pick a tab up: messages posted to the
+		 * window (scripts/window-input.ps1) take Chromium's own Win32 path, where a press on an image can start the
+		 * browser's own image drag; CDP's Input events start inside the page and skip that. Presses, moves past the
+		 * threshold, looks again (a drag can open drop zones that move the target), then lets go on `to` at `at` (0 top
+		 * edge .. 1 bottom edge). Says whether the row's icon was an image.
+		 * @param {Label} from @param {Label} to @param {number} at @param {string} [toRole]
+		 */
+		async realDrag(from, to, at, toRole = "[role=treeitem]") {
+			/** @returns {Promise<{ x: number, y: number, image: boolean } | null>} */
+			const iconAt = () =>
+				d.run(
+					`(() => { const fav = window.__qa.find(${JSON.stringify(from)}, "[role=treeitem]")?.querySelector(".fav"); if (!fav) return null; fav.scrollIntoView({ block: "nearest" }); const r = fav.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, image: Boolean(fav.querySelector("img:not([hidden])")) }; })()`,
+				);
+			// Where it is once it stops moving: a row that just moved slides from where it was.
+			let icon = await until(iconAt, 6000);
+			for (let i = 0; i < 30 && icon; i++) {
+				await sleep(70);
+				const now = await iconAt();
+				if (now && Math.abs(now.y - icon.y) < 0.5 && Math.abs(now.x - icon.x) < 0.5) break;
+				icon = now ?? icon;
+			}
+			if (!icon) throw new Error(`no icon on ${show(from)} to grab`);
+			const origin = await sidebarOrigin(d);
+			const post = (/** @type {string} */ kind, /** @type {number} */ x, /** @type {number} */ y) =>
+				windowInput(ctx.browser.pid, kind, x + origin.x, y + origin.y);
+			post("down", icon.x, icon.y);
+			post("hold", icon.x, icon.y - 10);
+			await sleep(400);
+			const target = await until(() => d.box(to, toRole), 3000);
+			if (!target) {
+				post("up", icon.x, icon.y - 10);
+				throw new Error(`${show(to)} went away during the drag`);
+			}
+			const ty = target.top + target.height * at;
+			post("hold", target.x, ty - 3);
+			post("hold", target.x, ty);
+			await sleep(120);
+			post("up", target.x, ty);
+			return { image: icon.image };
+		},
 	};
+}
+
+/**
+ * Real mouse input: posts `kind` (scripts/window-input.ps1: move, down, hold, up, ...) to the browser's window at
+ * client DIPs (x, y). @param {number} pid @param {string} kind @param {number} x @param {number} y
+ */
+function windowInput(pid, kind, x, y) {
+	const args = ["-ProcId", String(pid), "-Kind", kind, "-X", String(Math.round(x)), "-Y", String(Math.round(y))];
+	const run = spawnSync("powershell", ["-NoProfile", "-File", join(repo, "scripts", "window-input.ps1"), ...args], {
+		encoding: "utf8",
+	});
+	if (!run.stdout.includes("posted"))
+		throw new Error(`window-input ${kind}: ${run.stdout.trim()} ${run.stderr.trim()}`);
+}
+
+/**
+ * Where the sidebar page's (0, 0) is in the window's client area: a posted move, and where the page saw it.
+ * @param {Driver} d
+ */
+async function sidebarOrigin(d) {
+	await d.run(
+		`(window.__qaMoves ??= (addEventListener("pointermove", (e) => window.__qaMoves.push([e.clientX, e.clientY]), true), []), window.__qaMoves.length = 0, true)`,
+	);
+	const probe = { x: 150, y: 400 };
+	windowInput(ctx.browser.pid, "move", probe.x, probe.y);
+	/** @type {[number, number] | undefined} */
+	const seen = await until(() => d.run("window.__qaMoves.at(-1)"), 3000);
+	if (!seen) throw new Error("the sidebar never saw a posted mouse move");
+	return { x: probe.x - seen[0], y: probe.y - seen[1] };
 }
 /** @typedef {Awaited<ReturnType<typeof attachSidebar>>} Sidebar */
 
@@ -1213,6 +1285,20 @@ async function pinning() {
 		show(pinnedLines(st ?? (await sb.state()), spaceNamed(st ?? (await sb.state()), "Research")?.pinned ?? [])),
 	);
 	await step("pinned-two");
+	// Reorder inside Pinned with a real mouse, grabbing Golf by its icon: it goes above Foxtrot.
+	const reorder = await sb.realDrag({ re: "^QA Golf$" }, { re: "^QA Foxtrot$" }, 0.2);
+	/** @param {BrowserState} now */
+	const researchLines = (now) => pinnedLines(now, spaceNamed(now, "Research")?.pinned ?? []);
+	const reordered = await until(async () => {
+		const lines = researchLines(await sb.state());
+		return lines.indexOf("0:QA Golf") >= 0 && lines.indexOf("0:QA Golf") < lines.indexOf("0:QA Foxtrot");
+	}, 4000);
+	check(
+		"a real mouse reorders inside Pinned, grabbing the row by its icon",
+		reordered,
+		`${reorder.image ? "grabbed by its icon image" : "the row's icon was a letter, not an image"}; ${show(researchLines(await sb.state()))}`,
+	);
+	await step("pinned-reordered");
 	// Unpin.
 	await sb.click("QA Golf", { role: "[role=treeitem]", button: "right" });
 	await sb.click("Unpin", { role: "[role=menuitem]" });
@@ -1308,6 +1394,27 @@ async function pinning() {
 	);
 	check("with its own icon on the row", icon, show(icon));
 	await step("reloaded");
+
+	// Out of a pinned folder into the open tabs and back in, with a real mouse grabbing Foxtrot by its icon.
+	await sb.realDrag({ re: "^QA Foxtrot$" }, { re: "^QA Hotel$" }, 0.8);
+	const out = await until(async () => {
+		const now = await sb.state();
+		return openTitles(now, "Research").includes("QA Foxtrot") && !researchLines(now).includes("2:QA Foxtrot");
+	}, 4000);
+	const afterOut = await sb.state();
+	check(
+		"a real mouse drags a tab out of a pinned folder into the open tabs",
+		out,
+		`open ${show(openTitles(afterOut, "Research"))}; pinned ${show(researchLines(afterOut))}`,
+	);
+	await sb.realDrag({ re: "^QA Foxtrot$" }, { re: "^Deep$" }, 0.5);
+	const back = await until(async () => researchLines(await sb.state()).includes("2:QA Foxtrot"), 4000);
+	check(
+		"and back into the folder",
+		out && back,
+		`pinned ${show(researchLines(await sb.state()))}; open ${show(openTitles(await sb.state(), "Research"))}`,
+	);
+	await step("folder-out-and-back");
 
 	// Essentials: from the menu and by a drag; they show in every space.
 	await sb.click("QA Golf", { role: "[role=treeitem]", button: "right" });

@@ -1435,6 +1435,11 @@ export class LokaSidebar extends LitElement {
 					void this.closePanel();
 				}}
 				@loka-close-panel=${() => void this.closePanel()}
+				@dragstart=${(e: DragEvent) => {
+					// The browser's own drag of a favicon image would cancel the pointer drag under it (pointercancel):
+					// a press on a row's icon then moved nothing. Sidebar drags are pointer events only.
+					e.preventDefault();
+				}}
 				@wheel=${this.onWheel}
 				@contextmenu=${(e: MouseEvent) => this.backgroundMenu(e)}>
 				${this.topRow()}

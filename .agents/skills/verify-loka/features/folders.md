@@ -49,8 +49,10 @@ Preconditions: seed data, `Build` space active.
 - **Recipes.** `node .agents/skills/verify-loka/scripts/run.mjs folders` and `make-folders`.
 - **In the browser.** `bun run verify -- --ux folders` runs both recipes and verify:flows `pinning`: "New folder
   asks for its name", "folders nest two deep and take a tab", "Rename renames and a click folds the folder", "a
-  folded folder hides what's inside"; `restart` keeps them. The browser never sees folders, only each space's tab
-  group. Not checked in the browser: Ungroup, the no-cycle rule, tab-on-tab folders, Escape on a rename.
+  folded folder hides what's inside", and with a real mouse (posted messages, the row grabbed by its icon) "a real
+  mouse reorders inside Pinned", "a real mouse drags a tab out of a pinned folder into the open tabs", "and back
+  into the folder"; `restart` keeps them. The browser never sees folders, only each space's tab group. Not checked
+  in the browser: Ungroup, the no-cycle rule, tab-on-tab folders, Escape on a rename.
 
 ## Gotchas
 
@@ -58,3 +60,6 @@ Preconditions: seed data, `Build` space active.
   Use `"after"` on the folder's last child to land after the folder.
 - A folder made from the sidebar starts in rename mode with the text selected. Typing replaces `New folder`.
 - Clicking a folder row toggles it, so a stray click before a drag changes the outline.
+- The prototype draws letter tiles, never favicon images, so it can't show a bug that needs a real icon: a press on a
+  favicon `<img>` used to start the browser's own image drag, whose `pointercancel` ended the pointer drag. The
+  sidebar cancels `dragstart`; only the browser flows (real icons, real mouse) prove drags that start on an icon.

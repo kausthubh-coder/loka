@@ -1590,7 +1590,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h
-@@ -0,0 +1,211 @@
+@@ -0,0 +1,225 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1608,6 +1608,7 @@
 +
 +#include "base/memory/raw_ptr.h"
 +#include "base/memory/weak_ptr.h"
++#include "base/scoped_multi_source_observation.h"
 +#include "base/scoped_observation.h"
 +#include "base/values.h"
 +#include "chrome/browser/extensions/extension_action_dispatcher.h"
@@ -1616,6 +1617,8 @@
 +#include "components/download/content/public/all_download_item_notifier.h"
 +#include "components/omnibox/browser/autocomplete_controller.h"
 +#include "components/prefs/pref_change_registrar.h"
++#include "extensions/browser/extension_host.h"
++#include "extensions/browser/extension_host_observer.h"
 +#include "components/tab_groups/tab_group_id.h"
 +#include "content/public/browser/web_ui_message_handler.h"
 +#include "ui/gfx/image/image_skia.h"
@@ -1652,7 +1655,8 @@
 +                           public ToolbarActionsModel::Observer,
 +                           public extensions::ExtensionActionDispatcher::Observer,
 +                           public download::AllDownloadItemNotifier::Observer,
-+                           public AutocompleteController::Observer {
++                           public AutocompleteController::Observer,
++                           public extensions::ExtensionHostObserver {
 + public:
 +  // Ctrl+T and Ctrl+L: hands `command` to the sidebar of `browser`'s window
 +  // and focuses it. False when that window has no sidebar to take it.
@@ -1705,6 +1709,9 @@
 +  // AutocompleteController::Observer:
 +  void OnResultChanged(AutocompleteController* controller,
 +                       bool default_match_changed) override;
++
++  // extensions::ExtensionHostObserver (extension popups):
++  void OnExtensionHostDestroyed(extensions::ExtensionHost* host) override;
 +
 + private:
 +  // The browser features beyond tabs, in loka_sidebar_handler_features.cc.
@@ -1798,13 +1805,20 @@
 +  // Tabs the sidebar just resumed: they count as playing until sound starts
 +  // again (or a few seconds pass), so the card doesn't blink.
 +  std::map<int32_t, base::TimeTicks> resuming_;
++  // When each extension's popup last closed: clicking its button while the
++  // popup is open closes the popup first, and that same click mustn't open
++  // it again.
++  std::map<std::string, base::TimeTicks> popup_closed_;
++  base::ScopedMultiSourceObservation<extensions::ExtensionHost,
++                                     extensions::ExtensionHostObserver>
++      popup_observations_{this};
 +  base::WeakPtrFactory<LokaSidebarHandler> weak_factory_{this};
 +};
 +
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler_features.cc
-@@ -0,0 +1,736 @@
+@@ -0,0 +1,768 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2179,6 +2193,21 @@
 +  if (!extension || !active) {
 +    return;
 +  }
++  // The click that just closed this extension's popup (it closes when the
++  // sidebar is clicked) is a toggle, not a request to open it again.
++  if (auto closed = popup_closed_.find(extension->id());
++      closed != popup_closed_.end() &&
++      base::TimeTicks::Now() - closed->second < base::Milliseconds(400)) {
++    popup_closed_.erase(closed);
++    return;
++  }
++  // Clicking the button of an open popup closes it.
++  for (extensions::ExtensionHost* open : popup_observations_.sources()) {
++    if (open->extension_id() == extension->id()) {
++      open->Close();
++      return;
++    }
++  }
 +  auto* runner = extensions::ExtensionActionRunner::GetForWebContents(active);
 +  if (!runner || runner->RunAction(extension, /*grant_tab_permissions=*/true) !=
 +                     extensions::ExtensionAction::ShowAction::kShowPopup) {
@@ -2215,7 +2244,18 @@
 +  // The popup opens beside the sidebar, level with the button.
 +  ExtensionPopup::ShowPopup(browser, std::move(host), views::BubbleAnchor(anchor),
 +                            views::BubbleBorder::LEFT_TOP,
-+                            PopupShowAction::kShow, base::DoNothing());
++                            PopupShowAction::kShow,
++                            base::BindOnce(
++                                [](base::WeakPtr<LokaSidebarHandler> self,
++                                   extensions::ExtensionHost* host) {
++                                  if (self && host &&
++                                      !self->popup_observations_
++                                           .IsObservingSource(host)) {
++                                    self->popup_observations_.AddObservation(
++                                        host);
++                                  }
++                                },
++                                weak_factory_.GetWeakPtr()));
 +}
 +
 +void LokaSidebarHandler::HandleSetExtensionPinned(const base::ListValue& args) {
@@ -2540,6 +2580,12 @@
 +  if (theme->GetUserColor() != color) {
 +    theme->SetUserColor(color);
 +  }
++}
++
++void LokaSidebarHandler::OnExtensionHostDestroyed(
++    extensions::ExtensionHost* host) {
++  popup_closed_[host->extension_id()] = base::TimeTicks::Now();
++  popup_observations_.RemoveObservation(host);
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.cc

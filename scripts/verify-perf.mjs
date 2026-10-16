@@ -31,15 +31,7 @@ import { createServer } from "node:http";
 import { cpus } from "node:os";
 import { join, resolve } from "node:path";
 import { BUILD_DIR, buildRunning } from "./browser.mjs";
-import {
-	askExpression,
-	connect,
-	evaluate,
-	launchBrowser,
-	sleep,
-	until,
-	useCheckoutWebui,
-} from "./browser-session.mjs";
+import { askExpression, connect, evaluate, launchBrowser, sleep, until, useCheckoutWebui } from "./browser-session.mjs";
 
 /** @typedef {import("./browser-session.mjs").Session} Session */
 /** @typedef {import("../prototype/src/features/sidebar/sidebar.logic").BrowserState} BrowserState */

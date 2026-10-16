@@ -26,6 +26,7 @@ page with a C++ model behind it. The browser build is Helium's Python build plus
 | `prototype/src/features/command-bar/` | Ctrl+K bar and URL parsing |
 | `prototype/src/features/page/` | stand-in for the web view |
 | `prototype/src/app/loka-app.ts` | window shell: owns state, saves it, global shortcuts, space theme |
+| `site/` | landing page (`index.html`, `src/main.ts`, `src/site.css`). Embeds the real `<loka-app>` from `prototype/`, so a prototype change shows up there too. Logo: `site/public/icon.svg` |
 | `scripts/` | `setup`, `doctor`, `cloud.mjs` (cloud sessions), `test-browser.mjs` (Playwright's browser), `browser.mjs` (build checkout), `loka_build.py` (dev builds) |
 | `patches/loka/` + end of `patches/series` | Loka's Chromium patches, applied after Helium's (folder appears with the first patch; Helium's linter rejects any file not in the series) |
 | `build.py`, `patches/`, `helium-chromium/`, `.github/` | Helium's, kept where Helium has them so merges stay clean |
@@ -41,6 +42,9 @@ No barrel files. The sidebar model is the spec for the future C++ model, so keep
 - Doctor: `bun run doctor` (add `--browser` for the Chromium toolchain, Windows only). Run it first when anything looks off.
 - Remove a worktree: `bun run worktree:remove <path>` (stops its dev server, removes the skills junction safely)
 - Dev: `bun run dev` (port from `PORT` in `.env.local`; ready when Vite prints `Local: http://localhost:<port>/`)
+- Landing page: `bun run site:dev` (port `PORT + 1`), `bun run site:build` (to `site/dist`). The waitlist form posts
+  JSON `{ email, wants, source }` to `VITE_WAITLIST_URL` at build time; without it the form says the waitlist isn't
+  open yet.
 - Test one file: `bun test prototype/src/features/sidebar/sidebar.test.ts`
 - Typecheck and lint the files you changed: `bunx tsc --noEmit` and `bunx biome check <files>`
 - Full check (CI runs this; run it only when asked): `bun run check`

@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="color-scheme" content="dark" />
+		<meta name="theme-color" content="#0a0e15" />
+		<title>Loka: every space is its own world</title>
+		<meta
+			name="description"
+			content="Loka is an open-source browser built on Helium. Sort tabs into spaces and nested folders, keep Chromium's speed, and leave Google out."
+		/>
+		<meta property="og:title" content="Loka: every space is its own world" />
+		<meta
+			property="og:description"
+			content="An open-source, Arc-style browser built on Helium. Spaces, folders inside folders, no Google inside."
+		/>
+		<meta property="og:image" content="/og.png" />
+		<meta property="og:type" content="website" />
+		<meta name="twitter:card" content="summary_large_image" />
+		<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+		<script type="module" src="/src/main.ts"></script>
+	</head>
+	<body>
+		<canvas class="stars" aria-hidden="true"></canvas>
+
+		<header class="nav">
+			<a class="brand" href="#top" aria-label="Loka home">
+				<img src="/icon.svg" alt="" width="28" height="28" />
+				<span>Loka</span>
+			</a>
+			<nav aria-label="Sections">
+				<a href="#spaces">Spaces</a>
+				<a href="#helium">Helium inside</a>
+				<a href="#roadmap">Roadmap</a>
+				<a href="#open-source">Open source</a>
+			</nav>
+			<div class="nav-actions">
+				<a class="gh-link" href="https://github.com/kausthubh-coder/loka">
+					<span class="visually-hidden">Loka on GitHub</span>
+					<svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.8.06 1.23.83 1.23.83.72 1.22 1.88.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></svg>
+					<span class="gh-stars" hidden></span>
+				</a>
+				<a class="button small" href="#join">Join the waitlist</a>
+			</div>
+		</header>
+
+		<main id="top">
+			<section class="hero">
+				<p class="eyebrow"><span class="pulse" aria-hidden="true"></span> Open source · Built on Helium · Windows first</p>
+				<h1>Every space is its own <em>world</em>.</h1>
+				<p class="lede">
+					Loka is a browser for people with forty tabs open. Sort them into spaces and folders inside folders, then
+					jump between them with one key. Underneath it's Helium: Chromium with Google taken out and uBlock Origin
+					built in.
+				</p>
+				<form class="waitlist" data-waitlist novalidate>
+					<label class="visually-hidden" for="email-hero">Email</label>
+					<input id="email-hero" name="email" type="email" autocomplete="email" placeholder="you@example.com" required />
+					<button class="button" type="submit">Join the waitlist</button>
+					<p class="form-note" role="status">One email when the first Windows build is ready. No newsletter.</p>
+				</form>
+
+				<figure class="demo" id="demo">
+					<div class="horizon" aria-hidden="true"></div>
+					<div class="demo-glow" aria-hidden="true"></div>
+					<div class="demo-frame">
+						<div class="demo-scale">
+							<loka-app></loka-app>
+						</div>
+					</div>
+					<figcaption>
+						<span class="live-dot" aria-hidden="true"></span>
+						This is the real sidebar, running in this page. Drag a tab into a folder. Click inside, then press
+						<kbd>Ctrl</kbd> <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> to switch spaces or <kbd>Ctrl</kbd> <kbd>K</kbd> to open a tab.
+					</figcaption>
+				</figure>
+			</section>
+
+			<section class="meaning" data-hue="200" aria-labelledby="meaning-title">
+				<p class="devanagari" aria-hidden="true">लोक</p>
+				<div>
+					<h2 id="meaning-title" class="dictionary"><span>loka</span> <i>noun, Sanskrit</i></h2>
+					<p>
+						A world. A realm with its own light. Old cosmology counts many lokas, each a separate place you can travel
+						to. Loka gives each part of your life a world like that, with its own tabs, its own folders and its own
+						color.
+					</p>
+				</div>
+			</section>
+
+			<section class="spaces" id="spaces" aria-labelledby="spaces-title">
+				<div class="section-head">
+					<p class="kicker">Spaces</p>
+					<h2 id="spaces-title">Tabs, sorted the way your life <em>already is</em>.</h2>
+				</div>
+				<div class="spaces-grid">
+					<div class="spaces-visual">
+						<div class="mock" data-mock></div>
+					</div>
+					<ol class="steps">
+						<li class="step" data-hue="150" data-space="s-home" data-focus="switcher">
+							<span class="step-num">01</span>
+							<h3>One space per part of your life.</h3>
+							<p>
+								Work, school, a side project, the things you read at night. Each space keeps its own pinned tabs, open
+								tabs and color. <kbd>Ctrl</kbd> <kbd>1</kbd> to <kbd>9</kbd> jumps between them, and the whole window
+								takes on that space's color, so you always know where you are.
+							</p>
+						</li>
+						<li class="step" data-hue="30" data-space="s-school" data-focus="tree">
+							<span class="step-num">02</span>
+							<h3>Folders that hold folders.</h3>
+							<p>
+								Pin a tab and it stays. Group pinned tabs into folders, put a folder inside another, and drag anything
+								anywhere. A class gets a folder. Its group project gets a folder inside that one.
+							</p>
+						</li>
+						<li class="step" data-hue="200" data-space="s-build" data-focus="essentials">
+							<span class="step-num">03</span>
+							<h3>Pinned tabs stay. Open tabs go.</h3>
+							<p>
+								Closing a pinned tab only unloads it, so it's still there tomorrow. Tabs under the divider are for right
+								now, and closing one deletes it. Essentials, the icon grid at the top, follow you into every space.
+							</p>
+						</li>
+					</ol>
+				</div>
+			</section>
+
+			<section class="helium" id="helium" data-hue="255" aria-labelledby="helium-title">
+				<div class="section-head">
+					<p class="kicker">Helium inside</p>
+					<h2 id="helium-title">Fast and private, <em>because it's Helium</em>.</h2>
+					<p class="section-lede">
+						Loka doesn't write a browser engine. It's
+						<a href="https://github.com/imputnet/helium">Helium</a> with a new sidebar, and Helium is ungoogled-chromium
+						with the rough edges sanded off. All of this is there before Loka adds a line.
+					</p>
+				</div>
+				<div class="bento">
+					<article class="card span-2 card-google">
+						<div class="card-art" aria-hidden="true">
+							<span class="strike">accounts.google.com</span>
+							<span class="strike">clients2.google.com</span>
+							<span class="strike">update.googleapis.com</span>
+						</div>
+						<h3>No Google inside.</h3>
+						<p>
+							Built on ungoogled-chromium. No Google account, no Google sync, and no usage reports sent anywhere. Even
+							extension installs go through Helium's servers instead of Google's.
+						</p>
+					</article>
+					<article class="card">
+						<div class="card-icon" aria-hidden="true">
+							<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+						</div>
+						<h3>uBlock Origin from the first launch.</h3>
+						<p>Helium ships its own build of uBlock Origin, so ads and trackers are gone before you install anything.</p>
+					</article>
+					<article class="card">
+						<div class="card-icon" aria-hidden="true">
+							<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+						</div>
+						<h3>Your Chrome extensions work.</h3>
+						<p>Install from the Chrome Web Store like you always have. Same engine, same extensions.</p>
+					</article>
+					<article class="card card-bang">
+						<div class="bang-demo" aria-hidden="true">
+							<span class="bang-input"><b>!gh</b> <span data-bang-text>loka</span><i class="caret"></i></span>
+							<span class="bang-target" data-bang-target>github.com/search</span>
+						</div>
+						<h3>!bangs in the address bar.</h3>
+						<p>Type <code>!gh loka</code> or <code>!w Chromium</code> and land on that site's search results.</p>
+					</article>
+					<article class="card">
+						<div class="card-icon" aria-hidden="true">
+							<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>
+						</div>
+						<h3>Tabs sleep when you leave.</h3>
+						<p>Memory Saver is on by default, so forty tabs don't cost forty tabs' worth of RAM.</p>
+					</article>
+					<article class="card">
+						<div class="card-icon" aria-hidden="true">
+							<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+						</div>
+						<h3>HTTPS first.</h3>
+						<p>Pages load over HTTPS when the site supports it, and you get a warning before a plain HTTP page.</p>
+					</article>
+					<article class="card card-engine">
+						<div class="engine-version" aria-hidden="true">155</div>
+						<div>
+							<h3>Current Chromium.</h3>
+							<p>
+								Chromium 155 today, updated with every Helium release. Sites work the way they do in Chrome, because
+								underneath it's the same engine.
+							</p>
+						</div>
+					</article>
+				</div>
+			</section>
+
+			<section class="compare" data-hue="255" aria-labelledby="compare-title">
+				<div class="section-head">
+					<p class="kicker">Why another browser</p>
+					<h2 id="compare-title">Arc's idea, on an <em>open</em> engine.</h2>
+					<p class="section-lede">
+						Arc showed that a sidebar of spaces is a better way to hold tabs, then stopped adding features in 2025. Zen
+						carries the idea on Firefox. Loka brings it to Chromium, in the open, with Helium's privacy.
+					</p>
+				</div>
+				<div class="table-wrap">
+					<table>
+						<thead>
+							<tr>
+								<th scope="col"><span class="visually-hidden">Feature</span></th>
+								<th scope="col" class="us"><img src="/icon.svg" alt="" width="18" height="18" /> Loka</th>
+								<th scope="col">Arc</th>
+								<th scope="col">Zen</th>
+								<th scope="col">Chrome</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr>
+								<th scope="row">Engine</th>
+								<td class="us">Chromium</td>
+								<td>Chromium</td>
+								<td>Firefox</td>
+								<td>Chromium</td>
+							</tr>
+							<tr>
+								<th scope="row">Open source</th>
+								<td class="us"><span class="yes">Yes, GPL-3.0</span></td>
+								<td><span class="no">No</span></td>
+								<td><span class="yes">Yes</span></td>
+								<td><span class="no">No</span></td>
+							</tr>
+							<tr>
+								<th scope="row">Chrome Web Store extensions</th>
+								<td class="us"><span class="yes">Yes</span></td>
+								<td><span class="yes">Yes</span></td>
+								<td><span class="no">No</span></td>
+								<td><span class="yes">Yes</span></td>
+							</tr>
+							<tr>
+								<th scope="row">Spaces with pinned folders</th>
+								<td class="us"><span class="yes">Yes</span></td>
+								<td><span class="yes">Yes</span></td>
+								<td><span class="yes">Yes</span></td>
+								<td><span class="no">Tab groups</span></td>
+							</tr>
+							<tr>
+								<th scope="row">Getting new features</th>
+								<td class="us"><span class="yes">Yes</span></td>
+								<td><span class="no">Maintenance only</span></td>
+								<td><span class="yes">Yes</span></td>
+								<td><span class="yes">Yes</span></td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</section>
+
+			<section class="roadmap" id="roadmap" data-hue="320" aria-labelledby="roadmap-title">
+				<div class="section-head">
+					<p class="kicker">Roadmap</p>
+					<h2 id="roadmap-title">What we want to build <em>next</em>.</h2>
+					<p class="section-lede">
+						These are ideas, not promises. Mark the ones you want, and they'll go with your waitlist signup. The most
+						wanted get built first.
+					</p>
+				</div>
+				<div class="ideas">
+					<article class="idea shipped">
+						<span class="tag">In the prototype</span>
+						<h3>Window tint per space</h3>
+						<p>The whole window takes on the active space's color and fades to the next one when you switch.</p>
+						<a class="want try-it" href="#demo">Try it above</a>
+					</article>
+					<article class="idea shipped">
+						<span class="tag">In the prototype</span>
+						<h3>Spaces as a file</h3>
+						<p>Export every space to JSON and import it anywhere. Your tabs stay yours, in a format you can read.</p>
+						<a class="want try-it" href="#demo">Try it in the ··· menu</a>
+					</article>
+					<article class="idea" data-idea="Routes">
+						<span class="tag">Idea</span>
+						<h3>Routes</h3>
+						<p>Rules that send links to the right space. GitHub links open in Build and Canvas opens in School, wherever you clicked them.</p>
+						<button class="want" type="button" aria-pressed="false">Want this</button>
+					</article>
+					<article class="idea" data-idea="Quiet spaces">
+						<span class="tag">Idea</span>
+						<h3>Quiet spaces</h3>
+						<p>Notifications from other spaces wait until you switch to them. Studying in School means Build stays silent.</p>
+						<button class="want" type="button" aria-pressed="false">Want this</button>
+					</article>
+					<article class="idea" data-idea="Live folders">
+						<span class="tag">Idea</span>
+						<h3>Live folders</h3>
+						<p>A folder that fills itself: your open pull requests, an RSS feed, or the links in today's calendar.</p>
+						<button class="want" type="button" aria-pressed="false">Want this</button>
+					</article>
+					<article class="idea" data-idea="Sleep a space">
+						<span class="tag">Idea</span>
+						<h3>Sleep a space</h3>
+						<p>See how much memory each space uses, and put a whole space to sleep with one click.</p>
+						<button class="want" type="button" aria-pressed="false">Want this</button>
+					</article>
+					<article class="idea" data-idea="Send a folder">
+						<span class="tag">Idea</span>
+						<h3>Send a folder</h3>
+						<p>Share a pinned folder as a link. A friend opens it in Loka, or as a plain list of links in any browser.</p>
+						<button class="want" type="button" aria-pressed="false">Want this</button>
+					</article>
+					<article class="idea" data-idea="Peek">
+						<span class="tag">Idea</span>
+						<h3>Peek</h3>
+						<p>Open a link in a floating preview over the page. Keep it, send it to a space, or let it close.</p>
+						<button class="want" type="button" aria-pressed="false">Want this</button>
+					</article>
+					<article class="idea" data-idea="Logins per space">
+						<span class="tag">Idea</span>
+						<h3>Logins per space</h3>
+						<p>Each space keeps its own cookies, so your work account and personal account never sign each other out.</p>
+						<button class="want" type="button" aria-pressed="false">Want this</button>
+					</article>
+					<article class="idea" data-idea="Arc import">
+						<span class="tag">Idea</span>
+						<h3>Arc import</h3>
+						<p>Helium already reads Arc's sidebar. Loka would turn your Arc spaces and pinned folders into Loka spaces, as they were.</p>
+						<button class="want" type="button" aria-pressed="false">Want this</button>
+					</article>
+					<article class="idea" data-idea="Timed spaces">
+						<span class="tag">Idea</span>
+						<h3>Timed spaces</h3>
+						<p>Spaces that open themselves on a schedule. Work at 9 on weekdays, Home after 6, nothing to click.</p>
+						<button class="want" type="button" aria-pressed="false">Want this</button>
+					</article>
+					<article class="idea" data-idea="Tab tide">
+						<span class="tag">Idea</span>
+						<h3>Tab tide</h3>
+						<p>Open tabs you haven't touched in a day drift into an archive, so the list stays short without you closing anything.</p>
+						<button class="want" type="button" aria-pressed="false">Want this</button>
+					</article>
+				</div>
+			</section>
+
+			<section class="open-source" id="open-source" data-hue="165" aria-labelledby="oss-title">
+				<div class="section-head">
+					<p class="kicker">Open source</p>
+					<h2 id="oss-title">Built in the <em>open</em>.</h2>
+					<p class="section-lede">
+						Loka is GPL-3.0, like Helium. Every Chromium patch and every sidebar rule is in the repo. The sidebar runs
+						as a web prototype today, and moves into Chromium as a WebUI page with a C++ model behind it.
+					</p>
+				</div>
+				<div class="oss-grid">
+					<div class="repo-card">
+						<div class="repo-head">
+							<img src="/icon.svg" alt="" width="40" height="40" />
+							<div>
+								<a class="repo-name" href="https://github.com/kausthubh-coder/loka">kausthubh-coder/<b>loka</b></a>
+								<p class="repo-desc">An open-source Arc/Zen-style browser on Helium.</p>
+							</div>
+						</div>
+						<div class="repo-actions">
+							<a class="button ghost" href="https://github.com/kausthubh-coder/loka">Star on GitHub</a>
+							<a class="button ghost" href="https://github.com/kausthubh-coder/loka/releases">Releases</a>
+						</div>
+						<p class="commits-title">Latest commits</p>
+						<ul class="commits" data-commits>
+							<li class="commit-empty">Loading from GitHub...</li>
+						</ul>
+						<div class="try">
+							<p class="commits-title">Run the sidebar on your machine</p>
+							<pre><code>git clone https://github.com/kausthubh-coder/loka
+cd loka
+bun run setup
+bun run dev</code></pre>
+							<button class="copy" type="button" data-copy>Copy</button>
+						</div>
+					</div>
+					<figure class="rings">
+						<svg viewBox="0 0 400 400" role="img" aria-labelledby="rings-title">
+							<title id="rings-title">Loka sits on Helium, which sits on ungoogled-chromium, which sits on Chromium.</title>
+							<defs>
+								<linearGradient id="ring-lit" x1="0" y1="0" x2="0" y2="1">
+									<stop offset="0" stop-color="#8ae8ff" />
+									<stop offset="0.5" stop-color="#5ab0ff" />
+									<stop offset="1" stop-color="#ffa45c" />
+								</linearGradient>
+							</defs>
+							<circle cx="200" cy="200" r="190" class="ring r1" />
+							<circle cx="200" cy="200" r="140" class="ring r2" />
+							<circle cx="200" cy="200" r="92" class="ring r3" />
+							<circle cx="200" cy="200" r="46" fill="url(#ring-lit)" />
+							<text x="200" y="35" class="ring-label">Chromium 155</text>
+							<text x="200" y="85" class="ring-label">ungoogled-chromium</text>
+							<text x="200" y="133" class="ring-label">Helium</text>
+							<text x="200" y="206" class="ring-label core">Loka</text>
+						</svg>
+						<figcaption>Each layer keeps the one below it. Loka merges every Helium release instead of forking away.</figcaption>
+					</figure>
+				</div>
+			</section>
+
+			<section class="faq" data-hue="165" aria-labelledby="faq-title">
+				<div class="section-head">
+					<p class="kicker">Questions</p>
+					<h2 id="faq-title">Fair <em>questions</em>.</h2>
+				</div>
+				<div class="faq-list">
+					<details>
+						<summary>When can I use it?</summary>
+						<p>
+							The sidebar works today as a web prototype, the one at the top of this page. The browser build is Helium
+							with Loka's patches still to come. Join the waitlist and you'll get one email when there's a Windows build
+							worth using every day.
+						</p>
+					</details>
+					<details>
+						<summary>Is it free?</summary>
+						<p>Yes. Free and open source under GPL-3.0, with no account needed.</p>
+					</details>
+					<details>
+						<summary>What about Mac and Linux?</summary>
+						<p>
+							Windows comes first. Helium already runs on macOS and Linux, so ports are realistic once the Windows build
+							is solid.
+						</p>
+					</details>
+					<details>
+						<summary>Why not just use Helium?</summary>
+						<p>
+							You should, if you like a classic tab strip. Loka is for people who want vertical spaces and folders. Same
+							engine and the same privacy, with a different way of holding tabs.
+						</p>
+					</details>
+					<details>
+						<summary>Is Loka part of Helium?</summary>
+						<p>
+							No. Loka is an independent project built on Helium's open-source code. It isn't affiliated with imput, the
+							team behind Helium, or with Arc or Zen.
+						</p>
+					</details>
+					<details>
+						<summary>How can I help?</summary>
+						<p>
+							Try the prototype, star the repo, and open an issue when something feels slow or wrong. Calm and fast is
+							the whole point, so those reports matter most.
+						</p>
+					</details>
+				</div>
+			</section>
+
+			<section class="final" id="join" data-hue="200" aria-labelledby="join-title">
+				<img class="final-mark" src="/icon.svg" alt="" width="88" height="88" />
+				<h2 id="join-title">Pick your <em>world</em>.</h2>
+				<p class="section-lede">Get one email when the first Windows build is ready.</p>
+				<form class="waitlist" data-waitlist novalidate>
+					<label class="visually-hidden" for="email-final">Email</label>
+					<input id="email-final" name="email" type="email" autocomplete="email" placeholder="you@example.com" required />
+					<button class="button" type="submit">Join the waitlist</button>
+					<p class="form-note" role="status">
+						<span data-wants-note>Mark ideas in the roadmap and they'll be sent with your email.</span>
+					</p>
+				</form>
+			</section>
+		</main>
+
+		<footer class="footer">
+			<a class="brand" href="#top">
+				<img src="/icon.svg" alt="" width="22" height="22" />
+				<span>Loka</span>
+			</a>
+			<p>
+				GPL-3.0. Built on <a href="https://github.com/imputnet/helium">Helium</a>, not affiliated with imput, Arc or Zen.
+			</p>
+			<p class="privacy-note">
+				This page has no analytics, no cookies and no outside fonts. It asks GitHub's API for recent commits, and sends
+				your email only when you press join.
+			</p>
+		</footer>
+	</body>
+</html>

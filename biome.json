@@ -4,6 +4,7 @@
 	"files": {
 		"includes": [
 			"prototype/**",
+			"site/**",
 			"scripts/**",
 			".agents/skills/*/scripts/**",
 			"package.json",

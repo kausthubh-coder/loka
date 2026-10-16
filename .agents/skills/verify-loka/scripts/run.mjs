@@ -306,6 +306,33 @@ const recipes = {
 		await loka.proof("02-sidebar-right");
 		await settings.getByRole("radio", { name: "Left" }).click();
 
+		// Settings' rail: a click marks its section current and focuses its heading; the search filters the rail.
+		const rail = settings.getByRole("navigation", { name: "Settings sections" });
+		const current = () =>
+			settings.evaluate((el) =>
+				[...(el.shadowRoot?.querySelectorAll('nav button[aria-current="true"]') ?? [])].map((b) =>
+					b.textContent?.trim(),
+				),
+			);
+		await rail.getByRole("button", { name: "Sound" }).click();
+		const heading = settings.getByRole("heading", { name: "Sound", exact: true });
+		let top = -1;
+		for (let i = 0; i < 30 && !(top >= 0 && top < 800 / 3); i++) {
+			await loka.page.waitForTimeout(100);
+			top = (await heading.boundingBox())?.y ?? -1;
+		}
+		assert.ok(top >= 0 && top < 800 / 3, `the Sound heading scrolled near the top (${top})`);
+		assert.deepEqual(await current(), ["Sound"], "the clicked section is the current one");
+		assert.ok(
+			await heading.evaluate((h) => /** @type {ShadowRoot} */ (h.getRootNode()).activeElement === h),
+			"focus moved to its heading",
+		);
+		await settings.getByRole("searchbox", { name: "Search settings" }).fill("autoplay");
+		assert.deepEqual(await rail.getByRole("button").allInnerTexts(), ["Media"], "the search leaves only Media");
+		await loka.proof("02-settings-search");
+		await loka.page.keyboard.press("Escape");
+		assert.equal((await rail.getByRole("button").allInnerTexts()).length, 12, "Escape brings every section back");
+
 		// The top row's button hides the sidebar: the browser (here the fake) unpins it and slides it away.
 		await loka.sidebar.getByRole("button", { name: "Hide sidebar" }).click();
 		await loka.page.waitForTimeout(350);

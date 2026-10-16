@@ -35,7 +35,7 @@ export const UX = {
 	"command-bar": { prototype: ["command-bar"], browser: true, flows: ["tabs", "spaces", "new-tab"] },
 	"space-editor": { prototype: ["space-editor"], flows: ["spaces"] },
 	theme: { prototype: ["theme"], browser: true, flows: ["spaces"] },
-	layout: { prototype: ["layout"], browser: true, flows: ["states"] },
+	layout: { prototype: ["layout"], browser: true, flows: ["states", "settings"] },
 	extensions: { prototype: ["extensions"], browser: true, flows: ["extensions"] },
 	history: { prototype: ["history"], flows: ["settings"] },
 	onboarding: { prototype: ["onboarding"], browser: true, flows: ["first-run"] },

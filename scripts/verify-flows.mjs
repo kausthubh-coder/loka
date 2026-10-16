@@ -19,7 +19,8 @@
 //   5 pinning      pin by menu and drag, unpin, folders two deep, unload a pinned tab and load it back, Essentials
 //   6 extensions   the panel lists them; pin and unpin reach the address field; the icon opens its popup; badges
 //   7 panels       Downloads with a real download, the media card on a playing page, Archive and Search
-//   8 settings     each setting changes what it says; History search, delete and clear today
+//   8 settings     the rail (a click scrolls to its section, the search filters), wide and narrow, light and dark;
+//                  each setting changes what it says; History search, delete and clear today
 //   9 restart      quit and start again: spaces, pinned, folders, Essentials, extension pins and settings stay
 //  10 new tab      no new tab page: New tab opens the bar and makes no tab, Escape leaves the tabs, a pick makes one;
 //                  a new space, its last tab closed and a new window show an empty tab (Loka's page), never a row
@@ -84,6 +85,21 @@ const SETUP_SPACES = [
 	{ name: "Research", planet: "Ocean", color: "Green", kind: "ocean", hue: 150 },
 	{ name: "Play", planet: "Cratered", color: "Pink", kind: "cratered", hue: 330 },
 	{ name: "Code Lab", planet: "Banded", color: "Violet", kind: "banded", hue: 260 },
+];
+/** The rows of chrome://loka-settings' rail, and the sections of the page they stand for, top to bottom. */
+const SETTINGS_RAIL = `nav[aria-label="Settings sections"] button`;
+const SETTINGS_SECTIONS = [
+	"Sidebar",
+	"Spaces",
+	"Sound",
+	"Media",
+	"Tabs",
+	"Extensions",
+	"Sync",
+	"Import",
+	"Privacy and search",
+	"Keyboard shortcuts",
+	"About",
 ];
 
 // ---- results ------------------------------------------------------------------------------------------------------
@@ -1548,6 +1564,57 @@ async function settings() {
 	mkdirSync(dir, { recursive: true });
 	await page.picture(join(dir, "00-settings.png"));
 
+	// The rail: a row per section, in the page's order. A click brings the section into view, marks it current and
+	// moves focus to its heading; the search keeps only the sections with a match, and Escape clears it.
+	const railRows = await page.names(SETTINGS_RAIL);
+	const headings = await page.names("[data-section] > h2");
+	check(
+		"the Settings rail lists every section, in the page's order",
+		show(railRows) === show(SETTINGS_SECTIONS) && show(headings) === show(SETTINGS_SECTIONS),
+		`rail ${show(railRows)}, headings ${show(headings)}`,
+	);
+	await page.click("Sound", { role: SETTINGS_RAIL });
+	/** Where the Sound heading is, and which rail rows are current, once it's settled near the top. */
+	const soundShown = await until(
+		() =>
+			page.run(`(() => {
+				const heading = window.__qa.find("Sound", "[data-section] > h2");
+				const current = window.__qa.all().filter((el) => el.matches(${JSON.stringify(SETTINGS_RAIL)}) && el.getAttribute("aria-current") === "true").map(window.__qa.name);
+				const top = heading ? Math.round(heading.getBoundingClientRect().top) : null;
+				return top !== null && top >= 0 && top < innerHeight / 3 && current.join() === "Sound" ? { top, current, height: innerHeight } : null;
+			})()`),
+		4000,
+	);
+	const soundFocus = await page.focused();
+	check(
+		"clicking Sound in the rail brings its section to the top and marks it current",
+		soundShown,
+		show(soundShown ?? { current: await page.names(`${SETTINGS_RAIL}[aria-current="true"]`) }),
+	);
+	check(
+		"and moves focus to the Sound heading",
+		soundFocus?.tag === "H2" && soundFocus.label === "Sound",
+		`${soundFocus?.tag} ${soundFocus?.label}`,
+	);
+	await page.picture(join(dir, "00-rail-sound.png"));
+	await page.run(`(window.__qa.find("Search settings", "input").focus(), true)`);
+	await page.type("autoplay");
+	const onlyMedia = await until(async () => show(await page.names(SETTINGS_RAIL)) === show(["Media"]), 3000);
+	const autoplayShown = await page.has("Autoplay", "[role=radiogroup]");
+	const othersGone = !(await page.has("Sound effects", "[role=switch]"));
+	check(
+		'search "autoplay" leaves only the Media row and its Autoplay setting',
+		onlyMedia && autoplayShown && othersGone,
+		`rail ${show(await page.names(SETTINGS_RAIL))}, Autoplay shown ${autoplayShown}, Sound effects gone ${othersGone}`,
+	);
+	await page.picture(join(dir, "00-rail-search.png"));
+	await page.key("Escape");
+	const searchCleared = await until(
+		async () => show(await page.names(SETTINGS_RAIL)) === show(SETTINGS_SECTIONS),
+		3000,
+	);
+	check("Escape clears the search and every section comes back", searchCleared, show(await page.names(SETTINGS_RAIL)));
+
 	// Sound effects.
 	const soundBefore = (await sb.ui()).sound ?? true;
 	await page.click("Sound effects", { role: "[role=switch]" });
@@ -1599,6 +1666,30 @@ async function settings() {
 			saved && follows,
 			`scheme ${shownSpace(await sb.state())?.scheme}, page ${want} ${follows}`,
 		);
+		// Settings itself in that scheme, wide and then narrow, where the rail is a bar of chips over the page.
+		await page.run(`(window.__qa.find("Sidebar", ${JSON.stringify(SETTINGS_RAIL)}).click(), true)`);
+		await sleep(700);
+		await page.picture(join(dir, `00-settings-${want}.png`));
+		await page.s.call("Emulation.setDeviceMetricsOverride", {
+			width: 640,
+			height: 860,
+			deviceScaleFactor: 0,
+			mobile: false,
+		});
+		await sleep(500);
+		const chips = await page.run(`(() => {
+			const rows = window.__qa.all().filter((el) => el.matches(${JSON.stringify(SETTINGS_RAIL)}));
+			const [a, b] = rows.map((el) => el.getBoundingClientRect());
+			return a && b ? { sameLine: Math.abs(a.top - b.top) < 1 && b.left > a.right, top: Math.round(a.top) } : null;
+		})()`);
+		check(
+			`at 640 px wide (${scheme}) the rail is a row of chips at the top`,
+			chips?.sameLine && chips.top < 160,
+			show(chips),
+		);
+		await page.picture(join(dir, `00-settings-${want}-narrow.png`));
+		await page.s.call("Emulation.clearDeviceMetricsOverride");
+		await sleep(300);
 	}
 	await page.click("System", { role: `[role=radio]` }).catch(() => {});
 
@@ -1609,7 +1700,12 @@ async function settings() {
 	const hours = await until(async () => (await sb.ui()).archiveAfterHours, 4000);
 	check("Archive open tabs saves its hours", typeof hours === "number" && hours > 0, `archiveAfterHours=${hours}`);
 
-	// Extension pins in Settings and in the sidebar are the same.
+	// Extension pins in Settings and in the sidebar are the same. The extensions flow leaves uBlock unpinned; run
+	// without it (--only settings), a fresh profile has it pinned, so it's unpinned here first.
+	if (await page.has("Unpin uBlock Origin")) {
+		await page.click("Unpin uBlock Origin");
+		await until(() => page.has("Pin uBlock Origin"), 4000);
+	}
 	await page.click("Pin uBlock Origin");
 	const pillBack = await until(async () => (await sb.names(".url button")).includes("uBlock Origin"), 5000);
 	check("pinning in Settings puts it in the sidebar's address field", pillBack, show(await sb.names(".url button")));

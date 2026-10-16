@@ -19,6 +19,11 @@ panels opened from inside the address field.
   `startWindowDrag`, and a double-click maximizes.
 - `page-settings`: Sidebar, Spaces (each space's light or dark, edit, new), Sound, Tabs (archiving), Extensions,
   Sync, Import, Privacy and Search, shortcuts, about.
+- `settings-rail`: the `Settings sections` nav beside the page lists every section with an icon and marks the one in
+  view (`aria-current`, from IntersectionObservers; `settings.logic.ts` picks it). A click scrolls to the section and
+  focuses its heading; Up and Down move between rows. `Search settings` (`/` or Ctrl+F) keeps only the settings whose
+  name or line has every word, marks the words, and drops sections with nothing left; Escape clears it. Below 720 px
+  the rail is a bar of chips that sticks to the top.
 - `downloads-panel`: every state's actions (pause, resume, cancel, try again, open, show in folder, remove), live
   progress, and a progress ring on the Downloads button. Escape closes any panel.
 - `pages-once`: opening Settings again goes to the existing tab, even from another space.
@@ -35,6 +40,9 @@ Preconditions: seed data.
 - **Resize.** Mouse down on `getByRole("separator", { name: "Resize sidebar" })`, move 80 px right, up. `ui()` has
   `sidebarWidth: 380`.
 - **Side.** In `loka-settings`, click the `Right` radio. The sidebar's box is right of the page's.
+- **Settings rail.** In `getByRole("navigation", { name: "Settings sections" })` click `Sound`: the Sound heading
+  scrolls near the top, has focus, and only `Sound` has `aria-current="true"`. Fill `Search settings` with
+  `autoplay`: the rail's buttons are just `Media`. Escape brings all 12 back.
 - **Hide and peek.** Click `Hide sidebar`: `window.lokaDemo.calls` has `setSidebarPinned` with `false` and the
   sidebar is off screen. Move the mouse to x=2; after ~350 ms the sidebar's box starts at x >= 0. Click
   `Keep sidebar open` to pin it back.
@@ -44,7 +52,8 @@ Preconditions: seed data.
 - **In the browser.** `bun run verify -- --ux layout` runs it, verify:browser ("setSidebarPinned(false) reads
   back", "the sidebar answers Windows' hit test as page, not title bar", "a real click (posted WM_LBUTTONDOWN/UP) on
   a tab's row switches to it") and verify:flows `states` (hover, press, focus). `settings` checks "Keep the sidebar
-  open off unpins the sidebar in the browser"; `panels` checks the Downloads panel. Not checked in the browser: the
+  open off unpins the sidebar in the browser" and the rail (its rows, a click on Sound, the "autoplay" search, the
+  chips at 640 px), with pictures in light and dark; `panels` checks the Downloads panel. Not checked in the browser: the
   top row's Hide button, edge peek, Minimize, Maximize, Close, dragging the window by the top row, Reload, and
   download actions.
 - **Real input by hand.** To check a point the way Windows does: `powershell -NoProfile -File

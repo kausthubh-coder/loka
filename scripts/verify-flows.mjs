@@ -1693,6 +1693,7 @@ async function restart() {
 	await until(async () => !(await ctx.sidebar.tabs()).some((t) => t.url.startsWith("chrome://settings")), 5000);
 	const before = await snapshot();
 	const openBefore = (await ctx.sidebar.tabs()).map((t) => t.url).filter((u) => u.startsWith("http"));
+	const emptyBefore = (await ctx.sidebar.tabs()).some((t) => isEmptyTab(t.url));
 	const stBefore = await ctx.sidebar.state();
 	/** @type {Record<string, string>} */
 	const homesBefore = Object.fromEntries(openBefore.map((url) => [url, homeIn(stBefore, url)]));
@@ -1736,6 +1737,21 @@ async function restart() {
 		`before ${openBefore.length}, after ${reattached.length}: ${reattached.map((t) => t.title).join(", ")}`,
 	);
 	check("each one is back in its own space", show(homes) === show(wanted), homes.join(", "));
+	// A window that comes back with its pages shows them: no empty tab joins it and the bar doesn't open over it.
+	const tabsAfter = await ctx.sidebar.tabs();
+	check(
+		"no empty tab joins the restored window",
+		emptyBefore || !tabsAfter.some((t) => isEmptyTab(t.url)),
+		`${emptyBefore ? "there was one before the quit; " : ""}${show(tabsAfter.map((t) => [t.url, t.active]))}`,
+	);
+	let barsShowing = 0;
+	for (const t of await ctx.browser.targets()) {
+		if (!t.url.includes("command.html")) continue;
+		const s = await connect(t.webSocketDebuggerUrl);
+		if (await evaluate(s, `document.visibilityState === "visible"`)) barsShowing++;
+		s.close();
+	}
+	check("the command bar stays closed over them", barsShowing === 0, `${barsShowing} command bars showing`);
 	await step("after-restart", true);
 }
 

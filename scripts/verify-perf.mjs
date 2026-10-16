@@ -522,6 +522,51 @@ function traceSummary(events, pids) {
 	);
 }
 
+/** Blink's reasons an animation can't run on the compositor (CompositorAnimations::FailureReason bits). */
+const COMPOSITE_FAILED = /** @type {[number, string][]} */ ([
+	[1 << 0, "accelerated animations disabled"],
+	[1 << 1, "suppressed by DevTools"],
+	[1 << 2, "invalid animation or effect"],
+	[1 << 3, "unsupported timing parameters"],
+	[1 << 4, "non-replace composite mode"],
+	[1 << 5, "target has invalid compositing state"],
+	[1 << 6, "target has incompatible animations"],
+	[1 << 7, "target has CSS offset"],
+	[1 << 10, "transform can't be accelerated on this target (SVG with zoom != 1, viewBox, vector effect)"],
+	[1 << 12, "filter may move pixels"],
+	[1 << 13, "unsupported CSS property"],
+	[1 << 15, "mixed keyframe value types"],
+	[1 << 16, "scroll timeline source not composited"],
+	[1 << 17, "no visible change"],
+	[1 << 18, "affects an !important property"],
+	[1 << 19, "SVG target has an independent transform property"],
+]);
+
+/**
+ * Which of the page's animations started during the trace couldn't run on the compositor, and why: those tick on
+ * the main thread every frame. (Animations already running when the trace began aren't in it.)
+ * @param {any[]} events @param {number} pid
+ */
+function mainThreadAnimations(events, pid) {
+	/** @type {Map<string, string>} */
+	const open = new Map();
+	/** @type {Map<string, number>} */
+	const by = new Map();
+	for (const e of events) {
+		if (e.pid !== pid || e.name !== "Animation") continue;
+		const id = String(e.id2?.local ?? e.id ?? "");
+		const data = e.args?.data ?? {};
+		if (e.ph === "b") open.set(id, `${data.displayName || "(script)"} on ${data.nodeName ?? "?"}`);
+		else if (e.ph === "e") open.delete(id);
+		else if (data.compositeFailed) {
+			const why = COMPOSITE_FAILED.filter(([bit]) => data.compositeFailed & bit).map(([, text]) => text);
+			const key = `${open.get(id) ?? "?"}: ${why.join(", ") || data.compositeFailed}`;
+			by.set(key, (by.get(key) ?? 0) + 1);
+		}
+	}
+	return [...by].sort((a, b) => b[1] - a[1]).map(([key, count]) => `${key} (x${count})`);
+}
+
 /** Self time per function in a JS CPU profile, top first. @param {any} profile */
 function profileSummary(profile) {
 	/** @type {Map<number, any>} */
@@ -758,6 +803,7 @@ async function oneRun(run, host) {
 				}
 				const events = await trace.stop(`${base}.trace.json`);
 				detail.trace = traceSummary(events, allPids);
+				detail.mainThreadAnimations = mainThreadAnimations(events, allPids.sidebar ?? 0);
 				detail.traceFile = `${base}.trace.json`;
 			}
 			/** @type {Record<string, number>} */

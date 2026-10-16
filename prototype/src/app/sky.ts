@@ -1,5 +1,4 @@
 import { css, html, type TemplateResult } from "lit";
-import { ref } from "lit/directives/ref.js";
 import type { Scheme } from "./theme.logic";
 
 // Loka's night sky, shared by the prototype's window and the real browser's sidebar and new tab page.
@@ -35,21 +34,39 @@ const FAR = starTile(7919, 480, 320, 70, [0.3, 0.7]);
 const MID = starTile(104729, 640, 420, 34, [0.5, 1]);
 const NEAR = starTile(1299709, 820, 540, 12, [0.9, 1.6]);
 
-const skies = new Set<HTMLElement>();
-if (typeof document !== "undefined") {
-	// Hidden pages don't draw, but say so anyway: nothing in the sky keeps running behind another tab.
-	document.addEventListener("visibilitychange", () => {
-		for (const sky of skies) sky.classList.toggle("paused", document.hidden);
-	});
-}
+/** No one has touched the page for a while (restWhenIdle): the sky holds still until they do. */
+let resting = false;
 
-function track(el: Element | undefined) {
-	if (el instanceof HTMLElement) {
-		skies.add(el);
-		el.classList.toggle("paused", document.hidden);
+/**
+ * Pauses or resumes everything that moves on its own: --loka-play on the page's root, inherited into every shadow
+ * root, holds the sky, the planet's turn and the equaliser. Hidden pages don't draw, but are paused anyway.
+ */
+function syncPlay() {
+	document.documentElement.style.setProperty("--loka-play", document.hidden || resting ? "paused" : "running");
+}
+if (typeof document !== "undefined") document.addEventListener("visibilitychange", syncPlay);
+
+/**
+ * After `ms` with no pointer, key or wheel on the page, the sky rests until the next one. Its drift is a couple of
+ * pixels a second, so stopping it is hard to notice, and a still sidebar then asks nothing of the CPU or GPU.
+ */
+export function restWhenIdle(ms: number) {
+	let timer = 0;
+	const wake = () => {
+		window.clearTimeout(timer);
+		timer = window.setTimeout(() => {
+			resting = true;
+			syncPlay();
+		}, ms);
+		if (resting) {
+			resting = false;
+			syncPlay();
+		}
+	};
+	for (const type of ["pointermove", "pointerdown", "keydown", "wheel"]) {
+		window.addEventListener(type, wake, { capture: true, passive: true });
 	}
-	// Lit calls back with undefined when the sky leaves the page; drop skies that are gone.
-	for (const sky of skies) if (!sky.isConnected) skies.delete(sky);
+	wake();
 }
 
 /**
@@ -58,7 +75,7 @@ function track(el: Element | undefined) {
  * orange passes through green and yellow, which on the whole sky reads as a rainbow. skyTurn() crossfades instead.
  */
 export function skyLayer(hue: number, scheme: Scheme): TemplateResult {
-	return html`<div class="sky ${scheme}" aria-hidden="true" style="--hue: ${hue}" ${ref(track)}>
+	return html`<div class="sky ${scheme}" aria-hidden="true" style="--hue: ${hue}">
 		<div class="nebula"></div>
 		<div class="sweep far"><div class="stars far" style="background-image: ${FAR}"></div></div>
 		<div class="sweep mid"><div class="stars mid" style="background-image: ${MID}"></div></div>
@@ -286,8 +303,8 @@ export const skyStyles = css`
 					transform: translateX(-280px) scaleX(1);
 				}
 			}
-			.sky.paused * {
-				animation-play-state: paused;
+			.sky * {
+				animation-play-state: var(--loka-play, running);
 			}
 		}
 `;

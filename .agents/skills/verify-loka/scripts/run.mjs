@@ -336,7 +336,8 @@ const recipes = {
 		]);
 		await loka.proof("05-downloads");
 		await loka.page.keyboard.press("Escape");
-		await loka.page.waitForTimeout(200);
+		// It plays its exit first; on a busy machine that can outlast a fixed wait.
+		await downloads.waitFor({ state: "detached", timeout: 3000 }).catch(() => {});
 		assert.equal(await downloads.count(), 0, "Escape closes the panel");
 	},
 

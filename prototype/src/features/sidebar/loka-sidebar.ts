@@ -56,6 +56,8 @@ interface DropZone {
 	into?: "folder" | "tab" | null;
 	axis?: "x" | "y";
 	switchTo?: string;
+	/** A zone whose halves land in different places names the drop line by mode (the divider). */
+	keyFor?: (mode: DropMode) => string;
 }
 /** A drop target element: the zone is set on it as a property by the template (`.dropZone=${...}`). */
 type ZoneElement = HTMLElement & { dropZone?: DropZone };
@@ -210,6 +212,8 @@ export class LokaSidebar extends LitElement {
 	}
 
 	override disconnectedCallback() {
+		this.bottomObserver?.disconnect();
+		this.bottomObserver = null;
 		window.removeEventListener("keydown", this.onEscape);
 		for (const stop of this.stopWatching) stop();
 		this.stopWatching = [];
@@ -331,8 +335,9 @@ export class LokaSidebar extends LitElement {
 			this.drop = null;
 			return;
 		}
-		if (this.drop?.key !== zone.key || this.drop.mode !== mode) {
-			this.drop = { key: zone.key, mode, place: target, groupWith: grouping ? zone.key : undefined };
+		const key = zone.keyFor?.(mode) ?? zone.key;
+		if (this.drop?.key !== key || this.drop.mode !== mode) {
+			this.drop = { key, mode, place: target, groupWith: grouping ? zone.key : undefined };
 		}
 	}
 
@@ -414,6 +419,8 @@ export class LokaSidebar extends LitElement {
 
 	private dropClass(key: string): string {
 		if (this.drop?.key !== key) return "";
+		// New tab stays first: a drop there goes to the first open tab's place, so the line shows under it.
+		if (key === "open-start") return "drop-after";
 		return `drop-${this.drop.mode}`;
 	}
 
@@ -1215,7 +1222,22 @@ export class LokaSidebar extends LitElement {
 			.finished.then(() => el.remove());
 	}
 
+	/** Keeps room under the list's last row for what sits over its bottom (the planets, the media card). */
+	private bottomObserver: ResizeObserver | null = null;
+
+	private watchBottom() {
+		const bottom = this.renderRoot.querySelector<HTMLElement>(".bottom");
+		if (this.bottomObserver || !bottom) return;
+		this.bottomObserver = new ResizeObserver(([entry]) => {
+			const height = entry?.borderBoxSize[0]?.blockSize ?? bottom.offsetHeight;
+			// Rows may pass under the fade's clear top; the last one scrolls up to where the card or planet starts.
+			this.renderRoot.querySelector("aside")?.style.setProperty("--bottom-room", `${Math.max(0, height - 40)}px`);
+		});
+		this.bottomObserver.observe(bottom);
+	}
+
 	protected override updated() {
+		this.watchBottom();
 		this.animateListExit();
 		this.animateRows();
 		this.animateHorizon();
@@ -1370,6 +1392,7 @@ export class LokaSidebar extends LitElement {
 		const toEssentials = (): Place => ({ area: "essentials", index: Infinity });
 		// Above the divider is pinned: a tab dropped on the gap or the divider itself goes to the end of the pinned list.
 		const toPinnedEnd = (): Place => ({ area: "pinned", spaceId: space.id, parentId: null, index: Infinity });
+		const openStart = (): Place => ({ area: "open", spaceId: space.id, index: 0 });
 
 		return html`
 			<aside
@@ -1470,7 +1493,14 @@ export class LokaSidebar extends LitElement {
 					<div
 						class="divider"
 						data-key="divider"
-						.dropZone=${{ key: "pinned-end", place: toPinnedEnd } satisfies DropZone}
+						.dropZone=${
+							{
+								key: "pinned-end",
+								// Its top half pins at the end of the pinned list; its bottom half is the first open tab.
+								place: (mode: DropMode): Place => (mode === "before" ? toPinnedEnd() : openStart()),
+								keyFor: (mode: DropMode) => (mode === "before" ? "pinned-end" : "open-start"),
+							} satisfies DropZone
+						}
 					>
 						<span></span>
 						${
@@ -1494,7 +1524,7 @@ export class LokaSidebar extends LitElement {
 							class="row new-tab ${this.dropClass("open-start")}"
 							data-key="new-tab"
 							@click=${() => this.command("new-tab")}
-							.dropZone=${{ key: "open-start", place: (): Place => ({ area: "open", spaceId: space.id, index: 0 }) } satisfies DropZone}
+							.dropZone=${{ key: "open-start", place: openStart } satisfies DropZone}
 						>
 							<svg class="plus" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" /></svg><span class="label">New tab</span>
 						</button>
@@ -1513,6 +1543,7 @@ export class LokaSidebar extends LitElement {
 				</div>`,
 				)}
 
+				<div class="bottom">
 				${
 					this.shownPlaying
 						? html`<loka-media-card
@@ -1541,6 +1572,7 @@ export class LokaSidebar extends LitElement {
 						<svg viewBox="0 0 20 20"><path d="M10 4.5v11M4.5 10h11" /></svg>
 					</button>
 				</nav>
+				</div>
 
 				${
 					this.panel
@@ -1990,24 +2022,16 @@ export class LokaSidebar extends LitElement {
 			overflow-y: auto;
 			margin: 0 -4px;
 			padding: 0 4px;
-			/* No scrollbar: the edge fades say there's more, and wheel, trackpad and keys still scroll it. */
+			/* No scrollbar: the top fade and the planet's fade say there's more, and wheel, trackpad and keys still
+			   scroll it. The list runs down under the planet, with room to scroll its last row clear of it. */
 			scrollbar-width: none;
+			margin-bottom: -8px;
+			padding-bottom: var(--bottom-room, 96px);
 			--fade-top: 0px;
-			--fade-bottom: 0px;
-			mask-image: linear-gradient(
-				to bottom,
-				transparent,
-				#000 var(--fade-top),
-				#000 calc(100% - var(--fade-bottom)),
-				transparent
-			);
-			animation:
-				fade-top linear both,
-				fade-bottom linear both;
-			animation-timeline: scroll(self), scroll(self);
-			animation-range:
-				0 24px,
-				calc(100% - 24px) 100%;
+			mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-top));
+			animation: fade-top linear both;
+			animation-timeline: scroll(self);
+			animation-range: 0 24px;
 		}
 		@keyframes fade-top {
 			from {
@@ -2015,14 +2039,6 @@ export class LokaSidebar extends LitElement {
 			}
 			to {
 				--fade-top: 24px;
-			}
-		}
-		@keyframes fade-bottom {
-			from {
-				--fade-bottom: 24px;
-			}
-			to {
-				--fade-bottom: 0px;
 			}
 		}
 		.row {
@@ -2291,6 +2307,32 @@ export class LokaSidebar extends LitElement {
 			height: 18px;
 			flex: none;
 		}
+		/* The media card and the planets sit over the bottom of the list, on the sky fading in behind them, so rows
+		   slide under and dissolve into the planet. Only their own controls take the pointer; elsewhere clicks and
+		   wheels reach the rows beneath. */
+		.bottom {
+			position: absolute;
+			z-index: 2;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+			padding: 56px 8px 0 10px;
+			pointer-events: none;
+			background: linear-gradient(
+				to bottom,
+				transparent,
+				color-mix(in srgb, var(--loka-sky-floor) 70%, transparent) 56px,
+				var(--loka-sky-floor) 128px
+			);
+		}
+		.media,
+		.bottom .neighbour,
+		.bottom .new {
+			pointer-events: auto;
+		}
 		.media {
 			flex: none;
 			margin: 0 -2px -2px;
@@ -2304,7 +2346,7 @@ export class LokaSidebar extends LitElement {
 			/* A low horizon: a thin cap of the planet with the name on it. Tall enough above the planet for a ring's arc
 			   and its glow, which would otherwise be cut off flat at the top. */
 			height: 86px;
-			margin: -12px -8px -8px -10px;
+			margin: -12px -8px 0 -10px;
 			/* clip, not hidden: a hidden box can still be scrolled, and focusing the big planet button (after the space
 			   editor closes) scrolled the planets up under the media card. */
 			overflow: clip;
@@ -2592,21 +2634,19 @@ export class LokaSidebar extends LitElement {
 					transform: translateX(-50%);
 				}
 			}
-			/* The slide joins the scroll fades rather than replacing them. */
+			/* The slide joins the scroll fade rather than replacing it. */
 			.scroll.from-right,
 			.scroll.from-left {
 				animation:
 					fade-top linear both,
-					fade-bottom linear both,
 					in-right 300ms cubic-bezier(0.2, 0, 0, 1);
-				animation-timeline: scroll(self), scroll(self), auto;
+				animation-timeline: scroll(self), auto;
 				animation-range:
 					0 24px,
-					calc(100% - 24px) 100%,
 					normal;
 			}
 			.scroll.from-left {
-				animation-name: fade-top, fade-bottom, in-left;
+				animation-name: fade-top, in-left;
 			}
 			/* Springs back when a swipe stops short; follows the fingers exactly while swiping. */
 			aside:not(.swiping) .scroll,

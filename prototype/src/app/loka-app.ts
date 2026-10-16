@@ -439,7 +439,7 @@ export class LokaApp extends LitElement {
 		return html`
 			<div
 				class="window theme-${scheme} ${layout}"
-				style="--hue: ${hue}; --sidebar: ${width}px; --loka-play: ${document.hidden ? "paused" : "running"}"
+				style="--hue: ${hue}; --sidebar: ${width}px"
 				@loka-action=${(e: CustomEvent<ActionId>) => this.run(e.detail)}
 				@loka-edit-space=${(e: CustomEvent<string>) => this.editSpace(e.detail)}
 				@loka-preview=${(e: CustomEvent<LookPreview | number>) => {

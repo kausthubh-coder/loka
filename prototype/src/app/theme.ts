@@ -21,6 +21,8 @@ export const themeTokens = css`
 		--loka-fill-hover: hsl(var(--hue) 30% 85% / 0.12);
 		/* Pressed: the ink itself, faintly, so a press shows on any surface in either scheme. */
 		--loka-pressed: color-mix(in srgb, var(--loka-ink) 12%, transparent);
+		/* The sky's color at the bottom of the window (sky.ts), for what fades into it there. */
+		--loka-sky-floor: hsl(calc(var(--hue) - 20) 40% 5%);
 		--loka-line: hsl(var(--hue) 30% 85% / 0.12);
 		--loka-accent: hsl(var(--hue) 85% 72%);
 		--loka-accent-ink: hsl(var(--hue) 85% 76%);
@@ -45,6 +47,7 @@ export const themeTokens = css`
 		--loka-fill: hsl(0 0% 100% / 0.42);
 		--loka-fill-hover: hsl(0 0% 100% / 0.66);
 		--loka-pressed: color-mix(in srgb, var(--loka-ink) 12%, transparent);
+		--loka-sky-floor: hsl(calc(var(--hue) - 20) 48% 82%);
 		--loka-line: hsl(var(--hue) 40% 20% / 0.13);
 		--loka-accent: oklch(from hsl(var(--hue) 80% 50%) 0.52 0.15 h);
 		--loka-accent-ink: oklch(from hsl(var(--hue) 80% 50%) 0.45 0.14 h);

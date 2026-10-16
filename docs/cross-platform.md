@@ -58,11 +58,12 @@ prototype run there).
 
 **UI**
 
-- `webui/src/page.css` and 9 files under `prototype/src` name `Segoe UI` first in their font stacks.
-- Shortcuts are written as Ctrl+K, Ctrl+T, Ctrl+L, Ctrl+S, Ctrl+H, Ctrl+1..9 in docs and labels. The browser's own
-  commands that the patch reroutes to the sidebar (new tab, focus location, in `browser_command_controller.cc`)
-  follow Chrome's accelerators, which are already Cmd on macOS. The sidebar page's key handler
-  (`webui/src/main.ts:219`) accepts `metaKey` too; the labels and the prototype's handlers say Ctrl.
+- 14 files under `webui/src` and `prototype/src` name `Segoe UI` first in their font stacks.
+- Started already: `prototype/src/app/platform.ts` tells mac from Windows and Linux. On a Mac the sidebar's top row
+  leaves 70 px for the traffic lights and draws no window buttons, and labels go through `keys()` ("Ctrl+H" shows
+  as "⌘H"). The browser's own commands that the patch reroutes to the sidebar (new tab, focus location, in
+  `browser_command_controller.cc`) follow Chrome's accelerators, which are already Cmd there. The sidebar page's key
+  handler (`webui/src/main.ts`) accepts `metaKey` too. None of it has run on a Mac yet.
 
 ## What macOS needs
 
@@ -73,13 +74,12 @@ prototype run there).
 2. **Build scripts.** A macOS branch in `loka_build.py` (Xcode toolchain, `autoninja -C out/Default`), a macOS
    `doctor --browser` (Xcode, the SDK, disk space, `xcode-select`), `BUILT_BINARY` = `out/Default/Loka.app/Contents/MacOS/Loka`
    (already in `scripts/browser.mjs`, unverified), and `requireWindowsBuild` widened per command as each one works.
-3. **The window.** Native traffic lights instead of `windowAction` buttons: hide the sidebar's own buttons on macOS
-   and leave a traffic-light inset in its top row. Make the top row the window's draggable region through the frame
-   view; build and try `RunMoveLoop` for `startWindowDrag`. Full screen hides the traffic lights, so the inset
-   follows it.
-4. **Shortcuts.** Cmd for Ctrl in the page's own handlers and in every label and tooltip (one helper that renders
-   "Ctrl" or "⌘"). Check each rerouted browser command once on a mac build. Cmd+Q, Cmd+W and Cmd+, are macOS
-   conventions to keep.
+3. **The window.** The page already hides its own buttons and leaves the traffic-light inset on a Mac. The frame
+   still has to keep the traffic lights over the sidebar's top row, make that row the window's draggable region
+   through the frame view, and drop the inset in full screen (where the lights hide). Build and try `RunMoveLoop`
+   for `startWindowDrag`.
+4. **Shortcuts.** The labels follow `keys()` already; check the page's own handlers take Cmd, and each rerouted
+   browser command once on a mac build. Cmd+Q, Cmd+W and Cmd+, are macOS conventions to keep.
 5. **Fonts.** `system-ui, -apple-system` ahead of `Segoe UI`.
 6. **Packaging and release.** No `Loka.exe`: the `.app` bundle is the launcher, with `CFBundleName` Loka, an `.icns`
    from `loka_brand.py`, a DMG, codesigning and notarization (an Apple Developer ID, kept in GitHub secrets only),

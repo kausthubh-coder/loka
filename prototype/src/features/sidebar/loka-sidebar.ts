@@ -2379,6 +2379,65 @@ export class LokaSidebar extends LitElement {
 			background: var(--loka-hover);
 			color: var(--loka-ink);
 		}
+		/* A speaker beside the x reads as one pair: each takes 22 px of the row, edge to edge, and their icons sit toward
+		   each other, about 2.5 px apart. The x stays exactly where it is on a row without a speaker. Hover and press
+		   light a pill around the icon, not the whole box; the icons don't take the pointer, so each box is its own. */
+		.trail:has(.sound + .close) {
+			gap: 0;
+		}
+		.sound:has(+ .close),
+		.sound + .close {
+			width: 22px;
+		}
+		.sound:has(+ .close),
+		.sound:has(+ .close):hover,
+		.sound:has(+ .close):active,
+		.sound + .close,
+		.sound + .close:hover,
+		.sound + .close:active {
+			background: none;
+		}
+		.sound:has(+ .close)::after,
+		.sound + .close::after {
+			inset: -2px 0;
+		}
+		.sound:has(+ .close) {
+			justify-items: end;
+		}
+		.sound + .close {
+			justify-items: start;
+		}
+		.sound:has(+ .close) svg {
+			translate: 4px 0;
+		}
+		.sound:has(+ .close) svg,
+		.sound + .close svg {
+			position: relative;
+			pointer-events: none;
+		}
+		.sound:has(+ .close)::before,
+		.sound + .close::before {
+			content: "";
+			position: absolute;
+			top: 4px;
+			bottom: 4px;
+			width: 20px;
+			border-radius: 6px;
+		}
+		.sound:has(+ .close)::before {
+			left: 8px;
+		}
+		.sound + .close::before {
+			left: -2px;
+		}
+		.sound:has(+ .close):hover::before,
+		.sound + .close:hover::before {
+			background: var(--loka-hover);
+		}
+		.sound:has(+ .close):active::before,
+		.sound + .close:active::before {
+			background: var(--loka-pressed);
+		}
 		/* The gap above the divider: dropping a tab here or on the divider pins it, and the drop line says so. With
 		   nothing pinned it takes no room; the divider is the target. Nothing grows when a drag starts, so the rows
 		   don't jump from under the pointer. */

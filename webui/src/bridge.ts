@@ -103,14 +103,15 @@ export interface NativeSuggestion {
 
 export type ColorScheme = "light" | "dark" | "system";
 
-/** Browser shortcuts the sidebar answers: Ctrl+T and Ctrl+L open the command bar instead of a new tab page. */
 /**
- * Browser shortcuts the sidebar answers: Ctrl+T and Ctrl+L open the command bar; Ctrl+Tab and Ctrl+Shift+Tab step
- * through the current space's tabs; Ctrl+1..9 go to that space.
+ * Browser shortcuts the sidebar answers: Ctrl+T and Ctrl+L open the command bar (there is no new tab page);
+ * Ctrl+W closes the shown tab as the sidebar's x does; Ctrl+Tab and Ctrl+Shift+Tab step through the current
+ * space's tabs; Ctrl+1..9 go to that space.
  */
 export type BrowserCommand =
 	| "new-tab"
 	| "focus-location"
+	| "close-tab"
 	| "next-tab"
 	| "previous-tab"
 	| `space-${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`;

@@ -32,7 +32,7 @@ export const UX = {
 	tabs: { prototype: ["tabs"], browser: true, flows: ["tabs"] },
 	essentials: { prototype: ["essentials"], flows: ["pinning"] },
 	"export-import": { prototype: ["export-import"], browser: true },
-	"command-bar": { prototype: ["command-bar"], browser: true, flows: ["tabs", "spaces"] },
+	"command-bar": { prototype: ["command-bar"], browser: true, flows: ["tabs", "spaces", "new-tab"] },
 	"space-editor": { prototype: ["space-editor"], flows: ["spaces"] },
 	theme: { prototype: ["theme"], browser: true, flows: ["spaces"] },
 	layout: { prototype: ["layout"], browser: true, flows: ["states"] },

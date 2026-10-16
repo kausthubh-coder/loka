@@ -19,6 +19,7 @@ import {
 	activateTab,
 	activeSpace,
 	type BrowserState,
+	closeTab,
 	createFolder,
 	createSpace,
 	deleteSpace,
@@ -33,10 +34,12 @@ import {
 import { playCue, setSoundPrefs } from "../../prototype/src/features/sound/sound";
 import "../../prototype/src/features/spaces/loka-space-editor";
 import type { LookPreview } from "../../prototype/src/features/spaces/loka-space-editor";
+import { isEmptyTab } from "../../prototype/src/features/tabs/live.logic";
 import { type BrowserCommand, browser, type CommandPick, type NativeMedia, type NativeTab } from "./bridge";
 import { faviconUrl } from "./favicon-url";
 import { frameColor } from "./frame-color.logic";
 import { type Hold, type HoldReason, holdChanged, NO_HOLD } from "./hold.logic";
+import { shownAddress, startsEmpty } from "./new-tab.logic";
 import { applyOnboarding, onboardingSpaces } from "./onboarding.logic";
 import {
 	markOnboardingApplied,
@@ -48,7 +51,7 @@ import {
 	writeState,
 	writeUi,
 } from "./store";
-import { browserTabOf, changeSpaces, linkedTabs, spacesChanged, startSync } from "./sync";
+import { browserTabOf, changeSpaces, linkedTabs, openEmptyTab, spacesChanged, startSync } from "./sync";
 
 setFaviconSource(faviconUrl);
 startSync();
@@ -105,6 +108,8 @@ export class LokaPanel extends LitElement {
 		const typing = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;
 		if (typing) this.onHold("input", e.type === "focusin");
 	};
+	/** Whether this window has shown its first page yet; if that's an empty tab, the command bar opens over it. */
+	private started = false;
 
 	/**
 	 * A change saved but not yet drawn, while the crossfade captures the old look (one frame). Later changes build on
@@ -161,6 +166,11 @@ export class LokaPanel extends LitElement {
 	private setTabs = (tabs: NativeTab[]) => {
 		this.tabs = tabs;
 		this.refreshLive();
+		const empty = this.started ? null : startsEmpty(tabs);
+		if (empty !== null) {
+			this.started = true;
+			if (empty) browser.openCommandBar("new-tab");
+		}
 	};
 
 	override connectedCallback() {
@@ -279,6 +289,8 @@ export class LokaPanel extends LitElement {
 	private onBrowserCommand(command: BrowserCommand) {
 		if (command === "next-tab" || command === "previous-tab") {
 			this.apply((s) => stepTab(s, command === "next-tab" ? 1 : -1));
+		} else if (command === "close-tab") {
+			this.closeShownTab();
 		} else if (command !== "new-tab" && command !== "focus-location") {
 			const spaces = this.state?.spaces ?? [];
 			const n = Number(command.slice("space-".length));
@@ -293,16 +305,32 @@ export class LokaPanel extends LitElement {
 		}
 	}
 
+	/**
+	 * Ctrl+W closes the shown tab the way its x in the sidebar does, so the space shows its next tab, or an empty tab
+	 * when it has none, and the window stays. On an empty tab it closes the window, as Zen does.
+	 */
+	private closeShownTab() {
+		const shown = this.shownTab();
+		if (!shown) return;
+		const lokaId = Object.entries(linkedTabs()).find(([, id]) => id === shown.id)?.[0];
+		if (lokaId) {
+			this.apply((s) => closeTab(s, lokaId));
+			this.unload(lokaId);
+		} else if (isEmptyTab(shown.url)) browser.windowAction("close");
+		else browser.closeTab(shown.id);
+	}
+
 	private openOwnCommandBar(mode: "new-tab" | "focus-location") {
 		if (!this.command) playCue("command");
-		this.command = { mode, query: mode === "focus-location" ? (this.shownTab()?.url ?? "") : "" };
+		this.command = { mode, query: mode === "focus-location" ? shownAddress(this.shownTab()) : "" };
 	}
 
 	/** Runs what was picked in a command bar: this page's own, or the browser's floating one (command.html). */
 	private runPick(pick: CommandPick) {
 		const shown = this.shownTab();
 		if (pick.kind === "open") {
-			const newTab = pick.newTab || !shown;
+			// An empty tab is never navigated: what's picked there opens in a tab of its own, and the empty one goes.
+			const newTab = pick.newTab || !shown || isEmptyTab(shown.url);
 			if (pick.search !== undefined) browser.search(pick.search, newTab);
 			else if (newTab || !shown) void browser.createTab(pick.url, true);
 			else browser.navigateTab(shown.id, pick.url);
@@ -412,7 +440,10 @@ export class LokaPanel extends LitElement {
 	private unload(tabId: TabId) {
 		if (!this.state?.tabs[tabId]) return;
 		const browserId = browserTabOf(tabId);
-		if (browserId !== undefined) browser.closeTab(browserId);
+		if (browserId === undefined) return;
+		// The window's last tab: an empty tab takes its place first, so the window stays open.
+		if (this.tabs.length === 1) void openEmptyTab().then(() => browser.closeTab(browserId));
+		else browser.closeTab(browserId);
 	}
 
 	private saveSpace(look: SpaceLook) {

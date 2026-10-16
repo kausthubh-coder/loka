@@ -21,6 +21,8 @@
 //   7 panels       Downloads with a real download, the media card on a playing page, Archive and Search
 //   8 settings     each setting changes what it says; History search, delete and clear today
 //   9 restart      quit and start again: spaces, pinned, folders, Essentials, extension pins and settings stay
+//  10 new tab      no new tab page: New tab opens the bar and makes no tab, Escape leaves the tabs, a pick makes one;
+//                  a new space, its last tab closed and a new window show an empty tab (Loka's page), never a row
 // Evidence (a sidebar picture per step, window pictures, checks.json, chrome.log) goes to
 // .agents/verify-runs/<time>-flows. The run stops only the process tree it started and deletes its profile.
 
@@ -28,6 +30,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
+import { isEmptyTab } from "../prototype/src/features/tabs/live.logic";
 import { BUILD_DIR } from "./browser.mjs";
 import {
 	askExpression,
@@ -456,9 +459,13 @@ function driver(s) {
 }
 /** @typedef {ReturnType<typeof driver>} Driver */
 
-/** The sidebar of the browser's window, with requests to its handler and its saved spaces. @param {Browser} b */
-async function attachSidebar(b) {
-	const target = await until(async () => (await b.targets()).find((t) => t.url === SIDEBAR_URL), 30000);
+/**
+ * The sidebar of the browser's window, with requests to its handler and its saved spaces. `pick` chooses among the
+ * windows' sidebars (another window's: one that wasn't there before).
+ * @param {Browser} b @param {(t: Target) => boolean} [pick]
+ */
+async function attachSidebar(b, pick = () => true) {
+	const target = await until(async () => (await b.targets()).find((t) => t.url === SIDEBAR_URL && pick(t)), 30000);
 	if (!target) throw new Error("no chrome://loka-sidebar target");
 	const s = await connect(target.webSocketDebuggerUrl);
 	await s.call("Runtime.enable");
@@ -524,7 +531,7 @@ const tabTitled = (st, title) => Object.values(st.tabs).find((t) => t.title === 
 
 /**
  * Whether the browser shows the space the sidebar shows: the browser's active tab is in that space's tab group,
- * which is open, and every other space's group is folded away.
+ * which is open, or is an empty tab (the space has nothing to show), and every other space's group is folded away.
  * @param {Sidebar} sb
  */
 async function browserFollows(sb) {
@@ -535,7 +542,8 @@ async function browserFollows(sb) {
 	const others = groups.filter((g) => g.title !== space?.name);
 	const ok =
 		Boolean(space && active) &&
-		(st.essentials.some((id) => st.tabs[id]?.url === active?.url) ||
+		(isEmptyTab(active?.url ?? "") ||
+			st.essentials.some((id) => st.tabs[id]?.url === active?.url) ||
 			(group?.title === space?.name && !group?.collapsed)) &&
 		others.every((g) => g.collapsed);
 	const detail = `sidebar "${space?.name}"; browser shows "${active?.title}" in group "${group?.title ?? "none"}"; groups ${groups.map((g) => `${g.title}${g.collapsed ? " (folded)" : ""}`).join(", ")}`;
@@ -719,11 +727,12 @@ async function firstRun() {
 		`showing ${saved && shownSpace(saved)?.name}`,
 	);
 	const tabs = await ctx.sidebar.tabs();
+	const pages = tabs.filter((t) => !isEmptyTab(t.url));
 	const inFirst = saved ? (spaceNamed(saved, "Research")?.open.length ?? 0) : 0;
 	check(
-		"the window's tab is in it",
-		tabs.length > 0 && inFirst === tabs.length,
-		`${inFirst} of ${tabs.length} tabs in Research`,
+		"the window's pages are in it; an empty tab is not",
+		tabs.length > 0 && inFirst === pages.length,
+		`${inFirst} of ${pages.length} pages in Research, ${tabs.length - pages.length} empty tabs`,
 	);
 	const horizon = await ctx.sidebar.names("button");
 	check(
@@ -736,7 +745,7 @@ async function firstRun() {
 		return f.ok ? f : null;
 	}, 6000);
 	check(
-		"its tab is in a tab group named Research",
+		"the browser shows Research: its tab group, or an empty tab",
 		follows,
 		follows?.detail ?? (await browserFollows(ctx.sidebar)).detail,
 	);
@@ -766,18 +775,41 @@ async function spaces() {
 		work && work.hue === 30 && work.planet === "ringed" && work.scheme === "dark",
 		show(work && [work.name, work.hue, work.planet, work.scheme, st && shownSpace(st)?.name]),
 	);
-	const newTab = await until(async () => {
+	const emptyTab = await until(async () => {
 		const [now, tabs] = await Promise.all([sb.state(), sb.tabs()]);
 		const w = spaceNamed(now, "Work");
 		const active = tabs.find((t) => t.active);
-		return w?.open.length === 1 && active?.url === "chrome://newtab/" ? { now, active } : null;
+		return w?.open.length === 0 && active && isEmptyTab(active.url) ? { now, active } : null;
 	}, 8000);
 	check(
-		"switching to the empty space opens a new tab in it",
-		newTab,
-		newTab ? `Work open: ${openTitles(newTab.now, "Work")}` : show(openTitles(await sb.state(), "Work")),
+		"switching to the empty space shows an empty tab, which is no row in it",
+		emptyTab,
+		emptyTab
+			? `browser on ${emptyTab.active.url}`
+			: `Work open: ${show(openTitles(await sb.state(), "Work"))}; browser on ${(await sb.tabs()).find((t) => t.active)?.url}`,
 	);
 	let follows = await until(async () => {
+		const f = await browserFollows(sb);
+		return f.ok ? f : null;
+	}, 6000);
+	check("the browser shows Work, the rest folded", follows, follows?.detail ?? (await browserFollows(sb)).detail);
+	await step("work-made", true);
+
+	// The empty tab is Loka's page and follows the space's dark scheme.
+	const page = await pageOf(isEmptyTab);
+	const dark = page && (await until(() => evaluate(page, `matchMedia("(prefers-color-scheme: dark)").matches`), 5000));
+	check("pages in a dark space are dark", dark, `prefers-color-scheme: dark is ${dark}`);
+	page?.close();
+
+	// A page opened there is Work's first tab, in Work's tab group.
+	await openSite("work");
+	st = await sb.state();
+	check(
+		"a page opened from the empty space joins it, and the empty tab goes",
+		show(openTitles(st, "Work")) === show(["QA Work"]) && !(await sb.tabs()).some((t) => isEmptyTab(t.url)),
+		`Work open: ${show(openTitles(st, "Work"))}; tabs ${show((await sb.tabs()).map((t) => t.url))}`,
+	);
+	follows = await until(async () => {
 		const f = await browserFollows(sb);
 		return f.ok ? f : null;
 	}, 6000);
@@ -786,13 +818,6 @@ async function spaces() {
 		follows,
 		follows?.detail ?? (await browserFollows(sb)).detail,
 	);
-	await step("work-made", true);
-
-	// Its new tab follows the space's dark scheme.
-	const page = await pageOf("chrome://newtab/");
-	const dark = page && (await until(() => evaluate(page, `matchMedia("(prefers-color-scheme: dark)").matches`), 5000));
-	check("pages in a dark space are dark", dark, `prefers-color-scheme: dark is ${dark}`);
-	page?.close();
 
 	// Edit it: name, color, planet, light.
 	await sb.click("Spaces: Work");
@@ -820,7 +845,7 @@ async function spaces() {
 	);
 	const regrouped = await until(async () => (await sb.groups()).some((g) => g.title === "Work Stuff"), 5000);
 	check("its tab group takes the new name", regrouped, show((await sb.groups()).map((g) => g.title)));
-	const lightPage = await pageOf("chrome://newtab/");
+	const lightPage = await pageOf(`http://${ctx.host}/site/work`);
 	const light =
 		lightPage && (await until(() => evaluate(lightPage, `matchMedia("(prefers-color-scheme: light)").matches`), 5000));
 	check("and its pages turn light", light, `prefers-color-scheme: light is ${light}`);
@@ -890,10 +915,14 @@ async function inResearch() {
 	await until(async () => shownSpace(await ctx.sidebar.state())?.name === "Research", 5000);
 }
 
-/** A session on the browser tab showing `url` (the first one). @param {string} url */
+/**
+ * A session on the browser tab showing `url`, or the first one whose address passes it.
+ * @param {string | ((url: string) => boolean)} url
+ */
 async function pageOf(url) {
+	const wanted = typeof url === "string" ? (/** @type {string} */ u) => u === url : url;
 	const target = await until(
-		async () => (await ctx.browser.targets()).find((t) => t.type === "page" && t.url === url),
+		async () => (await ctx.browser.targets()).find((t) => t.type === "page" && wanted(t.url)),
 		5000,
 	);
 	return target ? connect(target.webSocketDebuggerUrl) : null;
@@ -1707,6 +1736,160 @@ async function restart() {
 	await step("after-restart", true);
 }
 
+/** Whether two tab lists are the same tabs, with the same one shown. @param {NativeTab[]} a @param {NativeTab[]} b */
+const sameTabs = (a, b) => show(a.map((t) => [t.id, t.active]).sort()) === show(b.map((t) => [t.id, t.active]).sort());
+
+/**
+ * There is no new tab page. New tab opens the command bar and makes no tab, Escape leaves the tabs as they were, and
+ * a pick makes exactly one. A window with nothing to show shows an empty tab (Loka's page at chrome://newtab, the
+ * space's sky), never a row in the sidebar: a new space, a space whose last tab closed, a new window, which also opens
+ * the bar over it.
+ */
+async function newTabs() {
+	const sb = ctx.sidebar;
+	await inResearch();
+	await openSite("foxtrot");
+	const before = await sb.tabs();
+	const b = await openBar("New tab");
+	await sleep(500);
+	const whileOpen = await sb.tabs();
+	check(
+		"New tab opens the command bar and makes no tab",
+		sameTabs(before, whileOpen),
+		show(whileOpen.map((t) => t.url)),
+	);
+	await step("bar-open", true);
+	await b.key("Escape");
+	const hidden = await until(() => b.run(`document.visibilityState === "hidden"`), 4000);
+	await sleep(500);
+	const afterEscape = await sb.tabs();
+	check(
+		"Escape closes it, and the tabs are as they were",
+		hidden && sameTabs(before, afterEscape),
+		`bar ${hidden ? "hidden" : "still showing"}; tabs ${show(afterEscape.map((t) => [t.url, t.active]))}`,
+	);
+	await openSite("golf");
+	const afterPick = await sb.tabs();
+	check(
+		"picking a page makes exactly one tab, and no empty tab",
+		afterPick.length === before.length + 1 && !afterPick.some((t) => isEmptyTab(t.url)),
+		`${before.length} tabs before, ${afterPick.length} after: ${show(afterPick.map((t) => t.url))}`,
+	);
+
+	// A new space has nothing to show: an empty tab, Loka's own page.
+	await sb.click("New");
+	await sb.click("New space", { role: "[role=menuitem]" });
+	await until(() => sb.has("Space name"), 4000);
+	await sb.run(`(() => { const i = window.__qa.find("Space name"); i.focus(); i.select(); return true; })()`);
+	await sb.type("Blank");
+	await sb.click("Create space");
+	/** In Blank: the browser on an empty tab and no rows in the space. */
+	const onEmpty = () =>
+		until(async () => {
+			const [st, tabs, rows] = await Promise.all([sb.state(), sb.tabs(), sb.rows()]);
+			const active = tabs.find((t) => t.active);
+			const blank = spaceNamed(st, "Blank");
+			const shown = shownSpace(st)?.name === "Blank" && blank?.open.length === 0;
+			const noRows = !rows.some((r) => r.tree === "Open tabs in Blank");
+			return shown && noRows && active && isEmptyTab(active.url) ? active : null;
+		}, 8000);
+	const empty = await onEmpty();
+	check(
+		"a new space shows an empty tab, which is no row in it",
+		empty,
+		empty ? empty.url : `browser on ${(await sb.tabs()).find((t) => t.active)?.url}`,
+	);
+	const page = await pageOf(isEmptyTab);
+	const loka =
+		page &&
+		(await until(
+			() =>
+				evaluate(page, `Boolean(document.querySelector("loka-new-tab-page")) && !document.querySelector("ntp-app")`),
+			5000,
+		));
+	check(
+		"the empty tab is Loka's page, not a new tab page",
+		loka,
+		loka ? "loka-new-tab-page" : "no loka-new-tab-page on it",
+	);
+	page?.close();
+	await step("blank-space", true);
+
+	// Its first page replaces the empty tab; closing it brings the empty tab back, and the window stays.
+	await openSite("hotel");
+	const withPage = await sb.tabs();
+	check(
+		"a page picked there joins Blank, and the empty tab goes",
+		show(openTitles(await sb.state(), "Blank")) === show(["QA Hotel"]) && !withPage.some((t) => isEmptyTab(t.url)),
+		`Blank open: ${show(openTitles(await sb.state(), "Blank"))}; tabs ${show(withPage.map((t) => t.url))}`,
+	);
+	await sb.hover("QA Hotel", "[role=treeitem]");
+	await sb.click("Close QA Hotel");
+	const back = await onEmpty();
+	check(
+		"closing the space's last tab shows an empty tab in it",
+		back && !(await sb.tabs()).some((t) => t.title === "QA Hotel"),
+		back ? back.url : show((await sb.tabs()).map((t) => [t.url, t.active])),
+	);
+	await step("last-tab-closed", true);
+
+	// A new window opens on an empty tab with the command bar over it; Escape leaves it there.
+	const known = new Set((await ctx.browser.targets()).map((t) => t.id));
+	// What Ctrl+N opens: a window whose one tab goes to chrome://newtab.
+	const { targetId } = await ctx.browser.browserSession.call("Target.createTarget", {
+		url: "chrome://newtab/",
+		newWindow: true,
+	});
+	const sb2 = await attachSidebar(ctx.browser, (t) => !known.has(t.id));
+	const first = await until(async () => {
+		const tabs = await sb2.tabs();
+		return tabs.length === 1 && tabs[0]?.active && isEmptyTab(tabs[0].url) ? tabs : null;
+	}, 8000);
+	check("a new window opens on one empty tab", first, show((await sb2.tabs()).map((t) => t.url)));
+	const windowTarget = (await ctx.browser.targets()).find((t) => t.id === targetId);
+	const windowPage = windowTarget ? await connect(windowTarget.webSocketDebuggerUrl) : null;
+	const notNtp =
+		windowPage &&
+		(await until(() => evaluate(windowPage, `Boolean(document.querySelector("loka-new-tab-page"))`), 5000));
+	check("which is Loka's page, never Chrome's new tab page", notNtp, notNtp ? "loka-new-tab-page" : "no Loka page");
+	windowPage?.close();
+	const bar2Target = await until(async () => {
+		for (const t of await ctx.browser.targets()) {
+			if (known.has(t.id) || !t.url.includes("command.html")) continue;
+			const s = await connect(t.webSocketDebuggerUrl);
+			await s.call("Runtime.enable");
+			const d = driver(s);
+			if (await d.run(`document.visibilityState === "visible"`)) return d;
+			s.close();
+		}
+		return null;
+	}, 8000);
+	// The bar hides when it loses activation; a test browser behind other windows may not keep it.
+	const bars = (await ctx.browser.targets()).filter((t) => !known.has(t.id) && t.url.includes("command.html"));
+	check(
+		"and the command bar opens over it",
+		bar2Target,
+		bar2Target ? "showing" : `not showing; the new window has ${bars.length} command bar pages (0: never opened)`,
+	);
+	if (bar2Target) {
+		await bar2Target.key("Escape");
+		const closed = await until(() => bar2Target.run(`document.visibilityState === "hidden"`), 4000);
+		await sleep(500);
+		const left = await sb2.tabs();
+		check(
+			"Escape closes the bar and the window stays on its empty tab",
+			closed && left.length === 1 && isEmptyTab(left[0]?.url ?? ""),
+			`bar ${closed ? "hidden" : "still showing"}; tabs ${show(left.map((t) => t.url))}`,
+		);
+		bar2Target.s.close();
+	}
+	const sidebarId = (await ctx.browser.targets()).find((t) => t.url === SIDEBAR_URL && !known.has(t.id))?.id;
+	await sb2.tell("windowAction", "close");
+	await until(async () => !(await ctx.browser.targets()).some((t) => t.id === sidebarId), 8000);
+	sb2.s.close();
+	note("not checked here", "Ctrl+W (CDP's keys skip the browser's shortcuts) and a start with nothing to restore");
+}
+
 // ---- main ---------------------------------------------------------------------------------------------------------
 
 /** What a flow needs from earlier ones besides first run's spaces: the QA pages that tabs opens. */
@@ -1724,14 +1907,16 @@ async function main() {
 		["7-panels", panels],
 		["8-settings", settings],
 		["9-restart", restart],
+		["10-new-tab", newTabs],
 	];
 	// --only <flow>[,<flow>] runs those flows after the ones they build on (first run always; restart needs them all).
 	const onlyAt = process.argv.indexOf("--only");
 	const asked = onlyAt > 0 ? (process.argv[onlyAt + 1] ?? "").split(",") : [];
 	const names = all.map(([n]) => n);
-	const wanted = asked.map((a) => names.find((n) => n === a || n.slice(2) === a));
+	const short = (/** @type {string} */ n) => n.replace(/^\d+-/, "");
+	const wanted = asked.map((a) => names.find((n) => n === a || short(n) === a));
 	if (wanted.some((w) => !w) || (onlyAt > 0 && !wanted.length)) {
-		console.error(`--only takes one or more of: ${names.map((n) => n.slice(2)).join(", ")}`);
+		console.error(`--only takes one or more of: ${names.map(short).join(", ")}`);
 		process.exit(1);
 	}
 	const keep =

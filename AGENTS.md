@@ -25,7 +25,7 @@ TypeScript). The browser build is Helium's Python build plus Loka's patches.
 
 | Where | What lives there |
 |---|---|
-| `webui/src/` | Loka's pages in the real browser, one bundle: the sidebar (`main.ts`), the floating command bar (`command.ts`), History (`history.ts`, `history-bridge.ts`), Settings (`settings.ts`); `bridge.ts` (chrome.send to the C++ handler), `messages.ts` (every message name), `store.ts`, `sync.ts` |
+| `webui/src/` | Loka's pages in the real browser, one bundle: the sidebar (`main.ts`), the floating command bar (`command.ts`), History (`history.ts`, `history-bridge.ts`), Settings (`settings.ts`), the empty tab at chrome://newtab (`newtab.ts`); `bridge.ts` (chrome.send to the C++ handler), `messages.ts` (every message name), `store.ts`, `sync.ts` |
 | `prototype/src/features/<feature>/` | one folder per feature: its Lit component, `*.logic.ts`, tests. `sidebar/` holds the model (`sidebar.logic.ts`), seed data and `<loka-sidebar>`; `tabs/live.logic.ts` maps browser tabs to spaces and back |
 | `prototype/src/app/` | the window shell (`loka-app.ts`: state, saving, shortcuts, theme) |
 | `prototype/src/demo/` | the fake browser behind `bun run dev`, the same shape as `bridge.ts`. Sample data lives only here |

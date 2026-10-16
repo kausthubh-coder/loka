@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { NativeExtension } from "../../../../webui/src/bridge";
-import { badgeText, toolbarExtensions, withPinned } from "./extensions.logic";
+import { badgeText, extensionMenuItems, toolbarExtensions, withPinned } from "./extensions.logic";
 
 const ext = (id: string, pinned: boolean): NativeExtension => ({
 	id,
@@ -9,6 +9,7 @@ const ext = (id: string, pinned: boolean): NativeExtension => ({
 	badge: "",
 	badgeColor: "",
 	pinned,
+	hasOptions: false,
 });
 
 test("the toolbar shows up to three pinned extensions, in order", () => {
@@ -25,4 +26,19 @@ test("pinning shows at once, before the browser answers", () => {
 
 test("a badge keeps at most four characters", () => {
 	expect([badgeText("12"), badgeText(" 1234567 "), badgeText("")]).toEqual(["12", "1234", ""]);
+});
+
+test("an extension's menu offers what it has: Options only with an options page", () => {
+	const labels = (x: NativeExtension) => extensionMenuItems(x).map((i) => `${i.action}:${i.label}`);
+	expect(labels({ ...ext("a", true), hasOptions: true })).toEqual([
+		"unpin:Unpin from address bar",
+		"options:Options",
+		"manage:Manage extension",
+		"remove:Remove from Loka…",
+	]);
+	expect(labels(ext("b", false))).toEqual([
+		"pin:Pin to address bar",
+		"manage:Manage extension",
+		"remove:Remove from Loka…",
+	]);
 });

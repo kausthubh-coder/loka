@@ -57,19 +57,22 @@ export const extensionIconStyles = css`
 
 /**
  * The sidebar's Extensions panel: every installed extension, click to run it (its popup opens beside the row), pin
- * it to the toolbar, or manage them in the browser. `extensions` is null until the browser has answered.
+ * it to the toolbar, right-click for its own menu, or manage them in the browser. `extensions` is null until the browser has answered.
  */
 export class LokaExtensions extends LitElement {
 	static override properties = {
 		extensions: { attribute: false },
 		browser: { attribute: false },
 		pin: { attribute: false },
+		menu: { attribute: false },
 	};
 
 	declare extensions: NativeExtension[] | null;
 	declare browser: Browser;
 	/** Pins or unpins one; the sidebar shows the change at once and tells the browser. */
 	declare pin: (id: string, pinned: boolean) => void;
+	/** Opens an extension's own menu (right-click, or the context-menu key); the sidebar draws it. */
+	declare menu: (e: MouseEvent, id: string) => void;
 
 	private run(e: Event, id: string) {
 		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -93,7 +96,12 @@ export class LokaExtensions extends LitElement {
 					: html`<ul>
 							${(list ?? []).map(
 								(x) => html`<li>
-									<button class="row" aria-label="Open ${x.name}" @click=${(e: Event) => this.run(e, x.id)}>
+									<button
+										class="row"
+										aria-label="Open ${x.name}"
+										@click=${(e: Event) => this.run(e, x.id)}
+										@contextmenu=${(e: MouseEvent) => this.menu(e, x.id)}
+									>
 										${extensionIcon(x, 22)}
 										<span class="name">${x.name}</span>
 									</button>
@@ -103,6 +111,7 @@ export class LokaExtensions extends LitElement {
 										aria-pressed=${x.pinned}
 										title=${x.pinned ? "Unpin from the toolbar" : "Pin to the toolbar"}
 										@click=${() => this.pin(x.id, !x.pinned)}
+										@contextmenu=${(e: MouseEvent) => this.menu(e, x.id)}
 									>
 										<svg viewBox="0 0 16 16"><path d="M9.5 2.5 13.5 6.5 11 7.5 8.5 10l-.5 3L3 8l3-.5L8.5 5z" /><path d="M5.5 10.5 2.5 13.5" /></svg>
 									</button>

@@ -350,8 +350,12 @@ const recipes = {
 		await loka.page.keyboard.press("Control+s");
 		assert.deepEqual(await demoCalls(loka, "setSidebarPinned"), [[false], [true], [false], [true]]);
 
-		// Downloads is a panel in the address field, like Extensions.
-		await loka.sidebar.getByRole("button", { name: "Downloads", exact: true }).click();
+		// Downloads sits in the bottom row beside the +, not in the address field; its panel rises from there.
+		const pill = await loka.sidebar.locator(".url button").evaluateAll((els) => els.map((e) => e.ariaLabel));
+		assert.ok(!pill.includes("Downloads"), `no Downloads in the address field: ${pill}`);
+		const downloadsButton = loka.sidebar.locator(".bottom").getByRole("button", { name: "Downloads", exact: true });
+		assert.equal(await downloadsButton.locator(".ring").count(), 1, "a ring while a file comes in");
+		await downloadsButton.click();
 		const downloads = loka.sidebar.getByRole("dialog", { name: "Downloads" });
 		assert.equal(await downloads.getByRole("progressbar").count(), 2, "one running, one paused");
 		await downloads.getByRole("button", { name: "Try again lofi-cover.png" }).click();
@@ -366,6 +370,10 @@ const recipes = {
 		// It plays its exit first; on a busy machine that can outlast a fixed wait.
 		await downloads.waitFor({ state: "detached", timeout: 3000 }).catch(() => {});
 		assert.equal(await downloads.count(), 0, "Escape closes the panel");
+		await loka.sidebar.getByRole("button", { name: "More" }).click();
+		await loka.menuItem("Downloads").click();
+		await downloads.waitFor();
+		await loka.page.keyboard.press("Escape");
 	},
 
 	async "make-folders"(loka) {
@@ -573,6 +581,53 @@ const recipes = {
 		await loka.sidebar.getByRole("button", { name: "Dark Reader", exact: true }).waitFor();
 		assert.deepEqual(await demoCalls(loka, "setExtensionPinned"), [["eimadpbcbfnmbkopoojfekhnkhdbieeh", true]]);
 		await loka.proof("02-pinned-dark-reader");
+		await loka.page.keyboard.press("Escape");
+
+		// Right-click: the extension's own menu, headed with its name; Options only when it has an options page.
+		const menuItems = async (/** @type {string} */ name) => {
+			const menu = loka.sidebar.getByRole("menu", { name });
+			await menu.waitFor();
+			return (await menu.getByRole("menuitem").allTextContents()).map((t) => t.trim());
+		};
+		await ublock.click({ button: "right" });
+		assert.deepEqual(await menuItems("uBlock Origin"), [
+			"Unpin from address bar",
+			"Options",
+			"Manage extension",
+			"Remove from Loka…",
+		]);
+		assert.equal(await loka.menuItem("New folder").count(), 0, "not the sidebar's own menu");
+		await loka.page.waitForTimeout(250);
+		await loka.proof("03-extension-menu");
+		await loka.menuItem("Manage extension").click();
+		await loka.sidebar
+			.getByRole("button", { name: "Bitwarden Password Manager", exact: true })
+			.click({ button: "right" });
+		assert.deepEqual(await menuItems("Bitwarden Password Manager"), [
+			"Unpin from address bar",
+			"Manage extension",
+			"Remove from Loka…",
+		]);
+		await loka.page.keyboard.press("Escape");
+		// From the keyboard: Shift+F10 on the focused icon, Down, Enter; focus comes back to the icon.
+		await ublock.focus();
+		await loka.page.keyboard.press("Shift+F10");
+		await menuItems("uBlock Origin");
+		await loka.page.keyboard.press("ArrowDown");
+		await loka.page.keyboard.press("Enter");
+		assert.equal(await loka.sidebar.evaluate((el) => el.shadowRoot?.activeElement?.ariaLabel), "uBlock Origin");
+		// In the panel, a row's right-click; Remove takes it out when the browser says so.
+		await loka.sidebar.getByRole("button", { name: "Extensions", exact: true }).click();
+		await panel.getByRole("button", { name: "Open Raindrop.io" }).click({ button: "right" });
+		assert.deepEqual(await menuItems("Raindrop.io"), ["Pin to address bar", "Manage extension", "Remove from Loka…"]);
+		await loka.menuItem("Remove from Loka…").click();
+		await panel.getByRole("button", { name: "Open Raindrop.io" }).waitFor({ state: "detached" });
+		assert.deepEqual(await demoCalls(loka, "extensionAction"), [
+			["cjpalhdlnbpafiamejdnhcphjbkeiagm", "manage"],
+			["cjpalhdlnbpafiamejdnhcphjbkeiagm", "options"],
+			["ldgfbffkinooeloadekpmfoklnobpien", "remove"],
+		]);
+		await loka.proof("04-removed-from-panel");
 	},
 
 	async history(loka) {

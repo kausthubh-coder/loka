@@ -76,3 +76,13 @@ export function overallProgress(list: NativeDownload[] | null): number | null {
 	const total = running.reduce((n, d) => n + d.totalBytes, 0);
 	return running.reduce((n, d) => n + d.receivedBytes, 0) / total;
 }
+
+/**
+ * The downloads that finished between two answers from the browser: complete now, and not complete before (a tiny
+ * file can arrive already complete). The first answer (`before` null) is history, so nothing in it counts.
+ */
+export function newlyFinished(before: NativeDownload[] | null, after: NativeDownload[]): NativeDownload[] {
+	if (before === null) return [];
+	const done = new Set(before.filter((d) => d.state === "complete").map((d) => d.id));
+	return after.filter((d) => d.state === "complete" && !done.has(d.id));
+}

@@ -1,9 +1,10 @@
 # Posts mouse messages to a browser window, so input takes Chromium's own Win32 path (HWNDMessageHandler, views,
 # then the page) instead of CDP's, which starts inside the page. The cursor doesn't move and the window needn't be
 # in front, so it is safe on a desktop someone is using.
-#   powershell -NoProfile -File scripts/window-input.ps1 -ProcId <browser pid> -Kind <move|click|rclick|drag> -X <x> -Y <y> [-X2 <x> -Y2 <y>]
+#   powershell -NoProfile -File scripts/window-input.ps1 -ProcId <browser pid> -Kind <move|click|rclick|drag|down|hold|up> -X <x> -Y <y> [-X2 <x> -Y2 <y>]
 # X and Y are client coordinates in DIPs (CSS px at zoom 100%), not physical px: Chromium reads posted messages
-# unscaled. window-hittest.ps1 is the other half of real input: what Windows asks before it sends these.
+# unscaled. down, hold (a move with the left button held) and up are a drag's parts, for a drive that looks between
+# them (a user aims again when the list moves). window-hittest.ps1 is the other half of real input: what Windows asks before it sends these.
 param([int]$ProcId, [string]$Kind, [int]$X, [int]$Y, [int]$X2 = 0, [int]$Y2 = 0)
 Add-Type @"
 using System; using System.Runtime.InteropServices;
@@ -24,6 +25,9 @@ switch ($Kind) {
     for ($i = 1; $i -le 12; $i++) { Start-Sleep -Milliseconds 30; Post 0x200 1 ($X + ($X2 - $X) * $i / 12) ($Y + ($Y2 - $Y) * $i / 12) }
     Start-Sleep -Milliseconds 80; Post 0x202 0 $X2 $Y2
   }
-  default { "unknown -Kind $Kind (move, click, rclick, drag)"; exit 1 }
+  "down" { Post 0x200 0 $X $Y; Start-Sleep -Milliseconds 40; Post 0x201 1 $X $Y }
+  "hold" { Post 0x200 1 $X $Y }
+  "up" { Post 0x200 1 $X $Y; Start-Sleep -Milliseconds 40; Post 0x202 0 $X $Y }
+  default { "unknown -Kind $Kind (move, click, rclick, drag, down, hold, up)"; exit 1 }
 }
 "posted"

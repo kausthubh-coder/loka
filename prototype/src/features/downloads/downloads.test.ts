@@ -5,6 +5,7 @@ import {
 	downloadProgress,
 	downloadStatus,
 	formatBytes,
+	newlyFinished,
 	overallProgress,
 	sortDownloads,
 	whenLabel,
@@ -101,4 +102,15 @@ test("the toolbar ring shows the share of everything still downloading", () => {
 	expect(overallProgress([download({ state: "complete" })])).toBeNull();
 	expect(overallProgress(null)).toBeNull();
 	expect(overallProgress([download({ receivedBytes: 5 })])).toBeNaN();
+});
+
+test("a download counts as just finished when it turns complete, or arrives complete, after the first answer", () => {
+	const running = download({ id: 1, state: "running" });
+	const old = download({ id: 2, state: "complete" });
+	const ids = (list: NativeDownload[]) => list.map((d) => d.id);
+	expect(ids(newlyFinished(null, [old]))).toEqual([]);
+	expect(ids(newlyFinished([running, old], [running, old]))).toEqual([]);
+	expect(ids(newlyFinished([running, old], [{ ...running, state: "complete" }, old]))).toEqual([1]);
+	expect(ids(newlyFinished([old], [download({ id: 3, state: "complete" }), old]))).toEqual([3]);
+	expect(ids(newlyFinished([running], [{ ...running, state: "failed" }]))).toEqual([]);
 });

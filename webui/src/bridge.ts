@@ -56,6 +56,8 @@ export interface NativeExtension {
 	badgeColor: string;
 	/** Whether the user pinned it to the sidebar's toolbar. */
 	pinned: boolean;
+	/** Whether it has an options page, which its menu's Options opens. */
+	hasOptions: boolean;
 }
 
 export type DownloadState = "running" | "paused" | "complete" | "failed" | "cancelled";
@@ -206,6 +208,11 @@ export const browser = {
 	runExtension: (id: string, anchor: { x: number; y: number; width: number; height: number }) =>
 		tell("runExtension", id, anchor),
 	setExtensionPinned: (id: string, pinned: boolean) => tell("setExtensionPinned", id, pinned),
+	/**
+	 * An extension's right-click menu: "options" opens its options page and "manage" chrome://extensions/?id=<id>, each
+	 * in a new tab; "remove" shows Chrome's own uninstall dialog, and extensions-changed follows if the user confirms.
+	 */
+	extensionAction: (id: string, action: "options" | "manage" | "remove") => tell("extensionAction", id, action),
 	onExtensionsChanged: (listener: (extensions: NativeExtension[]) => void) =>
 		on("extensions-changed", (e) => listener(e as NativeExtension[])),
 

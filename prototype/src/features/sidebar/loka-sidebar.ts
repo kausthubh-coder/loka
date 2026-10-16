@@ -7,9 +7,9 @@ import { EASE_IN, EASE_OUT, leave, reducedMotion } from "../../app/theme";
 import type { ActionId, CommandMode } from "../command-bar/command-bar.logic";
 import { faviconBackground, faviconInner, hostOf, type LiveTabs } from "./favicon";
 import "../archive/loka-archive-panel";
-import { overallProgress } from "../downloads/downloads.logic";
+import { newlyFinished, overallProgress } from "../downloads/downloads.logic";
 import "../downloads/loka-downloads";
-import { toolbarExtensions, withPinned } from "../extensions/extensions.logic";
+import { extensionMenuItems, toolbarExtensions, withPinned } from "../extensions/extensions.logic";
 import { extensionIcon, extensionIconStyles } from "../extensions/loka-extensions";
 import "../media/loka-media-card";
 import type { NowPlaying } from "../media/loka-media-card";
@@ -83,6 +83,14 @@ interface MenuItem {
 	hint?: string;
 }
 
+/** An open menu: where it was asked for, its items, and a header naming what it's for (an extension's menu). */
+interface Menu {
+	x: number;
+	y: number;
+	items: MenuItem[];
+	title?: string;
+}
+
 const PANEL_NAMES: Record<Panel, string> = {
 	extensions: "Extensions",
 	downloads: "Downloads",
@@ -115,6 +123,8 @@ export class LokaSidebar extends LitElement {
 		panel: { state: true },
 		extensions: { state: true },
 		downloads: { state: true },
+		unseenDownload: { state: true },
+		toast: { state: true },
 		playing: { attribute: false },
 		live: { attribute: false },
 		browser: { attribute: false },
@@ -128,7 +138,7 @@ export class LokaSidebar extends LitElement {
 	declare browser: Browser;
 	dragId: string | null = null;
 	drop: Drop | null = null;
-	menu: { x: number; y: number; items: MenuItem[] } | null = null;
+	menu: Menu | null = null;
 	/** The submenu open beside the menu: which item opened it. */
 	submenu: number | null = null;
 	renamingId: string | null = null;
@@ -137,6 +147,11 @@ export class LokaSidebar extends LitElement {
 	/** The installed extensions and the downloads, as the browser last said. Null until it has answered. */
 	extensions: NativeExtension[] | null = null;
 	downloads: NativeDownload[] | null = null;
+	/** A download finished while the Downloads panel was closed: the bottom row's button wears a dot until it opens. */
+	unseenDownload = false;
+	/** The download that just finished, said for a moment above the bottom row. */
+	toast: NativeDownload | null = null;
+	private toastTimer = 0;
 	private stopWatching: (() => void)[] = [];
 	playing: NowPlaying | null = null;
 	/** What the browser says about each loaded tab: its page's icon, loading, playing sound. */
@@ -170,9 +185,7 @@ export class LokaSidebar extends LitElement {
 			browser.onExtensionsChanged((list) => {
 				this.extensions = list;
 			}),
-			browser.onDownloadsChanged((list) => {
-				this.downloads = list;
-			}),
+			browser.onDownloadsChanged((list) => this.followDownloads(list)),
 		];
 		// The browser may not answer these yet (the message is new); the toolbar then just shows none.
 		void browser.extensions().then((list) => {
@@ -181,6 +194,28 @@ export class LokaSidebar extends LitElement {
 		void browser.downloads().then((list) => {
 			if (this.browser === browser) this.downloads = list;
 		});
+	}
+
+	/** A new list of downloads: one that just finished marks the Downloads button and shows briefly, unless it's open. */
+	private followDownloads(list: NativeDownload[]) {
+		const finished = newlyFinished(this.downloads, list).at(-1);
+		this.downloads = list;
+		if (!finished || this.panel === "downloads") return;
+		this.unseenDownload = true;
+		this.toast = finished;
+		window.clearTimeout(this.toastTimer);
+		this.toastTimer = window.setTimeout(async () => {
+			await leave(this.renderRoot.querySelector(".toast"), 160);
+			if (this.toast === finished) this.toast = null;
+		}, 4000);
+	}
+
+	/** Opens a panel, or closes it if it's the one open (its button, pressed again). */
+	private togglePanel(e: Event, panel: Panel) {
+		e.stopPropagation();
+		this.menu = null;
+		if (this.panel === panel) void this.closePanel();
+		else this.panel = panel;
 	}
 
 	private pinExtension = (id: string, pinned: boolean) => {
@@ -218,6 +253,7 @@ export class LokaSidebar extends LitElement {
 		this.bottomObserver?.disconnect();
 		this.bottomObserver = null;
 		window.removeEventListener("keydown", this.onEscape);
+		window.clearTimeout(this.toastTimer);
 		for (const stop of this.stopWatching) stop();
 		this.stopWatching = [];
 		super.disconnectedCallback();
@@ -438,14 +474,37 @@ export class LokaSidebar extends LitElement {
 	/** A menu item ran: if nothing took focus after it, focus goes back to the opener. */
 	private refocus = false;
 
-	private openMenu(e: MouseEvent, items: MenuItem[]) {
+	private openMenu(e: MouseEvent, items: MenuItem[], title?: string) {
 		e.preventDefault();
 		e.stopPropagation();
-		this.menuOpener = e.currentTarget as HTMLElement;
+		const opener = e.currentTarget as HTMLElement;
+		this.menuOpener = opener;
 		this.focusMenu = true;
 		this.submenu = null;
-		this.menu = { x: e.clientX, y: e.clientY, items };
+		// The context-menu key and Shift+F10 open it from the keyboard, where the point isn't on what's focused:
+		// it opens under that instead.
+		const r = opener.getBoundingClientRect();
+		const onIt = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+		this.menu = onIt ? { x: e.clientX, y: e.clientY, items, title } : { x: r.left, y: r.bottom + 4, items, title };
 	}
+
+	/** Right-click on an extension's icon, in the address field or the Extensions panel: its own menu. */
+	private extensionMenu = (e: MouseEvent, id: string) => {
+		const x = this.extensions?.find((each) => each.id === id);
+		if (!x) return;
+		const items = extensionMenuItems(x).map(
+			({ action, label }): MenuItem => ({
+				label,
+				danger: action === "remove",
+				divider: action === "remove",
+				run: () => {
+					if (action === "pin" || action === "unpin") this.pinExtension(id, action === "pin");
+					else this.browser.extensionAction(id, action);
+				},
+			}),
+		);
+		this.openMenu(e, items, x.name);
+	};
 
 	private closeMenu = () => {
 		this.menu = null;
@@ -833,6 +892,11 @@ export class LokaSidebar extends LitElement {
 	}
 
 	protected override willUpdate(changed: Map<string, unknown>) {
+		if (changed.has("panel") && this.panel === "downloads") {
+			// Seen: the dot and the toast have said what they had to.
+			this.unseenDownload = false;
+			this.toast = null;
+		}
 		if (changed.has("browser") && this.browser) this.watchBrowser();
 		if (changed.has("playing")) this.followPlaying();
 		const before = changed.get("state") as BrowserState | undefined;
@@ -990,6 +1054,7 @@ export class LokaSidebar extends LitElement {
 		this.openMenu(e, [
 			{ label: "New space", run: () => this.action("new-space") },
 			{ label: "Search the sidebar", run: () => this.openPanel("search") },
+			{ label: "Downloads", run: () => this.openPanel("downloads") },
 			{ label: `Archived tabs (${this.state.archive.length})`, run: () => this.openPanel("archive") },
 			{ label: "History", run: () => this.action("history") },
 			{ label: this.soundOn ? "Mute sounds" : "Unmute sounds", run: () => this.action("toggle-sound") },
@@ -1356,11 +1421,10 @@ export class LokaSidebar extends LitElement {
 	private addressField(): TemplateResult {
 		const current = activeTab(this.state);
 		const secure = current?.url.startsWith("https://");
-		// Browser pages have no site name worth showing; their title says more.
-		const own = current ? /^(chrome|loka|about):/.test(current.url) : false;
+		// Browser and extension pages (an options page) have no site name worth showing; their title says more.
+		const own = current ? /^(chrome|chrome-extension|loka|about):/.test(current.url) : false;
 		const label = !current ? "" : own ? current.title : hostOf(current.url);
 		const loading = current ? this.live[current.id]?.loading : false;
-		const progress = overallProgress(this.downloads);
 		return html`<div class="url ${loading ? "loading" : ""}">
 			<button
 				class="address"
@@ -1387,23 +1451,12 @@ export class LokaSidebar extends LitElement {
 							aria-label=${x.name}
 							title=${x.badge ? `${x.name}: ${x.badge}` : x.name}
 							@click=${(e: Event) => this.runExtension(e, x.id)}
+							@contextmenu=${(e: MouseEvent) => this.extensionMenu(e, x.id)}
 						>
 							${extensionIcon(x, 18)}
 						</button>`,
 					)}
 				</span>
-				${this.panelButton(
-					"downloads",
-					"Downloads",
-					html`<svg viewBox="0 0 20 20"><path d="M10 3.5v9M6 8.75l4 4 4-4M4.5 16.5h11" /></svg>
-						${
-							progress === null
-								? nothing
-								: html`<svg class="ring ${Number.isNaN(progress) ? "spin" : ""}" viewBox="0 0 28 28" aria-hidden="true">
-										<circle cx="14" cy="14" r="12" pathLength="100" stroke-dasharray="${Number.isNaN(progress) ? 25 : Math.max(2, progress * 100)} 100" />
-									</svg>`
-						}`,
-				)}
 				${this.panelButton(
 					"extensions",
 					"Extensions",
@@ -1435,6 +1488,11 @@ export class LokaSidebar extends LitElement {
 					void this.closePanel();
 				}}
 				@loka-close-panel=${() => void this.closePanel()}
+				@dragstart=${(e: DragEvent) => {
+					// The browser's own drag of a favicon image would cancel the pointer drag under it (pointercancel):
+					// a press on a row's icon then moved nothing. Sidebar drags are pointer events only.
+					e.preventDefault();
+				}}
 				@wheel=${this.onWheel}
 				@contextmenu=${(e: MouseEvent) => this.backgroundMenu(e)}>
 				${this.topRow()}
@@ -1577,6 +1635,7 @@ export class LokaSidebar extends LitElement {
 				)}
 
 				<div class="bottom">
+				${this.toastView()}
 				${
 					this.shownPlaying
 						? html`<loka-media-card
@@ -1604,13 +1663,14 @@ export class LokaSidebar extends LitElement {
 					<button class="new" aria-label="New" title="New tab, folder or space" @click=${(e: MouseEvent) => this.newMenu(e)}>
 						<svg viewBox="0 0 20 20"><path d="M10 4.5v11M4.5 10h11" /></svg>
 					</button>
+					${this.downloadsButton()}
 				</nav>
 				</div>
 
 				${
 					this.panel
 						? html`<div
-								class="panel"
+								class="panel ${this.panel === "downloads" ? "rises" : ""}"
 								role="dialog"
 								aria-label=${PANEL_NAMES[this.panel]}
 								@click=${(e: Event) => e.stopPropagation()}
@@ -1628,9 +1688,11 @@ export class LokaSidebar extends LitElement {
 	}
 
 	/** Where a menu of `items` fits on screen, nearest to (x, y): kept inside the sidebar and above its bottom. */
-	private menuPlace(x: number, y: number, items: MenuItem[]): { left: number; top: number } {
+	private menuPlace(menu: Menu): { left: number; top: number } {
+		const { x, y, items } = menu;
 		const open = this.submenu === null ? [] : (items[this.submenu]?.items ?? []);
-		const height = 8 + 34 * (items.length + open.length) + 9 * items.filter((i) => i.divider).length;
+		const height =
+			8 + 34 * (items.length + open.length) + 9 * items.filter((i) => i.divider).length + (menu.title ? 39 : 0);
 		return {
 			left: Math.max(4, Math.min(x, this.getBoundingClientRect().right - 204)),
 			top: Math.max(4, Math.min(y, window.innerHeight - 8 - height)),
@@ -1666,14 +1728,16 @@ export class LokaSidebar extends LitElement {
 	}
 
 	/** The open menu; an item with a submenu opens it in place, its items indented under it. */
-	private menuView(menu: { x: number; y: number; items: MenuItem[] }): TemplateResult {
-		const at = this.menuPlace(menu.x, menu.y, menu.items);
+	private menuView(menu: Menu): TemplateResult {
+		const at = this.menuPlace(menu);
 		return html`<div
 			class="menu"
 			role="menu"
+			aria-label=${menu.title ?? nothing}
 			style="left: ${at.left}px; top: ${at.top}px"
 			@keydown=${(e: KeyboardEvent) => this.menuKey(e)}
 		>
+			${menu.title ? html`<div class="menu-title" aria-hidden="true">${menu.title}</div><hr role="separator" />` : nothing}
 			${menu.items.map(
 				(item, i) =>
 					html`${this.menuItem(item, i, false)}${
@@ -1687,18 +1751,60 @@ export class LokaSidebar extends LitElement {
 		</div>`;
 	}
 
+	/**
+	 * Downloads, in the bottom row beside the +, as Arc and Zen have it: a ring fills around it while files come in
+	 * (it spins when a size isn't known), and a dot says a finished one hasn't been seen.
+	 */
+	private downloadsButton(): TemplateResult {
+		const progress = overallProgress(this.downloads);
+		const open = this.panel === "downloads";
+		const status =
+			progress === null
+				? this.unseenDownload
+					? "Downloads: a new file"
+					: "Downloads"
+				: Number.isNaN(progress)
+					? "Downloads: downloading"
+					: `Downloads: ${Math.round(progress * 100)}%`;
+		return html`<button
+			class="downloads ${open ? "on" : ""}"
+			aria-label="Downloads"
+			aria-expanded=${open}
+			title=${status}
+			@click=${(e: Event) => this.togglePanel(e, "downloads")}
+		>
+			<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4.5v8M6.5 9.25 10 12.75l3.5-3.5M5.5 15.5h9" /></svg>
+			${
+				progress === null
+					? nothing
+					: html`<svg class="ring ${Number.isNaN(progress) ? "spin" : ""}" viewBox="0 0 28 28" aria-hidden="true">
+							<circle cx="14" cy="14" r="12.5" pathLength="100" stroke-dasharray="${Number.isNaN(progress) ? 25 : Math.max(2, progress * 100)} 100" />
+						</svg>`
+			}
+			${this.unseenDownload && progress === null ? html`<span class="dot" aria-hidden="true"></span>` : nothing}
+		</button>`;
+	}
+
+	/** A finished download, said once, quietly, above the bottom row; a click opens Downloads. */
+	private toastView(): TemplateResult | typeof nothing {
+		const done = this.toast;
+		if (!done) return nothing;
+		return html`<div class="toast" role="status">
+			<button @click=${(e: Event) => this.togglePanel(e, "downloads")} title="Show in Downloads">
+				<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 10.5 2.75 2.75L14.5 7.5" /></svg>
+				<span class="toast-name">${done.name}</span>
+				<span class="toast-done">Downloaded</span>
+			</button>
+		</div>`;
+	}
+
 	private panelButton(panel: Panel, label: string, icon: TemplateResult): TemplateResult {
 		return html`<button
 			class="tool ${this.panel === panel ? "on" : ""}"
 			aria-label=${label}
 			aria-expanded=${this.panel === panel}
 			title=${label}
-			@click=${(e: Event) => {
-				e.stopPropagation();
-				this.menu = null;
-				if (this.panel === panel) void this.closePanel();
-				else this.panel = panel;
-			}}
+			@click=${(e: Event) => this.togglePanel(e, panel)}
 		>
 			${icon}
 		</button>`;
@@ -1715,6 +1821,7 @@ export class LokaSidebar extends LitElement {
 			.extensions=${this.extensions}
 			.browser=${this.browser}
 			.pin=${this.pinExtension}
+			.menu=${this.extensionMenu}
 		></loka-extensions>`;
 	}
 
@@ -1855,7 +1962,7 @@ export class LokaSidebar extends LitElement {
 			}
 		}
 
-		/* The address field, with the pinned extensions, Downloads and Extensions inside it on the right. */
+		/* The address field, with the pinned extensions and Extensions inside it on the right. */
 		.url {
 			position: relative;
 			flex: none;
@@ -1945,19 +2052,6 @@ export class LokaSidebar extends LitElement {
 			background: var(--loka-selected);
 			box-shadow: var(--loka-selected-edge);
 			color: var(--loka-ink);
-		}
-		/* Download progress: a ring around the button, filling as the files come in. */
-		.ring {
-			position: absolute;
-			inset: 2px;
-			width: 28px;
-			height: 28px;
-			rotate: -90deg;
-		}
-		.ring circle {
-			fill: none;
-			stroke: var(--loka-accent);
-			stroke-width: 2;
 		}
 
 		.essentials {
@@ -2285,6 +2379,65 @@ export class LokaSidebar extends LitElement {
 			background: var(--loka-hover);
 			color: var(--loka-ink);
 		}
+		/* A speaker beside the x reads as one pair: each takes 22 px of the row, edge to edge, and their icons sit toward
+		   each other, about 2.5 px apart. The x stays exactly where it is on a row without a speaker. Hover and press
+		   light a pill around the icon, not the whole box; the icons don't take the pointer, so each box is its own. */
+		.trail:has(.sound + .close) {
+			gap: 0;
+		}
+		.sound:has(+ .close),
+		.sound + .close {
+			width: 22px;
+		}
+		.sound:has(+ .close),
+		.sound:has(+ .close):hover,
+		.sound:has(+ .close):active,
+		.sound + .close,
+		.sound + .close:hover,
+		.sound + .close:active {
+			background: none;
+		}
+		.sound:has(+ .close)::after,
+		.sound + .close::after {
+			inset: -2px 0;
+		}
+		.sound:has(+ .close) {
+			justify-items: end;
+		}
+		.sound + .close {
+			justify-items: start;
+		}
+		.sound:has(+ .close) svg {
+			translate: 4px 0;
+		}
+		.sound:has(+ .close) svg,
+		.sound + .close svg {
+			position: relative;
+			pointer-events: none;
+		}
+		.sound:has(+ .close)::before,
+		.sound + .close::before {
+			content: "";
+			position: absolute;
+			top: 4px;
+			bottom: 4px;
+			width: 20px;
+			border-radius: 6px;
+		}
+		.sound:has(+ .close)::before {
+			left: 8px;
+		}
+		.sound + .close::before {
+			left: -2px;
+		}
+		.sound:has(+ .close):hover::before,
+		.sound + .close:hover::before {
+			background: var(--loka-hover);
+		}
+		.sound:has(+ .close):active::before,
+		.sound + .close:active::before {
+			background: var(--loka-pressed);
+		}
 		/* The gap above the divider: dropping a tab here or on the divider pins it, and the drop line says so. With
 		   nothing pinned it takes no room; the divider is the target. Nothing grows when a drag starts, so the rows
 		   don't jump from under the pointer. */
@@ -2484,8 +2637,113 @@ export class LokaSidebar extends LitElement {
 			box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 0.16);
 			backdrop-filter: blur(6px);
 		}
-		.new:hover {
+		.new:hover,
+		.downloads:hover {
 			background: hsl(var(--hue) 40% 10% / 0.42);
+		}
+		.new:active,
+		.downloads:active {
+			background: hsl(var(--hue) 40% 10% / 0.55);
+		}
+		/* Downloads, beside the +, in the same glass. */
+		.downloads {
+			position: absolute;
+			z-index: 3;
+			left: 46px;
+			bottom: 6px;
+			display: grid;
+			place-items: center;
+			width: 28px;
+			height: 28px;
+			border-radius: 8px;
+			color: #fff;
+			background: hsl(var(--hue) 40% 10% / 0.28);
+			box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 0.16);
+			backdrop-filter: blur(6px);
+			pointer-events: auto;
+		}
+		.downloads.on {
+			background: hsl(var(--hue) 40% 10% / 0.55);
+			box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 0.32);
+		}
+		.downloads svg {
+			width: 17px;
+			height: 17px;
+		}
+		/* Progress: a ring around the button, filling as the files come in. */
+		.downloads .ring {
+			position: absolute;
+			inset: 0;
+			width: 28px;
+			height: 28px;
+			rotate: -90deg;
+		}
+		.ring circle {
+			fill: none;
+			stroke: hsl(var(--hue) 90% 78%);
+			stroke-width: 1.75;
+		}
+		/* A finished download not seen yet. */
+		.dot {
+			position: absolute;
+			top: -2px;
+			right: -2px;
+			width: 8px;
+			height: 8px;
+			border-radius: 50%;
+			background: hsl(var(--hue) 90% 72%);
+			box-shadow: 0 0 0 2px hsl(var(--hue) 40% 12%);
+		}
+		/* The just-finished download, over the list's fading bottom for a moment. */
+		.toast {
+			position: absolute;
+			z-index: 4;
+			left: 10px;
+			right: 8px;
+			top: 8px;
+			pointer-events: auto;
+			border-radius: 12px;
+			background: hsl(from var(--loka-surface) h s l / 0.96);
+			box-shadow:
+				inset 0 0 0 1px var(--glass-edge),
+				var(--loka-surface-edge);
+			backdrop-filter: blur(20px) saturate(1.4);
+		}
+		.toast button {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			width: 100%;
+			height: 40px;
+			padding: 0 12px 0 10px;
+			border-radius: 12px;
+			font-size: 13px;
+			text-align: left;
+		}
+		.toast button:hover {
+			background: var(--loka-hover);
+		}
+		.toast button:active {
+			background: var(--loka-pressed);
+		}
+		.toast svg {
+			flex: none;
+			width: 18px;
+			height: 18px;
+			color: var(--loka-accent-ink);
+		}
+		.toast-name {
+			flex: 1;
+			min-width: 0;
+			overflow: hidden;
+			white-space: nowrap;
+			text-overflow: ellipsis;
+			color: var(--loka-ink);
+		}
+		.toast-done {
+			flex: none;
+			color: var(--loka-ink-3);
+			font-size: 12px;
 		}
 		@keyframes in-right {
 			from {
@@ -2548,6 +2806,13 @@ export class LokaSidebar extends LitElement {
 			padding: 8px 6px;
 			border-radius: 14px;
 			transform-origin: top right;
+		}
+		/* Downloads opens from the bottom row, so it rises from there. */
+		.panel.rises {
+			top: auto;
+			bottom: 46px;
+			max-height: calc(100% - 140px);
+			transform-origin: bottom left;
 		}
 		.menu {
 			position: fixed;
@@ -2615,6 +2880,19 @@ export class LokaSidebar extends LitElement {
 		.menu kbd {
 			font: 12px system-ui, "Segoe UI", sans-serif;
 			color: var(--loka-ink-3);
+		}
+		/* What the menu is for (an extension's name): quiet, not a choice, so the keys skip it. */
+		.menu-title {
+			flex: none;
+			height: 30px;
+			padding: 0 10px;
+			line-height: 30px;
+			font-size: 12px;
+			font-weight: 600;
+			color: var(--loka-ink-2);
+			overflow: hidden;
+			white-space: nowrap;
+			text-overflow: ellipsis;
 		}
 		.menu hr {
 			flex: none;
@@ -2746,10 +3024,32 @@ export class LokaSidebar extends LitElement {
 					transform: scale(0.97);
 				}
 			}
+			.panel.rises {
+				@starting-style {
+					opacity: 0;
+					transform: translateY(6px) scale(0.97);
+				}
+			}
+			.toast {
+				transition:
+					opacity 180ms cubic-bezier(0.2, 0, 0, 1),
+					translate 220ms cubic-bezier(0.2, 0, 0, 1);
+				@starting-style {
+					opacity: 0;
+					translate: 0 6px;
+				}
+			}
+			.dot {
+				transition: scale 200ms cubic-bezier(0.2, 0, 0, 1);
+				@starting-style {
+					scale: 0;
+				}
+			}
 		}
 		@media (prefers-reduced-motion: reduce) {
 			.panel,
-			.menu {
+			.menu,
+			.toast {
 				transition: opacity 120ms ease-out;
 				@starting-style {
 					opacity: 0;

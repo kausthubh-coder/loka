@@ -16,9 +16,13 @@
 //   3 tabs         open pages from the command bar, switch by row, close by x and middle click, reorder by drag,
 //                  move to a space, search words, Ctrl+L, back, forward, reload
 //   4 states       hover and press change rows, buttons, planets and the address field; Tab shows a focus ring
-//   5 pinning      pin by menu and drag, unpin, folders two deep, unload a pinned tab and load it back, Essentials
-//   6 extensions   the panel lists them; pin and unpin reach the address field; the icon opens its popup; badges
-//   7 panels       Downloads with a real download, the media card on a playing page, Archive and Search
+//   5 pinning      pin by menu and drag, unpin, folders two deep, unload a pinned tab and load it back, Essentials;
+//                  a real mouse (posted messages) grabbing rows by their icons reorders Pinned and moves a tab out
+//                  of a pinned folder and back
+//   6 extensions   the panel lists them; pin and unpin reach the address field; the icon opens its popup; badges;
+//                  right-click (and Shift+F10) opens its own menu, whose Manage and Options open their pages
+//   7 panels       Downloads in the bottom row with a real download (its toast and dot), the media card on a playing
+//                  page, Archive and Search
 //   8 settings     the rail (a click scrolls to its section, the search filters), wide and narrow, light and dark;
 //                  each setting changes what it says; History search, delete and clear today
 //   9 restart      quit and start again: spaces, pinned, folders, Essentials, extension pins and settings stay
@@ -59,6 +63,7 @@ import {
 /** @typedef {import("../webui/src/bridge").NativeGroup} NativeGroup */
 /** @typedef {import("../webui/src/bridge").NativeExtension} NativeExtension */
 /** @typedef {{ label: string, level: number, selected: boolean, expanded: string | null, tree: string }} Row */
+/** Something found by its accessible name: the whole name, or a pattern. @typedef {string | { re: string }} Label */
 
 const repo = resolve(import.meta.dirname, "..");
 const chrome = chromePath();
@@ -177,6 +182,7 @@ function writeExtension() {
 			version: "1.0",
 			action: { default_popup: "popup.html", default_icon: "icon.png", default_title: QA_EXTENSION },
 			background: { service_worker: "worker.js" },
+			options_page: "options.html",
 			icons: { 32: "icon.png" },
 		}),
 	);
@@ -191,6 +197,7 @@ badge();`,
 		join(extensionDir, "popup.html"),
 		`<!doctype html><title>QA popup</title><body style="width:200px">QA popup</body>`,
 	);
+	writeFileSync(join(extensionDir, "options.html"), `<!doctype html><title>QA options</title><h1>QA options</h1>`);
 }
 
 // ---- the browser --------------------------------------------------------------------------------------------------
@@ -315,7 +322,6 @@ const HELPERS = `window.__qa ??= (() => {
 function driver(s) {
 	/** @param {string} expression @param {boolean} [gesture] */
 	const run = (expression, gesture = false) => evaluate(s, `(${HELPERS}, ${expression})`, gesture);
-	/** @typedef {string | { re: string }} Label */
 	/** @param {Label} label @param {string} [role] @returns {Promise<{ x: number, y: number, top: number, bottom: number, left: number, right: number, height: number, width: number } | null>} */
 	const box = (label, role = "") => run(`window.__qa.box(${JSON.stringify(label)}, ${JSON.stringify(role)})`);
 	/**
@@ -515,7 +521,77 @@ async function attachSidebar(b, pick = () => true) {
 		groups: () => ask("getGroups"),
 		/** @returns {Promise<NativeExtension[]>} */
 		extensions: () => ask("getExtensions"),
+		/**
+		 * A drag with a real mouse, grabbing the row by its icon the way people pick a tab up: messages posted to the
+		 * window (scripts/window-input.ps1) take Chromium's own Win32 path, where a press on an image can start the
+		 * browser's own image drag; CDP's Input events start inside the page and skip that. Presses, moves past the
+		 * threshold, looks again (a drag can open drop zones that move the target), then lets go on `to` at `at` (0 top
+		 * edge .. 1 bottom edge). Says whether the row's icon was an image.
+		 * @param {Label} from @param {Label} to @param {number} at @param {string} [toRole]
+		 */
+		async realDrag(from, to, at, toRole = "[role=treeitem]") {
+			/** @returns {Promise<{ x: number, y: number, image: boolean } | null>} */
+			const iconAt = () =>
+				d.run(
+					`(() => { const fav = window.__qa.find(${JSON.stringify(from)}, "[role=treeitem]")?.querySelector(".fav"); if (!fav) return null; fav.scrollIntoView({ block: "nearest" }); const r = fav.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, image: Boolean(fav.querySelector("img:not([hidden])")) }; })()`,
+				);
+			// Where it is once it stops moving: a row that just moved slides from where it was.
+			let icon = await until(iconAt, 6000);
+			for (let i = 0; i < 30 && icon; i++) {
+				await sleep(70);
+				const now = await iconAt();
+				if (now && Math.abs(now.y - icon.y) < 0.5 && Math.abs(now.x - icon.x) < 0.5) break;
+				icon = now ?? icon;
+			}
+			if (!icon) throw new Error(`no icon on ${show(from)} to grab`);
+			const origin = await sidebarOrigin(d);
+			const post = (/** @type {string} */ kind, /** @type {number} */ x, /** @type {number} */ y) =>
+				windowInput(ctx.browser.pid, kind, x + origin.x, y + origin.y);
+			post("down", icon.x, icon.y);
+			post("hold", icon.x, icon.y - 10);
+			await sleep(400);
+			const target = await until(() => d.box(to, toRole), 3000);
+			if (!target) {
+				post("up", icon.x, icon.y - 10);
+				throw new Error(`${show(to)} went away during the drag`);
+			}
+			const ty = target.top + target.height * at;
+			post("hold", target.x, ty - 3);
+			post("hold", target.x, ty);
+			await sleep(120);
+			post("up", target.x, ty);
+			return { image: icon.image };
+		},
 	};
+}
+
+/**
+ * Real mouse input: posts `kind` (scripts/window-input.ps1: move, down, hold, up, ...) to the browser's window at
+ * client DIPs (x, y). @param {number} pid @param {string} kind @param {number} x @param {number} y
+ */
+function windowInput(pid, kind, x, y) {
+	const args = ["-ProcId", String(pid), "-Kind", kind, "-X", String(Math.round(x)), "-Y", String(Math.round(y))];
+	const run = spawnSync("powershell", ["-NoProfile", "-File", join(repo, "scripts", "window-input.ps1"), ...args], {
+		encoding: "utf8",
+	});
+	if (!run.stdout.includes("posted"))
+		throw new Error(`window-input ${kind}: ${run.stdout.trim()} ${run.stderr.trim()}`);
+}
+
+/**
+ * Where the sidebar page's (0, 0) is in the window's client area: a posted move, and where the page saw it.
+ * @param {Driver} d
+ */
+async function sidebarOrigin(d) {
+	await d.run(
+		`(window.__qaMoves ??= (addEventListener("pointermove", (e) => window.__qaMoves.push([e.clientX, e.clientY]), true), []), window.__qaMoves.length = 0, true)`,
+	);
+	const probe = { x: 150, y: 400 };
+	windowInput(ctx.browser.pid, "move", probe.x, probe.y);
+	/** @type {[number, number] | undefined} */
+	const seen = await until(() => d.run("window.__qaMoves.at(-1)"), 3000);
+	if (!seen) throw new Error("the sidebar never saw a posted mouse move");
+	return { x: probe.x - seen[0], y: probe.y - seen[1] };
 }
 /** @typedef {Awaited<ReturnType<typeof attachSidebar>>} Sidebar */
 
@@ -1229,6 +1305,20 @@ async function pinning() {
 		show(pinnedLines(st ?? (await sb.state()), spaceNamed(st ?? (await sb.state()), "Research")?.pinned ?? [])),
 	);
 	await step("pinned-two");
+	// Reorder inside Pinned with a real mouse, grabbing Golf by its icon: it goes above Foxtrot.
+	const reorder = await sb.realDrag({ re: "^QA Golf$" }, { re: "^QA Foxtrot$" }, 0.2);
+	/** @param {BrowserState} now */
+	const researchLines = (now) => pinnedLines(now, spaceNamed(now, "Research")?.pinned ?? []);
+	const reordered = await until(async () => {
+		const lines = researchLines(await sb.state());
+		return lines.indexOf("0:QA Golf") >= 0 && lines.indexOf("0:QA Golf") < lines.indexOf("0:QA Foxtrot");
+	}, 4000);
+	check(
+		"a real mouse reorders inside Pinned, grabbing the row by its icon",
+		reordered,
+		`${reorder.image ? "grabbed by its icon image" : "the row's icon was a letter, not an image"}; ${show(researchLines(await sb.state()))}`,
+	);
+	await step("pinned-reordered");
 	// Unpin.
 	await sb.click("QA Golf", { role: "[role=treeitem]", button: "right" });
 	await sb.click("Unpin", { role: "[role=menuitem]" });
@@ -1324,6 +1414,27 @@ async function pinning() {
 	);
 	check("with its own icon on the row", icon, show(icon));
 	await step("reloaded");
+
+	// Out of a pinned folder into the open tabs and back in, with a real mouse grabbing Foxtrot by its icon.
+	await sb.realDrag({ re: "^QA Foxtrot$" }, { re: "^QA Hotel$" }, 0.8);
+	const out = await until(async () => {
+		const now = await sb.state();
+		return openTitles(now, "Research").includes("QA Foxtrot") && !researchLines(now).includes("2:QA Foxtrot");
+	}, 4000);
+	const afterOut = await sb.state();
+	check(
+		"a real mouse drags a tab out of a pinned folder into the open tabs",
+		out,
+		`open ${show(openTitles(afterOut, "Research"))}; pinned ${show(researchLines(afterOut))}`,
+	);
+	await sb.realDrag({ re: "^QA Foxtrot$" }, { re: "^Deep$" }, 0.5);
+	const back = await until(async () => researchLines(await sb.state()).includes("2:QA Foxtrot"), 4000);
+	check(
+		"and back into the folder",
+		out && back,
+		`pinned ${show(researchLines(await sb.state()))}; open ${show(openTitles(await sb.state(), "Research"))}`,
+	);
+	await step("folder-out-and-back");
 
 	// Essentials: from the menu and by a drag; they show in every space.
 	await sb.click("QA Golf", { role: "[role=treeitem]", button: "right" });
@@ -1444,6 +1555,67 @@ async function extensions() {
 		await evaluate(p, "(window.close(), true)").catch(() => {});
 		p.close();
 	}
+	// Right-clicking the icon opens the extension's own menu, not the sidebar's.
+	const qaId = (await sb.extensions()).find((x) => x.name === QA_EXTENSION)?.id ?? "";
+	check(
+		"getExtensions says it has an options page",
+		(await sb.extensions()).find((x) => x.id === qaId)?.hasOptions,
+		show((await sb.extensions()).find((x) => x.id === qaId)),
+	);
+	await sb.click(QA_EXTENSION, { role: ".url button", button: "right" });
+	const menu = await until(async () => {
+		const items = await sb.names("[role=menuitem]");
+		return items.includes("Manage extension") ? items : null;
+	}, 4000);
+	const titled = await sb.has(QA_EXTENSION, "[role=menu]");
+	check(
+		"right-clicking its icon opens its own menu",
+		titled && show(menu) === show(["Unpin from address bar", "Options", "Manage extension", "Remove from Loka…"]),
+		`menu "${titled ? QA_EXTENSION : "?"}": ${show(menu)}`,
+	);
+	await step("extension-menu");
+	/**
+	 * Clicks a menu item and waits for a tab showing an address that passes `wanted` (a new tab, or the empty tab,
+	 * which Chrome's options page reuses), then closes it.
+	 * @param {string} item @param {(url: string) => boolean} wanted
+	 */
+	const opensTab = async (item, wanted) => {
+		const showing = new Set((await sb.tabs()).filter((t) => wanted(t.url)).map((t) => t.id));
+		await sb.click(item, { role: "[role=menuitem]" });
+		const tab = await until(
+			async () => (await sb.tabs()).find((t) => !showing.has(t.id) && wanted(t.url) && !t.loading && t.title),
+			6000,
+		);
+		// Closed the way a person closes it, by its row's x: the sidebar keeps a window from losing its last tab.
+		if (tab) await sb.click(`Close ${tab.title}`);
+		if (tab) await until(async () => !(await sb.tabs()).some((t) => t.id === tab.id), 4000);
+		return tab ? tab.url : show((await sb.tabs()).map((t) => [t.url, t.title, t.loading]));
+	};
+	const manage = await opensTab("Manage extension", (u) => u.startsWith(`chrome://extensions/?id=${qaId}`));
+	check("Manage extension opens its chrome://extensions page", manage.startsWith("chrome://extensions/"), manage);
+	// From the keyboard: Shift+F10 on the focused icon.
+	await sb.run(`(window.__qa.find(${JSON.stringify(QA_EXTENSION)}, ".url button").focus(), true)`);
+	await sb.s.call("Input.dispatchKeyEvent", {
+		type: "rawKeyDown",
+		key: "F10",
+		code: "F10",
+		modifiers: 8,
+		windowsVirtualKeyCode: 121,
+	});
+	await sb.s.call("Input.dispatchKeyEvent", {
+		type: "keyUp",
+		key: "F10",
+		code: "F10",
+		modifiers: 8,
+		windowsVirtualKeyCode: 121,
+	});
+	const byKey = await until(() => sb.has(QA_EXTENSION, "[role=menu]"), 3000);
+	check("Shift+F10 on the focused icon opens the menu too", byKey, byKey ? "open" : "no menu");
+	if (!byKey) await sb.click(QA_EXTENSION, { role: ".url button", button: "right" });
+	const options = await opensTab("Options", (u) => u.startsWith(`chrome-extension://${qaId}/options.html`));
+	check("Options opens its options page", options.startsWith("chrome-extension://"), options);
+	// Remove shows Chrome's own dialog, a window this run can't answer: not checked here.
+
 	// Unpin uBlock from the panel: its icon leaves the address field.
 	await sb.click("Extensions");
 	await sb.click("Unpin uBlock Origin");
@@ -1474,9 +1646,30 @@ async function panels() {
 		return Array.isArray(list) && list.find((d) => d.name === "qa-download.txt" && d.state === "complete");
 	}, 10000);
 	check("a download arrives", done, show(done));
+	// Downloads sits in the bottom row beside the +, not in the address field; a finished file says so there.
+	const inPill = (await sb.names(".url button")).includes("Downloads");
+	const inBottom = (await sb.names(".bottom button")).includes("Downloads");
+	check(
+		"Downloads is in the bottom row, not the address field",
+		inBottom && !inPill,
+		`bottom ${inBottom}, address field ${inPill}`,
+	);
+	/** @returns {Promise<{ toast: string, dot: boolean }>} */
+	const downloadNews = () =>
+		sb.run(
+			`(() => { const r = ${SIDEBAR_ROOT}; return { toast: r.querySelector(".toast")?.textContent.replace(/\\s+/g, " ").trim() ?? "", dot: Boolean(r.querySelector(".downloads .dot")) }; })()`,
+		);
+	const told = await until(async () => {
+		const now = await downloadNews();
+		return now.toast.includes("qa-download.txt") && now.dot;
+	}, 4000);
+	check("the finished download shows briefly and leaves a dot on Downloads", told, show(await downloadNews()));
+	await step("download-finished");
 	await sb.click("Downloads");
 	const listed = await until(async () => (await sb.text()).includes("qa-download.txt"), 5000);
 	check("the Downloads panel lists it", listed, listed ? "qa-download.txt" : "not in the panel");
+	const seen = await downloadNews();
+	check("opening it clears the dot and the toast", !seen.dot && !seen.toast, show(seen));
 	await step("downloads-panel");
 	await sb.key("Escape");
 

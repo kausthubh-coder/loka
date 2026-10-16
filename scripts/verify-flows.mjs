@@ -907,16 +907,31 @@ async function tabs() {
 	check("and into Play's tab group in the browser", moved, show((await sb.groups()).map((g) => g.title)));
 
 	// Words search with the browser's engine; Ctrl+L changes the shown tab's address.
+	const tabsBefore = new Set((await sb.tabs()).map((t) => t.id));
 	await openBar("New tab");
 	await barPick("loka qa words", { re: "^loka qa words$" });
-	const searched = await until(
-		async () => (await sb.tabs()).find((t) => t.active && /[?&]q=loka(\+|%20)qa(\+|%20)words/.test(t.url)),
-		6000,
-	);
+	// getTabs has a tab's committed address, which for a search waits on the search engine's servers (0.3 s here,
+	// over 6 s in the runs that failed); until then it says about:blank. The browser's own target list has where the
+	// tab is going from the start. So: a new tab, shown, going to the search (committed, or still on its way there).
+	const isSearch = (/** @type {string} */ url) => /[?&]q=loka(\+|%20)qa(\+|%20)words/.test(url);
+	const searchedSince = Date.now();
+	const searched = await until(async () => {
+		const [tabsNow, targets] = await Promise.all([sb.tabs(), ctx.browser.targets()]);
+		const tab = tabsNow.find((t) => !tabsBefore.has(t.id) && t.active);
+		const going = targets.find((t) => t.type === "page" && isSearch(t.url))?.url;
+		if (!tab) return null;
+		if (isSearch(tab.url)) return { id: tab.id, url: tab.url, how: "committed" };
+		return (tab.url === "about:blank" || tab.url === "") && going
+			? { id: tab.id, url: going, how: "on its way" }
+			: null;
+	}, 10000);
+	const searchWaited = Date.now() - searchedSince;
 	check(
 		"words in the command bar search the web in a new tab",
 		searched,
-		searched ? searched.url : show((await sb.tabs()).map((t) => t.url)),
+		searched
+			? `${searched.url} (${searched.how}, after ${searchWaited} ms)`
+			: `tabs ${show((await sb.tabs()).map((t) => [t.url, t.active]))}; targets ${show((await ctx.browser.targets()).map((t) => t.url))}`,
 	);
 	// It needs the network to load; only where it went matters here.
 	if (searched) await sb.tell("closeTab", searched.id);

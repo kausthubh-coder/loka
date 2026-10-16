@@ -42,7 +42,7 @@ export class LokaPage extends LitElement {
 	override render() {
 		const tab = this.tab;
 		if (tab?.url === "loka://settings") {
-			return html`<section class="frame inside">
+			return html`<section class="frame inside glass">
 				<loka-settings
 					.state=${this.state}
 					.apply=${this.apply}
@@ -55,7 +55,7 @@ export class LokaPage extends LitElement {
 		}
 
 		if (tab?.url === "loka://history") {
-			return html`<section class="frame inside history">
+			return html`<section class="frame inside glass">
 				<loka-history .bridge=${this.historyBridge}></loka-history>
 			</section>`;
 		}
@@ -126,10 +126,10 @@ export class LokaPage extends LitElement {
 			background: hsl(var(--hue) 50% 96% / 0.9);
 			color: var(--loka-ink);
 		}
-		/* History is the sky with glass cards on it, as in the browser, so the window's sky shows through here.
-		   It scrolls inside itself. */
-		.frame.inside.history,
-		:host([scheme="light"]) .frame.inside.history {
+		/* History and Settings are the sky with glass cards on it, as in the browser, so the window's sky shows
+		   through here. They scroll inside themselves. */
+		.frame.inside.glass,
+		:host([scheme="light"]) .frame.inside.glass {
 			background: transparent;
 			box-shadow: none;
 		}

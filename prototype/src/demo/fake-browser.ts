@@ -231,6 +231,7 @@ export const fakeBrowser: Browser = {
 		emit("sidebar-pinned-changed", pinned);
 	},
 	sidebarPinned: async () => localStorage.getItem(PINNED_KEY) !== "false",
+	setThemeColor: (color) => log("setThemeColor", color),
 	setColorScheme: (next) => {
 		log("setColorScheme", next);
 		scheme = next;

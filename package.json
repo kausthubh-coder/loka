@@ -23,6 +23,7 @@
 		"build:status": "bun scripts/browser.mjs status",
 		"verify:browser": "bun scripts/verify-browser.mjs",
 		"verify:flows": "bun scripts/verify-flows.mjs",
+		"verify:perf": "bun scripts/verify-perf.mjs",
 		"browser:package": "node scripts/alpha/package_alpha.mjs"
 	},
 	"dependencies": {

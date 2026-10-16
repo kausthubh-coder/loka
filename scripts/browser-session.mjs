@@ -25,6 +25,16 @@ export const chromePath = () =>
 export function refuseWhileBuilding(chrome) {
 	const out = join(BUILD_DIR, "build", "src", "out").toLowerCase();
 	if (!chrome.toLowerCase().startsWith(out)) return;
+	const reasons = buildActivity();
+	if (reasons.length) {
+		console.error(`A build is using ${chrome} (${reasons.join("; ")}). Wait for it, or set LOKA_CHROME to a copy.`);
+		process.exit(2);
+	}
+}
+
+/** Why the build checkout looks mid-build (build.lock, a compile.log with no exit line, build-status.json), or []. */
+export function buildActivity() {
+	/** @type {string[]} */
 	const reasons = [];
 	if (existsSync(join(BUILD_DIR, "build.lock"))) reasons.push("build.lock exists");
 	const log = join(BUILD_DIR, "compile.log");
@@ -42,10 +52,7 @@ export function refuseWhileBuilding(chrome) {
 		} catch {}
 		if (status.phase === "compiling" && running) reasons.push(`build-status.json says compiling (pid ${status.pid})`);
 	}
-	if (reasons.length) {
-		console.error(`A build is using ${chrome} (${reasons.join("; ")}). Wait for it, or set LOKA_CHROME to a copy.`);
-		process.exit(2);
-	}
+	return reasons;
 }
 
 /** A free localhost port, from the OS. @returns {Promise<number>} */

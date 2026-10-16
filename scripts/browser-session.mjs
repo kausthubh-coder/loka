@@ -187,27 +187,55 @@ export const RECORD_EVENTS = `(() => {
 	return true;
 })()`;
 
-/** Every pid in the tree under `root`, from Windows' process table. @param {number} root @returns {number[]} */
-export function processTree(root) {
+/**
+ * One process: its pid, parent, when it started (so a pid Windows has handed to a new process isn't mistaken for
+ * it) and its Chromium --type ("browser" for the main one).
+ * @typedef {{ pid: number, parent: number, started: string, type: string }} Proc
+ */
+
+/** Windows' process table, by pid. @returns {Map<number, Proc>} */
+function processTable() {
 	const ps = spawnSync(
 		"powershell",
 		[
 			"-NoProfile",
 			"-Command",
-			'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId)" }',
+			'Get-CimInstance Win32_Process | ForEach-Object { $t = if ($_.CommandLine -match "--type=([\\w-]+)") { $Matches[1] } else { "browser" }; "$($_.ProcessId) $($_.ParentProcessId) $($_.CreationDate.ToFileTimeUtc()) $t" }',
 		],
 		{ encoding: "utf8" },
 	);
-	/** @type {Map<number, number[]>} */
-	const children = new Map();
+	/** @type {Map<number, Proc>} */
+	const table = new Map();
 	for (const line of ps.stdout.split(/\r?\n/)) {
-		const [pid = 0, parent = 0] = line.trim().split(" ").map(Number);
-		if (!pid) continue;
-		children.set(parent, [...(children.get(parent) ?? []), pid]);
+		const [pid = "", parent = "", started = "", type = ""] = line.trim().split(" ");
+		if (Number(pid)) table.set(Number(pid), { pid: Number(pid), parent: Number(parent), started, type });
 	}
-	const tree = [root];
-	for (const at of tree) tree.push(...(children.get(at) ?? []));
-	return tree;
+	return table;
+}
+
+/**
+ * The processes of `tree` that still run, plus any they started since. Running means both: the pid answers, and
+ * Windows' table has it with the same start time. The pid alone isn't enough, since Windows hands a freed pid to a
+ * new process within seconds; the table alone isn't either, since it keeps listing an exited process for a second or
+ * two while something holds a handle to it. A child counts only if it started after its parent, since Windows keeps
+ * a dead parent's pid in its children.
+ * @param {Proc[]} tree @returns {Proc[]}
+ */
+export function stillRunning(tree) {
+	const table = processTable();
+	const running = (/** @type {Proc} */ p) => table.get(p.pid)?.started === p.started && alive(p.pid);
+	const left = tree.filter(running);
+	for (const at of left)
+		for (const p of table.values())
+			if (p.parent === at.pid && p.started >= at.started && !left.some((l) => l.pid === p.pid) && running(p))
+				left.push(p);
+	return left;
+}
+
+/** Every process in the tree under `root`, root first. @param {number} root @returns {Proc[]} */
+export function processes(root) {
+	const top = processTable().get(root);
+	return top ? stillRunning([top]) : [];
 }
 
 /**
@@ -249,6 +277,8 @@ export async function launchBrowser({ name, chrome = chromePath(), args = [], ur
 		30000,
 	);
 	if (!version) throw new Error("the browser never opened its debugging port");
+	// The browser process as it is now (pid and start time), so close() never stops a process that took its pid later.
+	const root = processes(pid).slice(0, 1);
 	const browser = await connect(version.webSocketDebuggerUrl);
 	/** @param {(t: Target) => boolean} match @param {number} [ms] */
 	const target = async (match, ms = 20000) => {
@@ -271,11 +301,11 @@ export async function launchBrowser({ name, chrome = chromePath(), args = [], ur
 			return session;
 		},
 		async close() {
-			const tree = processTree(pid);
+			const tree = stillRunning(root);
 			browser.close();
-			spawnSync("taskkill", ["/T", "/F", "/PID", String(pid)], { stdio: "ignore" });
-			await sleep(1000);
-			for (const p of tree) if (alive(p)) spawnSync("taskkill", ["/F", "/PID", String(p)], { stdio: "ignore" });
+			for (const p of tree) spawnSync("taskkill", ["/F", "/PID", String(p.pid)], { stdio: "ignore" });
+			await until(async () => stillRunning(tree).length === 0, 5000);
+			for (const p of stillRunning(tree)) spawnSync("taskkill", ["/F", "/PID", String(p.pid)], { stdio: "ignore" });
 			rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
 		},
 	};
@@ -334,10 +364,15 @@ export async function useCheckoutWebui(session, page) {
 //# sourceURL=loka-checkout-${page}.js`;
 	await session.call("Page.enable");
 	await session.call("Page.addScriptToEvaluateOnNewDocument", { source });
+	// Marks the document that's there now, so only the reloaded one counts as started.
+	await evaluate(session, "(window.__lokaBeforeReload = true)");
 	await session.call("Page.reload", {});
-	await sleep(500);
 	const ready = await until(
-		() => evaluate(session, "document.readyState === 'complete' && window.__lokaCheckoutWebui").catch(() => false),
+		() =>
+			evaluate(
+				session,
+				"!window.__lokaBeforeReload && document.readyState === 'complete' && window.__lokaCheckoutWebui",
+			).catch(() => false),
 		15000,
 	);
 	if (!ready) throw new Error(`this checkout's ${page} page never started in the browser`);

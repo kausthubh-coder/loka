@@ -54,6 +54,9 @@ build is running.
   getExtensions, targets). Evidence per flow in `.agents/verify-runs/<time>-flows/<flow>/`: a picture and the saved
   spaces per step, window pictures, `failed.png`/`failed.json` where a flow stopped, and `checks.json`. Its CDP
   helpers live in `scripts/browser-session.mjs`, shared with verify:browser.
+- **Your webui changes, no browser build.** `bun run verify:flows -- --webui=checkout` runs the same flows with this
+  checkout's `webui/src` in the sidebar (after each launch, the restart's too), the command bar, Settings and History,
+  through `useCheckoutWebui`. Setup stays the build's. A failure here can be your webui or the build's handler.
 - **Your own drive.** Start chrome.exe with `--user-data-dir` under `C:\src\loka\profile-verify`,
   `--remote-debugging-port=<free port>` and `--disable-features=CalculateNativeWinOcclusion`. The sidebar target
   (type `browser_ui`) appears in `/json/list` once the window has a normal tab; connect to its

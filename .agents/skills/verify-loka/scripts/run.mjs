@@ -546,6 +546,53 @@ const recipes = {
 		await loka.sidebar.getByRole("button", { name: "Dark Reader", exact: true }).waitFor();
 		assert.deepEqual(await demoCalls(loka, "setExtensionPinned"), [["eimadpbcbfnmbkopoojfekhnkhdbieeh", true]]);
 		await loka.proof("02-pinned-dark-reader");
+		await loka.page.keyboard.press("Escape");
+
+		// Right-click: the extension's own menu, headed with its name; Options only when it has an options page.
+		const menuItems = async (/** @type {string} */ name) => {
+			const menu = loka.sidebar.getByRole("menu", { name });
+			await menu.waitFor();
+			return (await menu.getByRole("menuitem").allTextContents()).map((t) => t.trim());
+		};
+		await ublock.click({ button: "right" });
+		assert.deepEqual(await menuItems("uBlock Origin"), [
+			"Unpin from address bar",
+			"Options",
+			"Manage extension",
+			"Remove from Loka…",
+		]);
+		assert.equal(await loka.menuItem("New folder").count(), 0, "not the sidebar's own menu");
+		await loka.page.waitForTimeout(250);
+		await loka.proof("03-extension-menu");
+		await loka.menuItem("Manage extension").click();
+		await loka.sidebar
+			.getByRole("button", { name: "Bitwarden Password Manager", exact: true })
+			.click({ button: "right" });
+		assert.deepEqual(await menuItems("Bitwarden Password Manager"), [
+			"Unpin from address bar",
+			"Manage extension",
+			"Remove from Loka…",
+		]);
+		await loka.page.keyboard.press("Escape");
+		// From the keyboard: Shift+F10 on the focused icon, Down, Enter; focus comes back to the icon.
+		await ublock.focus();
+		await loka.page.keyboard.press("Shift+F10");
+		await menuItems("uBlock Origin");
+		await loka.page.keyboard.press("ArrowDown");
+		await loka.page.keyboard.press("Enter");
+		assert.equal(await loka.sidebar.evaluate((el) => el.shadowRoot?.activeElement?.ariaLabel), "uBlock Origin");
+		// In the panel, a row's right-click; Remove takes it out when the browser says so.
+		await loka.sidebar.getByRole("button", { name: "Extensions", exact: true }).click();
+		await panel.getByRole("button", { name: "Open Raindrop.io" }).click({ button: "right" });
+		assert.deepEqual(await menuItems("Raindrop.io"), ["Pin to address bar", "Manage extension", "Remove from Loka…"]);
+		await loka.menuItem("Remove from Loka…").click();
+		await panel.getByRole("button", { name: "Open Raindrop.io" }).waitFor({ state: "detached" });
+		assert.deepEqual(await demoCalls(loka, "extensionAction"), [
+			["cjpalhdlnbpafiamejdnhcphjbkeiagm", "manage"],
+			["cjpalhdlnbpafiamejdnhcphjbkeiagm", "options"],
+			["ldgfbffkinooeloadekpmfoklnobpien", "remove"],
+		]);
+		await loka.proof("04-removed-from-panel");
 	},
 
 	async history(loka) {

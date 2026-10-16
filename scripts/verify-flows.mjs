@@ -19,7 +19,8 @@
 //   5 pinning      pin by menu and drag, unpin, folders two deep, unload a pinned tab and load it back, Essentials;
 //                  a real mouse (posted messages) grabbing rows by their icons reorders Pinned and moves a tab out
 //                  of a pinned folder and back
-//   6 extensions   the panel lists them; pin and unpin reach the address field; the icon opens its popup; badges
+//   6 extensions   the panel lists them; pin and unpin reach the address field; the icon opens its popup; badges;
+//                  right-click (and Shift+F10) opens its own menu, whose Manage and Options open their pages
 //   7 panels       Downloads with a real download, the media card on a playing page, Archive and Search
 //   8 settings     each setting changes what it says; History search, delete and clear today
 //   9 restart      quit and start again: spaces, pinned, folders, Essentials, extension pins and settings stay
@@ -164,6 +165,7 @@ function writeExtension() {
 			version: "1.0",
 			action: { default_popup: "popup.html", default_icon: "icon.png", default_title: QA_EXTENSION },
 			background: { service_worker: "worker.js" },
+			options_page: "options.html",
 			icons: { 32: "icon.png" },
 		}),
 	);
@@ -178,6 +180,7 @@ badge();`,
 		join(extensionDir, "popup.html"),
 		`<!doctype html><title>QA popup</title><body style="width:200px">QA popup</body>`,
 	);
+	writeFileSync(join(extensionDir, "options.html"), `<!doctype html><title>QA options</title><h1>QA options</h1>`);
 }
 
 // ---- the browser --------------------------------------------------------------------------------------------------
@@ -1535,6 +1538,67 @@ async function extensions() {
 		await evaluate(p, "(window.close(), true)").catch(() => {});
 		p.close();
 	}
+	// Right-clicking the icon opens the extension's own menu, not the sidebar's.
+	const qaId = (await sb.extensions()).find((x) => x.name === QA_EXTENSION)?.id ?? "";
+	check(
+		"getExtensions says it has an options page",
+		(await sb.extensions()).find((x) => x.id === qaId)?.hasOptions,
+		show((await sb.extensions()).find((x) => x.id === qaId)),
+	);
+	await sb.click(QA_EXTENSION, { role: ".url button", button: "right" });
+	const menu = await until(async () => {
+		const items = await sb.names("[role=menuitem]");
+		return items.includes("Manage extension") ? items : null;
+	}, 4000);
+	const titled = await sb.has(QA_EXTENSION, "[role=menu]");
+	check(
+		"right-clicking its icon opens its own menu",
+		titled && show(menu) === show(["Unpin from address bar", "Options", "Manage extension", "Remove from Loka…"]),
+		`menu "${titled ? QA_EXTENSION : "?"}": ${show(menu)}`,
+	);
+	await step("extension-menu");
+	/**
+	 * Clicks a menu item and waits for a tab showing an address that passes `wanted` (a new tab, or the empty tab,
+	 * which Chrome's options page reuses), then closes it.
+	 * @param {string} item @param {(url: string) => boolean} wanted
+	 */
+	const opensTab = async (item, wanted) => {
+		const showing = new Set((await sb.tabs()).filter((t) => wanted(t.url)).map((t) => t.id));
+		await sb.click(item, { role: "[role=menuitem]" });
+		const tab = await until(
+			async () => (await sb.tabs()).find((t) => !showing.has(t.id) && wanted(t.url) && !t.loading && t.title),
+			6000,
+		);
+		// Closed the way a person closes it, by its row's x: the sidebar keeps a window from losing its last tab.
+		if (tab) await sb.click(`Close ${tab.title}`);
+		if (tab) await until(async () => !(await sb.tabs()).some((t) => t.id === tab.id), 4000);
+		return tab ? tab.url : show((await sb.tabs()).map((t) => [t.url, t.title, t.loading]));
+	};
+	const manage = await opensTab("Manage extension", (u) => u.startsWith(`chrome://extensions/?id=${qaId}`));
+	check("Manage extension opens its chrome://extensions page", manage.startsWith("chrome://extensions/"), manage);
+	// From the keyboard: Shift+F10 on the focused icon.
+	await sb.run(`(window.__qa.find(${JSON.stringify(QA_EXTENSION)}, ".url button").focus(), true)`);
+	await sb.s.call("Input.dispatchKeyEvent", {
+		type: "rawKeyDown",
+		key: "F10",
+		code: "F10",
+		modifiers: 8,
+		windowsVirtualKeyCode: 121,
+	});
+	await sb.s.call("Input.dispatchKeyEvent", {
+		type: "keyUp",
+		key: "F10",
+		code: "F10",
+		modifiers: 8,
+		windowsVirtualKeyCode: 121,
+	});
+	const byKey = await until(() => sb.has(QA_EXTENSION, "[role=menu]"), 3000);
+	check("Shift+F10 on the focused icon opens the menu too", byKey, byKey ? "open" : "no menu");
+	if (!byKey) await sb.click(QA_EXTENSION, { role: ".url button", button: "right" });
+	const options = await opensTab("Options", (u) => u.startsWith(`chrome-extension://${qaId}/options.html`));
+	check("Options opens its options page", options.startsWith("chrome-extension://"), options);
+	// Remove shows Chrome's own dialog, a window this run can't answer: not checked here.
+
 	// Unpin uBlock from the panel: its icon leaves the address field.
 	await sb.click("Extensions");
 	await sb.click("Unpin uBlock Origin");

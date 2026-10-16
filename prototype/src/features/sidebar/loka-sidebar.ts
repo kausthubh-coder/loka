@@ -1387,8 +1387,8 @@ export class LokaSidebar extends LitElement {
 	private addressField(): TemplateResult {
 		const current = activeTab(this.state);
 		const secure = current?.url.startsWith("https://");
-		// Browser pages have no site name worth showing; their title says more.
-		const own = current ? /^(chrome|loka|about):/.test(current.url) : false;
+		// Browser and extension pages (an options page) have no site name worth showing; their title says more.
+		const own = current ? /^(chrome|chrome-extension|loka|about):/.test(current.url) : false;
 		const label = !current ? "" : own ? current.title : hostOf(current.url);
 		const loading = current ? this.live[current.id]?.loading : false;
 		const progress = overallProgress(this.downloads);

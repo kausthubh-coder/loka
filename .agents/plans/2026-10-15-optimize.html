@@ -114,10 +114,30 @@ details > *:not(summary) { margin-bottom: 1rem; }
 		<tr><td class="n">10</td><td>Pass bridges into <code>&lt;loka-sidebar&gt;</code> instead of module-level <code>set*Source</code> globals</td></tr>
 		<tr><td class="n">11</td><td>Move <code>live.logic.ts</code> and the sync into <code>features/tabs/</code>; the native page stops importing <code>extension/</code></td></tr>
 		<tr><td class="n">12</td><td>Feature folders hold UI, logic, test and bridge slice; split <code>loka-sidebar.ts</code> (1450 lines)</td></tr>
-		<tr><td class="n">13</td><td>Delete <code>extension/</code> and its manifest key; turn the prototype into <code>demo/</code> with fake bridges</td></tr>
+		<tr><td class="n">13</td><td>Delete <code>extension/</code> and its manifest key; turn the prototype into <code>demo/</code> with fake bridges <b>(extension/ gone; demo bridge in place)</b></td></tr>
 	</tbody>
 </table>
 </div>
+
+<h2>After feat/ux2 merges: the restructure, step by step</h2>
+<p>Each step moves code without changing behavior, is one commit, and ends with the same proof: <code>bun run check</code> green, <code>bun run verify -- --ux &lt;the features it touched&gt;</code> green, and the full <code>bun run verify</code> before the PR. Start only once <code>feat/ux2</code> is merged into <code>feat/native-sidebar</code>, from a fresh worktree on that branch.</p>
+<ol class="ask">
+	<li><b>Baseline.</b> <code>bun run verify</code> on the merged branch; keep the evidence folders. Note <code>wc -l prototype/src/features/sidebar/loka-sidebar.ts</code> (2,298 lines on 16 Oct: about 900 of logic and templates, then about 980 of CSS from line 1319).</li>
+	<li><b>Bridges in, globals out (item 10).</b> The globals are <code>setFaviconSource</code> (<code>favicon.ts:40-42</code>, called from <code>webui/src/main.ts:51</code>, <code>command.ts:22</code>, <code>history.ts:12</code>) and <code>setSoundPrefs</code> (<code>sound.ts:6-13</code>). Give <code>&lt;loka-sidebar&gt;</code> (and the command bar, History and Settings) a <code>bridge</code> property with <code>favicon(url)</code> and <code>sound</code>; each host passes its own (the real bridge in <code>webui/src</code>, the fake one in <code>prototype/src/demo</code>). Delete both setters in the same commit, and add a Biome rule (grit, like <code>scripts/lint/no-extension-urls.grit</code>) that fails on a new module-level <code>set*Source</code> export. Proof: <code>--ux tabs</code>, <code>--ux sound</code>, <code>--ux history</code>, <code>--ux command-bar</code>.</li>
+	<li><b>Shared code out of the prototype's shell.</b> <code>webui/src/main.ts</code> imports <code>Update</code> from <code>prototype/src/app/loka-app.ts</code>, plus <code>sky</code>, <code>theme</code>, <code>theme.logic</code> and <code>ui-prefs.logic</code>. Move those four to <code>prototype/src/features/theme/</code> and <code>features/prefs/</code>, and <code>Update</code> next to the sidebar model, so the native page never imports the prototype's window shell. Proof: <code>--ux theme</code>, <code>--ux layout</code>.</li>
+	<li><b>Tabs and sync in one folder (item 11).</b> Put <code>webui/src/sync.ts</code> and <code>sync.test.ts</code> beside <code>prototype/src/features/tabs/live.logic.ts</code>: one folder owns "browser tabs to spaces and back". Proof: <code>--ux tabs</code>, <code>--ux spaces</code>, <code>--ux native-sidebar</code> (flows through restart).</li>
+	<li><b>Split <code>loka-sidebar.ts</code> (item 12), one cut per commit:</b>
+		<ol>
+			<li>Styles (line 1319 to the end) to <code>loka-sidebar.styles.ts</code>. No logic moves. Proof: verify:browser's <code>sidebar.png</code> matches the baseline's.</li>
+			<li>Menus (<code>tabMenu</code>, <code>folderMenu</code>, <code>emptyMenu</code>, <code>newMenu</code>, <code>moreMenu</code>, lines ~277-420 and ~674-714) to <code>sidebar-menus.ts</code>, as functions from state to <code>MenuItem[]</code>, each tested with one seeded row and its exact labels. Proof: <code>--ux folders</code>, <code>--ux tabs</code>, <code>--ux export-import</code>.</li>
+			<li>Drop-zone math (<code>over</code> and <code>dropHere</code>, lines ~204-275) to <code>drop-zones.logic.ts</code>, tested with row heights and pointer offsets. Proof: <code>--ux folders</code>, <code>--ux essentials</code>.</li>
+			<li>Row templates (<code>favicon</code>, <code>sound</code>, <code>tabRow</code>, <code>pinnedRow</code>, ~719-898) and the top row and address field (~899-1011) to <code>sidebar-rows.ts</code> and <code>sidebar-top-row.ts</code>. Proof: <code>--ux tabs</code>, <code>--ux layout</code> (hit test and real click), <code>--ux extensions</code>.</li>
+			<li>The horizon and animations (<code>switchTo</code>, <code>animateRows</code>, <code>animateHorizon</code>, ~473-673) to <code>horizon.ts</code>. Proof: <code>--ux spaces</code>, and <code>verify:perf</code> within budget.</li>
+		</ol>
+	</li>
+	<li><b>Feature folders own their slice.</b> Each feature's component, logic, tests and the bridge methods it uses sit in <code>prototype/src/features/&lt;feature&gt;/</code>; <code>webui/src</code> keeps the page entries, <code>bridge.ts</code>, <code>messages.ts</code> and <code>store.ts</code>. Recount the files to open for "change how a favicon shows" (11 on 15 Oct) and "switch space" (13); aim for under 5 each.</li>
+	<li><b>Close out.</b> Update AGENTS.md's map, the verify-loka feature files that name moved files, and this plan's status. Full <code>bun run verify</code>, then a PR into <code>feat/native-sidebar</code>.</li>
+</ol>
 
 <details>
 	<summary>Item 3's first-run gate: 6 checks</summary>

@@ -159,7 +159,19 @@
  }
 --- a/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc
 +++ b/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc
-@@ -77,6 +77,14 @@
+@@ -3,6 +3,11 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h"
++
++#if defined(USE_AURA)
++#include "ui/aura/window.h"
++#include "ui/aura/window_targeter.h"
++#endif
+ 
+ #include <algorithm>
+ #include <optional>
+@@ -77,6 +82,14 @@
  #include "ui/views/view.h"
  #include "ui/views/view_class_properties.h"
  #include "ui/views/view_utils.h"
@@ -174,7 +186,7 @@
  
  namespace {
  constexpr int kResizeAreaWidth = 5;
-@@ -98,6 +106,11 @@
+@@ -98,6 +111,11 @@
  
  DEFINE_CLASS_CUSTOM_ELEMENT_EVENT_TYPE(VerticalTabStripRegionView,
                                         kAnimationCompletedEvent);
@@ -186,11 +198,10 @@
  
  VerticalTabStripRegionView::VerticalTabStripRegionView(
      tabs::VerticalTabStripStateController* state_controller,
-@@ -175,6 +188,23 @@
-     focus_swipe_controller_ =
+@@ -176,6 +194,26 @@
          std::make_unique<VerticalTabStripFocusSwipeController>(this);
    }
-+
+ 
 +  // Loka: the column holds the Loka sidebar, the browser's own page for spaces,
 +  // folders and tabs, in place of the tab list. It is drawn over the other
 +  // children, which Layout() keeps hidden; the tab strip model is unchanged.
@@ -207,10 +218,14 @@
 +  anchor->SetProperty(views::kViewIgnoredByLayoutKey, true);
 +  anchor->SetCanProcessEventsWithinSubtree(false);
 +  loka_anchor_ = AddChildView(std::move(anchor));
- 
++  // The resize edge sits over the sidebar's page (see Layout), so it stays on
++  // top for the views that take events.
++  ReorderChildView(resize_area_, children().size());
++
    SetNotifyEnterExitOnChild(true);
    UpdateColors();
-@@ -264,6 +294,16 @@
+   UpdateInteriorMargin();
+@@ -264,6 +302,16 @@
      return false;
    }
  
@@ -227,7 +242,7 @@
    if (IsHitInView(bottom_button_container_, point)) {
      gfx::Point point_in_child = point;
      views::View::ConvertPointToTarget(this, bottom_button_container_,
-@@ -318,7 +358,8 @@
+@@ -318,7 +366,8 @@
    if (floating) {
      CustomCornersBackground::Corner rounded_corner;
      rounded_corner.type = CustomCornersBackground::CornerType::kRounded;
@@ -237,7 +252,7 @@
      corners[CornerOrientation::kTopLeading] = rounded_corner;
      corners[CornerOrientation::kTopTrailing] = rounded_corner;
      corners[CornerOrientation::kBottomLeading] = rounded_corner;
-@@ -334,6 +375,16 @@
+@@ -334,6 +383,16 @@
    background->SetCorners(corners);
    background->SetOutline(outline);
    background->SetPaintWithNativeFrameMaterials(floating);
@@ -254,19 +269,33 @@
  }
  
  void VerticalTabStripRegionView::AddedToWidget() {
-@@ -368,6 +419,23 @@
+@@ -368,6 +427,37 @@
    resize_area_->SetBoundsRect(
        gfx::Rect(resize_area_x, 0, resize_area_width_, bounds().height()));
    shadow_frame_->SetBoundsRect(GetLocalBounds());
 +
-+  // Loka: the sidebar fills the column except the resize edge, and the tab
-+  // list's own views stay hidden under it.
++  // Loka: the sidebar fills the whole column, so its sky runs right up to the
++  // page with no strip of frame between them. The resize edge still works:
++  // the page's window doesn't take events over it, so they reach the resize
++  // area above.
 +  if (loka_sidebar_) {
-+    gfx::Rect sidebar_bounds = GetLocalBounds();
-+    sidebar_bounds.Inset(state_controller_->IsTabStripRightAligned()
-+                             ? gfx::Insets::TLBR(0, resize_area_width_, 0, 0)
-+                             : gfx::Insets::TLBR(0, 0, 0, resize_area_width_));
-+    loka_sidebar_->SetBoundsRect(sidebar_bounds);
++    loka_sidebar_->SetBoundsRect(GetLocalBounds());
++#if defined(USE_AURA)
++    if (aura::Window* page = static_cast<views::WebView*>(loka_sidebar_.get())
++                                 ->holder()
++                                 ->native_view()) {
++      if (!page->targeter() || page->targeter() != loka_page_targeter_) {
++        auto targeter = std::make_unique<aura::WindowTargeter>();
++        loka_page_targeter_ = targeter.get();
++        page->SetEventTargeter(std::move(targeter));
++      }
++      const gfx::Insets resize_edge =
++          state_controller_->IsTabStripRightAligned()
++              ? gfx::Insets::TLBR(0, resize_area_width_, 0, 0)
++              : gfx::Insets::TLBR(0, 0, 0, resize_area_width_);
++      loka_page_targeter_->SetInsets(resize_edge);
++    }
++#endif
 +    for (views::View* child : children()) {
 +      if (child != loka_sidebar_ && child != loka_anchor_ &&
 +          child != resize_area_ &&
@@ -278,7 +307,7 @@
  
    // Ensure that we update the drop arrow position so that it does not render in
    // the collapsed state when expand on hover is active.
-@@ -1141,3 +1209,14 @@
+@@ -1141,3 +1231,14 @@
  
  BEGIN_METADATA(VerticalTabStripRegionView)
  END_METADATA
@@ -295,7 +324,20 @@
 +}
 --- a/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h
 +++ b/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h
-@@ -142,6 +142,10 @@
+@@ -40,6 +40,12 @@
+ class VerticalTabStripStateController;
+ }  // namespace tabs
+ 
++#if defined(USE_AURA)
++namespace aura {
++class WindowTargeter;
++}  // namespace aura
++#endif
++
+ namespace views {
+ class ResizeArea;
+ class Separator;
+@@ -142,6 +148,10 @@
      return focus_swipe_controller_.get();
    }
  
@@ -306,7 +348,7 @@
   private:
    // Since VerticalTabStripRegionView inherits from AccessiblePaneView, which is
    // a FocusChangeListener, we need to have a separate focus listener to avoid
-@@ -235,6 +239,11 @@
+@@ -235,6 +245,18 @@
    raw_ptr<VerticalTabStripBottomContainer> bottom_button_container_ = nullptr;
    raw_ptr<views::View> gemini_button_ = nullptr;
    raw_ptr<views::ResizeArea> resize_area_ = nullptr;
@@ -315,6 +357,13 @@
 +  // Loka: an empty view placed over a button of the sidebar page, so bubbles
 +  // (extension popups) open from that button.
 +  raw_ptr<views::View> loka_anchor_ = nullptr;
++#if defined(USE_AURA)
++  // The targeter Loka puts on the sidebar page's window; it leaves the resize
++  // edge to the resize area. Owned by that window, which may drop it (it is
++  // only compared, never used, until it is set again).
++  raw_ptr<aura::WindowTargeter, DisableDanglingPtrDetection>
++      loka_page_targeter_ = nullptr;
++#endif
    raw_ptr<ShadowFrameView> shadow_frame_ = nullptr;
    int resize_area_width_;
    raw_ptr<views::FlexLayout> flex_layout_ = nullptr;
@@ -950,7 +999,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_HISTORY_UI_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.cc
-@@ -0,0 +1,655 @@
+@@ -0,0 +1,656 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1084,6 +1133,7 @@
 +  add("setSidebarPinned", &LokaSidebarHandler::HandleSetSidebarPinned);
 +  add("getSidebarPinned", &LokaSidebarHandler::HandleGetSidebarPinned);
 +  add("holdSidebar", &LokaSidebarHandler::HandleHoldSidebar);
++  add("extensionAction", &LokaSidebarHandler::HandleExtensionAction);
 +  add("setAutoplay", &LokaSidebarHandler::HandleSetAutoplay);
 +  add("getAutoplay", &LokaSidebarHandler::HandleGetAutoplay);
 +  add("setColorScheme", &LokaSidebarHandler::HandleSetColorScheme);
@@ -1608,7 +1658,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h
-@@ -0,0 +1,228 @@
+@@ -0,0 +1,236 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1629,6 +1679,7 @@
 +#include "base/scoped_multi_source_observation.h"
 +#include "base/scoped_observation.h"
 +#include "base/values.h"
++#include "chrome/browser/extensions/extension_uninstall_dialog.h"
 +#include "chrome/browser/extensions/extension_action_dispatcher.h"
 +#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 +#include "chrome/browser/ui/toolbar/toolbar_actions_model.h"
@@ -1674,7 +1725,8 @@
 +                           public extensions::ExtensionActionDispatcher::Observer,
 +                           public download::AllDownloadItemNotifier::Observer,
 +                           public AutocompleteController::Observer,
-+                           public extensions::ExtensionHostObserver {
++                           public extensions::ExtensionHostObserver,
++                           public extensions::ExtensionUninstallDialog::Delegate {
 + public:
 +  // Ctrl+T and Ctrl+L: hands `command` to the sidebar of `browser`'s window
 +  // and focuses it. False when that window has no sidebar to take it.
@@ -1730,6 +1782,9 @@
 +
 +  // extensions::ExtensionHostObserver (extension popups):
 +  void OnExtensionHostDestroyed(extensions::ExtensionHost* host) override;
++  // extensions::ExtensionUninstallDialog::Delegate:
++  void OnExtensionUninstallDialogClosed(bool did_start_uninstall,
++                                        const std::u16string& error) override;
 +
 + private:
 +  // The browser features beyond tabs, in loka_sidebar_handler_features.cc.
@@ -1751,6 +1806,7 @@
 +  void HandleSetSidebarPinned(const base::ListValue& args);
 +  void HandleGetSidebarPinned(const base::ListValue& args);
 +  void HandleHoldSidebar(const base::ListValue& args);
++  void HandleExtensionAction(const base::ListValue& args);
 +  void HandleSetAutoplay(const base::ListValue& args);
 +  void HandleGetAutoplay(const base::ListValue& args);
 +  void HandleSetColorScheme(const base::ListValue& args);
@@ -1830,6 +1886,8 @@
 +  // popup is open closes the popup first, and that same click mustn't open
 +  // it again.
 +  std::map<std::string, base::TimeTicks> popup_closed_;
++  // Chrome's own "Remove extension?" dialog, while it is open.
++  std::unique_ptr<extensions::ExtensionUninstallDialog> uninstall_dialog_;
 +  base::ScopedMultiSourceObservation<extensions::ExtensionHost,
 +                                     extensions::ExtensionHostObserver>
 +      popup_observations_{this};
@@ -1839,7 +1897,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler_features.cc
-@@ -0,0 +1,800 @@
+@@ -0,0 +1,850 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1871,20 +1929,23 @@
 +#include "chrome/browser/profiles/profile.h"
 +#include "chrome/browser/themes/theme_service.h"
 +#include "chrome/browser/themes/theme_service_factory.h"
++#include "chrome/browser/ui/browser_window.h"
 +#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 +#include "chrome/browser/ui/extensions/extension_popup_types.h"
++#include "chrome/browser/ui/navigator/browser_navigator.h"
++#include "chrome/browser/ui/navigator/browser_navigator_params.h"
 +#include "chrome/browser/ui/tab_ui_helper.h"
 +#include "chrome/browser/ui/tabs/tab_strip_model.h"
 +#include "chrome/browser/ui/views/extensions/extension_popup.h"
 +#include "chrome/browser/ui/views/frame/browser_view.h"
 +#include "chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h"
 +#include "chrome/browser/ui/views/loka/loka_command_bar.h"
-+#include "components/loka_sidebar/resources/grit/loka_sidebar_generated_map.h"
 +#include "chrome/browser/ui/webui/extensions/extension_icon_source.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
 +#include "chrome/common/pref_names.h"
 +#include "components/download/public/common/download_item.h"
++#include "components/loka_sidebar/resources/grit/loka_sidebar_generated_map.h"
 +#include "components/omnibox/browser/autocomplete_classifier.h"
 +#include "components/omnibox/browser/autocomplete_input.h"
 +#include "components/omnibox/browser/autocomplete_match.h"
@@ -1898,10 +1959,13 @@
 +#include "extensions/browser/extension_action.h"
 +#include "extensions/browser/extension_action_manager.h"
 +#include "extensions/browser/extension_registry.h"
++#include "extensions/browser/uninstall_reason.h"
 +#include "extensions/common/extension.h"
 +#include "extensions/common/icons/extension_icon_set.h"
++#include "extensions/common/manifest_handlers/options_page_info.h"
 +#include "third_party/metrics_proto/omnibox_event.pb.h"
 +#include "third_party/skia/include/core/SkColor.h"
++#include "ui/base/window_open_disposition.h"
 +#include "ui/views/bubble/bubble_anchor.h"
 +#include "ui/views/bubble/bubble_border.h"
 +
@@ -2145,6 +2209,8 @@
 +    data.Set("badge", badge);
 +    data.Set("badgeColor", badge_color);
 +    data.Set("pinned", model->IsActionPinned(id));
++    data.Set("hasOptions", extensions::OptionsPageInfo::HasOptionsPage(
++                               extension));
 +    list.Append(std::move(data));
 +  }
 +  return list;
@@ -2277,6 +2343,48 @@
 +                                  }
 +                                },
 +                                weak_factory_.GetWeakPtr()));
++}
++
++// An extension's right-click menu: "options" opens its options page, "manage"
++// its page in chrome://extensions, and "remove" asks with Chrome's own dialog.
++void LokaSidebarHandler::HandleExtensionAction(const base::ListValue& args) {
++  BrowserWindowInterface* browser = GetBrowser();
++  if (!browser || args.size() < 2 || !args[0].is_string() ||
++      !args[1].is_string()) {
++    return;
++  }
++  Profile* profile = Profile::FromWebUI(web_ui());
++  const extensions::Extension* extension =
++      extensions::ExtensionRegistry::Get(profile)
++          ->enabled_extensions()
++          .GetByID(args[0].GetString());
++  if (!extension) {
++    return;
++  }
++  const std::string& action = args[1].GetString();
++  if (action == "options") {
++    extensions::ExtensionTabUtil::OpenOptionsPage(extension, browser);
++  } else if (action == "manage") {
++    NavigateParams params(
++        browser, GURL("chrome://extensions/?id=" + extension->id()),
++        ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
++    params.disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
++    Navigate(&params);
++  } else if (action == "remove" && !uninstall_dialog_) {
++    uninstall_dialog_ = extensions::ExtensionUninstallDialog::Create(
++        profile, browser->GetWindow()->GetNativeWindow(), this);
++    uninstall_dialog_->ConfirmUninstall(
++        extension, extensions::UNINSTALL_REASON_USER_INITIATED,
++        extensions::UNINSTALL_SOURCE_TOOLBAR_CONTEXT_MENU);
++  }
++}
++
++void LokaSidebarHandler::OnExtensionUninstallDialogClosed(
++    bool did_start_uninstall,
++    const std::u16string& error) {
++  // This runs from inside the dialog, so it is deleted after it returns.
++  base::SequencedTaskRunner::GetCurrentDefault()->DeleteSoon(
++      FROM_HERE, std::move(uninstall_dialog_));
 +}
 +
 +void LokaSidebarHandler::HandleSetExtensionPinned(const base::ListValue& args) {

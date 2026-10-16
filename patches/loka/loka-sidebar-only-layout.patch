@@ -259,29 +259,18 @@
    mutable base::WeakPtrFactory<BrowserView> weak_ptr_factory_{this};
 --- a/chrome/browser/ui/views/frame/layout/browser_view_tabbed_layout_impl.cc
 +++ b/chrome/browser/ui/views/frame/layout/browser_view_tabbed_layout_impl.cc
-@@ -952,6 +952,11 @@
-             vertical_tab_strip_width - GetVerticalTabStripContentOverlap();
+@@ -953,6 +953,8 @@
          params.InsetHorizontal(inset_amount,
                                 /*leading=*/!vertical_right_aligned);
-+      } else {
-+        // Loka: with the sidebar hidden, the page keeps the same frame edge
-+        // on the sidebar's side as on the others, like Arc's.
-+        params.InsetHorizontal(zen.vertical_tab_strip_padding,
-+                               /*leading=*/!vertical_right_aligned);
        }
++      // Loka: with the sidebar hidden the page runs to the window's edge on
++      // that side too; the sidebar floats in over it.
  
        // Let the vertical tab strip animate out over the content.
+       if (vertical_tab_strip_animation.current_motion) {
 --- a/chrome/browser/ui/views/frame/multi_contents_view.cc
 +++ b/chrome/browser/ui/views/frame/multi_contents_view.cc
-@@ -32,6 +32,7 @@
- #include "chrome/browser/ui/views/frame/safe_invoke/safe_invoke.h"
- #include "chrome/browser/ui/views/frame/scrim_view.h"
- #include "chrome/browser/ui/views/frame/themed_background.h"
-+#include "chrome/browser/ui/views/helium/frame_corner_radius.h"
- #include "chrome/browser/ui/views/new_tab_footer/footer_web_view.h"
- #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
- #include "chrome/common/pref_names.h"
-@@ -579,17 +580,9 @@
+@@ -579,17 +579,9 @@
  
    if (IsInSplitView()) {
      available_space.Inset(split_view_insets_);
@@ -302,32 +291,26 @@
    ViewSizes sizes = GetViewSizes(available_space);
  
    gfx::Rect start_rect, resize_rect, end_rect;
-@@ -901,8 +894,16 @@
+@@ -901,7 +893,11 @@
    const views::Widget* widget = browser_view_->GetWidget();
    const bool is_fullscreen = widget && widget->IsFullscreen();
    const bool is_in_split = IsInSplitView();
 -  const bool should_round_single_contents =
-+  // Loka: a single page has no outline; it is rounded only on the corners that
-+  // meet the sidebar, and the window's own corners round the rest.
++  // Loka: a single page has no outline and no rounding. It meets the sidebar
++  // directly (rounded corners there showed the frame behind them, which read
++  // as a border), and the window's own corners round the rest.
 +  const bool should_round_single_contents = false;
-+  const bool loka_round_sidebar_corners =
++  const bool loka_square_single_contents =
        !is_in_split && ShouldUseRoundedFrame();
-+  const float loka_radius = GetGenericFrameRadius();
-+  const bool loka_sidebar_right = browser_view_->IsVerticalTabStripRightAligned();
-+  const gfx::RoundedCornersF loka_radii(
-+      loka_sidebar_right ? 0 : loka_radius, loka_sidebar_right ? loka_radius : 0,
-+      loka_sidebar_right ? loka_radius : 0, loka_sidebar_right ? 0 : loka_radius);
    const bool is_drop_target_visible = drop_target_view_->GetVisible();
    const bool is_drop_target_on_start =
-       is_drop_target_visible &&
-@@ -951,7 +952,9 @@
+@@ -951,7 +947,8 @@
          (is_single_contents_view && should_round_single_contents);
      if (!should_round_contents) {
        contents_container_view->SetRoundedCorners(
 -          is_active ? GetBackgroundRadii() : gfx::RoundedCornersF());
-+          !is_active                   ? gfx::RoundedCornersF()
-+          : loka_round_sidebar_corners ? loka_radii
-+                                       : GetBackgroundRadii());
++          !is_active || loka_square_single_contents ? gfx::RoundedCornersF()
++                                                    : GetBackgroundRadii());
      }
      contents_container_view->UpdateBorderAndOverlay(
          is_in_split, should_round_contents, is_active,

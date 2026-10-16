@@ -341,6 +341,11 @@ async function main() {
 				const shot = await page.call("Page.captureScreenshot", { format: "png" }, 20000).catch(() => null);
 				if (shot) writeFileSync(join(evidence, "setup.png"), Buffer.from(shot.data, "base64"));
 
+				// The setup window follows --window-position like any browser window, so it opens off every screen in a
+				// test run, out of the way of whoever is using the computer (who would otherwise click or minimize it).
+				/** @type {number} */
+				const setupX = await evaluate(page, "screenX");
+				check("the setup window opens where --window-position puts it", setupX <= -3000, `screenX=${setupX}`);
 				// The setup window has no title bar: the page fills it and draws its own Minimize and Close.
 				const controls = await until(() => evaluate(page, SETUP_WINDOW_CONTROLS), 5000);
 				check(

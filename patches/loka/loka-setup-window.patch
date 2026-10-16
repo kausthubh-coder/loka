@@ -36,7 +36,11 @@
 +#endif  // CHROME_BROWSER_UI_STARTUP_LOKA_SETUP_WINDOW_H_
 --- a/chrome/browser/ui/startup/startup_browser_creator_impl.cc
 +++ b/chrome/browser/ui/startup/startup_browser_creator_impl.cc
-@@ -48,6 +48,7 @@
+@@ -45,9 +45,11 @@
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+ #include "chrome/browser/ui/browser_window/public/create_browser_window.h"
+ #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
++#include "chrome/browser/ui/browser_window_state.h"
  #include "chrome/browser/ui/navigator/browser_navigator.h"
  #include "chrome/browser/ui/navigator/browser_navigator_params.h"
  #include "chrome/browser/ui/startup/infobar_utils.h"
@@ -44,17 +48,18 @@
  #include "chrome/browser/ui/startup/startup_browser_creator.h"
  #include "chrome/browser/ui/startup/startup_infobar_observer.h"
  #include "chrome/browser/ui/startup/startup_tab.h"
-@@ -67,6 +68,9 @@
+@@ -67,6 +69,10 @@
  #include "chrome/common/webui_url_constants.h"
  #include "components/custom_handlers/protocol_handler_registry.h"
  #include "components/helium_services/pref_names.h"
 +#include "base/task/sequenced_task_runner.h"
 +#include "components/prefs/pref_change_registrar.h"
++#include "ui/base/mojom/window_show_state.mojom.h"
 +#include "ui/display/screen.h"
  #include "components/prefs/pref_service.h"
  #include "components/sessions/core/serialized_navigation_entry.h"
  #include "components/sessions/core/serialized_user_agent_override.h"
-@@ -111,6 +115,61 @@
+@@ -111,6 +117,66 @@
  #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
  
  namespace {
@@ -71,6 +76,11 @@
 +    bounds.set_origin(area.CenterPoint() -
 +                      gfx::Vector2d(bounds.width() / 2, bounds.height() / 2));
 +  }
++  // --window-position and --window-size place it, as they place any browser
++  // window (test runs keep their windows off screen this way).
++  ui::mojom::WindowShowState show_state = ui::mojom::WindowShowState::kNormal;
++  chrome::internal::UpdateWindowBoundsAndShowStateFromCommandLine(
++      *base::CommandLine::ForCurrentProcess(), &bounds, &show_state);
 +  BrowserWindowInterface* setup =
 +      CreateBrowserWindow(BrowserWindowCreateParams::CreateForAppPopup(
 +          kLokaSetupAppName, /*trusted_source=*/true, bounds, profile,
@@ -116,7 +126,7 @@
  
  // Utility functions ----------------------------------------------------------
  
-@@ -569,6 +628,14 @@
+@@ -569,6 +635,14 @@
        is_post_crash_launch, promotions_enabled, whats_new_enabled);
    StartupTabs tabs = std::move(result.tabs);
  

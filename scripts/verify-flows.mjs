@@ -186,8 +186,9 @@ async function launch() {
 		[
 			`--user-data-dir=${profile}`,
 			`--remote-debugging-port=${port}`,
-			// Test browsers stay silent: pages and the sidebar's sound cues still play, unheard.
-			"--mute-audio",
+			// Test browsers stay silent: pages and the sidebar's sound cues still play, unheard. Not --mute-audio,
+			// which stops tabs from ever counting as audible.
+			"--disable-audio-output",
 			// Pictures work behind other windows; Chromium 137+ only takes --load-extension with this feature off.
 			"--disable-features=CalculateNativeWinOcclusion,DisableLoadExtensionCommandLineSwitch",
 			`--load-extension=${extensionDir}`,

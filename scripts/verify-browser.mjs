@@ -231,8 +231,9 @@ async function main() {
 		[
 			`--user-data-dir=${profile}`,
 			`--remote-debugging-port=${port}`,
-			// Test browsers stay silent: pages and the sidebar's sound cues still play, unheard.
-			"--mute-audio",
+			// Test browsers stay silent: pages and the sidebar's sound cues still play, unheard. Not --mute-audio,
+			// which stops tabs from ever counting as audible.
+			"--disable-audio-output",
 			"--disable-features=CalculateNativeWinOcclusion",
 			// The audio page starts itself, so the media checks don't depend on a gesture.
 			"--autoplay-policy=no-user-gesture-required",

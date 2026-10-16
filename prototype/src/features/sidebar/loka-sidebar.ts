@@ -791,8 +791,38 @@ export class LokaSidebar extends LitElement {
 	/** The horizon's planets before a space switch, which set behind the new one. */
 	private horizonBefore: { els: HTMLElement[]; forward: boolean } | null = null;
 
+	/** The now-playing card on screen: what plays, or for a moment after the browser stops reporting it, what did. */
+	private shownPlaying: NowPlaying | null = null;
+	private lingerTimer = 0;
+
+	/**
+	 * A tab can drop out of the browser's media sessions for a moment (pausing, resuming, a new track): the card
+	 * stays 1.5 s after the last report before it leaves, so a short gap never makes it blink.
+	 */
+	private followPlaying() {
+		window.clearTimeout(this.lingerTimer);
+		if (this.playing) {
+			this.shownPlaying = this.playing;
+			return;
+		}
+		if (!this.shownPlaying) return;
+		this.lingerTimer = window.setTimeout(async () => {
+			if (this.playing) return;
+			const card = this.renderRoot.querySelector("loka-media-card");
+			await leave(card, 160);
+			if (this.playing) {
+				// It came back while fading: undo the fade, which otherwise holds it invisible.
+				for (const fade of card?.getAnimations() ?? []) fade.cancel();
+				return;
+			}
+			this.shownPlaying = null;
+			this.requestUpdate();
+		}, 1500);
+	}
+
 	protected override willUpdate(changed: Map<string, unknown>) {
 		if (changed.has("browser") && this.browser) this.watchBrowser();
+		if (changed.has("playing")) this.followPlaying();
 		const before = changed.get("state") as BrowserState | undefined;
 		if (!before) return;
 		if (before.activeSpaceId !== this.state.activeSpaceId) {
@@ -1052,6 +1082,7 @@ export class LokaSidebar extends LitElement {
 			>
 				${this.favicon(tabId, tab.url)}
 				<span class="label">${tab.title}</span>
+				<span class="trail">
 				${this.sound(tabId, tab.title)}
 				${
 					closable
@@ -1068,6 +1099,7 @@ export class LokaSidebar extends LitElement {
 							</button>`
 						: nothing
 				}
+				</span>
 			</div>
 		`;
 	}
@@ -1482,11 +1514,11 @@ export class LokaSidebar extends LitElement {
 				)}
 
 				${
-					this.playing
+					this.shownPlaying
 						? html`<loka-media-card
 								class="media"
-								.playing=${this.playing}
-								.live=${this.playing.tab ? this.live[this.playing.tab.id] : undefined}
+								.playing=${this.shownPlaying}
+								.live=${this.shownPlaying.tab ? this.live[this.shownPlaying.tab.id] : undefined}
 							></loka-media-card>`
 						: nothing
 				}
@@ -2042,13 +2074,7 @@ export class LokaSidebar extends LitElement {
 			opacity: 0.95;
 			rotate: -1deg;
 		}
-		/* Where a drag would land, the rows make room for it. */
-		.row.drop-before {
-			translate: 0 3px;
-		}
-		.row.drop-after {
-			translate: 0 -3px;
-		}
+
 		/* A row that just left the list, fading where it was. */
 		.row.leaving {
 			position: absolute;
@@ -2167,13 +2193,24 @@ export class LokaSidebar extends LitElement {
 			padding: 3px 6px;
 			outline: none;
 		}
+		/* A row's own controls sit together at its right edge: the speaker while it plays, the x on hover. The x keeps
+		   its place while hidden, so the speaker never moves when the pointer comes and goes. */
+		.trail {
+			flex: none;
+			display: flex;
+			align-items: center;
+			gap: 4px;
+			margin-right: -2px;
+		}
+		.trail:empty {
+			display: none;
+		}
 		.close {
 			flex: none;
 			display: grid;
 			place-items: center;
 			width: 28px;
 			height: 28px;
-			margin-right: -2px;
 			border-radius: 7px;
 			color: var(--loka-ink-2);
 			opacity: 0;

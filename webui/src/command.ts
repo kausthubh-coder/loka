@@ -11,11 +11,12 @@ import { css, html, LitElement, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { themeTokens } from "../../prototype/src/app/theme";
 import { resolveScheme } from "../../prototype/src/app/theme.logic";
+import type { CommandMode } from "../../prototype/src/features/command-bar/command-bar.logic";
 import "../../prototype/src/features/command-bar/loka-command-bar";
 import { setFaviconSource } from "../../prototype/src/features/sidebar/favicon";
 import { activeSpace, type BrowserState } from "../../prototype/src/features/sidebar/sidebar.logic";
 import { playCue, setSoundPrefs } from "../../prototype/src/features/sound/sound";
-import { type BrowserCommand, browser, type CommandPick, type NativeTab } from "./bridge";
+import { browser, type CommandPick, type NativeTab } from "./bridge";
 import { faviconUrl } from "./favicon-url";
 import { readState, readUi, watch } from "./store";
 
@@ -24,7 +25,7 @@ setFaviconSource(faviconUrl);
 const darkSystem = matchMedia("(prefers-color-scheme: dark)");
 
 /** What the bar is for when it opens before the browser says: command.html?mode=focus-location, or a new tab. */
-function startMode(): BrowserCommand {
+function startMode(): CommandMode {
 	return new URLSearchParams(location.search).get("mode") === "focus-location" ? "focus-location" : "new-tab";
 }
 
@@ -39,7 +40,7 @@ export class LokaCommandPage extends LitElement {
 	};
 
 	state: BrowserState | null = null;
-	mode: BrowserCommand = startMode();
+	mode: CommandMode = startMode();
 	query = "";
 	/** Counts each time the browser shows the bar, so it starts fresh (empty, focused, animating in) every time. */
 	opened = 0;
@@ -70,7 +71,10 @@ export class LokaCommandPage extends LitElement {
 		void browser.sidebarPinned().then((pinned) => {
 			this.pinned = pinned;
 		});
-		browser.onCommand((mode) => void this.open(mode));
+		// Only the bar's own two commands; the sidebar answers the rest (Ctrl+Tab, Ctrl+1..9).
+		browser.onCommand((command) => {
+			if (command === "new-tab" || command === "focus-location") void this.open(command);
+		});
 		darkSystem.addEventListener("change", (e) => {
 			this.systemDark = e.matches;
 		});
@@ -81,7 +85,7 @@ export class LokaCommandPage extends LitElement {
 	}
 
 	/** The browser showed the bar for `mode`: start over, with the current address for Ctrl+L. */
-	private async open(mode: BrowserCommand) {
+	private async open(mode: CommandMode) {
 		this.tabs = await browser.tabs();
 		this.mode = mode;
 		this.query = mode === "focus-location" ? (this.shownTab()?.url ?? "") : "";

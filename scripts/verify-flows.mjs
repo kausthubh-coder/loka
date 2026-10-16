@@ -948,7 +948,11 @@ async function tabs() {
 
 	// Move one to another space from its menu.
 	await sb.click("QA Bravo", { role: "[role=treeitem]", button: "right" });
-	await sb.click("Move to Play", { role: "[role=menuitem]" });
+	// The menu has "Move to space" opening its spaces under it; a build's older sidebar lists "Move to Play" itself.
+	if ((await sb.names("[role=menuitem]")).some((n) => n.startsWith("Move to space"))) {
+		await sb.click("Move to space", { role: "[role=menuitem]" });
+		await sb.click("Play", { role: "[role=menuitem]" });
+	} else await sb.click("Move to Play", { role: "[role=menuitem]" });
 	st = await until(async () => {
 		const now = await sb.state();
 		return openTitles(now, "Play").includes("QA Bravo") ? now : null;

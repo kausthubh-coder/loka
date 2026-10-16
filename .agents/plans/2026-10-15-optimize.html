@@ -60,7 +60,23 @@ details > *:not(summary) { margin-bottom: 1rem; }
 	<li><b>Say so</b> if any should wait. The native features (extensions, address bar, audio, settings, setup) continue either way.</li>
 </ol>
 
-<p class="status">Status (15 Oct, 17:10): items 1 and 3 to 9 <b>done</b> on <code>feat/guardrails</code>, <a href="https://github.com/kausthubh-coder/loka/pull/9">PR 9</a> against <code>feat/native-sidebar</code>. Item 2 and 10 to 13 belong to the UI branch. <code>bun run verify:browser</code> on today's snapshot passes 29 of 32 checks; the 3 failures are in the build: the Extensions panel lists nothing, chrome.exe's ProductName is still "Helium", and the snapshot's sidebar predates the alpha-page cleanup. <code>bun run patches:check</code> lists 19 files in <code>build\src</code> that no patch has yet.</p>
+<p class="status">Status (16 Oct, 00:30): items 1 to 9 <b>done</b> (1, 3 to 9 in <a href="https://github.com/kausthubh-coder/loka/pull/9">PR 9</a>; 2 landed with the native UI). Items 14 to 20 <b>done</b> on <code>feat/agent-flows</code>. Item 13 is half done: <code>extension/</code> is gone, the demo bridge is <code>prototype/src/demo/</code>. Items 10 to 12 wait for <code>feat/ux2</code> to merge, since they move the files it edits; the checklist below is ready to run. <code>bun run verify:browser</code> passes 34 of 34 on the alpha.3 snapshot.</p>
+
+<h2>This pass: flows, one verify command, cross-platform</h2>
+<div class="wrap">
+<table>
+	<thead><tr><th scope="col" class="r">#</th><th scope="col">Change</th><th scope="col">Fixes</th><th scope="col">Proof</th></tr></thead>
+	<tbody>
+		<tr><td class="n">14</td><td><code>bun run verify</code>: check, patches:check, every prototype recipe, then verify:browser, verify:flows, verify:perf when a binary is here; <code>--ux &lt;feature&gt;</code> for one feature; SKIP is named, never a pass</td><td>Four commands to remember; "done" on the prototype alone</td><td>Full run on the snapshot; <code>verify.test.ts</code> keeps the map and the table in step</td></tr>
+		<tr><td class="n">15</td><td>Real input: <code>window-input.ps1</code> posts mouse messages; verify:browser clicks a row through Windows' input path</td><td>CDP clicks passed while a real mouse dragged the window</td><td>34/34 on the snapshot</td></tr>
+		<tr><td class="n">16</td><td>Shared build checkout: <code>build.lock</code>, <code>testBinary()</code> (snapshot while a build runs), <code>browser:build</code> refuses while browsers hold <code>out\Default</code></td><td>Links failing 25 minutes in; two builds at once</td><td><code>build_log.test.ts</code>: live lock refuses, stale lock taken over, binary choice</td></tr>
+		<tr><td class="n">17</td><td><code>release:alpha</code>: checks zip, sha256, commit on origin, patches and pages, then a GitHub pre-release; ask rule before <code>--publish</code></td><td>Releases by hand; no proof the zip matches a commit</td><td>Dry run on alpha.3</td></tr>
+		<tr><td class="n">18</td><td>worktree-loka, ship-loka, verify-loka and every feature file brought up to date; each feature names the browser checks that prove it</td><td>Stale map; LOKA_CHROME by hand</td><td>Two fresh worktrees: setup, doctor, separate ports and data, removed</td></tr>
+		<tr><td class="n">19</td><td>Scripts degrade off Windows (exit 2, "Windows only today"); <code>docs/cross-platform.md</code> lists what macOS needs</td><td>Cloud and macOS sessions failing on PowerShell</td><td>CI runs check on Ubuntu; a cloud thread on the pushed branch</td></tr>
+		<tr><td class="n">20</td><td>AGENTS.md map and rules table refreshed; <code>docs/decisions.md</code></td><td>Stale map (extension/), unenforced rules</td><td>Read against the tree</td></tr>
+	</tbody>
+</table>
+</div>
 
 <h2>Quick wins</h2>
 <div class="wrap">

@@ -732,7 +732,7 @@ async function firstRun() {
 	check(
 		"the window's pages are in it; an empty tab is not",
 		tabs.length > 0 && inFirst === pages.length,
-		`${inFirst} of ${pages.length} pages in Research, ${tabs.length - pages.length} empty tabs`,
+		`${inFirst} of ${pages.length} pages in Research (${show(openTitles(saved, "Research"))}, ${show((spaceNamed(saved, "Research")?.open ?? []).map((id) => saved.tabs[id]?.url))}), ${tabs.length - pages.length} empty tabs`,
 	);
 	const horizon = await ctx.sidebar.names("button");
 	check(
@@ -1103,8 +1103,11 @@ async function states() {
 		);
 		return after;
 	};
-	// A row that isn't the one showing: the shown row keeps its own background under the mouse.
-	const quiet = (await sb.rows()).find((r) => !r.selected && r.expanded === null)?.label ?? "QA Alpha";
+	// A row that isn't the one showing: the shown row keeps its own background under the mouse. The tabs flow leaves
+	// Research with only its shown tab (Alpha's, on Echo), so open one more; the one showing before is then quiet.
+	const quietRow = async () => (await sb.rows()).find((r) => !r.selected && r.expanded === null)?.label;
+	if (!(await quietRow())) await openSite("india");
+	const quiet = (await quietRow()) ?? "QA Echo";
 	await hoverChanges("a tab row", quiet, "[role=treeitem]", ["background", "color", "shadow"]);
 	await hoverChanges("the New tab row", "New tab", "button", ["background", "color"]);
 	await hoverChanges("the More button", "More", "button", ["background", "color"]);
@@ -1748,7 +1751,8 @@ const sameTabs = (a, b) => show(a.map((t) => [t.id, t.active]).sort()) === show(
 async function newTabs() {
 	const sb = ctx.sidebar;
 	await inResearch();
-	await openSite("foxtrot");
+	// Sites no other flow opens: typing an open tab's address offers "Switch to tab" first, not "Go to".
+	await openSite("juliet");
 	const before = await sb.tabs();
 	const b = await openBar("New tab");
 	await sleep(500);
@@ -1768,7 +1772,7 @@ async function newTabs() {
 		hidden && sameTabs(before, afterEscape),
 		`bar ${hidden ? "hidden" : "still showing"}; tabs ${show(afterEscape.map((t) => [t.url, t.active]))}`,
 	);
-	await openSite("golf");
+	await openSite("kilo");
 	const afterPick = await sb.tabs();
 	check(
 		"picking a page makes exactly one tab, and no empty tab",
@@ -1816,19 +1820,19 @@ async function newTabs() {
 	await step("blank-space", true);
 
 	// Its first page replaces the empty tab; closing it brings the empty tab back, and the window stays.
-	await openSite("hotel");
+	await openSite("mike");
 	const withPage = await sb.tabs();
 	check(
 		"a page picked there joins Blank, and the empty tab goes",
-		show(openTitles(await sb.state(), "Blank")) === show(["QA Hotel"]) && !withPage.some((t) => isEmptyTab(t.url)),
+		show(openTitles(await sb.state(), "Blank")) === show(["QA Mike"]) && !withPage.some((t) => isEmptyTab(t.url)),
 		`Blank open: ${show(openTitles(await sb.state(), "Blank"))}; tabs ${show(withPage.map((t) => t.url))}`,
 	);
-	await sb.hover("QA Hotel", "[role=treeitem]");
-	await sb.click("Close QA Hotel");
+	await sb.hover("QA Mike", "[role=treeitem]");
+	await sb.click("Close QA Mike");
 	const back = await onEmpty();
 	check(
 		"closing the space's last tab shows an empty tab in it",
-		back && !(await sb.tabs()).some((t) => t.title === "QA Hotel"),
+		back && !(await sb.tabs()).some((t) => t.title === "QA Mike"),
 		back ? back.url : show((await sb.tabs()).map((t) => [t.url, t.active])),
 	);
 	await step("last-tab-closed", true);

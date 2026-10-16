@@ -91,7 +91,8 @@ function addOpenTab(
 /**
  * When Loka starts, links the tabs the browser already has to Loka's tabs by address. A browser tab with no match
  * becomes an open tab in the current space; a Loka open tab with no browser tab left is dropped (it was closed while
- * Loka wasn't running). Pinned tabs and Essentials stay either way. Empty tabs are left out.
+ * Loka wasn't running). Pinned tabs and Essentials stay either way. Empty tabs, and tabs with no page yet, are left
+ * out.
  */
 export function adoptTabs(state: BrowserState, tabs: BrowserTab[], now: number): [BrowserState, LiveMap] {
 	let live: LiveMap = {};
@@ -108,7 +109,9 @@ export function adoptTabs(state: BrowserState, tabs: BrowserTab[], now: number):
 		];
 	};
 	for (const tab of tabs) {
-		if (isEmptyTab(tab.url)) continue;
+		// A tab still on its way (a new window's, before chrome://newtab commits) joins once it has a page
+		// (tabUpdated); taken in now, an empty tab would show as a row until then.
+		if (isEmptyTab(tab.url) || isBlank(tab.url)) continue;
 		const match = candidates().find((id) => !taken.has(id) && next.tabs[id]?.url === tab.url);
 		if (match) {
 			taken.add(match);

@@ -43,6 +43,16 @@ describe("when Loka starts, it takes over the browser's tabs", () => {
 		expect(state.essentials).toEqual(seedState().essentials);
 	});
 
+	test("a tab still on its way to its first page waits; once it has one it joins, unless it's an empty tab", () => {
+		// A new window's tab says about:blank until chrome://newtab commits; taken in now, it would flash as a row.
+		const [state, live] = adoptTabs(firstState(), [tab(3, "about:blank", { active: true })], NOW);
+		expect([state.spaces[0]?.open, live]).toEqual([[], {}]);
+		expect(tabUpdated(state, live, tab(3, "chrome://loka-newtab/", { active: true }), NOW)).toEqual([state, live]);
+		const [later, linked] = tabUpdated(state, live, tab(3, "https://a.example/", { active: true }), NOW);
+		expect(later.spaces[0]?.open.map((id) => later.tabs[id]?.url)).toEqual(["https://a.example/"]);
+		expect(Object.values(linked)).toEqual([3]);
+	});
+
 	test("a first launch starts with one space holding every open browser tab", () => {
 		const [state, live] = adoptTabs(firstState(), [tab(1, "https://a.example/"), tab(2, "https://b.example/")], NOW);
 		const opened = state.spaces.map((s) => ({ name: s.name, open: s.open.map((id) => state.tabs[id]?.url) }));

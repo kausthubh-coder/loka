@@ -97,8 +97,9 @@ export class LokaArchivePanel extends LitElement {
 	static override styles = css`
 		:host {
 			display: block;
-			color: #ececf1;
 			font: 14px/1.4 system-ui, "Segoe UI", sans-serif;
+			/* Pressed is a deeper hover in both themes. --loka-fill-hover lightens, which vanishes on a light panel. */
+			--press: color-mix(in srgb, var(--loka-ink) 12%, transparent);
 		}
 		header {
 			display: flex;
@@ -111,15 +112,19 @@ export class LokaArchivePanel extends LitElement {
 			color: inherit;
 			border: 0;
 			background: none;
+			cursor: default;
 		}
 		.quiet {
-			color: #a7a8b4;
+			color: var(--loka-ink-2);
 			padding: 2px 6px;
 			border-radius: 6px;
 		}
 		.quiet:hover {
-			color: #fff;
-			background: hsl(var(--hue) 30% 80% / 0.1);
+			color: var(--loka-ink);
+			background: var(--loka-hover);
+		}
+		.quiet:active {
+			background: var(--press);
 		}
 		input {
 			width: 100%;
@@ -131,11 +136,15 @@ export class LokaArchivePanel extends LitElement {
 			color: inherit;
 			border: 0;
 			border-radius: 8px;
-			background: hsl(var(--hue) 30% 85% / 0.08);
+			background: var(--loka-fill);
+			box-shadow: inset 0 0 0 1px var(--loka-line);
 			outline: none;
 		}
+		input::placeholder {
+			color: var(--loka-ink-3);
+		}
 		input:focus {
-			box-shadow: inset 0 0 0 1.5px hsl(var(--hue) 85% 72%);
+			box-shadow: inset 0 0 0 1.5px var(--loka-accent);
 		}
 		ul {
 			list-style: none;
@@ -152,7 +161,10 @@ export class LokaArchivePanel extends LitElement {
 			text-align: left;
 		}
 		.row:hover {
-			background: hsl(var(--hue) 30% 80% / 0.1);
+			background: var(--loka-hover);
+		}
+		.row:active {
+			background: var(--press);
 		}
 		.fav {
 			flex: none;
@@ -177,24 +189,37 @@ export class LokaArchivePanel extends LitElement {
 			text-overflow: ellipsis;
 		}
 		small {
-			color: #a7a8b4;
+			color: var(--loka-ink-2);
 			font-size: 12px;
 		}
 		.empty {
 			margin: 4px 8px 8px;
-			color: #b4b6c2;
+			color: var(--loka-ink-2);
 			font-size: 13px;
 		}
 		.link {
 			display: block;
 			margin-top: 8px;
 			padding: 0;
-			color: hsl(var(--hue) 85% 76%);
+			color: var(--loka-accent-ink);
+		}
+		.link:hover {
+			text-decoration: underline;
+			text-underline-offset: 3px;
+		}
+		.link:active {
+			opacity: 0.75;
 		}
 		:focus-visible {
-			outline: 2px solid hsl(var(--hue) 85% 72%);
+			outline: 2px solid var(--loka-accent);
 			outline-offset: -2px;
 			border-radius: 8px;
+		}
+		@media (prefers-reduced-motion: no-preference) {
+			.row,
+			.quiet {
+				transition: background-color 120ms;
+			}
 		}
 	`;
 }

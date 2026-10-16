@@ -134,6 +134,8 @@ export class LokaDownloads extends LitElement {
 		:host {
 			display: block;
 			font: 14px/1.4 system-ui, "Segoe UI", sans-serif;
+			/* Pressed is a deeper hover in both themes. --loka-fill-hover lightens, which vanishes on a light panel. */
+			--press: color-mix(in srgb, var(--loka-ink) 12%, transparent);
 		}
 		header {
 			display: flex;
@@ -163,14 +165,14 @@ export class LokaDownloads extends LitElement {
 			position: absolute;
 			inset: -2px 0;
 		}
-		.quiet:active,
-		.act:active {
-			background: var(--loka-fill-hover);
-		}
 		.quiet:hover,
 		.all:hover {
 			color: var(--loka-ink);
 			background: var(--loka-hover);
+		}
+		.quiet:active,
+		.all:active {
+			background: var(--press);
 		}
 		ul {
 			list-style: none;
@@ -182,8 +184,12 @@ export class LokaDownloads extends LitElement {
 			align-items: center;
 			border-radius: 8px;
 		}
+		/* The whole row is one pill: hover lights it, pressing a file that opens presses it. */
 		li:hover {
 			background: var(--loka-hover);
+		}
+		li:has(button.main:active) {
+			background: var(--press);
 		}
 		.main {
 			flex: 1;
@@ -271,6 +277,9 @@ export class LokaDownloads extends LitElement {
 			background: var(--loka-hover);
 			color: var(--loka-ink);
 		}
+		.act:active {
+			background: var(--press);
+		}
 		/* Remove is there when you look for it, not before. */
 		.act.secondary {
 			opacity: 0;
@@ -329,6 +338,12 @@ export class LokaDownloads extends LitElement {
 			outline-offset: -2px;
 		}
 		@media (prefers-reduced-motion: no-preference) {
+			li,
+			.act,
+			.quiet,
+			.all {
+				transition: background-color 120ms;
+			}
 			.bar span {
 				transition: transform 450ms linear;
 			}

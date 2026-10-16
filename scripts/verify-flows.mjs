@@ -3,6 +3,8 @@
 // sidebar (its rows, its saved spaces) and the browser (its tabs, tab groups, pages).
 //
 //   bun run verify:flows      binary from LOKA_CHROME, else C:\src\loka\build\src\out\Default\chrome.exe
+//   bun run verify:flows -- --webui=checkout
+//                             the same flows with this checkout's webui in the browser's pages (no browser build)
 //
 // One throwaway profile (C:\src\loka\profile-qa-<time>) goes through the flows in order, since each builds on the
 // last; the last one quits and starts the browser again on it. A tiny unpacked extension with a popup and a badge is
@@ -39,6 +41,7 @@ import {
 	stillRunning,
 	toneWav,
 	until,
+	useCheckoutWebui,
 	windows,
 } from "./browser-session.mjs";
 
@@ -54,6 +57,15 @@ import {
 
 const repo = resolve(import.meta.dirname, "..");
 const chrome = chromePath();
+/** --webui=checkout: the sidebar, command bar, Settings and History run this checkout's webui (see useCheckoutWebui). */
+const webui = process.argv.find((a) => a.startsWith("--webui="))?.slice("--webui=".length) ?? "build";
+if (webui !== "build" && webui !== "checkout") {
+	console.error(
+		`--webui=${webui}: use --webui=checkout (this checkout's webui) or leave it out (the build's own pages).`,
+	);
+	process.exit(2);
+}
+const checkoutWebui = webui === "checkout";
 const stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
 const evidence = join(repo, ".agents", "verify-runs", `${stamp}-flows`);
 const profile = join(BUILD_DIR, `profile-qa-${stamp}`);
@@ -430,7 +442,12 @@ async function attachSidebar(b) {
 	const s = await connect(target.webSocketDebuggerUrl);
 	await s.call("Runtime.enable");
 	await s.call("Page.enable");
-	await until(() => evaluate(s, "Boolean(window.cr && document.querySelector('loka-panel')?.shadowRoot)"), 15000);
+	const panel = () => evaluate(s, "Boolean(window.cr && document.querySelector('loka-panel')?.shadowRoot)");
+	await until(panel, 15000);
+	if (checkoutWebui) {
+		await useCheckoutWebui(s, "sidebar");
+		if (!(await until(panel, 15000))) throw new Error("this checkout's sidebar never drew its panel");
+	}
 	await evaluate(s, RECORD_EVENTS);
 	const d = driver(s);
 	/** @param {string} message @param {unknown[]} args */
@@ -539,6 +556,20 @@ async function commandBar() {
 let bar = null;
 
 /**
+ * With --webui=checkout, after each launch: the browser makes the command bar's page the first time the bar opens,
+ * and a reload loses the command it opened with, so open it once, swap in this checkout's page, and close it again.
+ */
+async function checkoutCommandBar() {
+	await ctx.sidebar.tell("openCommandBar", "new-tab");
+	const b = await commandBar();
+	await useCheckoutWebui(b.s, "command");
+	await ctx.sidebar.tell("closeCommandBar");
+	const hidden = await until(() => b.run(`document.visibilityState === "hidden"`), 4000);
+	if (!hidden) throw new Error("this checkout's command bar didn't close");
+	bar = b;
+}
+
+/**
  * Opens the floating command bar from the sidebar (by clicking `opener`, or as Ctrl+T does) and waits until it shows,
  * focused, with `query` in it.
  * @param {string | null} opener @param {string} [query]
@@ -644,6 +675,7 @@ async function firstRun() {
 	setup.s.close();
 
 	ctx.sidebar = await attachSidebar(b);
+	if (checkoutWebui) await checkoutCommandBar();
 	const st = await until(async () => {
 		const now = await ctx.sidebar.state();
 		return now?.spaces.length === SETUP_SPACES.length && now.spaces[0]?.name === SETUP_SPACES[0]?.name ? now : null;
@@ -1453,6 +1485,7 @@ async function settings() {
 	if (!check("More > Settings opens chrome://loka-settings", target, target?.url ?? "no settings tab")) return;
 	const page = driver(await connect(/** @type {Target} */ (target).webSocketDebuggerUrl));
 	await page.s.call("Runtime.enable");
+	if (checkoutWebui) await useCheckoutWebui(page.s, "settings");
 	await until(() => page.has("Sound effects", "[role=switch]"), 8000);
 	const dir = join(evidence, flow);
 	mkdirSync(dir, { recursive: true });
@@ -1534,6 +1567,7 @@ async function settings() {
 	);
 	if (!check("Ctrl+H opens chrome://history", historyTarget, historyTarget?.url ?? "no history tab")) return;
 	const history = driver(await connect(/** @type {Target} */ (historyTarget).webSocketDebuggerUrl));
+	if (checkoutWebui) await useCheckoutWebui(history.s, "history");
 	await until(() => history.has("Search history", "input"), 8000);
 	await history.run(`(window.__qa.find("Search history", "input").focus(), true)`);
 	await history.type("QA Bravo");
@@ -1619,6 +1653,7 @@ async function restart() {
 	);
 	ctx.browser = await launch();
 	ctx.sidebar = await attachSidebar(ctx.browser);
+	if (checkoutWebui) await checkoutCommandBar();
 	// What the restart brought back, once the sidebar has taken in the restored tabs (or 15 s have passed).
 	const keys = /** @type {(keyof typeof before)[]} */ (["spaces", "pinned", "essentials", "extensions", "ui"]);
 	const read = async () => {
@@ -1713,7 +1748,7 @@ async function main() {
 			gone && (stopped.ended || stopped.killed > 0),
 			`${stopped.killed} of ${stopped.tree} processes needed taskkill; profile ${gone ? "deleted" : "still there"}`,
 		);
-		writeFileSync(join(evidence, "checks.json"), JSON.stringify({ chrome, checks, notes }, null, 2));
+		writeFileSync(join(evidence, "checks.json"), JSON.stringify({ chrome, webui, checks, notes }, null, 2));
 	}
 	const failed = checks.filter((c) => !c.ok);
 	const byFlow = [...new Set(checks.map((c) => c.flow))].map((f) => {
@@ -1721,7 +1756,7 @@ async function main() {
 		return `${mine.every((c) => c.ok) ? "PASS" : "FAIL"} ${f} (${mine.filter((c) => c.ok).length}/${mine.length})`;
 	});
 	console.log(
-		`\n${byFlow.join("\n")}\n\n${failed.length ? "FAIL" : "PASS"}: ${checks.length - failed.length}/${checks.length} checks. Evidence: ${evidence}`,
+		`\n${byFlow.join("\n")}\n\n${failed.length ? "FAIL" : "PASS"}: ${checks.length - failed.length}/${checks.length} checks (webui: ${webui}). Evidence: ${evidence}`,
 	);
 	process.exit(failed.length ? 1 : 0);
 }

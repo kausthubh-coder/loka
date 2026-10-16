@@ -53,6 +53,8 @@ export const PLANNED_MESSAGES = [
 	// Media autoplay for pages: "block" (until a click), "block-audible" or "allow" (the loka.autoplay pref).
 	"setAutoplay",
 	"getAutoplay",
+	// A hidden sidebar that is showing stays open while true (typing in it, a menu open, a drag).
+	"holdSidebar",
 ] as const;
 
 /** Events the handler in patches/loka doesn't fire yet; same rule as PLANNED_MESSAGES. */

@@ -266,6 +266,7 @@ export class LokaSidebar extends LitElement {
 
 	private beginDrag(press: NonNullable<typeof this.press>) {
 		this.dragId = press.id;
+		this.hold("drag", true);
 		this.hoveredSpace = this.state.activeSpaceId;
 		const rect = press.source.getBoundingClientRect();
 		const ghost = press.source.cloneNode(true) as HTMLElement;
@@ -394,6 +395,7 @@ export class LokaSidebar extends LitElement {
 		window.removeEventListener("pointercancel", this.cancelDrag, true);
 		window.removeEventListener("keydown", this.onDragKey, true);
 		cancelAnimationFrame(this.scrollFrame);
+		if (this.dragId) this.hold("drag", false);
 		this.ghost?.remove();
 		this.ghost = null;
 		this.press = null;
@@ -1240,7 +1242,22 @@ export class LokaSidebar extends LitElement {
 		this.bottomObserver.observe(bottom);
 	}
 
+	/**
+	 * Tells the window something here needs a hidden sidebar to stay open (a menu or panel, a drag); the window keeps
+	 * the browser told (hold.logic.ts).
+	 */
+	private hold(reason: "menu" | "drag", on: boolean) {
+		this.dispatchEvent(new CustomEvent("loka-hold", { detail: { reason, on }, bubbles: true, composed: true }));
+	}
+	/** Whether a menu or panel was open at the last update, for the hold. */
+	private heldOpen = false;
+
 	protected override updated() {
+		const open = this.menu !== null || this.panel !== null;
+		if (open !== this.heldOpen) {
+			this.heldOpen = open;
+			this.hold("menu", open);
+		}
 		this.watchBottom();
 		this.animateListExit();
 		this.animateRows();

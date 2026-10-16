@@ -36,6 +36,7 @@ import type { LookPreview } from "../../prototype/src/features/spaces/loka-space
 import { type BrowserCommand, browser, type CommandPick, type NativeMedia, type NativeTab } from "./bridge";
 import { faviconUrl } from "./favicon-url";
 import { frameColor } from "./frame-color.logic";
+import { type Hold, type HoldReason, holdChanged, NO_HOLD } from "./hold.logic";
 import { applyOnboarding, onboardingSpaces } from "./onboarding.logic";
 import {
 	markOnboardingApplied,
@@ -89,6 +90,21 @@ export class LokaPanel extends LitElement {
 	private icons = new Map<TabId, string>();
 	private sentScheme: string | null = null;
 	private sentFrame: string | null = null;
+	/** Why the hidden sidebar must stay open right now, and what the browser was told. */
+	private holding: Hold = NO_HOLD;
+
+	private onHold(reason: HoldReason, on: boolean) {
+		const { hold, send } = holdChanged(this.holding, reason, on);
+		this.holding = hold;
+		if (send !== null) browser.holdSidebar(send);
+	}
+
+	/** Typing anywhere on this page (the command bar, a folder's name, search) holds the sidebar open. */
+	private onFocus = (e: FocusEvent) => {
+		const el = e.composedPath()[0];
+		const typing = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;
+		if (typing) this.onHold("input", e.type === "focusin");
+	};
 
 	/**
 	 * A change saved but not yet drawn, while the crossfade captures the old look (one frame). Later changes build on
@@ -163,6 +179,8 @@ export class LokaPanel extends LitElement {
 		// The sync links a new browser tab to its Loka tab a moment after the browser reports it.
 		onLinksChanged(this.refreshLive);
 		window.addEventListener("keydown", this.onKey);
+		window.addEventListener("focusin", this.onFocus);
+		window.addEventListener("focusout", this.onFocus);
 		darkSystem.addEventListener("change", (e) => {
 			this.systemDark = e.matches;
 		});
@@ -429,6 +447,7 @@ export class LokaPanel extends LitElement {
 				@loka-media=${(e: CustomEvent<MediaAction>) => this.onMedia(e.detail)}
 				@loka-nav=${(e: CustomEvent<"back" | "forward" | "reload">) => this.onNav(e.detail)}
 				@loka-tab-closed=${(e: CustomEvent<string>) => this.unload(e.detail)}
+				@loka-hold=${(e: CustomEvent<{ reason: HoldReason; on: boolean }>) => this.onHold(e.detail.reason, e.detail.on)}
 				@loka-preview=${(e: CustomEvent<LookPreview>) => {
 					this.preview = e.detail;
 				}}

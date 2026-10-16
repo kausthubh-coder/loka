@@ -225,6 +225,11 @@ export const browser = {
 	/** Pinned shows the sidebar always; unpinned slides it away until the mouse reaches the window's edge. */
 	setSidebarPinned: (pinned: boolean) => tell("setSidebarPinned", pinned),
 	sidebarPinned: () => ask<boolean>("getSidebarPinned"),
+	/**
+	 * While true, a hidden (unpinned) sidebar that is showing stays open: something in it is being typed in, a menu
+	 * or panel is open, or a tab is being dragged (hold.logic.ts decides).
+	 */
+	holdSidebar: (held: boolean) => tell("holdSidebar", held),
 	/** Media autoplay for pages loaded from now on (the loka.autoplay pref). */
 	setAutoplay: (mode: "block" | "block-audible" | "allow") => tell("setAutoplay", mode),
 	autoplay: () => ask<"block" | "block-audible" | "allow">("getAutoplay"),

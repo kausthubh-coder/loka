@@ -4,7 +4,7 @@ Loka's `main` is Helium's history plus Loka's commits. Helium tags a release abo
 with a new Chromium version. Merge each tag (never rebase: `main` is public).
 
 ```
-git fetch upstream --tags
+git fetch helium --tags
 git tag --sort=-creatordate | head -5          # newest Helium tags
 git switch -c helium/<tag> main
 git merge <tag>                                # e.g. 0.19.3.1
@@ -19,7 +19,11 @@ Expected conflicts:
 
 Then:
 
-1. Commit the merge, `bun run browser:setup`, delete `C:\src\loka\build\src` (keep `build\download_cache`),
-   and `bun run browser:build`. Loka patches that no longer apply fail here with the file name.
-2. Refresh the failing patches with quilt (see `docs/browser-build.md`, step 4) and commit them.
-3. Run the browser, check spaces and folders still work, and open a PR titled `Helium <tag>`.
+1. Export first: `bun run patches:check` must print `match patches/loka`. Anything it lists exists only in
+   `C:\src\loka\build\src` and is gone once that folder is deleted, so export it with `scripts/export_patch.py` (the
+   check prints the command) and commit the patch. `browser:setup` refuses to sync until it passes.
+2. Commit the merge, `bun run browser:setup`, delete `C:\src\loka\build\src` (keep `build\download_cache`) and
+   `bun run browser:build`. That is a first build, several hours, so agents ask before starting it. Loka patches
+   that no longer apply fail here with the file name.
+3. Refresh the failing patches with quilt (see `docs/browser-build.md`, step 4) and commit them.
+4. Run the browser, check spaces and folders still work, and open a PR titled `Helium <tag>`.

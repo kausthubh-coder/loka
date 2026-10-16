@@ -1,0 +1,21 @@
+--- a/chrome/browser/prefs/session_startup_pref.cc
++++ b/chrome/browser/prefs/session_startup_pref.cc
+@@ -63,16 +63,9 @@
+ 
+ // static
+ SessionStartupPref::Type SessionStartupPref::GetDefaultStartupType() {
+-#if BUILDFLAG(IS_CHROMEOS)
++  // Loka: like Arc and Zen, the browser opens where you left it: your open
++  // tabs come back in their spaces. Settings can still change it.
+   return SessionStartupPref::LAST;
+-#else
+-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC)
+-  if (features::kSetDefaultToContinueSession.Get()) {
+-    return SessionStartupPref::LAST;
+-  }
+-#endif
+-  return SessionStartupPref::DEFAULT;
+-#endif
+ }
+ 
+ // static

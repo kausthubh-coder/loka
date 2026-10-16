@@ -1,0 +1,330 @@
+--- /dev/null
++++ b/chrome/browser/ui/startup/loka_setup_window.h
+@@ -0,0 +1,33 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_STARTUP_LOKA_SETUP_WINDOW_H_
++#define CHROME_BROWSER_UI_STARTUP_LOKA_SETUP_WINDOW_H_
++
++#include "build/build_config.h"
++#include "chrome/browser/ui/browser_init_state.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++
++// Loka: first run opens Loka's setup page (chrome://setup) in an app popup of
++// its own with this app name (ShowLokaSetupWindow).
++inline constexpr char kLokaSetupAppName[] = "loka_setup";
++
++// Loka: whether the setup window has no title bar on this platform. On Windows
++// BrowserFrameViewWin draws none, so setup's page fills the window and draws
++// its own minimize, close and drag area. macOS keeps its title bar (and its
++// traffic lights) until its frame does the same.
++inline constexpr bool kLokaSetupWindowHasNoTitleBar = BUILDFLAG(IS_WIN);
++
++// Loka: true for the setup window, false for every other window (and null).
++inline bool IsLokaSetupWindow(const BrowserWindowInterface* browser) {
++  if (!browser ||
++      browser->GetType() != BrowserWindowInterface::TYPE_APP_POPUP) {
++    return false;
++  }
++  const BrowserInitState* init_state = BrowserInitState::From(browser);
++  return init_state &&
++         init_state->create_params().app_name == kLokaSetupAppName;
++}
++
++#endif  // CHROME_BROWSER_UI_STARTUP_LOKA_SETUP_WINDOW_H_
+--- a/chrome/browser/ui/startup/startup_browser_creator_impl.cc
++++ b/chrome/browser/ui/startup/startup_browser_creator_impl.cc
+@@ -45,9 +45,11 @@
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+ #include "chrome/browser/ui/browser_window/public/create_browser_window.h"
+ #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
++#include "chrome/browser/ui/browser_window_state.h"
+ #include "chrome/browser/ui/navigator/browser_navigator.h"
+ #include "chrome/browser/ui/navigator/browser_navigator_params.h"
+ #include "chrome/browser/ui/startup/infobar_utils.h"
++#include "chrome/browser/ui/startup/loka_setup_window.h"
+ #include "chrome/browser/ui/startup/startup_browser_creator.h"
+ #include "chrome/browser/ui/startup/startup_infobar_observer.h"
+ #include "chrome/browser/ui/startup/startup_tab.h"
+@@ -67,6 +69,10 @@
+ #include "chrome/common/webui_url_constants.h"
+ #include "components/custom_handlers/protocol_handler_registry.h"
+ #include "components/helium_services/pref_names.h"
++#include "base/task/sequenced_task_runner.h"
++#include "components/prefs/pref_change_registrar.h"
++#include "ui/base/mojom/window_show_state.mojom.h"
++#include "ui/display/screen.h"
+ #include "components/prefs/pref_service.h"
+ #include "components/sessions/core/serialized_navigation_entry.h"
+ #include "components/sessions/core/serialized_user_agent_override.h"
+@@ -111,6 +117,66 @@
+ #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+ 
+ namespace {
++
++// Loka: first run opens Loka's setup page in a window of its own, before any
++// browser window. When setup finishes, the browser window opens and the setup
++// window closes.
++void ShowLokaSetupWindow(Profile* profile) {
++  gfx::Rect bounds(0, 0, 1180, 780);
++  if (display::Screen* screen = display::Screen::Get()) {
++    const gfx::Rect area = screen->GetPrimaryDisplay().work_area();
++    bounds.set_size(gfx::Size(std::min(bounds.width(), area.width()),
++                              std::min(bounds.height(), area.height())));
++    bounds.set_origin(area.CenterPoint() -
++                      gfx::Vector2d(bounds.width() / 2, bounds.height() / 2));
++  }
++  // --window-position and --window-size place it, as they place any browser
++  // window (test runs keep their windows off screen this way).
++  ui::mojom::WindowShowState show_state = ui::mojom::WindowShowState::kNormal;
++  chrome::internal::UpdateWindowBoundsAndShowStateFromCommandLine(
++      *base::CommandLine::ForCurrentProcess(), &bounds, &show_state);
++  BrowserWindowInterface* setup =
++      CreateBrowserWindow(BrowserWindowCreateParams::CreateForAppPopup(
++          kLokaSetupAppName, /*trusted_source=*/true, bounds, profile,
++          /*user_gesture=*/true));
++  if (!setup) {
++    return;
++  }
++  chrome::AddTabAt(setup, GURL(chrome::kHeliumSetupURL), -1,
++                   /*foreground=*/true);
++  setup->GetWindow()->Show();
++
++  auto* registrar = new PrefChangeRegistrar();
++  registrar->Init(profile->GetPrefs());
++  registrar->Add(
++      prefs::kHeliumDidOnboarding,
++      base::BindRepeating(
++          [](PrefChangeRegistrar* registrar, Profile* profile,
++             base::WeakPtr<BrowserWindowInterface> setup) {
++            if (!profile->GetPrefs()->GetBoolean(prefs::kHeliumDidOnboarding)) {
++              return;
++            }
++            // The pref is set from inside the setup page's message handler,
++            // which answers the page afterwards; closing the window here can
++            // destroy the page first (a minimized window closes at once). So
++            // the switch happens on the next task.
++            base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
++                FROM_HERE,
++                base::BindOnce(
++                    [](Profile* profile,
++                       base::WeakPtr<BrowserWindowInterface> setup) {
++                      chrome::NewEmptyWindow(
++                          profile, /*should_trigger_session_restore=*/false);
++                      if (setup) {
++                        setup->GetWindow()->Close();
++                      }
++                    },
++                    profile, setup));
++            base::SequencedTaskRunner::GetCurrentDefault()->DeleteSoon(
++                FROM_HERE, registrar);
++          },
++          registrar, profile, setup->GetWeakPtr()));
++}
+ 
+ // Utility functions ----------------------------------------------------------
+ 
+@@ -569,6 +635,14 @@
+       is_post_crash_launch, promotions_enabled, whats_new_enabled);
+   StartupTabs tabs = std::move(result.tabs);
+ 
++  // Loka: setup comes first, in its own window; the browser waits for it.
++  if (std::ranges::any_of(tabs, [](const StartupTab& tab) {
++        return tab.url == GURL(chrome::kHeliumSetupURL);
++      })) {
++    ShowLokaSetupWindow(profile_);
++    return;
++  }
++
+   // Return immediately if we start an async restore, since the remainder of
+   // that process is self-contained.
+   if (MaybeAsyncRestore(tabs, process_startup, is_post_crash_launch)) {
+--- a/chrome/browser/ui/views/frame/browser_frame_view_win.cc
++++ b/chrome/browser/ui/views/frame/browser_frame_view_win.cc
+@@ -20,6 +20,7 @@
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+ #include "chrome/browser/ui/color/chrome_color_id.h"
+ #include "chrome/browser/ui/layout_constants.h"
++#include "chrome/browser/ui/startup/loka_setup_window.h"
+ #include "chrome/browser/ui/ui_features.h"
+ #include "chrome/browser/ui/view_ids.h"
+ #include "chrome/browser/ui/views/frame/browser_caption_button_container_win.h"
+@@ -166,6 +167,11 @@
+ }
+ 
+ int BrowserFrameViewWin::GetTopInset(bool restored) const {
++  // Loka: the setup window has no title bar. Its page starts under the top
++  // border, as a window-controls-overlay app's does (LayoutClientView).
++  if (IsLokaSetupWindow(GetBrowserView()->browser())) {
++    return (browser_widget()->IsFullscreen() && !restored) ? 0 : WindowTopY();
++  }
+   if (GetBrowserView()->GetTabStripVisible()) {
+     return TopAreaHeight(restored);
+   }
+@@ -603,6 +609,10 @@
+   if (browser_widget()->IsFullscreen()) {
+     return false;
+   }
++  // Loka: the setup window has no title bar to show it in.
++  if (IsLokaSetupWindow(GetBrowserView()->browser())) {
++    return false;
++  }
+   return GetBrowserView()->ShouldShowWindowIcon();
+ }
+ 
+@@ -611,6 +621,10 @@
+     return false;
+   }
+   if (browser_widget()->IsFullscreen()) {
++    return false;
++  }
++  // Loka: the setup window has no title bar to show it in.
++  if (IsLokaSetupWindow(GetBrowserView()->browser())) {
+     return false;
+   }
+   return GetBrowserView()->ShouldShowWindowTitle();
+@@ -737,6 +751,15 @@
+ void BrowserFrameViewWin::LayoutCaptionButtons() {
+   TRACE_EVENT0("views.frame", "BrowserFrameViewWin::LayoutCaptionButtons");
+ 
++  // Loka: setup's page draws its own minimize and close. Empty bounds keep the
++  // hidden buttons out of NonClientHitTest and out of the layout's exclusions
++  // (GetBrowserLayoutParams).
++  if (IsLokaSetupWindow(GetBrowserView()->browser())) {
++    caption_button_container_->SetVisible(false);
++    caption_button_container_->SetBoundsRect(gfx::Rect());
++    return;
++  }
++
+   caption_button_container_->SetVisible(
+       !browser_widget()->IsFullscreen() ||
+       GetBrowserView()->IsWindowControlsOverlayEnabled());
+--- a/chrome/browser/ui/webui/onboarding/onboarding_page_ui.cc
++++ b/chrome/browser/ui/webui/onboarding/onboarding_page_ui.cc
+@@ -4,8 +4,15 @@
+ 
+ #include "chrome/browser/ui/webui/onboarding/onboarding_page_ui.h"
+ 
++#include <string>
++
++#include "base/functional/bind.h"
+ #include "base/strings/strcat.h"
++#include "base/values.h"
++#include "build/build_config.h"
+ #include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#include "chrome/browser/ui/startup/loka_setup_window.h"
+ #include "chrome/browser/ui/webui/onboarding/onboarding_handler.h"
+ #include "chrome/browser/ui/webui/settings/brave_import_data_handler.h"
+ #include "chrome/browser/ui/webui/settings/search_engines_handler.h"
+@@ -14,11 +21,100 @@
+ #include "components/helium_onboarding/helium_onboarding_localized_strings.h"
+ #include "components/helium_onboarding/resources/grit/helium_onboarding_generated.h"
+ #include "components/helium_onboarding/resources/grit/helium_onboarding_generated_map.h"
++#include "components/tabs/public/tab_interface.h"
+ #include "content/public/browser/web_contents.h"
+ #include "content/public/browser/web_ui_controller.h"
+ #include "content/public/browser/web_ui_data_source.h"
++#include "content/public/browser/web_ui_message_handler.h"
+ #include "services/network/public/mojom/content_security_policy.mojom.h"
++#include "ui/base/base_window.h"
+ #include "ui/webui/webui_util.h"
++
++#if BUILDFLAG(IS_WIN)
++#include <windows.h>
++
++#include "ui/views/win/hwnd_util.h"
++#endif
++
++namespace {
++
++// Loka: the setup window has no title bar on Windows (loka_setup_window.h), so
++// setup's page draws minimize and close and moves the window from its top bar
++// through these. They do nothing for setup opened in an ordinary tab.
++class LokaSetupWindowHandler : public content::WebUIMessageHandler {
++ public:
++  void RegisterMessages() override {
++    web_ui()->RegisterMessageCallback(
++        "getWindowFrame",
++        base::BindRepeating(&LokaSetupWindowHandler::HandleGetWindowFrame,
++                            base::Unretained(this)));
++    web_ui()->RegisterMessageCallback(
++        "windowAction",
++        base::BindRepeating(&LokaSetupWindowHandler::HandleWindowAction,
++                            base::Unretained(this)));
++    web_ui()->RegisterMessageCallback(
++        "startWindowDrag",
++        base::BindRepeating(&LokaSetupWindowHandler::HandleStartWindowDrag,
++                            base::Unretained(this)));
++  }
++
++ private:
++  // The setup window this page fills, or null when the page is anywhere else.
++  BrowserWindowInterface* SetupWindow() {
++    tabs::TabInterface* tab =
++        tabs::TabInterface::MaybeGetFromContents(web_ui()->GetWebContents());
++    BrowserWindowInterface* browser =
++        tab ? tab->GetBrowserWindowInterface() : nullptr;
++    return IsLokaSetupWindow(browser) ? browser : nullptr;
++  }
++
++  // Answers "page" when the window has no title bar and the page draws its
++  // controls, "system" when the window has its own.
++  void HandleGetWindowFrame(const base::ListValue& args) {
++    if (args.empty()) {
++      return;
++    }
++    AllowJavascript();
++    const bool page_draws_frame =
++        kLokaSetupWindowHasNoTitleBar && SetupWindow();
++    ResolveJavascriptCallback(
++        args[0], base::Value(page_draws_frame ? "page" : "system"));
++  }
++
++  void HandleWindowAction(const base::ListValue& args) {
++    BrowserWindowInterface* setup = SetupWindow();
++    if (!setup || args.empty() || !args[0].is_string()) {
++      return;
++    }
++    const std::string& action = args[0].GetString();
++    if (action == "minimize") {
++      setup->GetWindow()->Minimize();
++    } else if (action == "close") {
++      setup->GetWindow()->Close();
++    }
++  }
++
++  // The page's top bar moves the window, like a title bar: the press that's
++  // still down goes to Windows' own move loop (which also snaps), as the
++  // sidebar's top row does (LokaSidebarHandler::HandleStartWindowDrag).
++  void HandleStartWindowDrag(const base::ListValue& args) {
++#if BUILDFLAG(IS_WIN)
++    BrowserWindowInterface* setup = SetupWindow();
++    if (!setup || setup->GetWindow()->IsFullscreen()) {
++      return;
++    }
++    HWND hwnd =
++        views::HWNDForNativeWindow(setup->GetWindow()->GetNativeWindow());
++    if (!hwnd || !(::GetAsyncKeyState(VK_LBUTTON) & 0x8000)) {
++      return;
++    }
++    ::ReleaseCapture();
++    ::SendMessage(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
++#endif
++  }
++};
++
++}  // namespace
+ 
+ HeliumOnboardingPage::HeliumOnboardingPage(content::WebUI* web_ui)
+     : WebUIController(web_ui) {
+@@ -46,6 +142,7 @@
+       std::make_unique<settings::DefaultBrowserHandler>());
+   web_ui->AddMessageHandler(
+       std::make_unique<settings::BraveImportDataHandler>());
++  web_ui->AddMessageHandler(std::make_unique<LokaSetupWindowHandler>());
+ }
+ 
+ HeliumOnboardingPage::~HeliumOnboardingPage() = default;

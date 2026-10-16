@@ -26,10 +26,20 @@ const tabs: Tab[] = [
 
 const tab = (id: string): PinnedNode => ({ kind: "tab", id });
 
-export function seedState(): BrowserState {
+const HOUR = 60 * 60 * 1000;
+// How long ago some open tabs were last shown, so the archive has something to take when it's turned on.
+const LAST_SHOWN: Record<string, number> = { "t-arc": 3 * 24 * HOUR, "t-zen": 26 * HOUR, "t-hn": 2 * HOUR };
+
+export function seedState(now = Date.now()): BrowserState {
 	return {
 		version: 1,
-		tabs: Object.fromEntries(tabs.map((t) => [t.id, t])),
+		tabs: Object.fromEntries(
+			tabs.map((t) => {
+				const ago = LAST_SHOWN[t.id];
+				return [t.id, ago === undefined ? t : { ...t, lastActiveAt: now - ago }];
+			}),
+		),
+		archive: [],
 		essentials: ["t-mail", "t-cal", "t-gh", "t-yt"],
 		activeSpaceId: "s-build",
 		spaces: [
@@ -37,6 +47,8 @@ export function seedState(): BrowserState {
 				id: "s-build",
 				name: "Build",
 				hue: 200,
+				planet: "ringed",
+				scheme: "dark",
 				activeTabId: "t-helium",
 				pinned: [
 					{
@@ -56,6 +68,8 @@ export function seedState(): BrowserState {
 				id: "s-school",
 				name: "School",
 				hue: 30,
+				planet: "banded",
+				scheme: "light",
 				activeTabId: "t-canvas",
 				pinned: [
 					tab("t-canvas"),
@@ -81,6 +95,8 @@ export function seedState(): BrowserState {
 				id: "s-home",
 				name: "Home",
 				hue: 150,
+				planet: "ocean",
+				scheme: "system",
 				activeTabId: null,
 				pinned: [],
 				open: ["t-music"],

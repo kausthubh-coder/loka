@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="color-scheme" content="light dark" />
+		<link rel="icon" href="/loka.svg" type="image/svg+xml" />
+		<title>Loka command bar</title>
+		<!-- The browser shows this in a transparent window over its own: nothing but the bar is painted. -->
+		<style>
+			html,
+			body {
+				margin: 0;
+				height: 100%;
+				background: transparent;
+				overflow: hidden;
+				font:
+					13px / 1.4 system-ui,
+					"Segoe UI",
+					sans-serif;
+				-webkit-font-smoothing: antialiased;
+			}
+		</style>
+		<script type="module" src="./src/command.ts"></script>
+	</head>
+	<body>
+		<loka-command-page></loka-command-page>
+	</body>
+</html>

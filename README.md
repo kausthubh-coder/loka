@@ -4,8 +4,8 @@ Loka is an open-source browser in the style of Arc and Zen, built on [Helium](ht
 (ungoogled-chromium). Tabs live in spaces. Each space has pinned tabs in folders that can hold more folders, and
 its own list of open tabs. An Essentials grid at the top is shared by every space.
 
-Status: early. The sidebar works as a clickable web prototype. The browser itself is still Helium with no Loka
-patches yet. Windows comes first.
+Status: early, Windows first. The sidebar is built into the browser (Loka's patches in `patches/loka/`) and also
+runs as a clickable web prototype.
 
 ## Try the sidebar prototype
 
@@ -19,6 +19,13 @@ bun run dev     # open the printed localhost URL
 Drag tabs between Essentials, pinned folders and open tabs. Right-click for more. `Ctrl K` opens a tab and
 `Ctrl 1` to `Ctrl 9` switch spaces. The prototype saves to localStorage, and the `...` menu exports or imports
 spaces as JSON.
+
+## Coming from the 0.1.0 alpha
+
+The alpha's sidebar was an extension, and the built-in sidebar can't read an extension's storage. To keep your
+spaces, open the alpha's sidebar first, choose `...` > `Export spaces (JSON)`, then in the new build choose `...` >
+`Import spaces (JSON)` and pick that file. The import keeps your spaces, folders and tabs and drops the alpha's own
+pages (its sidebar, tour and settings tabs), which don't exist in the new build.
 
 ## Build the browser
 

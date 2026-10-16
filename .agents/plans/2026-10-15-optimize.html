@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Make "native only" impossible to break</title>
+<style>
+:root {
+	color-scheme: light dark;
+	--bg: #f7f8f9;
+	--text: #17191c;
+	--muted: #4d535b;
+	--line: #d9dde2;
+	--accent: #0b5f8a;
+	--good: #1d6b3a;
+}
+@media (prefers-color-scheme: dark) {
+	:root { --bg: #0f1418; --text: #e6e9ec; --muted: #a9b1ba; --line: #2a333b; --accent: #7dc8f5; --good: #7fd19b; }
+}
+html { background: var(--bg); color: var(--text); }
+body { margin: 0; font: 1.0625rem/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 50rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+h1 { font-size: 2rem; line-height: 1.15; margin: 0 0 0.5rem; text-wrap: balance; }
+h2 { font-size: 1.3rem; margin: 2.75rem 0 0.75rem; text-wrap: balance; }
+p, li { max-width: 64ch; text-wrap: pretty; }
+p { margin: 0 0 0.75rem; }
+.lead { color: var(--muted); font-size: 1.125rem; margin-bottom: 1.5rem; }
+code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.86em; overflow-wrap: anywhere; }
+ol.ask { padding-left: 1.4rem; margin: 0 0 0.5rem; }
+ol.ask li { margin-bottom: 0.5rem; }
+ol.ask b { color: var(--accent); }
+.wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+th, td { text-align: left; padding: 0.5rem 0.8rem 0.5rem 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 600; }
+td.n, th.r { text-align: right; } td.n { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+td.size, th.rs { text-align: right; } td.size { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+body { font-variant-numeric: tabular-nums; }
+.status { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 0.6rem 0; margin: 1.25rem 0 0; color: var(--muted); }
+.status b { color: var(--good); font-weight: 600; }
+details { border-top: 1px solid var(--line); margin-top: 1.5rem; }
+details:last-of-type { border-bottom: 1px solid var(--line); }
+summary { padding-block: 0.7rem; cursor: pointer; font-weight: 600; }
+details > *:not(summary) { margin-bottom: 1rem; }
+@media print {
+	:root { color-scheme: light; --bg: #fff; --text: #000; --muted: #333; --line: #ccc; --accent: #0b5f8a; --good: #1d6b3a; }
+	table { break-inside: avoid; }
+	h2 { break-after: avoid; }
+}
+</style>
+</head>
+<body>
+<main>
+<h1>Make "native only" impossible to break</h1>
+<p class="lead">Every complaint today had one cause: the agent tested its prototype or extension and called it the browser. These items make that fail first.</p>
+
+<ol class="ask">
+	<li><b>Pick items</b> by number below (or "all quick wins"). I'll do them one at a time, each checked.</li>
+	<li><b>Say so</b> if any should wait. The native features (extensions, address bar, audio, settings, setup) continue either way.</li>
+</ol>
+
+<p class="status">Status (16 Oct, 00:30): items 1 to 9 <b>done</b> (1, 3 to 9 in <a href="https://github.com/kausthubh-coder/loka/pull/9">PR 9</a>; 2 landed with the native UI). Items 14 to 20 <b>done</b> on <code>feat/agent-flows</code>. Item 13 is half done: <code>extension/</code> is gone, the demo bridge is <code>prototype/src/demo/</code>. Items 10 to 12 wait for <code>feat/ux2</code> to merge, since they move the files it edits; the checklist below is ready to run. <code>bun run verify:browser</code> passes 34 of 34 on the alpha.3 snapshot.</p>
+
+<h2>This pass: flows, one verify command, cross-platform</h2>
+<div class="wrap">
+<table>
+	<thead><tr><th scope="col" class="r">#</th><th scope="col">Change</th><th scope="col">Fixes</th><th scope="col">Proof</th></tr></thead>
+	<tbody>
+		<tr><td class="n">14</td><td><code>bun run verify</code>: check, patches:check, every prototype recipe, then verify:browser, verify:flows, verify:perf when a binary is here; <code>--ux &lt;feature&gt;</code> for one feature; SKIP is named, never a pass</td><td>Four commands to remember; "done" on the prototype alone</td><td>Full run on the snapshot; <code>verify.test.ts</code> keeps the map and the table in step</td></tr>
+		<tr><td class="n">15</td><td>Real input: <code>window-input.ps1</code> posts mouse messages; verify:browser clicks a row through Windows' input path</td><td>CDP clicks passed while a real mouse dragged the window</td><td>34/34 on the snapshot</td></tr>
+		<tr><td class="n">16</td><td>Shared build checkout: <code>build.lock</code>, <code>testBinary()</code> (snapshot while a build runs), <code>browser:build</code> refuses while browsers hold <code>out\Default</code></td><td>Links failing 25 minutes in; two builds at once</td><td><code>build_log.test.ts</code>: live lock refuses, stale lock taken over, binary choice</td></tr>
+		<tr><td class="n">17</td><td><code>release:alpha</code>: checks zip, sha256, commit on origin, patches and pages, then a GitHub pre-release; ask rule before <code>--publish</code></td><td>Releases by hand; no proof the zip matches a commit</td><td>Dry run on alpha.3</td></tr>
+		<tr><td class="n">18</td><td>worktree-loka, ship-loka, verify-loka and every feature file brought up to date; each feature names the browser checks that prove it</td><td>Stale map; LOKA_CHROME by hand</td><td>Two fresh worktrees: setup, doctor, separate ports and data, removed</td></tr>
+		<tr><td class="n">19</td><td>Scripts degrade off Windows (exit 2, "Windows only today"); <code>docs/cross-platform.md</code> lists what macOS needs</td><td>Cloud and macOS sessions failing on PowerShell</td><td>CI runs check on Ubuntu; a cloud thread on the pushed branch</td></tr>
+		<tr><td class="n">20</td><td>AGENTS.md map and rules table refreshed; <code>docs/decisions.md</code></td><td>Stale map (extension/), unenforced rules</td><td>Read against the tree</td></tr>
+	</tbody>
+</table>
+</div>
+
+<h2>Quick wins</h2>
+<div class="wrap">
+<table>
+	<thead><tr><th scope="col" class="r">#</th><th scope="col">Change</th><th scope="col">Fixes</th><th scope="col">Proof</th><th scope="col" class="rs">Size</th></tr></thead>
+	<tbody>
+		<tr><td class="n">1</td><td>Lint bans <code>chrome.*</code> extension APIs and imports of <code>extension/</code> in sidebar code; AGENTS.md records "UI is native WebUI + C++ patches"</td><td>Extension shortcut (5 pushbacks)</td><td>Lint fails on a planted <code>chrome.tabs</code> call</td><td class="size">1 h</td></tr>
+		<tr><td class="n">2</td><td>Sample data moves to <code>prototype/src/demo/</code>; data sources have no sample default, so a host must pass a real one</td><td>Fake Extensions menu, fake downloads</td><td>Type error if the browser page omits a source</td><td class="size">2 h</td></tr>
+		<tr><td class="n">3</td><td>One command, <code>bun run verify:browser</code>: fresh profile, drives <code>chrome://loka-sidebar</code>, asserts the first-run gate</td><td>Globe icons, Helium setup, unverified "done"</td><td>Fails on today's bugs</td><td class="size">3 h</td></tr>
+		<tr><td class="n">4</td><td>Guard: <code>browser:setup</code> refuses when <code>build/src</code> has edits missing from <code>patches/loka/</code>; fix <code>docs/upstream.md:22</code>; move <code>keys/</code> out of the build checkout</td><td>C++ lived only in the build folder</td><td>Guard trips on an unexported edit</td><td class="size">1 h</td></tr>
+		<tr><td class="n">5</td><td>Deny rules for <code>gh release</code>, <code>gh workflow run</code>, push to <code>main</code>, real profile paths and <code>*.pem</code></td><td>Safety rests on prose</td><td>A denied command is blocked</td><td class="size">30 min</td></tr>
+	</tbody>
+</table>
+</div>
+
+<h2>Medium</h2>
+<div class="wrap">
+<table>
+	<thead><tr><th scope="col" class="r">#</th><th scope="col">Change</th><th scope="col">Fixes</th><th scope="col" class="rs">Size</th></tr></thead>
+	<tbody>
+		<tr><td class="n">6</td><td>Message names in one table, with a test that each exists in the C++ handler</td><td>Page and handler matched only by string</td><td class="size">1 h</td></tr>
+		<tr><td class="n">7</td><td>Migrate the alpha's spaces (<code>loka.state.v1</code>) into the new store</td><td>Alpha users would lose spaces</td><td class="size">1 h</td></tr>
+		<tr><td class="n">8</td><td>Build log with timings and a status file</td><td>"8 hours" claim; you asking for build status 6 times</td><td class="size">1 h</td></tr>
+		<tr><td class="n">9</td><td>Rewrite 7 weak tests; refresh AGENTS.md's map, commands and stale docs</td><td>Tests that pass on <code>undefined</code>; stale claims</td><td class="size">2 h</td></tr>
+	</tbody>
+</table>
+</div>
+
+<h2>Deep: feature folders, one by one</h2>
+<p>Each step keeps the tests and <code>verify:browser</code> passing.</p>
+<div class="wrap">
+<table>
+	<thead><tr><th scope="col" class="r">#</th><th scope="col">Step</th></tr></thead>
+	<tbody>
+		<tr><td class="n">10</td><td>Pass bridges into <code>&lt;loka-sidebar&gt;</code> instead of module-level <code>set*Source</code> globals</td></tr>
+		<tr><td class="n">11</td><td>Move <code>live.logic.ts</code> and the sync into <code>features/tabs/</code>; the native page stops importing <code>extension/</code></td></tr>
+		<tr><td class="n">12</td><td>Feature folders hold UI, logic, test and bridge slice; split <code>loka-sidebar.ts</code> (1450 lines)</td></tr>
+		<tr><td class="n">13</td><td>Delete <code>extension/</code> and its manifest key; turn the prototype into <code>demo/</code> with fake bridges <b>(extension/ gone; demo bridge in place)</b></td></tr>
+	</tbody>
+</table>
+</div>
+
+<h2>After feat/ux2 merges: the restructure, step by step</h2>
+<p>Each step moves code without changing behavior, is one commit, and ends with the same proof: <code>bun run check</code> green, <code>bun run verify -- --ux &lt;the features it touched&gt;</code> green, and the full <code>bun run verify</code> before the PR. Start only once <code>feat/ux2</code> is merged into <code>feat/native-sidebar</code>, from a fresh worktree on that branch.</p>
+<ol class="ask">
+	<li><b>Baseline.</b> <code>bun run verify</code> on the merged branch; keep the evidence folders. Note <code>wc -l prototype/src/features/sidebar/loka-sidebar.ts</code> (2,298 lines on 16 Oct: about 900 of logic and templates, then about 980 of CSS from line 1319).</li>
+	<li><b>Bridges in, globals out (item 10).</b> The globals are <code>setFaviconSource</code> (<code>favicon.ts:40-42</code>, called from <code>webui/src/main.ts:51</code>, <code>command.ts:22</code>, <code>history.ts:12</code>) and <code>setSoundPrefs</code> (<code>sound.ts:6-13</code>). Give <code>&lt;loka-sidebar&gt;</code> (and the command bar, History and Settings) a <code>bridge</code> property with <code>favicon(url)</code> and <code>sound</code>; each host passes its own (the real bridge in <code>webui/src</code>, the fake one in <code>prototype/src/demo</code>). Delete both setters in the same commit, and add a Biome rule (grit, like <code>scripts/lint/no-extension-urls.grit</code>) that fails on a new module-level <code>set*Source</code> export. Proof: <code>--ux tabs</code>, <code>--ux sound</code>, <code>--ux history</code>, <code>--ux command-bar</code>.</li>
+	<li><b>Shared code out of the prototype's shell.</b> <code>webui/src/main.ts</code> imports <code>Update</code> from <code>prototype/src/app/loka-app.ts</code>, plus <code>sky</code>, <code>theme</code>, <code>theme.logic</code> and <code>ui-prefs.logic</code>. Move those four to <code>prototype/src/features/theme/</code> and <code>features/prefs/</code>, and <code>Update</code> next to the sidebar model, so the native page never imports the prototype's window shell. Proof: <code>--ux theme</code>, <code>--ux layout</code>.</li>
+	<li><b>Tabs and sync in one folder (item 11).</b> Put <code>webui/src/sync.ts</code> and <code>sync.test.ts</code> beside <code>prototype/src/features/tabs/live.logic.ts</code>: one folder owns "browser tabs to spaces and back". Proof: <code>--ux tabs</code>, <code>--ux spaces</code>, <code>--ux native-sidebar</code> (flows through restart).</li>
+	<li><b>Split <code>loka-sidebar.ts</code> (item 12), one cut per commit:</b>
+		<ol>
+			<li>Styles (line 1319 to the end) to <code>loka-sidebar.styles.ts</code>. No logic moves. Proof: verify:browser's <code>sidebar.png</code> matches the baseline's.</li>
+			<li>Menus (<code>tabMenu</code>, <code>folderMenu</code>, <code>emptyMenu</code>, <code>newMenu</code>, <code>moreMenu</code>, lines ~277-420 and ~674-714) to <code>sidebar-menus.ts</code>, as functions from state to <code>MenuItem[]</code>, each tested with one seeded row and its exact labels. Proof: <code>--ux folders</code>, <code>--ux tabs</code>, <code>--ux export-import</code>.</li>
+			<li>Drop-zone math (<code>over</code> and <code>dropHere</code>, lines ~204-275) to <code>drop-zones.logic.ts</code>, tested with row heights and pointer offsets. Proof: <code>--ux folders</code>, <code>--ux essentials</code>.</li>
+			<li>Row templates (<code>favicon</code>, <code>sound</code>, <code>tabRow</code>, <code>pinnedRow</code>, ~719-898) and the top row and address field (~899-1011) to <code>sidebar-rows.ts</code> and <code>sidebar-top-row.ts</code>. Proof: <code>--ux tabs</code>, <code>--ux layout</code> (hit test and real click), <code>--ux extensions</code>.</li>
+			<li>The horizon and animations (<code>switchTo</code>, <code>animateRows</code>, <code>animateHorizon</code>, ~473-673) to <code>horizon.ts</code>. Proof: <code>--ux spaces</code>, and <code>verify:perf</code> within budget.</li>
+		</ol>
+	</li>
+	<li><b>Feature folders own their slice.</b> Each feature's component, logic, tests and the bridge methods it uses sit in <code>prototype/src/features/&lt;feature&gt;/</code>; <code>webui/src</code> keeps the page entries, <code>bridge.ts</code>, <code>messages.ts</code> and <code>store.ts</code>. Recount the files to open for "change how a favicon shows" (11 on 15 Oct) and "switch space" (13); aim for under 5 each.</li>
+	<li><b>Close out.</b> Update AGENTS.md's map, the verify-loka feature files that name moved files, and this plan's status. Full <code>bun run verify</code>, then a PR into <code>feat/native-sidebar</code>.</li>
+</ol>
+
+<details>
+	<summary>Item 3's first-run gate: 6 checks</summary>
+	<p>No <code>chrome://setup</code> tab; no "Helium" or "Chromium" in the title; no horizontal tab strip or toolbar; tab icons that aren't the default globe; audio state that follows a playing tab; an Extensions menu that matches what's installed.</p>
+</details>
+
+<details>
+	<summary>Evidence: 9 mistake classes from your messages</summary>
+	<ul>
+		<li>Extension instead of browser: "I asked for a browser… You keep trying to just put extensions on top of it" (19:20 UTC), plus 4 more.</li>
+		<li>Sample data in the build: "the extensions thing isn't even dynamic" (19:06); Bitwarden and Dark Reader came from <code>loka-sidebar.ts:86-90</code>.</li>
+		<li>Placeholder tab data: "the tabs don't even get actual data" (19:10); it came back in the native build and is fixed in efff367.</li>
+		<li>Helium leftovers: setup page, top bar, horizontal tabs (18:55, 19:45).</li>
+		<li>Overstated rebuild time: 8 hours claimed; the measured incremental rebuild was 81 s.</li>
+		<li>"Done" without the real build: f9d5ffc claimed real favicons and extensions.</li>
+		<li>Half-steps after "completely redo this": the organizer-panel attempt.</li>
+		<li>Status asked for 6 times overnight; Critly and resources asked for twice each.</li>
+	</ul>
+</details>
+
+<details>
+	<summary>Evidence: verification, steering, locality, safety</summary>
+	<ul>
+		<li><code>verify-loka</code> still says "no Loka patches yet" (<code>SKILL.md:12</code>) and opens <code>chrome-extension://…/sidebar.html</code> (<code>browser-build.md:63</code>).</li>
+		<li>Weak tests: <code>sync.test.ts:54</code>, <code>sidebar.test.ts:221</code>, <code>live.test.ts:166</code> and 4 more pass on empty results.</li>
+		<li>Two copies of the panel, store and sync (<code>extension/src</code> vs <code>webui/src</code>), four favicon sources, three onboarding flows.</li>
+		<li>Changing how a favicon shows touches 11 files; switching space, 13.</li>
+		<li>Store keys differ: <code>loka.state.v1</code> (extension) vs <code>state.v1</code> (native).</li>
+		<li>The private key sits untracked and unignored in <code>C:\src\loka\keys\</code>.</li>
+	</ul>
+</details>
+</main>
+</body>
+</html>

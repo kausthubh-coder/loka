@@ -1,29 +1,75 @@
 import { css, html, LitElement } from "lit";
-import { faviconColor, faviconLetter, hostOf } from "../sidebar/favicon";
-import type { Tab } from "../sidebar/sidebar.logic";
+import type { Browser } from "../../../../webui/src/bridge";
+import type { HistoryBridge } from "../../../../webui/src/history-bridge";
+import type { Update } from "../../app/loka-app";
+import type { UiPrefs } from "../../app/ui-prefs.logic";
+import "../history/loka-history";
+import "../settings/loka-settings";
+import { keys } from "../../app/platform";
+import type { SetUi } from "../settings/loka-settings";
+import { faviconBackground, faviconInner, hostOf } from "../sidebar/favicon";
+import type { BrowserState, Tab } from "../sidebar/sidebar.logic";
 
-/** Stands in for the web view. In the real browser Chromium renders the page here. */
+/** Stands in for the web view. In the real browser Chromium renders the page here; loka:// pages are Loka's own. */
 export class LokaPage extends LitElement {
 	static override properties = {
 		tab: { attribute: false },
 		spaceName: { attribute: false },
+		state: { attribute: false },
+		apply: { attribute: false },
+		ui: { attribute: false },
+		setUi: { attribute: false },
+		pinned: { attribute: false },
+		scheme: { reflect: true },
+		historyBridge: { attribute: false },
+		browser: { attribute: false },
 	};
 
 	declare tab: Tab | null;
 	declare spaceName: string;
+	declare state: BrowserState;
+	declare apply: Update;
+	declare ui: UiPrefs;
+	declare setUi: SetUi;
+	declare pinned: boolean;
+	/** Where the stand-in History page (loka://history) gets its visits: the prototype's fake. */
+	declare historyBridge: HistoryBridge;
+	/** The browser the stand-in Settings page talks to: the prototype's fake. */
+	declare browser: Browser;
+	/** Web pages follow the scheme the space asked the browser for, as they would through prefers-color-scheme. */
+	scheme: "light" | "dark" = "light";
 
 	override render() {
 		const tab = this.tab;
+		if (tab?.url === "loka://settings") {
+			return html`<section class="frame inside glass">
+				<loka-settings
+					.state=${this.state}
+					.apply=${this.apply}
+					.ui=${this.ui}
+					.setUi=${this.setUi}
+					.pinned=${this.pinned}
+					.browser=${this.browser}
+				></loka-settings>
+			</section>`;
+		}
+
+		if (tab?.url === "loka://history") {
+			return html`<section class="frame inside glass">
+				<loka-history .bridge=${this.historyBridge}></loka-history>
+			</section>`;
+		}
+
 		if (!tab) {
 			return html`<section class="frame empty">
 				<p class="hint">Nothing open in ${this.spaceName}.</p>
-				<p class="keys">Press <kbd>Ctrl K</kbd> to open a tab, <kbd>Ctrl 1–9</kbd> to switch spaces.</p>
+				<p class="keys">Press <kbd>${keys("Ctrl K")}</kbd> to open a tab, <kbd>${keys("Ctrl 1–9")}</kbd> to switch spaces.</p>
 			</section>`;
 		}
 		return html`
 			<section class="frame">
 				<header>
-					<span class="fav" aria-hidden="true" style="--fav: ${faviconColor(tab.url)}">${faviconLetter(tab.url)}</span>
+					<span class="fav" aria-hidden="true" style="--fav: ${faviconBackground(tab.url)}">${faviconInner(tab.url)}</span>
 					<div>
 						<h1>${tab.title}</h1>
 						<p class="url">${hostOf(tab.url)}</p>
@@ -59,17 +105,46 @@ export class LokaPage extends LitElement {
 				0 20px 60px #0006;
 			overflow: hidden;
 		}
+		/* A web page in a dark space, following prefers-color-scheme. */
+		:host([scheme="dark"]) .frame:not(.inside, .empty) {
+			background: #17181c;
+			color: #e6e6ea;
+		}
+		:host([scheme="dark"]) .skeleton span {
+			background: #2a2b31;
+		}
+		:host([scheme="dark"]) .url {
+			color: #9a9ba6;
+		}
+		/* Loka's own pages sit on the sky instead of a white web page. */
+		.frame.inside {
+			padding: 0;
+			background: hsl(var(--hue) 25% 9% / 0.82);
+			color: #e6e7ee;
+		}
+		:host([scheme="light"]) .frame.inside {
+			background: hsl(var(--hue) 50% 96% / 0.9);
+			color: var(--loka-ink);
+		}
+		/* History and Settings are the sky with glass cards on it, as in the browser, so the window's sky shows
+		   through here. They scroll inside themselves. */
+		.frame.inside.glass,
+		:host([scheme="light"]) .frame.inside.glass {
+			background: transparent;
+			box-shadow: none;
+		}
 		.frame.empty {
 			display: grid;
 			place-content: center;
 			text-align: center;
-			background: hsl(var(--hue) 25% 10% / 0.6);
-			color: #c9cad4;
+			background: var(--loka-fill);
+			box-shadow: inset 0 0 0 1px var(--loka-line);
+			color: var(--loka-ink-2);
 		}
 		.hint {
 			font-size: 16px;
 			margin: 0 0 6px;
-			color: #ececf1;
+			color: var(--loka-ink);
 		}
 		.keys {
 			margin: 0;
@@ -78,7 +153,7 @@ export class LokaPage extends LitElement {
 			font: 12px system-ui;
 			padding: 1px 6px;
 			border-radius: 5px;
-			background: hsl(var(--hue) 30% 85% / 0.12);
+			background: var(--loka-fill-hover);
 		}
 		header {
 			display: flex;

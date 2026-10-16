@@ -1,0 +1,55 @@
+{
+	"version": 1,
+	"tabs": {
+		"075f10df-be66-4e0a-90b4-93c7923af375": {
+			"id": "075f10df-be66-4e0a-90b4-93c7923af375",
+			"url": "chrome://newtab/",
+			"title": "New Tab",
+			"lastActiveAt": 1792097443368.891
+		},
+		"b8b9b25d-2868-4f90-83ef-fbbe081bfac3": {
+			"id": "b8b9b25d-2868-4f90-83ef-fbbe081bfac3",
+			"url": "chrome-extension://kklllonkklkjgekkpeboddibgbjadkej/onboarding.html",
+			"title": "Welcome to Loka",
+			"lastActiveAt": 1792097443989
+		},
+		"a509b308-0235-4cdc-b3a8-21ff01d89f70": {
+			"id": "a509b308-0235-4cdc-b3a8-21ff01d89f70",
+			"url": "https://example.com/",
+			"title": "Example Domain",
+			"lastActiveAt": 1792097448247.306
+		},
+		"139e02c9-3689-4b29-bb21-2a953756237a": {
+			"id": "139e02c9-3689-4b29-bb21-2a953756237a",
+			"url": "https://www.wikipedia.org/",
+			"title": "Wikipedia",
+			"lastActiveAt": 1792097448287.846
+		},
+		"45b82f4f-fe6f-4965-a6fa-1f04e00d199e": {
+			"id": "45b82f4f-fe6f-4965-a6fa-1f04e00d199e",
+			"url": "chrome-extension://kklllonkklkjgekkpeboddibgbjadkej/sidebar.html",
+			"title": "Loka",
+			"lastActiveAt": 1792097454320.816
+		}
+	},
+	"essentials": [],
+	"spaces": [
+		{
+			"id": "97a0d932-4826-40e5-9252-f6eb04f5e8f8",
+			"name": "Personal",
+			"hue": 200,
+			"planet": "ringed",
+			"pinned": [],
+			"open": [
+				"45b82f4f-fe6f-4965-a6fa-1f04e00d199e",
+				"139e02c9-3689-4b29-bb21-2a953756237a",
+				"a509b308-0235-4cdc-b3a8-21ff01d89f70",
+				"b8b9b25d-2868-4f90-83ef-fbbe081bfac3",
+				"075f10df-be66-4e0a-90b4-93c7923af375"
+			],
+			"activeTabId": "45b82f4f-fe6f-4965-a6fa-1f04e00d199e"
+		}
+	],
+	"activeSpaceId": "97a0d932-4826-40e5-9252-f6eb04f5e8f8",
+	"archive": []
+}

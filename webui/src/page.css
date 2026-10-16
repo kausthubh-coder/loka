@@ -1,0 +1,20 @@
+/* Registered so anything drawn before a space's hue is set gets Loka's default blue. */
+@property --hue {
+	syntax: "<number>";
+	inherits: true;
+	initial-value: 200;
+}
+
+html,
+body {
+	margin: 0;
+	height: 100%;
+	/* The sky's own darkest color, so nothing flashes white before the page draws. */
+	background: #070b0f;
+	font:
+		13px / 1.4 system-ui,
+		"Segoe UI",
+		sans-serif;
+	-webkit-font-smoothing: antialiased;
+	overflow: hidden;
+}

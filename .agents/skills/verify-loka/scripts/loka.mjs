@@ -29,9 +29,11 @@ function stamp() {
 
 /**
  * @param {string} runName names the evidence folder: .agents/verify-runs/<time>-<runName>/
- * @param {{ fresh?: boolean, width?: number, height?: number }} [options] fresh: reset to the seed data first
+ * @param {{ fresh?: boolean, onboarding?: boolean, width?: number, height?: number }} [options]
+ *   fresh: reset to the seed data and default window prefs first. onboarding: also show the first-run tour, which
+ *   is otherwise marked done so it doesn't cover the sidebar.
  */
-export async function openLoka(runName, { fresh = true, width = 1280, height = 800 } = {}) {
+export async function openLoka(runName, { fresh = true, onboarding = false, width = 1280, height = 800 } = {}) {
 	const url = `http://localhost:${prototypePort()}/`;
 	const dir = join(ROOT, ".agents", "verify-runs", `${stamp()}-${runName}`);
 	mkdirSync(dir, { recursive: true });
@@ -46,15 +48,26 @@ export async function openLoka(runName, { fresh = true, width = 1280, height = 8
 
 	await page.goto(url, { waitUntil: "networkidle" });
 	if (fresh) {
-		await page.evaluate(() => localStorage.removeItem("loka.state.v1"));
+		await page.evaluate((tour) => {
+			localStorage.removeItem("loka.state.v1");
+			if (tour) localStorage.removeItem("loka.ui.v1");
+			else localStorage.setItem("loka.ui.v1", JSON.stringify({ onboarded: true }));
+		}, onboarding);
 		await page.goto(url, { waitUntil: "networkidle" });
 	}
 	const sidebar = page.locator("loka-sidebar");
-	await sidebar.getByRole("tree").first().waitFor();
+	// With the tour showing, the sidebar is hidden underneath it until the tour ends.
+	if (onboarding) await page.getByRole("dialog", { name: "Welcome to Loka" }).waitFor();
+	else await sidebar.getByRole("tree").first().waitFor();
 
 	/** Saved state, as the app wrote it to localStorage. */
 	async function state() {
 		return page.evaluate(() => JSON.parse(localStorage.getItem("loka.state.v1") ?? "null"));
+	}
+
+	/** Saved window prefs: sidebarWidth, sidebarSide, sidebarHidden, onboarded. */
+	async function ui() {
+		return page.evaluate(() => JSON.parse(localStorage.getItem("loka.ui.v1") ?? "null"));
 	}
 
 	return {
@@ -67,14 +80,14 @@ export async function openLoka(runName, { fresh = true, width = 1280, height = 8
 		row: (name) => sidebar.getByRole("treeitem", { name }).first(),
 		/** An Essentials tile, by tab title. @param {string} title */
 		essential: (title) => sidebar.getByRole("listitem", { name: title, exact: true }),
-		/** A space button in the bottom switcher. @param {string} name */
+		/** A neighbouring planet on the horizon switcher. @param {string} name */
 		space: (name) => sidebar.getByRole("button", { name: new RegExp(`^${name} \\(Ctrl \\d\\)$`) }),
 		/** A context-menu item, after a right-click. @param {string} name */
 		menuItem: (name) => sidebar.getByRole("menuitem", { name, exact: true }),
 
 		/**
 		 * Drag the way a user does. zone picks where on the target: before (top edge), after (bottom edge) or
-		 * into (the middle; folders only). Essentials tiles use left/right edges for before/after.
+		 * into (the middle: inside a folder, or onto a tab to make a folder of both). Essentials tiles use left/right edges for before/after.
 		 * @param {import("playwright").Locator} source @param {import("playwright").Locator} target
 		 * @param {"before" | "after" | "into"} zone
 		 */
@@ -89,6 +102,7 @@ export async function openLoka(runName, { fresh = true, width = 1280, height = 8
 		},
 
 		state,
+		ui,
 
 		/** The active space as readable lines: pinned tree as "depth:name", open tabs, essentials, active tab. */
 		async outline() {

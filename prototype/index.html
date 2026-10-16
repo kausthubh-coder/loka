@@ -3,12 +3,12 @@
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<meta name="color-scheme" content="dark" />
+		<meta name="color-scheme" content="light dark" />
 		<title>Loka prototype</title>
 		<!-- An empty icon, so the browser doesn't request /favicon.ico (a 404 that some Chromium builds log as an error). -->
 		<link rel="icon" href="data:," />
 		<style>
-			/* Registered so the window tint can animate between spaces instead of jumping. */
+			/* Registered so anything drawn before a space's hue is set gets Loka's default blue. */
 			@property --hue {
 				syntax: "<number>";
 				inherits: true;

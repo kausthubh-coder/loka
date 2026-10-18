@@ -20,6 +20,14 @@
 //   bun run verify:perf -- --runs 5
 //   bun run verify:perf -- --trace              also a Chrome trace and the sidebar's JS profile per scenario
 //   bun run verify:perf -- --blame              after idle, pause each running animation in turn: what it costs
+//   bun run verify:perf -- --heavy              300 tabs, 100 of them loaded pages spread over the three spaces,
+//                                               plus two scenarios:
+//     churn   20 s in which 20 loaded tabs (in every space) retitle once a second, as mail and chat pages do
+//     click   10 clicks on open tabs in the sidebar: messages per click, click-to-paint
+//
+// Every scenario also counts the sidebar's traffic with the browser: messages it sends (chrome.send), events it gets
+// (cr.webUIListenerCallback, plus answers to its asks). --bytes also sizes what comes in, at a CPU cost of its own.
+// --heavy adds the private memory of every Loka process after idle and after churn.
 //
 // The binary is LOKA_CHROME, else C:\src\loka\dist\snapshot\chrome.exe; never out\Default. Exit 1 when a median is
 // over its budget (BUDGETS below), 2 when it can't run. Evidence (perf.json, summary.txt, traces) goes to
@@ -37,7 +45,7 @@ import { askExpression, connect, evaluate, launchBrowser, sleep, until, useCheck
 /** @typedef {import("../prototype/src/features/sidebar/sidebar.logic").BrowserState} BrowserState */
 /** @typedef {import("../prototype/src/features/sidebar/sidebar.logic").PinnedNode} PinnedNode */
 /** @typedef {import("../prototype/src/features/sidebar/sidebar.logic").Space} Space */
-/** @typedef {"idle" | "scroll" | "switch" | "command"} Scenario */
+/** @typedef {"idle" | "scroll" | "switch" | "command" | "churn" | "click"} Scenario */
 
 // ---- budgets ------------------------------------------------------------------------------------------------------
 
@@ -77,7 +85,7 @@ const BUDGETS = [
 ];
 /** The numbers besides the budgets that the summary prints. */
 const SHOWN =
-	/^(sidebar|command)\.(styleRecalcsPerSec|layoutsPerSec|scriptMs|styleMs|longTasks|loafMaxMs|pageNodeGrowth)$|\.cpuPct$|^machine\.|frames\.(p50Ms|maxMs)$|^(scroll\.deepestPx|switch\.seen)$/;
+	/^(sidebar|command)\.(styleRecalcsPerSec|layoutsPerSec|scriptMs|styleMs|longTasks|longTaskMaxMs|loafMaxMs|pageNodeGrowth|clickEventMaxMs|frames\.p95Ms)$|\.cpuPct$|^machine\.|frames\.(p50Ms|maxMs)$|^(scroll\.deepestPx|switch\.seen|churn\.retitles|click\.seen)$|^traffic\.|^loka\.(privateMB|processes)$/;
 /** Other processes using more than this share of the machine (all cores) make a run noisy. */
 const BUSY_MACHINE_PCT = 15;
 
@@ -96,26 +104,45 @@ const webui = option("webui") ?? "build";
 const runs = Number(option("runs") ?? 3);
 const tracing = argv.includes("--trace");
 const blaming = argv.includes("--blame");
+const heavy = argv.includes("--heavy");
 if (!["build", "checkout"].includes(webui) || !Number.isInteger(runs) || runs < 1) {
-	console.error("Usage: bun scripts/verify-perf.mjs [--webui=build|checkout] [--runs N] [--trace] [--blame]");
+	console.error(
+		"Usage: bun scripts/verify-perf.mjs [--webui=build|checkout] [--runs N] [--trace] [--blame] [--heavy] [--bytes]",
+	);
 	process.exit(2);
 }
 const chrome = resolve(process.env.LOKA_CHROME ?? join(BUILD_DIR, "dist", "snapshot", "chrome.exe"));
 const stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
-const evidence = join(repo, ".agents", "verify-runs", `${stamp}-perf${webui === "checkout" ? "-checkout" : ""}`);
+const evidence = join(
+	repo,
+	".agents",
+	"verify-runs",
+	`${stamp}-perf${heavy ? "-heavy" : ""}${webui === "checkout" ? "-checkout" : ""}`,
+);
 const CORES = cpus().length;
 
 // ---- the local pages and the spaces -------------------------------------------------------------------------------
 
-/** A normal tab to measure beside the sidebar, and pages for the pinned tabs' addresses (never loaded here). */
+/**
+ * A normal tab to measure beside the sidebar, pages for the pinned tabs' addresses (never loaded here), and with
+ * --heavy the loaded tabs' pages. Pages under /churn/ retitle each time the measured tab (same origin) posts on the
+ * "perf" BroadcastChannel. The test posts, not a timer in the pages: Chromium throttles background tabs' timers, and
+ * in a trial most pages ticked 0 to 5 times in 20 s instead of 20.
+ */
 async function startPages() {
 	const server = createServer((req, res) => {
 		const path = new URL(req.url ?? "/", "http://x").pathname;
 		const name = path.split("/").at(-1) || "tab";
 		const paragraphs = Array.from({ length: 30 }, (_, i) => `<p>Paragraph ${i + 1} of a plain local page.</p>`);
+		const churn = path.includes("/churn/")
+			? `<script>
+				let n = 0;
+				new BroadcastChannel("perf").onmessage = () => (document.title = "(" + ++n + ") Perf ${name}");
+			</script>`
+			: "";
 		res
 			.writeHead(200, { "content-type": "text/html" })
-			.end(`<!doctype html><title>Perf ${name}</title><h1>Perf ${name}</h1>${paragraphs.join("")}`);
+			.end(`<!doctype html><title>Perf ${name}</title>${churn}<h1>Perf ${name}</h1>${paragraphs.join("")}`);
 	});
 	await new Promise((done) => server.listen(0, "127.0.0.1", () => done(undefined)));
 	const { port } = /** @type {import("node:net").AddressInfo} */ (server.address());
@@ -135,7 +162,8 @@ const TITLES = [
 
 /**
  * Three spaces like a heavy user's: "Build" (dark) with 150 pinned tabs, two folders open and one folder inside
- * another; "School" (light) and "Home" (dark) with a few each; four Essentials. Every tab is unloaded (rows only).
+ * another; "School" (light) and "Home" (dark) with a few each (30 and 20 with --heavy, for 200 pinned); four
+ * Essentials. Every pinned tab is unloaded (rows only); --heavy's loaded tabs are opened later (openLoaded).
  * @param {string} host @returns {BrowserState}
  */
 function perfState(host) {
@@ -187,8 +215,8 @@ function perfState(host) {
 		essentials,
 		spaces: [
 			space("perf-build", "Build", 200, "ringed", "dark", build),
-			space("perf-school", "School", 30, "banded", "light", many("school", 12)),
-			space("perf-home", "Home", 150, "ocean", "dark", many("home", 8)),
+			space("perf-school", "School", 30, "banded", "light", many("school", heavy ? 30 : 12)),
+			space("perf-home", "Home", 150, "ocean", "dark", many("home", heavy ? 20 : 8)),
 		],
 		activeSpaceId: "perf-build",
 		archive: [],
@@ -286,6 +314,103 @@ const PAGE_NODES = `(() => {
 })()`;
 
 const DEEP_ACTIVE = `(() => { let a = document.activeElement; while (a?.shadowRoot?.activeElement) a = a.shadowRoot.activeElement; return a; })()`;
+
+/**
+ * Counts the sidebar's traffic with the browser by wrapping chrome.send and the two functions the browser calls in
+ * the page (cr.webUIListenerCallback for events, cr.webUIResponse for answers). With --bytes it also sizes what
+ * comes in as JSON, which costs the sidebar CPU of its own: judge CPU budgets from a run without it.
+ */
+const TRAFFIC_HOOK = `(() => {
+	if (window.__perfTraffic) return true;
+	const t = (window.__perfTraffic = { out: {}, in: {}, inBytes: 0 });
+	const size = (value) => (${argv.includes("--bytes")} ? (JSON.stringify(value) ?? "").length : 0);
+	const send = chrome.send.bind(chrome);
+	chrome.send = (name, args) => {
+		t.out[name] = (t.out[name] ?? 0) + 1;
+		return send(name, args);
+	};
+	const listen = cr.webUIListenerCallback.bind(cr);
+	cr.webUIListenerCallback = (event, ...args) => {
+		t.in[event] = (t.in[event] ?? 0) + 1;
+		t.inBytes += size(args);
+		return listen(event, ...args);
+	};
+	const respond = cr.webUIResponse.bind(cr);
+	cr.webUIResponse = (id, ok, value) => {
+		t.in["(answers)"] = (t.in["(answers)"] ?? 0) + 1;
+		t.inBytes += size(value);
+		return respond(id, ok, value);
+	};
+	return true;
+})()`;
+
+/** What the traffic hook saw since the last take, and a fresh count from here. */
+const TRAFFIC_TAKE = `(() => {
+	const t = window.__perfTraffic;
+	if (!t) return null;
+	const seen = { out: t.out, in: t.in, inBytes: t.inBytes };
+	t.out = {};
+	t.in = {};
+	t.inBytes = 0;
+	return seen;
+})()`;
+
+/** Ctrl+digit to the sidebar, which handles those keys itself. @param {Session} sidebar @param {number} digit */
+async function ctrlDigit(sidebar, digit) {
+	const key = { key: String(digit), code: `Digit${digit}`, windowsVirtualKeyCode: 48 + digit, modifiers: 2 };
+	await sidebar.call("Input.dispatchKeyEvent", { type: "rawKeyDown", ...key });
+	await sidebar.call("Input.dispatchKeyEvent", { type: "keyUp", ...key });
+}
+
+/** The spaces as the profile's store has them. @param {Session} sidebar @returns {Promise<BrowserState>} */
+async function savedState(sidebar) {
+	return JSON.parse((await evaluate(sidebar, askExpression("getStore")))["state.v1"]);
+}
+
+/**
+ * --heavy's loaded tabs: 40 in Build, 30 each in School and Home, opened in the background from each space as a
+ * user opens tabs, so the sidebar files them under that space. Every fifth is a /churn/ page (20 in all).
+ * @param {Session} browser @param {Session} sidebar @param {string} host
+ */
+async function openLoaded(browser, sidebar, host) {
+	let n = 0;
+	for (const [digit, space, count] of /** @type {const} */ ([
+		[1, "build", 40],
+		[2, "school", 30],
+		[3, "home", 30],
+	])) {
+		await ctrlDigit(sidebar, digit);
+		await sleep(1000);
+		for (let i = 0; i < count; i++) {
+			n++;
+			const kind = n % 5 === 0 ? "churn" : "open";
+			await browser.call("Target.createTarget", { url: `http://${host}/${kind}/${space}/${n}`, background: true });
+			await sleep(150);
+		}
+	}
+	await ctrlDigit(sidebar, 1);
+	const open = async () => (await savedState(sidebar)).spaces.reduce((sum, s) => sum + s.open.length, 0);
+	await until(async () => (await open()) >= LOADED, 30000);
+	const filed = await open();
+	if (filed < LOADED) throw new Error(`the sidebar filed ${filed} of the ${LOADED} loaded tabs`);
+	return filed;
+}
+const LOADED = 100;
+
+/** Private memory of every Loka process, in MB, from Windows. @param {Session} browser */
+async function privateMB(browser) {
+	const ids = (await processInfo(browser)).map((p) => p.id).filter((id) => id > 0);
+	const ps = spawnSync(
+		"powershell",
+		[
+			"-NoProfile",
+			"-Command",
+			`(Get-Process -Id ${ids.join(",")} -ErrorAction SilentlyContinue | Measure-Object -Sum PrivateMemorySize64).Sum`,
+		],
+		{ encoding: "utf8" },
+	);
+	return round(Number(ps.stdout.trim()) / 2 ** 20, 0);
+}
 
 // ---- measuring ----------------------------------------------------------------------------------------------------
 
@@ -400,6 +525,9 @@ function pageNumbers(prefix, m0, m1, probes, seconds) {
 	out[`${prefix}.slowEvents`] = probes.events.length;
 	out[`${prefix}.slowKeyEvents`] = keys.length;
 	out[`${prefix}.keyEventMaxMs`] = round(Math.max(0, ...keys.map((e) => e.duration)));
+	// Only the click scenario presses the mouse, so here these are real clicks.
+	const clicks = probes.events.filter((e) => CLICK_EVENTS.includes(e.name));
+	out[`${prefix}.clickEventMaxMs`] = round(Math.max(0, ...clicks.map((e) => e.duration)));
 	if (probes.frames.length) {
 		out[`${prefix}.frames.count`] = probes.frames.length;
 		out[`${prefix}.frames.p50Ms`] = round(quantile(probes.frames, 0.5));
@@ -411,6 +539,7 @@ function pageNumbers(prefix, m0, m1, probes, seconds) {
 }
 
 const KEY_EVENTS = ["keydown", "keypress", "keyup", "beforeinput", "input"];
+const CLICK_EVENTS = ["pointerdown", "pointerup", "mousedown", "mouseup", "click"];
 
 /** What took the time in the long animation frames: the slowest scripts by source. @param {any[]} loaf */
 function loafScripts(loaf) {
@@ -703,6 +832,12 @@ async function oneRun(run, host) {
 		const saved = JSON.parse(store["state.v1"] ?? "null");
 		if (saved?.spaces?.length !== 3) throw new Error("the profile doesn't have the three spaces");
 		details.rows = shownRows;
+		if (heavy) {
+			details.loaded = await openLoaded(b.browser, sidebar, host);
+			// A hundred page loads settle before anything is measured.
+			await sleep(5000);
+		}
+		if (!(await evaluate(sidebar, TRAFFIC_HOOK))) throw new Error("couldn't count the sidebar's messages");
 
 		for (const s of [sidebar, tab]) {
 			await s.call("Performance.enable");
@@ -774,9 +909,11 @@ async function oneRun(run, host) {
 			const m0 = await Promise.all(how.pages.map(([, s]) => metrics(s)));
 			const load = machineLoad(30);
 			const cpu0 = await processInfo(b.browser);
+			await evaluate(sidebar, TRAFFIC_TAKE);
 			const t0 = performance.now();
 			const extra = await act();
 			const seconds = (performance.now() - t0) / 1000;
+			const traffic = await evaluate(sidebar, TRAFFIC_TAKE);
 			const cpu1 = await processInfo(b.browser);
 			const loadSamples = load.stop();
 			const m1 = await Promise.all(how.pages.map(([, s]) => metrics(s)));
@@ -784,7 +921,7 @@ async function oneRun(run, host) {
 			const probes = {};
 			for (const [who, s] of how.pages) probes[who] = await evaluate(s, STOP_PROBES);
 			/** @type {Record<string, any>} */
-			const detail = { visible, loadSamples };
+			const detail = { visible, loadSamples, traffic };
 			if (trace) {
 				const base = join(evidence, `run${run}-${name}`);
 				for (const [who, s] of profiled) {
@@ -799,6 +936,19 @@ async function oneRun(run, host) {
 			}
 			/** @type {Record<string, number>} */
 			const out = { seconds: round(seconds), ...extra };
+			/** @param {Record<string, number>} counts */
+			const sum = (counts) => Object.values(counts).reduce((a, x) => a + x, 0);
+			const sent = sum(traffic.out);
+			const answers = traffic.in["(answers)"] ?? 0;
+			const events = sum(traffic.in) - answers;
+			out["traffic.sent"] = sent;
+			out["traffic.events"] = events;
+			out["traffic.answers"] = answers;
+			if (argv.includes("--bytes")) out["traffic.inKB"] = round(traffic.inBytes / 1024, 1);
+			if (name === "click") {
+				out["traffic.sentPerClick"] = round(sent / 10, 1);
+				out["traffic.inPerClick"] = round((events + answers) / 10, 1);
+			}
 			how.pages.forEach(([who], i) => {
 				Object.assign(out, pageNumbers(who, m0[i] ?? {}, m1[i] ?? {}, probes[who] ?? null, seconds));
 			});
@@ -856,7 +1006,10 @@ async function oneRun(run, host) {
 		// (a) idle: nothing touches the page; the window stays up.
 		await scenario("idle", { frames: false, pages }, async () => {
 			await sleep(20000);
-			return {};
+			/** @type {Record<string, number>} */
+			const out = {};
+			if (heavy) out["loka.privateMB"] = await privateMB(b.browser);
+			return out;
 		});
 		if (blaming) details.blame = await blameIdle(b.browser, sidebar, pids);
 
@@ -899,15 +1052,13 @@ async function oneRun(run, host) {
 		);
 		await scenario("switch", { frames: true, pages }, async () => {
 			for (const digit of [2, 1, 3, 1, 2, 1, 3, 1, 2, 1]) {
-				const key = { key: String(digit), code: `Digit${digit}`, windowsVirtualKeyCode: 48 + digit, modifiers: 2 };
-				await sidebar.call("Input.dispatchKeyEvent", { type: "rawKeyDown", ...key });
-				await sidebar.call("Input.dispatchKeyEvent", { type: "keyUp", ...key });
+				await ctrlDigit(sidebar, digit);
 				await sleep(400);
 			}
 			await sleep(1500);
 			return { "switch.seen": await evaluate(sidebar, "window.__perfSwitches") };
 		});
-		const space = JSON.parse((await evaluate(sidebar, askExpression("getStore")))["state.v1"]).activeSpaceId;
+		const space = (await savedState(sidebar)).activeSpaceId;
 		if (space !== "perf-build") throw new Error(`after the switches the sidebar shows ${space}, not Build`);
 
 		// (d) the command bar: Ctrl+K in the sidebar, then 12 characters at about 150 ms each. Open is the first
@@ -974,6 +1125,56 @@ async function oneRun(run, host) {
 			},
 		);
 		await evaluate(command, `(chrome.send("closeCommandBar", []), true)`);
+		if (heavy) {
+			// (e) churn: the 20 /churn/ pages (in every space, all in the background) retitle once a second for 20 s, told
+			// to by the measured tab over a BroadcastChannel. Mail and chat pages do this all day.
+			await scenario("churn", { frames: false, pages }, async () => {
+				for (let second = 0; second < 20; second++) {
+					await evaluate(tab, `((window.__perfChannel ??= new BroadcastChannel("perf")).postMessage("retitle"), true)`);
+					await sleep(1000);
+				}
+				/** @type {{ targetInfos: { url: string, title: string }[] }} */
+				const { targetInfos } = await b.browser.call("Target.getTargets");
+				const churning = targetInfos.filter((t) => t.url.includes("/churn/"));
+				details.churnTitles = churning.map((t) => `${t.url.split("/").slice(-2).join("/")}: ${t.title}`);
+				return {
+					"churn.pages": churning.length,
+					"churn.retitles": churning.filter((t) => /^\(20\) Perf/.test(t.title)).length,
+					"loka.privateMB": await privateMB(b.browser),
+				};
+			});
+
+			// (f) click: two loaded tabs in Build's open list, clicked in turn, 400 ms apart. Both rows are scrolled into
+			// view first, so the scenario measures the clicks and not the scrolling.
+			const rows = await evaluate(
+				sidebar,
+				`(() => {
+					const rows = [...${SIDEBAR_ROOT}.querySelectorAll('.open [role="treeitem"]')].slice(2, 4);
+					rows[0]?.scrollIntoView({ block: "center" });
+					return rows.map((r) => {
+						const b = r.getBoundingClientRect();
+						return { key: r.dataset.key, x: b.left + 40, y: b.top + b.height / 2 };
+					});
+				})()`,
+			);
+			if (rows.length !== 2) throw new Error(`Build's open list has ${rows.length} of the 2 rows the clicks need`);
+			await sleep(1000);
+			await scenario("click", { frames: true, pages }, async () => {
+				let seen = 0;
+				for (let i = 0; i < 10; i++) {
+					const row = rows[i % 2];
+					for (const type of ["mousePressed", "mouseReleased"])
+						await sidebar.call("Input.dispatchMouseEvent", { type, x: row.x, y: row.y, button: "left", clickCount: 1 });
+					await sleep(400);
+					const selected = await evaluate(
+						sidebar,
+						`${SIDEBAR_ROOT}.querySelector('[data-key="${row.key}"]')?.getAttribute("aria-selected") === "true"`,
+					);
+					if (selected) seen++;
+				}
+				return { "click.seen": seen };
+			});
+		}
 	} finally {
 		await b.close();
 	}
@@ -990,6 +1191,9 @@ function happened(r) {
 		wrong.push(`scroll reached only ${r.scroll?.["scroll.deepestPx"]} px`);
 	if (r.switch?.["switch.seen"] !== 10) wrong.push(`${r.switch?.["switch.seen"]} of 10 space switches happened`);
 	if (r.command?.["command.typedRight"] !== 1) wrong.push("the command bar didn't get the typed text");
+	if (heavy && (r.churn?.["churn.retitles"] ?? 0) < 20)
+		wrong.push(`only ${r.churn?.["churn.retitles"]} of the 20 churn pages retitled all 20 times`);
+	if (heavy && r.click?.["click.seen"] !== 10) wrong.push(`${r.click?.["click.seen"]} of 10 clicks selected their tab`);
 	return wrong;
 }
 
@@ -1009,7 +1213,9 @@ async function main() {
 	}
 	mkdirSync(evidence, { recursive: true });
 	const status = spawnSync("bun", ["scripts/browser.mjs", "status"], { cwd: repo, encoding: "utf8" });
-	console.log(`verify:perf  ${chrome}\n  webui: ${webui}, runs: ${runs}${tracing ? ", traced" : ""}, ${CORES} cores`);
+	console.log(
+		`verify:perf  ${chrome}\n  webui: ${webui}, runs: ${runs}${heavy ? ", heavy (300 tabs, 100 loaded)" : ""}${tracing ? ", traced" : ""}, ${CORES} cores`,
+	);
 	const { server, host } = await startPages();
 	/** @type {{ results: Record<string, Record<string, number>>, details: Record<string, any> }[]} */
 	const all = [];
@@ -1036,7 +1242,7 @@ async function main() {
 	const lines = [];
 	/** @type {Record<string, Record<string, { median: number, min: number, max: number, runs: number[] }>>} */
 	const summary = {};
-	for (const name of ["idle", "scroll", "switch", "command"]) {
+	for (const name of ["idle", "scroll", "switch", "command", ...(heavy ? ["churn", "click"] : [])]) {
 		const keys = [...new Set(all.flatMap((r) => Object.keys(r.results[name] ?? {})))];
 		summary[name] = {};
 		for (const key of keys) {
@@ -1102,6 +1308,7 @@ async function main() {
 				chrome,
 				webui,
 				runs,
+				heavy,
 				tracing,
 				cores: CORES,
 				buildStatus: status.stdout?.trim(),

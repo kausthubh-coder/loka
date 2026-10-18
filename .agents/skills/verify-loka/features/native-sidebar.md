@@ -69,6 +69,9 @@ build:status` says which, and why.
 - **Performance.** `bun run verify:perf` (`-- --webui=checkout` for this checkout's pages, `--runs N`, `--trace`,
   `--blame` to pause each animation in turn) checks idle CPU, a 150-row scroll, space switches and the command bar
   against the budgets atop `scripts/verify-perf.mjs`. Read its machine-load line first: another Chromium skews it.
+  `--heavy` is the 300-tab case (100 loaded pages over three spaces) and adds churn (20 background pages retitling)
+  and clicks; every scenario counts the sidebar's messages, and `--bytes` sizes them in a run of its own (sizing
+  costs CPU). A change to the sidebar model, the handler or the sync is proven on `--heavy`, not only the default.
 - **Your own drive.** Start chrome.exe with `--user-data-dir` under `C:\src\loka\profile-verify`,
   `--remote-debugging-port=<free port>` and `--disable-features=CalculateNativeWinOcclusion`. The sidebar target
   (type `browser_ui`) appears in `/json/list` once the window has a normal tab; connect to its

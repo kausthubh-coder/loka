@@ -71,8 +71,8 @@ function addOpenTab(
 	tab: BrowserTab,
 	spaceId: string,
 	now: number,
+	id: TabId,
 ): [BrowserState, LiveMap] {
-	const id = newId();
 	const withTab = {
 		...state,
 		tabs: {
@@ -94,7 +94,12 @@ function addOpenTab(
  * Loka wasn't running). Pinned tabs and Essentials stay either way. Empty tabs, and tabs with no page yet, are left
  * out.
  */
-export function adoptTabs(state: BrowserState, tabs: BrowserTab[], now: number): [BrowserState, LiveMap] {
+export function adoptTabs(
+	state: BrowserState,
+	tabs: BrowserTab[],
+	now: number,
+	makeId: () => TabId = newId,
+): [BrowserState, LiveMap] {
 	let live: LiveMap = {};
 	let next = state;
 	const taken = new Set<TabId>();
@@ -118,7 +123,7 @@ export function adoptTabs(state: BrowserState, tabs: BrowserTab[], now: number):
 			live[match] = tab.id;
 			continue;
 		}
-		[next, live] = addOpenTab(next, live, tab, next.activeSpaceId, now);
+		[next, live] = addOpenTab(next, live, tab, next.activeSpaceId, now, makeId());
 		taken.add(lokaIdOf(live, tab.id) ?? "");
 	}
 	// Open tabs that no browser tab took are gone.
@@ -149,13 +154,14 @@ export function tabCreated(
 	tab: BrowserTab,
 	now: number,
 	forTabId?: TabId,
+	makeId: () => TabId = newId,
 ): [BrowserState, LiveMap] {
 	if (forTabId && state.tabs[forTabId]) return [state, { ...live, [forTabId]: tab.id }];
 	if (lokaIdOf(live, tab.id) || isEmptyTab(tab.url)) return [state, live];
 	const opener = tab.openerTabId === undefined ? null : lokaIdOf(live, tab.openerTabId);
 	const openerHome = opener ? homeOf(state, opener) : null;
 	const spaceId = openerHome && openerHome !== "essentials" ? openerHome : state.activeSpaceId;
-	return addOpenTab(state, live, tab, spaceId, now);
+	return addOpenTab(state, live, tab, spaceId, now, makeId());
 }
 
 /** A tab the browser closed: an open tab is gone; a pinned tab or Essential stays in the sidebar, unloaded. */
@@ -172,9 +178,19 @@ export function tabRemoved(state: BrowserState, live: LiveMap, browserId: number
  * into an empty tab (chrome://newtab typed in, or a new tab whose page has just committed) leaves the spaces; an
  * empty tab that goes to a page (a link dropped on it) joins them, as a tab opened there would.
  */
-export function tabUpdated(state: BrowserState, live: LiveMap, tab: BrowserTab, now: number): [BrowserState, LiveMap] {
+export function tabUpdated(
+	state: BrowserState,
+	live: LiveMap,
+	tab: BrowserTab,
+	now: number,
+	makeId: () => TabId = newId,
+): [BrowserState, LiveMap] {
 	const id = lokaIdOf(live, tab.id);
-	if (!id) return isEmptyTab(tab.url) || isBlank(tab.url) ? [state, live] : tabCreated(state, live, tab, now);
+	if (!id) {
+		return isEmptyTab(tab.url) || isBlank(tab.url)
+			? [state, live]
+			: tabCreated(state, live, tab, now, undefined, makeId);
+	}
 	const current = state.tabs[id];
 	if (!current) return [state, live];
 	const isOpen = state.spaces.some((s) => s.open.includes(id));
@@ -328,9 +344,9 @@ export function groupColor(hue: number): GroupColor {
 }
 
 /** The first state for someone with no saved spaces: one space, nothing pinned. Their open tabs get adopted into it. */
-export function firstState(): BrowserState {
+export function firstState(id = newId()): BrowserState {
 	const space: Space = {
-		id: newId(),
+		id,
 		name: "Personal",
 		hue: 200,
 		planet: "ringed",

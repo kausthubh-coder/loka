@@ -105,6 +105,8 @@ async function startPages() {
 }
 
 const GET_TABS = askExpression("getTabs");
+/** Where a loaded tab's icon is served (LokaSidebarHandler::FaviconUrl). */
+const TAB_ICON = "chrome://loka-sidebar.top-chrome/tab-icon/";
 
 /** In the sidebar page: clicks the first button (any shadow root) whose label or text is `name`. @param {string} name */
 const clickExpression = (name) => `(() => {
@@ -435,20 +437,32 @@ async function main() {
 			`${allRows.length} rows: ${allRows.map((r) => r.label).join(" | ")}`,
 		);
 
-		// 4. The loaded tab's own icon, not the default globe.
+		// 4. The loaded tab's own icon, not the default globe. The handler sends its address (tab-icon/...), which the
+		// sidebar's own page serves as a PNG; the sidebar reads the picture through a canvas (same origin, not tainted).
 		const favicon = iconTab?.favicon ?? "";
+		/** The picture at `url` as the sidebar loads it, as a data: URL, or "" when it doesn't load. @param {string} url */
+		const picturedInSidebar = (url) =>
+			evaluate(
+				sidebar,
+				`new Promise((resolve) => { const i = new Image(); i.onerror = () => resolve("");
+				i.onload = () => { const c = document.createElement("canvas"); c.width = i.naturalWidth;
+				c.height = i.naturalHeight; c.getContext("2d").drawImage(i, 0, 0); resolve(c.toDataURL()); };
+				i.src = ${JSON.stringify(url)}; })`,
+				true,
+			);
+		const served = favicon.startsWith(TAB_ICON) ? await picturedInSidebar(favicon) : "";
 		check(
 			"tab favicon from the browser",
-			favicon.startsWith("data:image/"),
-			favicon ? `${favicon.slice(0, 40)}...` : "empty",
+			served.startsWith("data:image/png"),
+			favicon ? `${favicon} -> ${served ? `a ${served.length}-character PNG` : "no picture"}` : "empty",
 		);
-		// The row draws either the tab's own icon (a data: URL) or the browser's favicon cache (chrome://favicon2). The
+		// The row draws either the tab's own icon (tab-icon/...) or the browser's favicon cache (chrome://favicon2). The
 		// cache answers with the default globe when it has nothing, so compare its picture with the cache's answer for
 		// a page that has no icon. A tab showing the image can read it through a canvas (same origin, not tainted).
 		const iconRow = allRows.find((r) => r.label === "Loka verify: icon");
 		const drawn = iconRow?.icon ?? "";
-		let iconDetail = iconRow ? `${drawn.slice(0, 50)}...` : "no row";
-		let realIcon = drawn.startsWith("data:image/");
+		let iconDetail = iconRow ? `${drawn.slice(0, 60)}...` : "no row";
+		let realIcon = drawn.startsWith(TAB_ICON) && (await picturedInSidebar(drawn)) !== "";
 		if (drawn.startsWith("chrome://favicon2/")) {
 			const noIcon = new URL(drawn);
 			noIcon.searchParams.set("pageUrl", `${origin}/no-icon-here`);

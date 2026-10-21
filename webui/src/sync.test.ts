@@ -1,5 +1,7 @@
 // The sync against a stand-in for LokaSidebarHandler: chrome.send answers through cr.webUIResponse and pushes
-// tabs-changed and store-changed through cr.webUIListenerCallback, a task later, as the browser does.
+// tabs-changed through cr.webUIListenerCallback, a task later, as the browser does. Like the handler, it sends only
+// what changed since the page last heard (after syncTabs, and before answering syncTabs, createTab and groupTabs),
+// and never echoes the page's own setStore back to it.
 import { expect, test } from "bun:test";
 import type { BrowserState } from "../../prototype/src/features/sidebar/sidebar.logic";
 import type { NativeTab } from "./bridge";
@@ -18,11 +20,30 @@ const answer = (id: unknown, value: unknown) => later(() => window.cr.webUIRespo
 const push = (event: string, value: unknown) => later(() => window.cr.webUIListenerCallback(event, value));
 const copyTabs = () => browserSide.tabs.map((t) => ({ ...t }));
 
+/** What the page has heard, as the handler keeps it; null until it calls syncTabs. */
+let heard: { tabs: Map<number, string>; order: string; groups: string } | null = null;
+
+/** Pushes tabs-changed with what changed since the page last heard, if anything did. */
+function pushTabs() {
+	if (!heard) return;
+	const tabs = copyTabs().filter((t) => heard?.tabs.get(t.id) !== JSON.stringify(t));
+	const removed = [...heard.tabs.keys()].filter((id) => !browserSide.tabs.some((t) => t.id === id));
+	const order = JSON.stringify(browserSide.tabs.map((t) => t.id));
+	const groups = JSON.stringify(browserSide.groups);
+	const changes = {
+		...(tabs.length ? { tabs } : {}),
+		...(removed.length ? { removed } : {}),
+		...(order !== heard.order ? { order: JSON.parse(order) } : {}),
+		...(groups !== heard.groups ? { groups: JSON.parse(groups) } : {}),
+	};
+	heard = { tabs: new Map(browserSide.tabs.map((t) => [t.id, JSON.stringify(t)])), order, groups };
+	if (Object.keys(changes).length) push("tabs-changed", changes);
+}
+
 function newTab(url: string, opener?: number): NativeTab {
 	for (const t of browserSide.tabs) t.active = false;
 	const tab: NativeTab = {
 		id: browserSide.nextTab++,
-		index: browserSide.tabs.length,
 		url,
 		title: url === "chrome://newtab/" ? "New Tab" : url,
 		favicon: "",
@@ -42,44 +63,43 @@ function newTab(url: string, opener?: number): NativeTab {
 function send(message: string, args: unknown[]) {
 	const [first, ...rest] = args;
 	if (message === "getStore") answer(first, { ...browserSide.store });
-	else if (message === "getTabs") answer(first, copyTabs());
-	else if (message === "getGroups")
-		answer(
-			first,
-			browserSide.groups.map((g) => ({ ...g })),
-		);
-	else if (message === "setStore") {
+	else if (message === "syncTabs") {
+		heard ??= { tabs: new Map(), order: "[]", groups: "[]" };
+		pushTabs();
+		answer(first, null);
+	} else if (message === "setStore") {
 		const [key, value] = [String(first), rest[0]];
 		if (typeof value === "string") browserSide.store[key] = value;
 		else delete browserSide.store[key];
-		push("store-changed", { ...browserSide.store });
 	} else if (message === "createTab") {
 		// The browser names the tab that was showing as the new tab's opener.
 		const shown = browserSide.tabs.find((t) => t.active)?.id;
 		const made = newTab(String(rest[0]) || "chrome://newtab/", shown);
+		pushTabs();
 		answer(first, made.id);
-		push("tabs-changed", copyTabs());
 	} else if (message === "activateTab") {
 		for (const t of browserSide.tabs) t.active = t.id === first;
-		push("tabs-changed", copyTabs());
+		pushTabs();
 	} else if (message === "closeTab") {
 		const closed = browserSide.tabs.find((t) => t.id === first);
 		browserSide.tabs = browserSide.tabs.filter((t) => t.id !== first);
 		// When the tab on screen closes, the browser shows another one itself (here the last).
 		const last = browserSide.tabs.at(-1);
 		if (closed?.active && last) last.active = true;
-		push("tabs-changed", copyTabs());
+		pushTabs();
 	} else if (message === "groupTabs") {
 		const [ids, asked] = rest as [number[], number];
 		const groupId = asked > 0 ? asked : browserSide.nextGroup++;
 		if (!browserSide.groups.some((g) => g.id === groupId))
 			browserSide.groups.push({ id: groupId, title: "", collapsed: false });
 		for (const t of browserSide.tabs) if (ids.includes(t.id)) t.groupId = groupId;
+		pushTabs();
 		answer(first, groupId);
 	} else if (message === "updateGroup") {
 		const group = browserSide.groups.find((g) => g.id === first);
 		if (group && typeof rest[0] === "string") group.title = rest[0];
 		if (group && typeof rest[2] === "boolean") group.collapsed = rest[2];
+		pushTabs();
 	}
 }
 

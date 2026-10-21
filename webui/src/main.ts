@@ -185,7 +185,7 @@ export class LokaPanel extends LitElement {
 			if (ui) this.ui = ui;
 		});
 		browser.onTabsChanged(this.setTabs);
-		void browser.tabs().then(this.setTabs);
+		void browser.syncTabs().then(({ tabs }) => this.setTabs(tabs));
 		// The sync links a new browser tab to its Loka tab a moment after the browser reports it.
 		onLinksChanged(this.refreshLive);
 		window.addEventListener("keydown", this.onKey);

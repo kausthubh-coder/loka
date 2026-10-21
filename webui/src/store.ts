@@ -19,8 +19,6 @@ let store: Record<string, string> = {};
 let loaded: Promise<void> | null = null;
 type Change = { state?: BrowserState; ui?: UiPrefs; onboarding?: boolean; foreign?: boolean };
 const listeners = new Set<(what: Change) => void>();
-/** Values this page wrote that the browser hasn't echoed back yet, so an echo isn't taken for another window's. */
-const echoes = new Set<string>();
 
 function notify(what: Change) {
 	for (const listener of listeners) listener(what);
@@ -56,7 +54,6 @@ export async function writeState(state: BrowserState): Promise<string> {
 	const json = JSON.stringify(state);
 	if (store[STATE_KEY] === json) return json;
 	store = { ...store, [STATE_KEY]: json };
-	echoes.add(json);
 	browser.setStore(STATE_KEY, json);
 	notify({ state });
 	return json;
@@ -72,7 +69,6 @@ export async function writeUi(ui: UiPrefs) {
 	await load();
 	const json = JSON.stringify(ui);
 	store = { ...store, [UI_KEY]: json };
-	echoes.add(json);
 	browser.setStore(UI_KEY, json);
 	notify({ ui });
 }
@@ -109,7 +105,6 @@ export async function pendingOnboarding(): Promise<string | null> {
 
 export function markOnboardingApplied(value: string) {
 	store = { ...store, [APPLIED_KEY]: value };
-	echoes.add(value);
 	browser.setStore(APPLIED_KEY, value);
 }
 
@@ -121,7 +116,6 @@ browser.onStoreChanged((next) => {
 	for (const key of [STATE_KEY, UI_KEY]) {
 		const value = next?.[key];
 		if (value === undefined || value === store[key]) continue;
-		if (echoes.delete(value)) continue;
 		store = { ...store, [key]: value };
 		if (key === STATE_KEY) {
 			const parsed = importState(value);

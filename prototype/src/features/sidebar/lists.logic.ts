@@ -7,10 +7,16 @@ import { activeSpace, type BrowserState, pinnedRows } from "./sidebar.logic";
  * The spaces whose lists stay built: the active one and the one shown before it, which is where a switch most often
  * goes (back and forth between two spaces). In the spaces' own order, so a switch never moves a list in the page.
  * One list more, not every space's: a list is ~35 elements a row, and three lists of a heavy profile's 300 tabs
- * would pass the sidebar's 10,000-node budget (scripts/verify-perf.mjs).
+ * would pass the sidebar's 10,000-node budget (scripts/verify-perf.mjs). `leavingSpaceId` is a list no longer
+ * kept that stays one more frame: taking it out of the page in the switch's own frame would cost that frame.
  */
-export function builtSpaceIds(state: BrowserState, lastSpaceId: string | null): string[] {
-	return state.spaces.map((s) => s.id).filter((id) => id === state.activeSpaceId || id === lastSpaceId);
+export function builtSpaceIds(
+	state: BrowserState,
+	lastSpaceId: string | null,
+	leavingSpaceId: string | null = null,
+): string[] {
+	const ids = new Set([state.activeSpaceId, lastSpaceId, leavingSpaceId]);
+	return state.spaces.map((s) => s.id).filter((id) => ids.has(id));
 }
 
 /** The rows on screen in order, each with its depth, then the Essentials: what decides where every row sits. */

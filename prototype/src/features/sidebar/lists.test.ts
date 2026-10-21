@@ -15,6 +15,13 @@ test("before any switch, or after the last space shown was deleted, only the act
 	expect(builtSpaceIds(state, "s-gone")).toEqual(["s-build"]);
 });
 
+test("a list no longer kept stays built while it leaves, then goes", () => {
+	const home = switchSpace(seedState(0), "s-home");
+	// From School to Home: Build's list was the kept one; it stays for the switch's frame.
+	expect(builtSpaceIds(home, "s-school", "s-build")).toEqual(["s-build", "s-school", "s-home"]);
+	expect(builtSpaceIds(home, "s-school", null)).toEqual(["s-school", "s-home"]);
+});
+
 test("back and forth between two spaces keeps both lists; a third space takes the place of the older one", () => {
 	let state = seedState(0);
 	let last: string | null = null;

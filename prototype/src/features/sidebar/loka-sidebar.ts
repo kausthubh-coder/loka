@@ -870,6 +870,21 @@ export class LokaSidebar extends LitElement {
 	private lastSpaceId: string | null = null;
 	/** Lists sliding out after a switch, by list, so a switch back can stop one. */
 	private listExits = new Map<HTMLElement, Animation>();
+	/** A space whose list is no longer kept, still in the page until the switch has painted (builtSpaceIds). */
+	private leavingSpaceId: string | null = null;
+
+	/** Takes the list no longer kept out of the page after the frame that shows the switch. */
+	private dropLeavingList() {
+		const leaving = this.leavingSpaceId;
+		if (!leaving) return;
+		requestAnimationFrame(() =>
+			setTimeout(() => {
+				if (this.leavingSpaceId !== leaving) return;
+				this.leavingSpaceId = null;
+				this.requestUpdate();
+			}, 0),
+		);
+	}
 	/** The space's list before a switch, which slides out as the new one slides in. */
 	private listBefore: { el: HTMLElement; rect: DOMRect; scrollTop: number; forward: boolean } | null = null;
 	/** The horizon's planets before a space switch, which set behind the new one. */
@@ -917,6 +932,8 @@ export class LokaSidebar extends LitElement {
 		if (before.activeSpaceId !== this.state.activeSpaceId) {
 			const forward = switchesForward(this.state, before.activeSpaceId, this.state.activeSpaceId);
 			this.slideFrom = forward ? "right" : "left";
+			// The list kept until now, unless it's the one being shown, leaves the page after this frame (updated).
+			this.leavingSpaceId = this.lastSpaceId !== this.state.activeSpaceId ? this.lastSpaceId : null;
 			this.lastSpaceId = before.activeSpaceId;
 			// Read before the DOM changes, while layout is still clean: reading after would lay out the new list first.
 			const list = this.renderRoot.querySelector<HTMLElement>(".scroll.shown");
@@ -1410,6 +1427,7 @@ export class LokaSidebar extends LitElement {
 			this.hold("menu", open);
 		}
 		this.watchBottom();
+		this.dropLeavingList();
 		this.animateListExit();
 		this.animateRows();
 		this.animateHorizon();
@@ -1735,7 +1753,7 @@ export class LokaSidebar extends LitElement {
 							</div>`
 				}
 				${repeat(
-					builtSpaceIds(state, this.lastSpaceId),
+					builtSpaceIds(state, this.lastSpaceId, this.leavingSpaceId),
 					(id) => id,
 					(id) => {
 						const built = state.spaces.find((s) => s.id === id);

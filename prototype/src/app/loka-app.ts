@@ -40,7 +40,7 @@ import {
 import { seedState } from "../features/sidebar/sidebar.seed";
 import { playCue, setSoundPrefs } from "../features/sound/sound";
 import type { LookPreview } from "../features/spaces/loka-space-editor";
-import { skyLayer, skyStyles, skyTurn } from "./sky";
+import { setStarMotion, skyLayer, skyStyles, skyTurn } from "./sky";
 import { reducedMotion, themeTokens } from "./theme";
 import { resolveScheme, type Scheme } from "./theme.logic";
 import { clampWidth, DEFAULT_UI, parseUiPrefs, type UiPrefs } from "./ui-prefs.logic";
@@ -431,6 +431,7 @@ export class LokaApp extends LitElement {
 		const scheme = this.schemeOf(this.state);
 		const hue = this.preview?.hue ?? space.hue;
 		setSoundPrefs({ on: this.ui.sound, volume: this.ui.soundVolume });
+		setStarMotion(this.ui.starMotion);
 		document.documentElement.style.colorScheme = scheme;
 		const layout = `${side} ${hidden ? "hidden" : ""} ${hidden && this.peek ? "peek" : ""} ${this.tourOpen ? "touring" : ""}`;
 		// Each linked demo tab's page: its sound, as the browser's tab strip reports it.
@@ -453,7 +454,7 @@ export class LokaApp extends LitElement {
 					this.popup = null;
 				}}
 			>
-				${skyLayer(hue, scheme)}
+				${skyLayer(hue, scheme, "drifts")}
 				${
 					hidden
 						? html`<div class="edge-zone" aria-hidden="true" @pointerenter=${() => (this.peek = true)}></div>`

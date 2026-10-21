@@ -43,4 +43,11 @@ describe("window preferences", () => {
 		expect(parseUiPrefs('{"autoplay": "allow"}').autoplay).toBe("allow");
 		expect(parseUiPrefs('{"autoplay": "always"}').autoplay).toBe("block");
 	});
+
+	test("moving stars keeps a known mode and falls back to while I'm using Loka", () => {
+		expect(parseUiPrefs(null).starMotion).toBe("while-using");
+		expect(parseUiPrefs('{"starMotion": "always"}').starMotion).toBe("always");
+		expect(parseUiPrefs('{"starMotion": "off"}').starMotion).toBe("off");
+		expect(parseUiPrefs('{"starMotion": "fast"}').starMotion).toBe("while-using");
+	});
 });

@@ -3,7 +3,7 @@
 
 import { css, html, LitElement, nothing } from "lit";
 import type { Update } from "../../prototype/src/app/loka-app";
-import { restWhenIdle, skyLayer, skyStyles, skyTurn } from "../../prototype/src/app/sky";
+import { setStarMotion, skyLayer, skyStyles, skyTurn } from "../../prototype/src/app/sky";
 import { reducedMotion, themeTokens } from "../../prototype/src/app/theme";
 import { resolveScheme, type Scheme } from "../../prototype/src/app/theme.logic";
 import { DEFAULT_UI, type UiPrefs } from "../../prototype/src/app/ui-prefs.logic";
@@ -55,8 +55,6 @@ import { browserTabOf, changeSpaces, linkedTabs, openEmptyTab, spacesChanged, st
 
 setFaviconSource(faviconUrl);
 startSync();
-// Fifteen seconds after the last pointer, key or wheel on the sidebar, its sky holds still (see restWhenIdle).
-restWhenIdle(15_000);
 
 type Editing = { mode: "create"; look: SpaceLook } | { mode: "edit"; spaceId: string; look: SpaceLook };
 
@@ -469,6 +467,7 @@ export class LokaPanel extends LitElement {
 		const hue = this.preview?.hue ?? activeSpace(state).hue;
 		const scheme = this.schemeOf(state);
 		setSoundPrefs({ on: this.ui.sound, volume: this.ui.soundVolume });
+		setStarMotion(this.ui.starMotion);
 		return html`
 			<div
 				class="window theme-${scheme} ${this.pinned ? "" : "floating"}"
@@ -483,7 +482,7 @@ export class LokaPanel extends LitElement {
 					this.preview = e.detail;
 				}}
 			>
-				${skyLayer(hue, scheme)}
+				${skyLayer(hue, scheme, "drifts")}
 				<loka-sidebar
 					.state=${state}
 					.apply=${this.apply}

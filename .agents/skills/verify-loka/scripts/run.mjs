@@ -1,5 +1,5 @@
 // Runs the mapped feature recipes against the running prototype and saves evidence.
-//   node .agents/skills/verify-loka/scripts/run.mjs <folders|spaces|tabs|essentials|export-import|command-bar|space-editor|layout|make-folders|archive|search-and-keys|import|media|theme|extensions|history|sound|onboarding|all>
+//   node .agents/skills/verify-loka/scripts/run.mjs <folders|spaces|tabs|essentials|export-import|command-bar|space-editor|layout|make-folders|archive|search-and-keys|import|media|theme|extensions|history|sound|sky|onboarding|all>
 // Each recipe starts from fresh seed data, drives the UI the way a user does, asserts the saved state,
 // and writes screenshots, ARIA snapshots and outlines to .agents/verify-runs/<time>-<feature>/.
 
@@ -778,6 +778,82 @@ const recipes = {
 		assert.deepEqual(await demoCalls(loka, "setAutoplay"), [["block-audible"]]);
 		assert.equal((await loka.ui()).autoplay, "block-audible");
 		await loka.proof("02-autoplay");
+	},
+
+	async sky(loka) {
+		// Fake timers, so 15 s without input pass at once; the page reloads with them in place.
+		await loka.page.clock.install();
+		await loka.page.reload({ waitUntil: "networkidle" });
+		await loka.sidebar.getByRole("tree").first().waitFor();
+		/** The window's sky: what sky.ts set on the page's root, and the near star layer's drift. */
+		const sky = () =>
+			loka.page.evaluate(() => {
+				const stars = document.querySelector("loka-app")?.shadowRoot?.querySelector(".sky .stars.near");
+				return {
+					play: getComputedStyle(document.documentElement).getPropertyValue("--loka-sky-play").trim(),
+					willChange: stars ? getComputedStyle(stars).willChange : null,
+					drift: stars?.getAnimations()[0]?.playState ?? null,
+				};
+			});
+		const moving = { play: "running", willChange: "transform", drift: "running" };
+		const still = { play: "paused", willChange: "auto", drift: "paused" };
+
+		assert.equal((await loka.ui()).starMotion ?? "while-using", "while-using", "the default is while I'm using Loka");
+		assert.deepEqual(await sky(), moving, "the stars drift once the page opens");
+		await loka.page.clock.fastForward(14_000);
+		assert.deepEqual(await sky(), moving, "and still at 14 s without input");
+		await loka.page.clock.fastForward(1_500);
+		assert.deepEqual(await sky(), still, "15 s without input: they stop");
+		await loka.page.mouse.move(640, 400);
+		assert.deepEqual(await sky(), moving, "the pointer moving in the window starts them again");
+
+		await loka.page.getByRole("button", { name: "More" }).click();
+		await loka.menuItem("Settings").click();
+		const stars = loka.page.locator("loka-settings").getByRole("radiogroup", { name: "Moving stars" });
+		await stars.scrollIntoViewIfNeeded();
+		assert.equal(await stars.getByRole("radio", { name: "While I'm using Loka" }).getAttribute("aria-checked"), "true");
+		await loka.proof("01-appearance");
+
+		await stars.getByRole("radio", { name: "Off" }).click();
+		assert.equal((await loka.ui()).starMotion, "off", "Off is saved");
+		assert.deepEqual(await sky(), still, "Off holds the stars");
+		await loka.page.mouse.move(600, 380);
+		assert.deepEqual(await sky(), still, "and input doesn't start them");
+
+		await stars.getByRole("radio", { name: "Always" }).click();
+		assert.equal((await loka.ui()).starMotion, "always", "Always is saved");
+		await loka.page.clock.fastForward(60_000);
+		assert.deepEqual(await sky(), moving, "Always: still drifting a minute after the last input");
+
+		// Every mode stops while the window is hidden (minimised or covered) and with reduced motion.
+		const setHidden = (/** @type {boolean} */ hidden) =>
+			loka.page.evaluate((h) => {
+				Object.defineProperty(document, "visibilityState", {
+					configurable: true,
+					get: () => (h ? "hidden" : "visible"),
+				});
+				document.dispatchEvent(new Event("visibilitychange"));
+			}, hidden);
+		await setHidden(true);
+		assert.deepEqual(await sky(), still, "Always stops while the window is hidden");
+		await setHidden(false);
+		assert.deepEqual(await sky(), moving, "and goes on when it shows again");
+		// The media query's change event comes a moment after emulateMedia.
+		const settledSky = async (/** @type {{ play: string, willChange: string, drift: string | null }} */ want) => {
+			for (let i = 0; i < 20 && JSON.stringify(await sky()) !== JSON.stringify(want); i++) {
+				await loka.page.waitForTimeout(50);
+			}
+			return sky();
+		};
+		await loka.page.emulateMedia({ reducedMotion: "reduce" });
+		const reduced = { play: "paused", willChange: "auto", drift: null };
+		assert.deepEqual(await settledSky(reduced), reduced, "with reduced motion the stars have no drift at all");
+		await loka.page.emulateMedia({ reducedMotion: "no-preference" });
+		assert.deepEqual(await settledSky(moving), moving, "and drift again without it");
+
+		await stars.getByRole("radio", { name: "While I'm using Loka" }).click();
+		assert.equal((await loka.ui()).starMotion, "while-using");
+		await loka.proof("02-back-to-default");
 	},
 };
 

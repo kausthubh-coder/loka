@@ -19,6 +19,10 @@ too, not a cleanup.
   it, as Zen does on startup; switching to an empty space doesn't pop the bar. Closing a window's last tab keeps the
   window (Zen sets `browser.tabs.closeWindowWithLastTab` off); Ctrl+W on the empty tab closes the window, as Zen
   does. An extension that overrides the new tab page still wins over Loka's: the user installed it on purpose.
+- **Only the sidebar's stars move.** The new tab, History and Settings show the same sky, held still
+  (`skyLayer(..., "still")`). Moving layers the size of a whole tab cost far more to composite: in the mockup, stars
+  over the whole window took idle from 60 to 38 fps. The sidebar's stars follow Settings > Appearance > Moving stars
+  (`sky.logic.ts`).
 - **Loka's strings live in the webui bundle, not in `.grdp` files.** A new `<message>` adds a resource ID and
   recompiles thousands of files (about 25 minutes). Editing an existing message's text is cheap.
 

@@ -2,7 +2,7 @@
 // browser's light or dark (which each space sets) and shows the day or night sky in Loka's blue.
 
 import { css, html, LitElement } from "lit";
-import { restWhenIdle, skyLayer, skyStyles } from "../../prototype/src/app/sky";
+import { skyLayer, skyStyles } from "../../prototype/src/app/sky";
 import { themeTokens } from "../../prototype/src/app/theme";
 import "../../prototype/src/features/history/loka-history";
 import { setFaviconSource } from "../../prototype/src/features/sidebar/favicon";
@@ -10,8 +10,6 @@ import { faviconUrl } from "./favicon-url";
 import { history } from "./history-bridge";
 
 setFaviconSource(faviconUrl);
-// The sky behind the list holds still once the page has been left alone for a while.
-restWhenIdle(15_000);
 
 const darkSystem = matchMedia("(prefers-color-scheme: dark)");
 
@@ -31,7 +29,7 @@ export class LokaHistoryPage extends LitElement {
 		const scheme = this.dark ? "dark" : "light";
 		document.documentElement.style.colorScheme = scheme;
 		return html`<div class="page theme-${scheme}" style="--hue: 200">
-			${skyLayer(200, scheme)}
+			${skyLayer(200, scheme, "still")}
 			<loka-history .bridge=${history}></loka-history>
 		</div>`;
 	}

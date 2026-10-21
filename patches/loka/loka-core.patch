@@ -1945,7 +1945,7 @@
 +#endif  // COMPONENTS_LOKA_CORE_SPACES_MODEL_H_
 --- /dev/null
 +++ b/components/loka/core/tab_links.cc
-@@ -0,0 +1,544 @@
+@@ -0,0 +1,546 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2164,7 +2164,9 @@
 +    linked.Set(*for_tab_id, tab.id);
 +    return {state, std::move(linked)};
 +  }
-+  if (live.TabIdOf(tab.id) || IsEmptyTab(tab.url)) {
++  // A tab still on its way to its first page joins once it has one
++  // (TabUpdated), not as an "about:blank" row.
++  if (live.TabIdOf(tab.id) || IsEmptyTab(tab.url) || IsBlank(tab.url)) {
 +    return {state, live};
 +  }
 +  std::optional<TabId> opener =

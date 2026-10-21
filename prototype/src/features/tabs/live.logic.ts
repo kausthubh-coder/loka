@@ -161,7 +161,8 @@ export function tabCreated(
 	makeId: () => TabId = newId,
 ): [BrowserState, LiveMap] {
 	if (forTabId && state.tabs[forTabId]) return [state, { ...live, [forTabId]: tab.id }];
-	if (lokaIdOf(live, tab.id) || isEmptyTab(tab.url)) return [state, live];
+	// A tab still on its way to its first page joins once it has one (tabUpdated), not as an "about:blank" row.
+	if (lokaIdOf(live, tab.id) || isEmptyTab(tab.url) || isBlank(tab.url)) return [state, live];
 	const opener = tab.openerTabId === undefined ? null : lokaIdOf(live, tab.openerTabId);
 	const openerHome = opener ? homeOf(state, opener) : null;
 	const spaceId = openerHome && openerHome !== "essentials" ? openerHome : state.activeSpaceId;

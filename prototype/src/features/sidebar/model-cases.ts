@@ -546,6 +546,10 @@ export function modelCases(): { states: Record<string, BrowserState>; cases: Cas
 		{ tab: fromEssential, now: NOW, ids: ["n1"] },
 		(s, l) => tabCreated(s, l, fromEssential, NOW, undefined, idsFrom(["n1"])),
 	);
+	const onItsWay = tab(34, "about:blank", { active: true });
+	withLive("a new tab with no page yet waits for one", "tabCreated", { tab: onItsWay, now: NOW, ids: [] }, (s, l) =>
+		tabCreated(s, l, onItsWay, NOW, undefined, idsFrom([])),
+	);
 	const empty = tab(32, "chrome://newtab/", { openerTabId: 21 });
 	withLive("an empty tab never joins", "tabCreated", { tab: empty, now: NOW, ids: [] }, (s, l) =>
 		tabCreated(s, l, empty, NOW, undefined, idsFrom([])),

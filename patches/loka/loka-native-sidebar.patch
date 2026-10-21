@@ -3543,7 +3543,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_UI_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_tab_sleeper.cc
-@@ -0,0 +1,142 @@
+@@ -0,0 +1,154 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -3619,9 +3619,21 @@
 +             base::BindRepeating(&LokaTabSleeper::OnStoreChanged,
 +                                 base::Unretained(this)));
 +  OnStoreChanged();
++  profile_->AddObserver(this);
 +}
 +
-+LokaTabSleeper::~LokaTabSleeper() = default;
++LokaTabSleeper::~LokaTabSleeper() {
++  if (profile_) {
++    profile_->RemoveObserver(this);
++  }
++}
++
++void LokaTabSleeper::OnProfileWillBeDestroyed(Profile* profile) {
++  timer_.Stop();
++  store_.RemoveAll();
++  profile_->RemoveObserver(this);
++  profile_ = nullptr;
++}
 +
 +void LokaTabSleeper::OnStoreChanged() {
 +  // The store also holds the spaces, which change on every title; only the
@@ -3637,7 +3649,7 @@
 +
 +void LokaTabSleeper::Sweep() {
 +  std::optional<base::TimeDelta> after = SleepAfter(ui_json_);
-+  if (!after) {
++  if (!after || !profile_) {
 +    return;
 +  }
 +  using performance_manager::policies::CanDiscardResult;
@@ -3688,7 +3700,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_tab_sleeper.h
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,58 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -3705,6 +3717,7 @@
 +#include "base/supports_user_data.h"
 +#include "base/time/time.h"
 +#include "base/timer/timer.h"
++#include "chrome/browser/profiles/profile_observer.h"
 +
 +class Profile;
 +
@@ -3715,7 +3728,8 @@
 +// icon and loads again when opened. Chromium's own rules still apply, so tabs
 +// playing sound, sharing the camera, mic or screen, or holding typed form input
 +// stay loaded. One per profile, made by the first sidebar.
-+class LokaTabSleeper : public base::SupportsUserData::Data {
++class LokaTabSleeper : public base::SupportsUserData::Data,
++                       public ProfileObserver {
 + public:
 +  static void EnsureForProfile(Profile* profile);
 +
@@ -3728,6 +3742,10 @@
 +  LokaTabSleeper(const LokaTabSleeper&) = delete;
 +  LokaTabSleeper& operator=(const LokaTabSleeper&) = delete;
 +  ~LokaTabSleeper() override;
++
++  // ProfileObserver: the profile's prefs go before its user data (this), so
++  // stop watching them then.
++  void OnProfileWillBeDestroyed(Profile* profile) override;
 +
 + private:
 +  void Sweep();

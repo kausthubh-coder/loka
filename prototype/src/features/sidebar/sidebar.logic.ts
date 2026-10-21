@@ -442,14 +442,21 @@ export const ARCHIVE_LIMIT = 200;
 
 /**
  * Archives open tabs not shown for longer than `maxAgeMs`. The tab a space is showing is never archived, nor is any
- * pinned tab or Essential. Archived tabs leave the space and go to the front of `archive`.
+ * pinned tab or Essential, nor a tab in `keep` (the browser's tabs playing sound). Archived tabs leave the space and go
+ * to the front of `archive`.
  */
-export function archiveStale(state: BrowserState, now: number, maxAgeMs: number): BrowserState {
+export function archiveStale(
+	state: BrowserState,
+	now: number,
+	maxAgeMs: number,
+	keep: ReadonlySet<TabId> = new Set(),
+): BrowserState {
 	const archived: ArchivedTab[] = [];
 	const spaces = state.spaces.map((space) => {
 		const stale = space.open.filter((id) => {
 			const tab = state.tabs[id];
-			return id !== space.activeTabId && tab?.lastActiveAt !== undefined && now - tab.lastActiveAt > maxAgeMs;
+			if (id === space.activeTabId || keep.has(id)) return false;
+			return tab?.lastActiveAt !== undefined && now - tab.lastActiveAt > maxAgeMs;
 		});
 		for (const id of stale) {
 			const tab = state.tabs[id];

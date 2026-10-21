@@ -52,6 +52,7 @@ function newTab(url: string, opener?: number): NativeTab {
 		loading: false,
 		audible: false,
 		muted: false,
+		discarded: false,
 		groupId: -1,
 		openerId: opener,
 		lastAccessed: Date.now(),

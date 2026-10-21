@@ -32,6 +32,8 @@ export interface NativeTab {
 	loading: boolean;
 	audible: boolean;
 	muted: boolean;
+	/** Unloaded to save memory (a space out of sight, or Memory Saver); it loads again when shown. */
+	discarded: boolean;
 	/** -1 when the tab isn't in a group. */
 	groupId: number;
 	openerId?: number;

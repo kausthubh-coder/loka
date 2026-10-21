@@ -192,11 +192,13 @@ function onTabs(tabs: NativeTab[]) {
 export function startSync() {
 	browser.onTabsChanged(onTabs);
 	void serial("browser");
-	// The opt-in archive, once a minute.
+	// The archive (Settings > Tabs), once a minute. A tab playing sound stays, however long ago it was shown.
 	window.setInterval(() => {
 		void serial("browser", async (s) => {
 			const hours = (await readUi()).archiveAfterHours;
-			return hours ? archiveStale(s, Date.now(), hours * 60 * 60 * 1000) : s;
+			if (!hours) return s;
+			const audible = new Set(Object.keys(live).filter((id) => seen.get(live[id] ?? -1)?.audible));
+			return archiveStale(s, Date.now(), hours * 60 * 60 * 1000, audible);
 		});
 	}, 60_000);
 }

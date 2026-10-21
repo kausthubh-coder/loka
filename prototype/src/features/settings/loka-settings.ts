@@ -4,7 +4,7 @@ import type { Browser, NativeExtension } from "../../../../webui/src/bridge";
 import type { Update } from "../../app/loka-app";
 import { reducedMotion } from "../../app/theme";
 import { AUTOPLAY_MODES, type Autoplay, SIDEBAR_MAX, SIDEBAR_MIN, type UiPrefs } from "../../app/ui-prefs.logic";
-import { ARCHIVE_CHOICES } from "../archive/archive.logic";
+import { ARCHIVE_CHOICES, SLEEP_CHOICES } from "../archive/archive.logic";
 import { withPinned } from "../extensions/extensions.logic";
 import "../extensions/loka-extensions";
 import {
@@ -398,13 +398,26 @@ export class LokaSettings extends LitElement {
 				control: html`<select
 					aria-label="Archive open tabs"
 					@change=${(e: Event) => {
-						const value = (e.target as HTMLSelectElement).value;
-						this.setUi({ archiveAfterHours: value ? Number(value) : null });
+						this.setUi({ archiveAfterHours: Number((e.target as HTMLSelectElement).value) });
 					}}
 				>
 					${ARCHIVE_CHOICES.map(
-						(c) =>
-							html`<option value=${c.hours ?? ""} ?selected=${c.hours === ui.archiveAfterHours}>${c.label}</option>`,
+						(c) => html`<option value=${c.hours} ?selected=${c.hours === ui.archiveAfterHours}>${c.label}</option>`,
+					)}
+				</select>`,
+			},
+			{
+				label: "Unload other spaces' tabs",
+				detail:
+					"Tabs in a space you aren't looking at stop using memory. They keep their place and history and load again when you open them. Tabs playing sound or holding typed text stay loaded.",
+				control: html`<select
+					aria-label="Unload other spaces' tabs"
+					@change=${(e: Event) => {
+						this.setUi({ sleepAfterMinutes: Number((e.target as HTMLSelectElement).value) });
+					}}
+				>
+					${SLEEP_CHOICES.map(
+						(c) => html`<option value=${c.minutes} ?selected=${c.minutes === ui.sleepAfterMinutes}>${c.label}</option>`,
 					)}
 				</select>`,
 			},

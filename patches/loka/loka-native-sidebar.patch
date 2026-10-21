@@ -736,7 +736,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_history_ui.cc
-@@ -0,0 +1,211 @@
+@@ -0,0 +1,215 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -758,6 +758,7 @@
 +#include "chrome/browser/ui/navigator/browser_navigator.h"
 +#include "chrome/browser/ui/navigator/browser_navigator_params.h"
 +#include "chrome/browser/ui/webui/favicon_source.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h"
 +#include "components/favicon_base/favicon_url_parser.h"
 +#include "components/history/core/browser/history_service.h"
 +#include "components/history/core/browser/history_types.h"
@@ -823,6 +824,9 @@
 +      profile, std::make_unique<FaviconSource>(
 +                   profile, chrome::FaviconUrlFormat::kFavicon2));
 +  web_ui->AddMessageHandler(std::make_unique<LokaHistoryHandler>());
++  // The page is Loka's Library: its spaces, archived tabs and downloads come
++  // from the sidebar's handler.
++  web_ui->AddMessageHandler(std::make_unique<LokaSidebarHandler>());
 +}
 +
 +LokaHistoryUI::~LokaHistoryUI() = default;
@@ -3557,7 +3561,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_UI_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_spaces_service.cc
-@@ -0,0 +1,786 @@
+@@ -0,0 +1,798 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -3730,7 +3734,7 @@
 +void LokaSpacesService::OnProfileWillBeDestroyed(Profile* profile) {
 +  archive_timer_.Stop();
 +  for (const std::unique_ptr<Window>& window : windows_) {
-+    window->browser->GetTabStripModel()->RemoveObserver(this);
++    window->tab_strip->RemoveObserver(this);
 +  }
 +  windows_.clear();
 +  // The last changes reach the disk before the profile goes.
@@ -3868,6 +3872,7 @@
 +    }
 +    auto window = std::make_unique<Window>();
 +    window->browser = each;
++    window->tab_strip = each->GetTabStripModel();
 +    window->number = next_window_number_++;
 +    window->shown_space = state_.active_space_id;
 +    each->GetTabStripModel()->AddObserver(this);
@@ -3954,7 +3959,7 @@
 +LokaSpacesService::Window* LokaSpacesService::FindWindow(
 +    TabStripModel* tab_strip) {
 +  for (const std::unique_ptr<Window>& window : windows_) {
-+    if (window->browser->GetTabStripModel() == tab_strip) {
++    if (window->tab_strip == tab_strip) {
 +      return window.get();
 +    }
 +  }
@@ -3984,9 +3989,11 @@
 +
 +void LokaSpacesService::OnTabStripModelDestroyed(
 +    TabStripModel* tab_strip_model) {
-+  tab_strip_model->RemoveObserver(this);
++  // The window is going: it's half torn down, so only its tab strip, kept
++  // from when it was attached, is safe to compare. TabStripModelObserver has
++  // already stopped observing it.
 +  std::erase_if(windows_, [&](const std::unique_ptr<Window>& window) {
-+    return window->browser->GetTabStripModel() == tab_strip_model;
++    return window->tab_strip == tab_strip_model;
 +  });
 +}
 +
@@ -4010,7 +4017,7 @@
 +
 +std::vector<loka::BrowserTab> LokaSpacesService::TabsOf(Window& window) {
 +  std::vector<loka::BrowserTab> tabs;
-+  TabStripModel* tab_strip = window.browser->GetTabStripModel();
++  TabStripModel* tab_strip = window.tab_strip;
 +  for (int i = 0; i < tab_strip->count(); ++i) {
 +    tabs::TabInterface* tab = tab_strip->GetTabAtIndex(i);
 +    TabUIHelper* helper = TabUIHelper::From(tab);
@@ -4068,6 +4075,15 @@
 +void LokaSpacesService::Look(Window& window) {
 +  std::vector<loka::BrowserTab> tabs = TabsOf(window);
 +  std::map<int, loka::BrowserTab> before = std::move(window.seen);
++  // A tab keeps the opener it had when first seen: a new tab waits for its
++  // first page before joining a space, and if the tab that opened it (an
++  // empty tab) closes meanwhile, the browser hands it that tab's opener,
++  // which may be in another space.
++  for (loka::BrowserTab& tab : tabs) {
++    if (auto old = before.find(tab.id); old != before.end()) {
++      tab.opener_tab_id = old->second.opener_tab_id;
++    }
++  }
 +  window.seen.clear();
 +  for (const loka::BrowserTab& tab : tabs) {
 +    window.seen[tab.id] = tab;
@@ -4135,7 +4151,7 @@
 +}
 +
 +void LokaSpacesService::Reconcile(Window& window, Pass pass) {
-+  TabStripModel* tab_strip = window.browser->GetTabStripModel();
++  TabStripModel* tab_strip = window.tab_strip;
 +  // Groups closed by hand are forgotten.
 +  std::set<int> known;
 +  if (tab_strip->group_model()) {
@@ -4182,7 +4198,7 @@
 +
 +void LokaSpacesService::Run(Window& window, const loka::Op& op) {
 +  BrowserWindowInterface* browser = window.browser;
-+  TabStripModel* tab_strip = browser->GetTabStripModel();
++  TabStripModel* tab_strip = window.tab_strip;
 +  auto index_of = [&](int id) {
 +    tabs::TabInterface* tab = tabs::TabHandle(id).Get();
 +    return tab ? tab_strip->GetIndexOfTab(tab) : TabStripModel::kNoTab;
@@ -4346,7 +4362,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_spaces_service.h
-@@ -0,0 +1,174 @@
+@@ -0,0 +1,175 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -4462,6 +4478,7 @@
 +    ~Window();
 +
 +    raw_ptr<BrowserWindowInterface> browser;
++    raw_ptr<TabStripModel> tab_strip;
 +    int number = 0;
 +    loka::LiveMap live;
 +    loka::Groups groups;

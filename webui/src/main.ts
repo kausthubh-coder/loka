@@ -167,6 +167,9 @@ export class LokaPanel extends LitElement {
 
 	private setTabs = (tabs: NativeTab[]) => {
 		this.tabs = tabs;
+		// Which tab is on screen, and whether a playing one is muted, decide the now-playing card (render). `live`
+		// often stays the same object now, so it can't be what redraws the page.
+		this.requestUpdate();
 		this.refreshLive();
 		const empty = this.started ? null : startsEmpty(tabs);
 		if (empty !== null) {
@@ -415,13 +418,18 @@ export class LokaPanel extends LitElement {
 		}
 	}
 
+	/** The card's last contents, kept as the same object while they stay the same, so the sidebar needn't redraw. */
+	private playing: NowPlaying | null = null;
+
 	/** The card shows media from another tab; the browser's tab ids map back to Loka's through the sync's links. */
 	private nowPlaying(state: BrowserState): NowPlaying | null {
 		const media = nowPlaying(this.media, this.shownTab()?.id);
 		if (!media) return null;
 		const lokaId = Object.entries(linkedTabs()).find(([, id]) => id === media.tabId)?.[0];
 		const tab = lokaId ? (state.tabs[lokaId] ?? null) : null;
-		return { media, tab, muted: this.tabs.find((t) => t.id === media.tabId)?.muted ?? false };
+		const now = { media, tab, muted: this.tabs.find((t) => t.id === media.tabId)?.muted ?? false };
+		this.playing = this.playing ? keepUnchanged(this.playing, now) : now;
+		return this.playing;
 	}
 
 	private onMedia(action: MediaAction) {

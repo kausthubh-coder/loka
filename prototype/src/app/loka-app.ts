@@ -40,7 +40,7 @@ import {
 import { seedState } from "../features/sidebar/sidebar.seed";
 import { playCue, setSoundPrefs } from "../features/sound/sound";
 import type { LookPreview } from "../features/spaces/loka-space-editor";
-import { skyLayer, skyStyles, skyTurn } from "./sky";
+import { type NebulaNow, skyLayer, skyNow, skyStyles, skyTurn } from "./sky";
 import { reducedMotion, themeTokens } from "./theme";
 import { resolveScheme, type Scheme } from "./theme.logic";
 import { clampWidth, DEFAULT_UI, parseUiPrefs, type UiPrefs } from "./ui-prefs.logic";
@@ -397,11 +397,20 @@ export class LokaApp extends LitElement {
 		];
 	}
 
+	/** The old sky's nebula on a switch, read before the switch is drawn (skyNow). */
+	private nebulaBefore: NebulaNow | null = null;
+
+	protected override willUpdate(changed: Map<string, unknown>) {
+		const before = changed.get("state") as BrowserState | undefined;
+		if (before && before.activeSpaceId !== this.state.activeSpaceId) this.nebulaBefore = skyNow(this.renderRoot);
+	}
+
 	protected override updated(changed: Map<string, unknown>) {
 		const before = changed.get("state") as BrowserState | undefined;
 		if (before && before.activeSpaceId !== this.state.activeSpaceId) {
 			const forward = switchesForward(this.state, before.activeSpaceId, this.state.activeSpaceId);
-			skyTurn(this.renderRoot, forward, activeSpace(before).hue, this.schemeOf(before, null));
+			skyTurn(this.renderRoot, forward, activeSpace(before).hue, this.schemeOf(before, null), this.nebulaBefore);
+			this.nebulaBefore = null;
 		}
 		this.followScheme(this.pending ?? this.state);
 	}

@@ -85,23 +85,48 @@ export function skyLayer(hue: number, scheme: Scheme): TemplateResult {
 	</div>`;
 }
 
+/** Where the nebula is in its breathing, to hold the old sky there while it fades. */
+export interface NebulaNow {
+	transform: string;
+	opacity: string;
+}
+
+/**
+ * The nebula as it is now. Read it before a switch changes the page (willUpdate): the style is still clean then, so
+ * this costs nothing, where after the change it would restyle the whole sidebar there and then.
+ */
+export function skyNow(root: ParentNode): NebulaNow | null {
+	const nebula = root.querySelector(".sky .nebula");
+	if (!nebula) return null;
+	const style = getComputedStyle(nebula);
+	return { transform: style.transform, opacity: style.opacity };
+}
+
 /**
  * Switching spaces: the old space's sky (ground and nebula, held where it was) fades away over the new one, and the
  * view turns, the star layers sweeping sideways and settling, the near ones further than the far ones, towards the
  * side the new space came from. The sweep moves a wrapper around each layer: on the layer itself, beside its drift,
- * Chrome would run both on the main thread. With reduced motion only the fade happens.
+ * Chrome would run both on the main thread. With reduced motion only the fade happens. `nebula` is where the old
+ * nebula was in its breathing (skyNow, read before the switch is drawn).
  */
-export function skyTurn(root: ParentNode, forward: boolean, fromHue: number, fromScheme: Scheme) {
+export function skyTurn(
+	root: ParentNode,
+	forward: boolean,
+	fromHue: number,
+	fromScheme: Scheme,
+	nebula: NebulaNow | null,
+) {
 	const sky = root.querySelector<HTMLElement>(".sky");
-	const nebula = sky?.querySelector<HTMLElement>(".nebula");
 	if (!sky || !nebula) return;
 	const old = Object.assign(document.createElement("div"), { className: `sky-was ${fromScheme}` });
 	old.style.setProperty("--hue", String(fromHue));
 	const oldNebula = Object.assign(document.createElement("div"), { className: "nebula held" });
-	oldNebula.style.transform = getComputedStyle(nebula).transform;
-	oldNebula.style.opacity = getComputedStyle(nebula).opacity;
+	oldNebula.style.transform = nebula.transform;
+	oldNebula.style.opacity = nebula.opacity;
 	old.append(oldNebula);
-	nebula.after(old);
+	const current = sky.querySelector(".nebula");
+	if (!current) return;
+	current.after(old);
 	void old
 		.animate([{ opacity: 1 }, { opacity: 0 }], {
 			duration: 650,

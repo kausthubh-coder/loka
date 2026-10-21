@@ -1176,7 +1176,12 @@ async function oneRun(run, host) {
 			});
 		}
 	} finally {
-		await b.close();
+		// A browser that hangs while exiting (seen when several agents run browsers at once) keeps its profile locked:
+		// the run's numbers still stand, and the profile left behind is reported, not a reason to drop them.
+		await b.close().catch((e) => {
+			details.closeProblem = e instanceof Error ? e.message : String(e);
+			console.log(`  run ${run}: ${details.closeProblem}`);
+		});
 	}
 	return { results, details };
 }
@@ -1284,6 +1289,8 @@ async function main() {
 	);
 	const cold = all.map((r) => r.details.commandColdOpenMs).filter((v) => typeof v === "number");
 	if (cold.length) lines.push(`Command bar's first open (a new window and page, coarse): ${cold.join(", ")} ms.`);
+	for (const [i, r] of all.entries())
+		if (r.details.closeProblem) lines.push(`Note: run ${i + 1} left its profile behind: ${r.details.closeProblem}`);
 	const shared = all.find((r) => r.details.sharedRenderer)?.details.sharedRenderer;
 	if (shared) lines.push(`Note: ${shared}; their CPU numbers are the same process.`);
 	if (tracing) lines.push("Traced: these runs paid for tracing and profiling. Judge budgets from an untraced run.");

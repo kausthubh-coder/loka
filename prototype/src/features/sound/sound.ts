@@ -122,9 +122,24 @@ export function playCue(cue: Cue) {
 	if (!navigator.userActivation?.hasBeenActive) return;
 	if (!gate.allow(cue, performance.now())) return;
 	if (!context) return;
+	window.clearTimeout(sleepTimer);
+	const ctx = context;
+	if (ctx.state !== "suspended") {
+		sound(ctx, cue);
+		return;
+	}
+	// Waking the audio device is the slow part on some machines: never inside the click or key that asked for the
+	// cue (a space switch draws in that frame). The cue starts after the frame, about 16 ms later.
+	requestAnimationFrame(() =>
+		setTimeout(() => {
+			void ctx.resume();
+			sound(ctx, cue);
+		}, 0),
+	);
+}
+
+function sound(ctx: AudioContext, cue: Cue) {
 	try {
-		const ctx = audio();
-		if (ctx.state === "suspended") void ctx.resume();
 		// A few milliseconds ahead, so the first layer's envelope isn't cut by scheduling jitter.
 		const at = ctx.currentTime + 0.005;
 		if (output) for (const l of CUES[cue]) layer(ctx, output, l, at);

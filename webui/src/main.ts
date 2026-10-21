@@ -3,7 +3,7 @@
 
 import { css, html, LitElement, nothing } from "lit";
 import type { Update } from "../../prototype/src/app/loka-app";
-import { restWhenIdle, skyLayer, skyStyles, skyTurn } from "../../prototype/src/app/sky";
+import { type NebulaNow, restWhenIdle, skyLayer, skyNow, skyStyles, skyTurn } from "../../prototype/src/app/sky";
 import { reducedMotion, themeTokens } from "../../prototype/src/app/theme";
 import { resolveScheme, type Scheme } from "../../prototype/src/app/theme.logic";
 import { DEFAULT_UI, type UiPrefs } from "../../prototype/src/app/ui-prefs.logic";
@@ -12,6 +12,7 @@ import "../../prototype/src/features/command-bar/loka-command-bar";
 import type { MediaAction, NowPlaying } from "../../prototype/src/features/media/loka-media-card";
 import { nowPlaying } from "../../prototype/src/features/media/media.logic";
 import { type LiveTabs, setFaviconSource } from "../../prototype/src/features/sidebar/favicon";
+import { keepUnchanged } from "../../prototype/src/features/sidebar/keep-unchanged.logic";
 import "../../prototype/src/features/sidebar/loka-sidebar";
 import type { LokaSidebar } from "../../prototype/src/features/sidebar/loka-sidebar";
 import { SPACE_HUES } from "../../prototype/src/features/sidebar/planet";
@@ -48,7 +49,7 @@ import {
 	readState,
 	readUi,
 	watch,
-	writeState,
+	writeStateAfterPaint,
 	writeUi,
 } from "./store";
 import { browserTabOf, changeSpaces, linkedTabs, openEmptyTab, spacesChanged, startSync } from "./sync";
@@ -121,8 +122,8 @@ export class LokaPanel extends LitElement {
 		const before = this.pending ?? this.state;
 		if (!before) return;
 		const next = change(before);
-		void writeState(next).then(spacesChanged);
-		this.followScheme(next);
+		// Drawn first; saved, and the browser told, after the frame that shows it.
+		writeStateAfterPaint(next, spacesChanged);
 		if (this.pending) {
 			this.pending = next;
 			return;
@@ -160,7 +161,8 @@ export class LokaPanel extends LitElement {
 			if (!tab) continue;
 			live[lokaId] = { icon: this.icons.get(lokaId), loading: tab.loading, audible: tab.audible, muted: tab.muted };
 		}
-		this.live = live;
+		// A title changing in the browser changes nothing here: the sidebar then has nothing to redraw.
+		this.live = keepUnchanged(this.live, live);
 	};
 
 	private setTabs = (tabs: NativeTab[]) => {
@@ -181,7 +183,8 @@ export class LokaPanel extends LitElement {
 		})();
 		watch(({ state, ui, onboarding }) => {
 			if (onboarding) void this.applySetup();
-			if (state) this.state = state;
+			// Another window's spaces arrive as all new objects: the parts that didn't change stay the ones drawn.
+			if (state) this.state = this.state ? keepUnchanged(this.state, state) : state;
 			if (ui) this.ui = ui;
 		});
 		browser.onTabsChanged(this.setTabs);
@@ -223,13 +226,24 @@ export class LokaPanel extends LitElement {
 		if (spaces.length) await changeSpaces((s) => applyOnboarding(s, spaces));
 	}
 
+	/** The old sky's nebula on a switch, read before the switch is drawn (skyNow). */
+	private nebulaBefore: NebulaNow | null = null;
+
+	protected override willUpdate(changed: Map<string, unknown>) {
+		const before = changed.get("state") as BrowserState | null | undefined;
+		if (before && this.state && before.activeSpaceId !== this.state.activeSpaceId) {
+			this.nebulaBefore = skyNow(this.renderRoot);
+		}
+	}
+
 	protected override updated(changed: Map<string, unknown>) {
 		const before = changed.get("state") as BrowserState | null | undefined;
 		const state = this.state;
 		if (!state) return;
 		if (before && before.activeSpaceId !== state.activeSpaceId) {
 			const forward = switchesForward(state, before.activeSpaceId, state.activeSpaceId);
-			skyTurn(this.renderRoot, forward, activeSpace(before).hue, this.schemeOf(before, null));
+			skyTurn(this.renderRoot, forward, activeSpace(before).hue, this.schemeOf(before, null), this.nebulaBefore);
+			this.nebulaBefore = null;
 		}
 		this.followScheme(this.pending ?? state);
 		this.followFrame(this.pending ?? state);

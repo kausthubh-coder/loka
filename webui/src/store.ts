@@ -37,12 +37,23 @@ function load(): Promise<void> {
  */
 let unsaved: BrowserState | null = null;
 
+/**
+ * The spaces as this page last read, wrote or drew them, with the store text they match (null while a change drawn
+ * on screen waits to be saved, see writeStateAfterPaint). A read hands them back without parsing the text again,
+ * and the same objects keep the sidebar from redrawing rows that didn't change.
+ */
+let current: { state: BrowserState; json: string | null } | null = null;
+
 export async function readState(): Promise<BrowserState> {
 	await load();
 	const saved = store[STATE_KEY];
+	if (current && (current.json === null || current.json === saved)) return current.state;
 	if (typeof saved === "string") {
 		const parsed = importState(saved);
-		if (parsed) return parsed;
+		if (parsed) {
+			current = { state: parsed, json: saved };
+			return parsed;
+		}
 	}
 	unsaved ??= firstState();
 	return unsaved;
@@ -52,11 +63,38 @@ export async function readState(): Promise<BrowserState> {
 export async function writeState(state: BrowserState): Promise<string> {
 	await load();
 	const json = JSON.stringify(state);
+	current = { state, json };
 	if (store[STATE_KEY] === json) return json;
 	store = { ...store, [STATE_KEY]: json };
 	browser.setStore(STATE_KEY, json);
 	notify({ state });
 	return json;
+}
+
+let saveScheduled = false;
+
+/**
+ * Saves a change the page has already drawn, after the frame that shows it: turning the spaces into text and the
+ * browser following (a switch's tab, its groups) never hold up that frame. Reads in between already get the change,
+ * so nothing builds on the spaces before it. `saved` gets the text written, or null when a newer save (the sync's,
+ * built on this change, or another window's) took its place; the browser must follow either way.
+ */
+export function writeStateAfterPaint(state: BrowserState, saved: (json: string | null) => void) {
+	current = { state, json: null };
+	if (saveScheduled) return;
+	saveScheduled = true;
+	let done = false;
+	const save = () => {
+		if (done) return;
+		done = true;
+		saveScheduled = false;
+		const now = current;
+		if (now?.json !== null) saved(null);
+		else void writeState(now.state).then(saved);
+	};
+	// After the frame's paint. A hidden page draws no frames, so the timer saves it then.
+	requestAnimationFrame(() => setTimeout(save, 0));
+	setTimeout(save, 100);
 }
 
 export async function readUi(): Promise<UiPrefs> {
@@ -119,7 +157,10 @@ browser.onStoreChanged((next) => {
 		store = { ...store, [key]: value };
 		if (key === STATE_KEY) {
 			const parsed = importState(value);
-			if (parsed) notify({ state: parsed, foreign: true });
+			if (!parsed) continue;
+			// Another window's change wins over one of this page's still waiting to be saved.
+			current = { state: parsed, json: value };
+			notify({ state: parsed, foreign: true });
 		} else notify({ ui: parseUiPrefs(value), foreign: true });
 	}
 });

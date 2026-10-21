@@ -4,6 +4,8 @@
 
 /** Requests the sidebar sends with chrome.send; the handler registers each in RegisterMessages. */
 export const MESSAGES = [
+	"getSpaces",
+	"spacesDo",
 	"syncTabs",
 	"getTabs",
 	"getGroups",
@@ -17,9 +19,6 @@ export const MESSAGES = [
 	"goForward",
 	"reload",
 	"setMuted",
-	"groupTabs",
-	"updateGroup",
-	"ungroupTabs",
 	"search",
 	"openPage",
 	"windowAction",
@@ -28,7 +27,7 @@ export const MESSAGES = [
 ] as const;
 
 /** News the handler pushes with FireWebUIListener. */
-export const EVENTS = ["tabs-changed", "store-changed"] as const;
+export const EVENTS = ["spaces-changed", "links-changed", "tabs-changed", "store-changed"] as const;
 
 /**
  * Requests the handler in patches/loka doesn't answer yet (the browser drops them). The build checkout may be ahead:

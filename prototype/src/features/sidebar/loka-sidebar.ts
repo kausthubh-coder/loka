@@ -2,7 +2,7 @@ import { css, html, LitElement, nothing, svg, type TemplateResult } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { repeat } from "lit/directives/repeat.js";
 import type { Browser, NativeDownload, NativeExtension } from "../../../../webui/src/bridge";
-import type { Update } from "../../app/loka-app";
+import type { Act } from "../../app/loka-app";
 import { EASE_IN, EASE_OUT, leave, reducedMotion } from "../../app/theme";
 import type { ActionId, CommandMode } from "../command-bar/command-bar.logic";
 import { faviconBackground, faviconInner, hostOf, type LiveTabs } from "./favicon";
@@ -21,28 +21,20 @@ import { autoScrollStep, type DropMode, dropModeAt } from "./drag.logic";
 import { essentialsDropSlots } from "./empty-states.logic";
 import { planet } from "./planet";
 import {
-	activateTab,
 	activeSpace,
 	activeTab,
 	type BrowserState,
-	closeTab,
-	createFolder,
 	exportState,
 	folderHolds,
 	groupIntoFolder,
 	importState,
-	moveItem,
-	openTab,
+	newId,
 	type PinnedRow,
 	type Place,
 	pinnedRows,
-	renameFolder,
 	type Space,
 	switchesForward,
-	switchSpace,
 	type TabId,
-	toggleFolder,
-	ungroupFolder,
 } from "./sidebar.logic";
 import { SWIPE_GAP, SWIPE_IDLE, type SwipeState, swipeWheel } from "./swipe.logic";
 
@@ -134,7 +126,7 @@ export class LokaSidebar extends LitElement {
 	};
 
 	declare state: BrowserState;
-	declare apply: Update;
+	declare apply: Act;
 	declare browser: Browser;
 	dragId: string | null = null;
 	drop: Drop | null = null;
@@ -233,7 +225,7 @@ export class LokaSidebar extends LitElement {
 	/** Closes a tab, telling the browser too: unloading a pinned tab changes nothing in the spaces, only the browser. */
 	private closeTabFor(tabId: TabId) {
 		playCue("tab-close");
-		this.apply((s) => closeTab(s, tabId));
+		this.apply({ op: "closeTab", tabId });
 		this.dispatchEvent(new CustomEvent("loka-tab-closed", { detail: tabId, bubbles: true, composed: true }));
 	}
 
@@ -442,10 +434,10 @@ export class LokaSidebar extends LitElement {
 
 	private dropItem(id: string, drop: Drop) {
 		if (drop.groupWith) {
-			const [next, folderId] = groupIntoFolder(this.state, drop.groupWith, id, "New folder");
-			if (!folderId) return;
+			const folderId = newId();
+			if (groupIntoFolder(this.state, drop.groupWith, id, "New folder", folderId)[1] === null) return;
 			playCue("into-folder");
-			this.apply(() => next);
+			this.apply({ op: "groupIntoFolder", targetId: drop.groupWith, draggedId: id, name: "New folder", id: folderId });
 			this.renamingId = folderId;
 			return;
 		}
@@ -455,7 +447,7 @@ export class LokaSidebar extends LitElement {
 		if (drop.mode === "into") playCue("into-folder");
 		else if (wasOpen && !toOpen) playCue("pin");
 		else if (!wasOpen && toOpen) playCue("unpin");
-		this.apply((s) => moveItem(s, id, drop.place));
+		this.apply({ op: "moveItem", id, to: drop.place });
 	}
 
 	private dropClass(key: string): string {
@@ -584,7 +576,7 @@ export class LokaSidebar extends LitElement {
 		const items: MenuItem[] = [];
 		const move = (cue: Cue, place: Place) => () => {
 			playCue(cue);
-			this.apply((s) => moveItem(s, tabId, place));
+			this.apply({ op: "moveItem", id: tabId, to: place });
 		};
 		if (isOpen) {
 			items.push({
@@ -610,7 +602,7 @@ export class LokaSidebar extends LitElement {
 					label: other.name,
 					run: () => {
 						playCue("space");
-						this.apply((s) => moveItem(s, tabId, { area: "open", spaceId: other.id, index: 0 }));
+						this.apply({ op: "moveItem", id: tabId, to: { area: "open", spaceId: other.id, index: 0 } });
 					},
 				})),
 			});
@@ -619,9 +611,14 @@ export class LokaSidebar extends LitElement {
 			items.push({
 				label: "New folder with this tab",
 				run: () => {
-					const [made, folderId] = createFolder(this.state, space.id, null, "New folder");
+					const folderId = newId();
 					playCue("into-folder");
-					this.apply(() => moveItem(made, tabId, { area: "pinned", spaceId: space.id, parentId: folderId, index: 0 }));
+					this.apply({ op: "createFolder", spaceId: space.id, parentId: null, name: "New folder", id: folderId });
+					this.apply({
+						op: "moveItem",
+						id: tabId,
+						to: { area: "pinned", spaceId: space.id, parentId: folderId, index: 0 },
+					});
 					this.renamingId = folderId;
 				},
 			});
@@ -633,7 +630,7 @@ export class LokaSidebar extends LitElement {
 					divider: true,
 					run: () => {
 						playCue("tab-open");
-						this.apply((s) => openTab(s, tab.url, tab.title));
+						this.apply({ op: "openTab", url: tab.url, title: tab.title, now: Date.now(), id: newId() });
 					},
 				},
 				{ label: "Copy link", run: () => void this.copyLink(tab.url) },
@@ -659,7 +656,7 @@ export class LokaSidebar extends LitElement {
 				danger: true,
 				run: () => {
 					playCue("clear");
-					this.apply((s) => closable.reduce((acc, id) => closeTab(acc, id), s));
+					this.apply({ op: "closeTabs", tabIds: closable });
 				},
 			});
 		}
@@ -734,23 +731,23 @@ export class LokaSidebar extends LitElement {
 			{
 				label: "New folder inside",
 				run: () => {
-					const [next, id] = createFolder(this.state, spaceId, folderId, "New folder");
-					this.apply(() => next);
+					const id = newId();
+					this.apply({ op: "createFolder", spaceId, parentId: folderId, name: "New folder", id });
 					this.renamingId = id;
 				},
 			},
-			{ label: "Ungroup (keep tabs)", divider: true, run: () => this.apply((s) => ungroupFolder(s, folderId)) },
+			{ label: "Ungroup (keep tabs)", divider: true, run: () => this.apply({ op: "ungroupFolder", folderId }) },
 		];
 	}
 
 	private toggle(folderId: string, open: boolean) {
 		playCue(open ? "folder-close" : "folder-open");
-		this.apply((s) => toggleFolder(s, folderId));
+		this.apply({ op: "toggleFolder", folderId });
 	}
 
 	private newFolder(parentId: string | null) {
-		const [next, id] = createFolder(this.state, activeSpace(this.state).id, parentId, "New folder");
-		this.apply(() => next);
+		const id = newId();
+		this.apply({ op: "createFolder", spaceId: activeSpace(this.state).id, parentId, name: "New folder", id });
 		this.renamingId = id;
 	}
 
@@ -798,7 +795,7 @@ export class LokaSidebar extends LitElement {
 	private switchTo(spaceId: string) {
 		if (spaceId === this.state.activeSpaceId) return;
 		playCue("space");
-		this.apply((s) => switchSpace(s, spaceId));
+		this.apply({ op: "switchSpace", spaceId });
 	}
 
 	private spacesMenu(): MenuItem[] {
@@ -1089,7 +1086,7 @@ export class LokaSidebar extends LitElement {
 		input.addEventListener("change", async () => {
 			const text = await input.files?.[0]?.text();
 			const parsed = text ? importState(text) : null;
-			if (parsed) this.apply(() => parsed);
+			if (parsed) this.apply({ op: "replaceState", state: parsed });
 			else alert("That file isn't a Loka spaces export.");
 		});
 		input.click();
@@ -1147,7 +1144,7 @@ export class LokaSidebar extends LitElement {
 				tabindex="0"
 				@pointerdown=${(e: PointerEvent) => this.pressDrag(e, tabId)}
 				.dropZone=${{ key: tabId, place, into: "tab" } satisfies DropZone}
-				@click=${() => this.apply((s) => activateTab(s, tabId))}
+				@click=${() => this.apply({ op: "activateTab", tabId, now: Date.now() })}
 				@mousedown=${(e: MouseEvent) => e.button === 1 && e.preventDefault()}
 				@auxclick=${(e: MouseEvent) => {
 					// A middle click closes the tab, as on a browser's tab strip; a pinned one unloads.
@@ -1155,7 +1152,7 @@ export class LokaSidebar extends LitElement {
 					e.preventDefault();
 					this.closeTabFor(tabId);
 				}}
-				@keydown=${(e: KeyboardEvent) => this.rowKey(e, () => this.apply((s) => activateTab(s, tabId)))}
+				@keydown=${(e: KeyboardEvent) => this.rowKey(e, () => this.apply({ op: "activateTab", tabId, now: Date.now() }))}
 				@contextmenu=${(e: MouseEvent) => this.openMenu(e, this.tabMenu(tabId))}
 			>
 				${this.favicon(tabId, tab.url)}
@@ -1243,7 +1240,7 @@ export class LokaSidebar extends LitElement {
 								}}
 								@blur=${(e: Event) => {
 									const name = (e.target as HTMLInputElement).value.trim();
-									if (this.renamingId === node.id && name) this.apply((s) => renameFolder(s, node.id, name));
+									if (this.renamingId === node.id && name) this.apply({ op: "renameFolder", folderId: node.id, name });
 									this.renamingId = null;
 								}}
 							/>`
@@ -1543,7 +1540,7 @@ export class LokaSidebar extends LitElement {
 														axis: "x",
 													} satisfies DropZone
 												}
-												@click=${() => this.apply((s) => activateTab(s, id))}
+												@click=${() => this.apply({ op: "activateTab", tabId: id, now: Date.now() })}
 												@contextmenu=${(e: MouseEvent) => this.openMenu(e, this.tabMenu(id))}
 											>
 												${this.favicon(id, tab.url, 24)}
@@ -1602,7 +1599,7 @@ export class LokaSidebar extends LitElement {
 										title="Close every open tab in ${space.name}"
 										@click=${() => {
 											playCue("clear");
-											this.apply((s) => space.open.reduce((acc, id) => closeTab(acc, id), s));
+											this.apply({ op: "closeTabs", tabIds: space.open });
 										}}
 									>
 										<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v8M4.5 7.5 8 11l3.5-3.5M4 13.5h8" /></svg>Clear

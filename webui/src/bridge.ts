@@ -2,6 +2,9 @@
 // and LokaSidebarHandler (chrome/browser/ui/webui/loka_sidebar/) answers it: chrome.send carries a request, and the
 // browser answers through cr.webUIResponse or pushes news through cr.webUIListenerCallback.
 
+import type { Intent } from "../../prototype/src/features/sidebar/intents.logic";
+import type { BrowserState, TabId } from "../../prototype/src/features/sidebar/sidebar.logic";
+import type { SpacesDelta } from "../../prototype/src/features/sidebar/spaces-delta.logic";
 import type { BrowserEvent, Message } from "./messages";
 
 declare global {
@@ -40,6 +43,7 @@ export interface NativeTab {
 	lastAccessed: number;
 }
 
+/** A tab group in the window, as getGroups reports it (verify:flows reads them). */
 export interface NativeGroup {
 	id: number;
 	title: string;
@@ -53,11 +57,7 @@ interface TabChanges {
 	removed?: number[];
 	/** Every tab's id in the window's order, when the order changed. */
 	order?: number[];
-	/** Every group, when any changed. */
-	groups?: NativeGroup[];
 }
-
-export type GroupColor = "grey" | "blue" | "red" | "yellow" | "green" | "pink" | "purple" | "cyan" | "orange";
 
 /** An installed, enabled extension, as its toolbar button would show it. */
 export interface NativeExtension {
@@ -185,10 +185,10 @@ function on(event: BrowserEvent, listener: (...args: unknown[]) => void): () => 
 }
 
 /**
- * This window's tabs and groups as the page last heard, kept by "tabs-changed" once syncTabs has started it. Listening
- * here first means every other listener sees the copy with the change applied.
+ * This window's tabs as the page last heard, kept by "tabs-changed" once syncTabs has started it. Listening here first
+ * means every other listener sees the copy with the change applied.
  */
-const heard = { tabs: new Map<number, NativeTab>(), order: [] as number[], groups: [] as NativeGroup[] };
+const heard = { tabs: new Map<number, NativeTab>(), order: [] as number[] };
 
 function heardTabs(): NativeTab[] {
 	return heard.order.flatMap((id) => heard.tabs.get(id) ?? []);
@@ -199,20 +199,31 @@ on("tabs-changed", (c) => {
 	for (const id of changes.removed ?? []) heard.tabs.delete(id);
 	for (const tab of changes.tabs ?? []) heard.tabs.set(tab.id, tab);
 	if (changes.order) heard.order = changes.order;
-	if (changes.groups) heard.groups = changes.groups;
 });
 
 export const browser = {
+	/**
+	 * The spaces, once the browser has read them, and which browser tab shows each loaded Loka tab in this window. A
+	 * window's sidebar asking also starts the browser keeping that window's tabs in step with the spaces.
+	 */
+	getSpaces: () => ask<{ state: BrowserState; links: [TabId, number][] }>("getSpaces"),
+	/** Asks the browser to make a change; a "spaces-changed" carrying `seq` as its `ack` says it's done. */
+	spacesDo: (seq: number, intent: Intent) => tell("spacesDo", seq, intent),
+	/** What changed in the spaces, from this page's intents (with `ack`), another window's, or the browser's. */
+	onSpacesChanged: (listener: (delta: SpacesDelta & { ack?: number }) => void) =>
+		on("spaces-changed", (d) => listener(d as SpacesDelta & { ack?: number })),
+	/** This window's links, Loka tab id to browser tab, whenever they change. */
+	onLinksChanged: (listener: (links: [TabId, number][]) => void) =>
+		on("links-changed", (l) => listener(l as [TabId, number][])),
 	/** A snapshot of the window's tabs, for a page that looks now and then (the command bar). */
 	tabs: () => ask<NativeTab[]>("getTabs"),
-	groups: () => ask<NativeGroup[]>("getGroups"),
 	/**
-	 * The window's tabs and groups, current as of now: the browser sends what changed before it answers. The first
-	 * call starts tabs-changed for this page (onTabsChanged); after that it costs one small message each way.
+	 * The window's tabs, current as of now: the browser sends what changed before it answers. The first call starts
+	 * tabs-changed for this page (onTabsChanged); after that it costs one small message each way.
 	 */
-	syncTabs: async (): Promise<{ tabs: NativeTab[]; groups: NativeGroup[] }> => {
+	syncTabs: async (): Promise<NativeTab[]> => {
 		await ask("syncTabs");
-		return { tabs: heardTabs(), groups: heard.groups };
+		return heardTabs();
 	},
 	/** Opens a tab and returns its id; an empty url opens the browser's new tab page. */
 	createTab: (url: string, active = true) => ask<number | null>("createTab", url, active),
@@ -223,11 +234,6 @@ export const browser = {
 	goForward: (id: number) => tell("goForward", id),
 	reload: (id: number) => tell("reload", id),
 	setMuted: (id: number, muted: boolean) => tell("setMuted", id, muted),
-	/** Puts the tabs in `groupId`, or in a new group when it's -1 or gone; returns the group's id. */
-	groupTabs: (ids: number[], groupId: number) => ask<number | null>("groupTabs", ids, groupId),
-	updateGroup: (groupId: number, look: { title?: string; color?: GroupColor; collapsed?: boolean }) =>
-		tell("updateGroup", groupId, look.title ?? null, look.color ?? null, look.collapsed ?? null),
-	ungroupTabs: (ids: number[]) => tell("ungroupTabs", ids),
 	/** Searches with the user's own search engine. */
 	search: (query: string, newTab: boolean) => tell("search", query, newTab),
 	/** Opens one of the browser's own pages (chrome://settings, downloads, extensions), reusing a tab showing it. */

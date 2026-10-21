@@ -1,7 +1,7 @@
 import { css, html, LitElement } from "lit";
-import type { Update } from "../../app/loka-app";
+import type { Act } from "../../app/loka-app";
 import { faviconBackground, faviconInner, hostOf } from "../sidebar/favicon";
-import { type BrowserState, restoreArchived } from "../sidebar/sidebar.logic";
+import type { BrowserState } from "../sidebar/sidebar.logic";
 import { playCue } from "../sound/sound";
 import { timeAgo } from "./archive.logic";
 
@@ -14,7 +14,7 @@ export class LokaArchivePanel extends LitElement {
 	};
 
 	declare state: BrowserState;
-	declare apply: Update;
+	declare apply: Act;
 	query = "";
 
 	private action(action: string) {
@@ -41,7 +41,7 @@ export class LokaArchivePanel extends LitElement {
 								class="quiet"
 								@click=${() => {
 									playCue("clear");
-									this.apply((s) => ({ ...s, archive: [] }));
+									this.apply({ op: "clearArchive" });
 								}}
 							>
 								Clear
@@ -69,7 +69,7 @@ export class LokaArchivePanel extends LitElement {
 							title="Bring back ${a.tab.title}"
 							@click=${() => {
 								playCue("tab-open");
-								this.apply((s) => restoreArchived(s, a.tab.id));
+								this.apply({ op: "restoreArchived", tabId: a.tab.id, now: Date.now() });
 							}}
 						>
 							<span class="fav" aria-hidden="true" style="--fav: ${faviconBackground(a.tab.url)}">${faviconInner(a.tab.url)}</span>

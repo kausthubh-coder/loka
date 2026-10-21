@@ -503,10 +503,7 @@ async function attachSidebar(b, pick = () => true) {
 	/** @param {string} message @param {unknown[]} args */
 	const ask = (message, ...args) => evaluate(s, askExpression(message, args));
 	/** @returns {Promise<BrowserState>} */
-	const state = async () => {
-		const store = await ask("getStore");
-		return JSON.parse(store["state.v1"] ?? "null");
-	};
+	const state = async () => (await ask("getSpaces"))?.state ?? null;
 	return {
 		...d,
 		ask,

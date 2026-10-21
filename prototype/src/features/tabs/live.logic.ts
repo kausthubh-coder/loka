@@ -99,6 +99,7 @@ export function adoptTabs(
 	tabs: BrowserTab[],
 	now: number,
 	makeId: () => TabId = newId,
+	keepUnloaded = false,
 ): [BrowserState, LiveMap] {
 	let live: LiveMap = {};
 	let next = state;
@@ -126,9 +127,12 @@ export function adoptTabs(
 		[next, live] = addOpenTab(next, live, tab, next.activeSpaceId, now, makeId());
 		taken.add(lokaIdOf(live, tab.id) ?? "");
 	}
-	// Open tabs that no browser tab took are gone.
-	for (const space of next.spaces) {
-		for (const id of space.open) if (!(id in live)) next = closeTab(next, id);
+	// Open tabs that no browser tab took are gone: closed while Loka wasn't running. Not after an import
+	// (`keepUnloaded`), whose open tabs were never loaded here.
+	if (!keepUnloaded) {
+		for (const space of next.spaces) {
+			for (const id of space.open) if (!(id in live)) next = closeTab(next, id);
+		}
 	}
 	const active = tabs.find((t) => t.active);
 	const activeId = active ? lokaIdOf(live, active.id) : null;

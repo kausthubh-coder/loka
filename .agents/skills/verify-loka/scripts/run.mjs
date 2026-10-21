@@ -814,11 +814,13 @@ const recipes = {
 		assert.equal(await stars.getByRole("radio", { name: "While I'm using Loka" }).getAttribute("aria-checked"), "true");
 		await loka.proof("01-appearance");
 
+		// Off draws the sky with no drift animation at all, so it holds no layers for it.
+		const off = { play: "paused", willChange: "auto", drift: null };
 		await stars.getByRole("radio", { name: "Off" }).click();
 		assert.equal((await loka.ui()).starMotion, "off", "Off is saved");
-		assert.deepEqual(await sky(), still, "Off holds the stars");
+		assert.deepEqual(await sky(), off, "Off holds the stars");
 		await loka.page.mouse.move(600, 380);
-		assert.deepEqual(await sky(), still, "and input doesn't start them");
+		assert.deepEqual(await sky(), off, "and input doesn't start them");
 
 		await stars.getByRole("radio", { name: "Always" }).click();
 		assert.equal((await loka.ui()).starMotion, "always", "Always is saved");

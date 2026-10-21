@@ -71,7 +71,8 @@ function syncPlay() {
 	const sky = starsMoving({ motion, ...now });
 	const rest = starsMoving({ motion: "while-using", ...now });
 	write("--loka-sky-play", sky.moving ? "running" : "paused");
-	// A layer of its own only while it moves; a still sky is painted with the page and holds no GPU memory for it.
+	// The layer hint only while the stars move. Chrome keeps a layer for a paused animation anyway (LayerTree counts the
+	// same layers resting as moving), so only a sky with no animation, `still`, gives that GPU memory back.
 	write("--loka-sky-will-change", sky.moving ? "transform" : "auto");
 	write("--loka-play", rest.moving ? "running" : "paused");
 	const next = Math.min(sky.changesIn ?? Number.POSITIVE_INFINITY, rest.changesIn ?? Number.POSITIVE_INFINITY);
@@ -111,7 +112,8 @@ export function setStarMotion(next: StarMotion) {
  * The sky behind everything: the deep ground, a nebula in the space's color, three star layers, shooting stars.
  * It takes the hue itself rather than inheriting the window's animated --hue: animating a hue number from blue to
  * orange passes through green and yellow, which on the whole sky reads as a rainbow. skyTurn() crossfades instead.
- * `drifts` for the sidebar's sky, whose motion setStarMotion() runs; `still` for a sky that covers a whole tab.
+ * `drifts` for the sidebar's sky, whose motion setStarMotion() runs; `still` for a sky that covers a whole tab, and
+ * for the sidebar's with Moving stars off: no animation at all, so no layers held for it.
  */
 export function skyLayer(hue: number, scheme: Scheme, moves: "drifts" | "still"): TemplateResult {
 	return html`<div class="sky ${scheme} ${moves}" aria-hidden="true" style="--hue: ${hue}">

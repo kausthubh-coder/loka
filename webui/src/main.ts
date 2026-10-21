@@ -482,7 +482,7 @@ export class LokaPanel extends LitElement {
 					this.preview = e.detail;
 				}}
 			>
-				${skyLayer(hue, scheme, "drifts")}
+				${skyLayer(hue, scheme, this.ui.starMotion === "off" ? "still" : "drifts")}
 				<loka-sidebar
 					.state=${state}
 					.apply=${this.apply}

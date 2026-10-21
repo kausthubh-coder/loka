@@ -16,7 +16,8 @@ tab, History, Settings) never move.
   default rule whatever the setting.
 - `sky-setting`: the `Moving stars` radiogroup saves `starMotion` in the prefs (`ui.v1` in the profile in the real
   browser, shared by every window); the sidebar follows on its next render.
-- `sky-still-pages`: `skyLayer(hue, scheme, "still")` on the new tab, History and Settings: no drift animation.
+- `sky-still-pages`: `skyLayer(hue, scheme, "still")` on the new tab, History and Settings, and on the sidebar with
+  Off: no drift animation, so no compositor layers for it.
 
 ## How to get to it (user POV)
 
@@ -29,7 +30,8 @@ Preconditions: seed data.
 - **Rule in the page.** Install Playwright's fake clock and reload, then read `--loka-sky-play` on the root and the
   near star layer's drift animation (`.sky .stars.near` in `loka-app`'s shadow root, `getAnimations()[0].playState`).
   Fast-forward 14 s (still running), 1.5 s more (paused), move the mouse (running).
-- **Modes.** Off: paused, and a mouse move doesn't start it. Always: running after a minute with no input.
+- **Modes.** Off: paused with no drift animation, and a mouse move doesn't start it. Always: running after a minute
+  with no input.
 - **Hidden and reduced motion.** Redefine `document.visibilityState` and fire `visibilitychange`; `emulateMedia({
   reducedMotion: "reduce" })` removes the drift entirely.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs sky`.
@@ -44,6 +46,8 @@ Preconditions: seed data.
 - The `animation` shorthand resets `animation-play-state`. A separate play-state rule loses to a more specific
   shorthand rule, which is how the old idle rest left the star drift and shooting stars running; keep the play state
   inside each shorthand.
-- Running or paused, an animation keeps its layer; `will-change` only adds one while the stars move.
+- Running or paused, an animation keeps its compositor layer (CDP `LayerTree`: the prototype's window held 19 drawing
+  layers, about 8.4 M px, moving and resting alike; 6 layers, 1.1 M px, with no sky animation). Resting saves the
+  frames, not the GPU memory; only Off and the still pages give the memory back.
 - CDP input to another page (Settings) is not input to the sidebar: in the flows the sidebar may already rest under
   the default mode, so only Always and Off have a fixed expected state.

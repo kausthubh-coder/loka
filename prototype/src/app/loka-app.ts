@@ -454,7 +454,7 @@ export class LokaApp extends LitElement {
 					this.popup = null;
 				}}
 			>
-				${skyLayer(hue, scheme, "drifts")}
+				${skyLayer(hue, scheme, this.ui.starMotion === "off" ? "still" : "drifts")}
 				${
 					hidden
 						? html`<div class="edge-zone" aria-hidden="true" @pointerenter=${() => (this.peek = true)}></div>`

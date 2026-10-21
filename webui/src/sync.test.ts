@@ -23,9 +23,12 @@ const copyTabs = () => browserSide.tabs.map((t) => ({ ...t }));
 /** What the page has heard, as the handler keeps it; null until it calls syncTabs. */
 let heard: { tabs: Map<number, string>; order: string; groups: string } | null = null;
 
+/** While true the browser holds its reports back, as a busy browser does; pushTabs() later sends what changed. */
+let holdReports = false;
+
 /** Pushes tabs-changed with what changed since the page last heard, if anything did. */
 function pushTabs() {
-	if (!heard) return;
+	if (!heard || holdReports) return;
 	const tabs = copyTabs().filter((t) => heard?.tabs.get(t.id) !== JSON.stringify(t));
 	const removed = [...heard.tabs.keys()].filter((id) => !browserSide.tabs.some((t) => t.id === id));
 	const order = JSON.stringify(browserSide.tabs.map((t) => t.id));
@@ -221,4 +224,28 @@ test("moving the tab on screen to another space leaves the browser on this space
 	expect(saved().activeSpaceId).toBe(research?.id ?? "");
 	expect(shownTab()?.url).toBe("chrome://newtab/");
 	expect(browserSide.groups.find((g) => g.id === shownTab()?.groupId)).toBeUndefined();
+});
+
+test("the browser's late report of a tab the sync showed doesn't switch back from a space picked since", async () => {
+	const { changeSpaces } = await import("./sync");
+	const { readState, writeState } = await import("./store");
+	const { openTab, switchSpace } = await import("../../prototype/src/features/sidebar/sidebar.logic");
+	const [research, play] = saved().spaces.map((s) => s.id);
+	if (!research || !play) throw new Error("the earlier tests leave two spaces");
+	// Research gets a page of its own; Play still has the tab moved there.
+	await changeSpaces((s) => openTab(switchSpace(s, research), "https://late.example/", "Late"));
+	await settle();
+	expect(shownTab()?.url).toBe("https://late.example/");
+
+	// Ctrl+2: the sync shows Play's tab, and the browser is slow to say so.
+	holdReports = true;
+	await changeSpaces((s) => switchSpace(s, play));
+	await settle();
+	// Ctrl+1 is saved before that report lands.
+	await writeState(switchSpace(await readState(), research));
+	holdReports = false;
+	pushTabs();
+	await settle();
+
+	expect(saved().activeSpaceId).toBe(research);
 });

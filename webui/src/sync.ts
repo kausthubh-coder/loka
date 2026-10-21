@@ -41,6 +41,12 @@ let looked = false;
  * job that opened it, so the id is always here by then.
  */
 const emptyTabs = new Set<number>();
+/**
+ * Tabs the sync asked the browser to show, until the browser reports one shown. That report is the sync's own doing,
+ * not a click on a page: by the time it lands the user may have switched again, and taking it as their choice would
+ * switch them back (rule 1).
+ */
+const showing = new Set<number>();
 /** This window, as far as the planner cares: every tab here shares it. */
 const WINDOW = 1;
 
@@ -124,6 +130,7 @@ async function run(op: Op) {
 	} else if (op.op === "empty-tab") {
 		await openEmpty();
 	} else if (op.op === "activate") {
+		showing.add(op.browserId);
 		browser.activateTab(op.browserId);
 	} else if (op.op === "remove") {
 		browser.closeTab(op.browserId);
@@ -175,7 +182,12 @@ function onTabs(tabs: NativeTab[]) {
 				return state;
 			});
 		}
-		if (t.active && !old.active) changes.push((s) => tabActivated(s, live, t.id, Date.now()));
+		if (t.active && !old.active) {
+			const ours = showing.has(t.id);
+			showing.clear();
+			// Ours still runs the pass, which tidies up after the switch (an empty tab left behind closes).
+			changes.push(ours ? (s) => s : (s) => tabActivated(s, live, t.id, Date.now()));
+		}
 	}
 	for (const id of before.keys()) {
 		if (seen.has(id)) continue;

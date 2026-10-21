@@ -65,6 +65,7 @@ disagree, or a recipe or flow it names doesn't exist.
   Settings, Downloads.
 - [Extensions](./extensions.md): pinned ones in the address field, running them, pinning, the empty state.
 - [History](./history.md): Loka's History page, Ctrl+H.
+- [Library](./library.md): chrome://history as one page for spaces, archived tabs, history and downloads.
 - [Onboarding](./onboarding.md): the prototype's first-run tour and the browser's setup.
 - [Archive](./archive.md): archiving old open tabs (after 12 hours by default) and bringing them back; unloading
   the tabs of spaces out of sight.

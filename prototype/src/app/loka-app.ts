@@ -9,6 +9,7 @@ import { DEMO_EXTENSIONS, DEMO_LINKS } from "../demo/demo-data";
 import { fakeBrowser, onDemoPopup, pressBrowserShortcut } from "../demo/fake-browser";
 import { fakeHistory } from "../demo/fake-history";
 import { type ActionId, isActionId } from "../features/command-bar/command-bar.logic";
+import { type Section, sectionTitle, sectionUrl } from "../features/library/library.logic";
 import type { MediaAction, NowPlaying } from "../features/media/loka-media-card";
 import { nowPlaying } from "../features/media/media.logic";
 import { applyTour, type TourResult } from "../features/onboarding/onboarding.logic";
@@ -173,8 +174,8 @@ export class LokaApp extends LitElement {
 			fakeBrowser.setSidebarPinned(!this.pinned);
 		} else if (action === "settings") {
 			this.apply((s) => focusOrOpen(s, "loka://settings", "Settings"));
-		} else if (action === "history") {
-			this.apply((s) => focusOrOpen(s, "loka://history", "History"));
+		} else if (action === "history" || action === "library") {
+			this.openLibrary(action === "history" ? "history" : "spaces");
 		} else if (action === "downloads" || action === "extensions" || action === "archive") {
 			this.showPanel(action);
 		} else if (action === "search-sidebar") {
@@ -182,6 +183,19 @@ export class LokaApp extends LitElement {
 		} else if (action === "onboarding") {
 			this.tourOpen = true;
 		}
+	}
+
+	/**
+	 * Shows the Library at a section in its one tab, wherever that tab is, or opens it: the browser keeps one
+	 * chrome://history tab and takes it to the address asked for.
+	 */
+	private openLibrary(section: Section) {
+		const url = sectionUrl("loka://history", section);
+		const title = sectionTitle(section);
+		this.apply((s) => {
+			const shown = Object.values(s.tabs).find((t) => t.url.startsWith("loka://history"));
+			return shown ? revealTab(navigateTab(s, shown.id, url, title), shown.id) : openTab(s, url, title);
+		});
 	}
 
 	/** Opens a sidebar panel, sliding a hidden sidebar in first so the panel can be seen. */

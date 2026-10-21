@@ -2014,6 +2014,50 @@ async function settings() {
 	const cleared = await until(async () => (await history.names("[role=checkbox]")).length === 0, 6000);
 	check("Clear history: today empties it", cleared, `${(await history.names("[role=checkbox]")).length} left`);
 	await history.picture(join(dir, "04-history-cleared.png"));
+
+	// The Library is the same page: its other sections need the sidebar's handler here too (getSpaces, getDownloads).
+	await history.run(`(location.hash = "spaces", true)`);
+	const libraryNames = await until(async () => {
+		const names = await history.names("h2");
+		return SETUP_SPACES.every((x) => names.includes(x.name)) ? names : null;
+	}, 8000);
+	check(
+		"the Library's Spaces (chrome://history/#spaces) lists every space",
+		libraryNames,
+		show(libraryNames ?? (await history.names("h2"))),
+	);
+	await history.picture(join(dir, "05-library-spaces.png"));
+	await history.click("Downloads", { role: "a" });
+	const downloadsShown = await until(
+		async () =>
+			(await history.run(`location.hash`)) === "#downloads" &&
+			(await history.has("Downloads", "h1")) &&
+			!(await history.has("Loading downloads", "ul")),
+		6000,
+	);
+	check(
+		"the Library's switcher shows Downloads, with the browser's list",
+		downloadsShown,
+		`${await history.run("location.hash")} ${show(await history.names("h1"))}`,
+	);
+	await history.click("Archive", { role: "a" });
+	const archiveShown = await until(
+		async () => (await history.has("Archived tabs", "h1")) && !(await history.has("Loading archived tabs", "ul")),
+		6000,
+	);
+	check("the Library's Archived tabs shows the archive", archiveShown, show(await history.names("h1")));
+	// "..." > Library takes the Library tab to Spaces, though it's open at another section.
+	await sb.click("More");
+	await sb.click("Library", { role: "[role=menuitem]" });
+	const atSpaces = await until(async () => {
+		const target = (await ctx.browser.targets()).find((t) => t.url === "chrome://history/#spaces");
+		return target ?? ((await history.run("location.hash")) === "#spaces" ? "this tab" : null);
+	}, 6000);
+	check(
+		"... > Library opens chrome://history/#spaces",
+		atSpaces,
+		show((await ctx.browser.targets()).map((t) => t.url).filter((u) => u.startsWith("chrome://history"))),
+	);
 	history.s.close();
 }
 

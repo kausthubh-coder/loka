@@ -1,21 +1,9 @@
-// Loka's History page's line to the browser. The page is chrome://history (history.html, Ctrl+H), a normal tab
-// page with its own handler, not the sidebar's: it only knows these messages. Same plumbing as bridge.ts:
-// chrome.send carries a request, the browser answers through cr.webUIResponse and pushes news through
-// cr.webUIListenerCallback. Load this or bridge.ts on a page, never both: each installs window.cr.
+// The Library's line to the browser's history (chrome://history, history.html, Ctrl+H). LokaHistoryHandler answers
+// these, not the sidebar's handler: it only knows these messages. Same plumbing as bridge.ts (channel.ts), which the
+// Library also uses for the spaces and the downloads.
 
-declare global {
-	interface Window {
-		cr: {
-			webUIResponse(id: string, ok: boolean, value: unknown): void;
-			webUIListenerCallback(event: string, ...args: unknown[]): void;
-		};
-	}
-}
-
+import { channel } from "./channel";
 import type { HistoryEvent, HistoryMessage } from "./messages";
-
-const send = (message: HistoryMessage, args: unknown[]) =>
-	(globalThis as unknown as { chrome: { send(message: string, args: unknown[]): void } }).chrome.send(message, args);
 
 /** One visit to a page, as the browser's history keeps it. */
 export interface HistoryItem {
@@ -31,38 +19,7 @@ export interface HistoryPage {
 	done: boolean;
 }
 
-const pending = new Map<string, (value: unknown) => void>();
-const listeners = new Map<string, Set<(...args: unknown[]) => void>>();
-let nextId = 0;
-
-window.cr = {
-	webUIResponse(id, _ok, value) {
-		pending.get(id)?.(value);
-		pending.delete(id);
-	},
-	webUIListenerCallback(event, ...args) {
-		for (const listener of listeners.get(event) ?? []) listener(...args);
-	},
-};
-
-function ask<T>(message: HistoryMessage, ...args: unknown[]): Promise<T> {
-	const id = `loka-history-${nextId++}`;
-	return new Promise((resolve) => {
-		pending.set(id, resolve as (value: unknown) => void);
-		send(message, [id, ...args]);
-	});
-}
-
-function tell(message: HistoryMessage, ...args: unknown[]) {
-	send(message, args);
-}
-
-function on(event: HistoryEvent, listener: (...args: unknown[]) => void): () => void {
-	const set = listeners.get(event) ?? new Set();
-	listeners.set(event, set);
-	set.add(listener);
-	return () => set.delete(listener);
-}
+const { ask, tell, on } = channel<HistoryMessage, HistoryEvent>("loka-history");
 
 export const history = {
 	/**
@@ -81,5 +38,5 @@ export const history = {
 	onHistoryChanged: (listener: () => void) => on("history-changed", () => listener()),
 };
 
-/** Everything the History page can ask of the browser. The prototype's fake (prototype/src/demo/) has this shape. */
+/** Everything the History section can ask of the browser. The prototype's fake (prototype/src/demo/) has this shape. */
 export type HistoryBridge = typeof history;

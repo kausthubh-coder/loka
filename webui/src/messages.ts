@@ -77,8 +77,9 @@ export type Message = (typeof MESSAGES)[number] | (typeof PLANNED_MESSAGES)[numb
 export type BrowserEvent = (typeof EVENTS)[number] | (typeof PLANNED_EVENTS)[number];
 
 /**
- * The History page's own messages (history.html at chrome://history). A different handler answers them, not
- * LokaSidebarHandler, so they're listed apart; history-bridge.ts may only use these.
+ * The Library's history messages (history.html at chrome://history). LokaHistoryHandler answers them, not
+ * LokaSidebarHandler, so they're listed apart; history-bridge.ts may only use these. The Library also has the
+ * sidebar's handler, for getSpaces, spacesDo, getDownloads and downloadAction (through bridge.ts).
  */
 export const HISTORY_MESSAGES = ["queryHistory", "deleteUrls", "deleteRange", "openUrl"] as const;
 export const HISTORY_EVENTS = ["history-changed"] as const;

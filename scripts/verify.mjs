@@ -38,6 +38,7 @@ export const UX = {
 	layout: { prototype: ["layout"], browser: true, flows: ["states", "settings"] },
 	extensions: { prototype: ["extensions"], browser: true, flows: ["extensions"] },
 	history: { prototype: ["history"], flows: ["settings"] },
+	library: { prototype: ["library"], flows: ["settings"] },
 	onboarding: { prototype: ["onboarding"], browser: true, flows: ["first-run"] },
 	archive: { prototype: ["archive"], flows: ["panels", "settings", "sleep"] },
 	"search-and-keys": { prototype: ["search-and-keys"], flows: ["panels", "tabs"] },

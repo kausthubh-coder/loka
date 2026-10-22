@@ -20,7 +20,7 @@ from export_patch import ORIG_DIR, ROOT, SOURCE_TREE, read  # noqa: E402
 
 # Folders only Loka writes, searched for new files no patch lists. components/loka_sidebar/dist is the built page
 # that `bun run webui:build` copies in, so it isn't source.
-LOKA_FOLDERS = ['chrome/browser/ui/webui/loka_sidebar', 'components/loka_sidebar']
+LOKA_FOLDERS = ['chrome/browser/ui/views/loka', 'chrome/browser/ui/webui/loka_sidebar', 'components/loka_sidebar']
 GENERATED = ['components/loka_sidebar/dist/']
 
 

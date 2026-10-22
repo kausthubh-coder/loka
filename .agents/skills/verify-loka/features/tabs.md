@@ -66,11 +66,14 @@ Preconditions: seed data, `Build` space active.
   row opens the tab that was Research's" (and Play's), two tabs at one address told apart by the id each saved.
   `tabs` also has "Reopen closed tab brings its row back out of the archive", through the QA extension's
   `chrome.sessions.restore()`, Chromium's own restore behind Ctrl+Shift+T.
-  Not checked in the browser: `Clear`, `Close tab` from the menu, and the real Ctrl+T, Ctrl+W and Ctrl+Shift+T keys.
+  `shortcuts` presses the browser's own keys on a page: "Ctrl+PgDn on a page steps to the space's next row", "Ctrl+PgUp
+  steps back", "Ctrl+W on a page closes it the way its x does: into the archive, and the window stays".
+  Not checked in the browser: `Clear`, `Close tab` from the menu, and the real Ctrl+Shift+T key.
 
 ## Gotchas
 
 - Ctrl+W and Ctrl+T can't be caught by a web page, so the prototype uses Ctrl+E to close and Ctrl+K to open. In the
-  real browser Ctrl+T reaches the command bar through the browser's own command, which CDP keys can't press.
+  real browser Ctrl+T reaches the command bar through the browser's own command; CDP keys press it only with a native
+  key code (see `native-sidebar.md`).
 - In the prototype a tab's title is its host (`lit.dev`); real tabs take the page's title.
 - The `x` only shows on an open tab's row, on hover or when active. Playwright's click still finds it by name.

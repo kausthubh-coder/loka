@@ -1,14 +1,6 @@
 --- a/chrome/browser/prefs/browser_prefs.cc
 +++ b/chrome/browser/prefs/browser_prefs.cc
-@@ -96,6 +96,7 @@
- #include "chrome/browser/ui/safety_hub/safety_hub_prefs.h"
- #include "chrome/browser/ui/tabs/organizer/organizer_prefs.h"
- #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
-+#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
- #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_prefs.h"
- #include "chrome/browser/ui/toolbar/chrome_location_bar_model_delegate.h"
- #include "chrome/browser/ui/toolbar/toolbar_pref_names.h"
-@@ -330,6 +331,7 @@
+@@ -330,6 +330,7 @@
  #include "chrome/browser/ui/tabs/pinned_tab_codec.h"
  #include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_pref_names.h"
  #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
@@ -16,7 +8,7 @@
  #include "chrome/browser/ui/webui/certificate_manager/certificate_manager_handler.h"
  #include "chrome/browser/ui/webui/cr_components/theme_color_picker/theme_color_picker_handler.h"
  #include "chrome/browser/ui/webui/history/foreign_session_handler.h"
-@@ -2208,6 +2210,7 @@
+@@ -2208,6 +2209,7 @@
    side_panel_prefs::RegisterProfilePrefs(registry);
  
    tabs::RegisterProfilePrefs(registry);
@@ -36,337 +28,224 @@
        "//chrome/browser/ui/webui/settings",
 --- a/chrome/browser/ui/browser_command_controller.cc
 +++ b/chrome/browser/ui/browser_command_controller.cc
-@@ -3,6 +3,9 @@
+@@ -3,6 +3,8 @@
  // found in the LICENSE file.
  
  #include "chrome/browser/ui/browser_command_controller.h"
 +
-+#include "base/strings/string_number_conversions.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h"
  
  #include <stddef.h>
  
-@@ -771,6 +774,10 @@
-       CloseWindow(browser_);
-       break;
-     case IDC_NEW_TAB: {
-+      // Loka: Ctrl+T opens the command bar; picking a result opens the tab.
-+      if (LokaSidebarHandler::DispatchCommand(browser_, "new-tab")) {
-+        break;
-+      }
-       NewTab(browser_, NewTabTypes::kNewTabCommand);
-       break;
-     }
-@@ -779,10 +786,21 @@
-       break;
-     }
-     case IDC_CLOSE_TAB:
-+      // Loka: Ctrl+W closes the shown tab the way the sidebar does, so the
-+      // window stays when it was the last one (on an empty tab, it closes the
-+      // window).
-+      if (LokaSidebarHandler::DispatchCommand(browser_, "close-tab")) {
-+        break;
-+      }
-       base::RecordAction(base::UserMetricsAction("CloseTabByKey"));
-       CloseTab(browser_);
-       break;
-     case IDC_SELECT_NEXT_TAB:
-+      // Loka: Ctrl+Tab steps through the tabs of the current space, in the
-+      // sidebar's order.
-+      if (LokaSidebarHandler::DispatchCommand(browser_, "next-tab")) {
-+        break;
-+      }
-       base::RecordAction(base::UserMetricsAction("Accel_SelectNextTab"));
-       SelectNextTab(
-           browser_,
-@@ -790,6 +808,9 @@
-               TabStripUserGestureDetails::GestureType::kKeyboard, time_stamp));
-       break;
-     case IDC_SELECT_PREVIOUS_TAB:
-+      if (LokaSidebarHandler::DispatchCommand(browser_, "previous-tab")) {
-+        break;
-+      }
-       base::RecordAction(base::UserMetricsAction("Accel_SelectPreviousTab"));
-       SelectPreviousTab(
-           browser_,
-@@ -840,6 +861,12 @@
-     case IDC_SELECT_TAB_5:
-     case IDC_SELECT_TAB_6:
-     case IDC_SELECT_TAB_7:
-+      // Loka: Ctrl+1..8 go to that space.
-+      if (LokaSidebarHandler::DispatchCommand(
-+              browser_,
-+              "space-" + base::NumberToString(id - IDC_SELECT_TAB_0 + 1))) {
-+        break;
-+      }
-       base::RecordAction(base::UserMetricsAction("Accel_SelectNumberedTab"));
-       SelectNumberedTab(
-           browser_, id - IDC_SELECT_TAB_0,
-@@ -847,6 +874,9 @@
-               TabStripUserGestureDetails::GestureType::kKeyboard, time_stamp));
-       break;
-     case IDC_SELECT_LAST_TAB:
-+      if (LokaSidebarHandler::DispatchCommand(browser_, "space-9")) {
-+        break;
-+      }
-       base::RecordAction(base::UserMetricsAction("Accel_SelectNumberedTab"));
-       SelectLastTab(
-           browser_,
-@@ -1137,6 +1167,10 @@
-       FocusToolbar(browser_);
-       break;
-     case IDC_FOCUS_LOCATION:
-+      // Loka: the address field is the sidebar's command bar.
-+      if (LokaSidebarHandler::DispatchCommand(browser_, "focus-location")) {
-+        break;
-+      }
-       if (!window()->IsLocationBarVisible()) {
-         break;
-       }
+@@ -685,6 +687,12 @@
+     base::TimeTicks time_stamp) {
+   DCHECK(IsCommandEnabled(id)) << "Invalid/disabled command " << id;
+ 
++  // Loka: the sidebar takes the tab and address shortcuts it owns (Ctrl+T,
++  // Ctrl+W, Ctrl+PgDn, Ctrl+1..9, Ctrl+L) when the window has one.
++  if (LokaSidebarHandler::HandleBrowserCommand(browser_, id)) {
++    return;
++  }
++
+   // The order of commands in this switch statement must match the function
+   // declaration order in browser.h!
+   switch (id) {
+--- a/chrome/browser/ui/color/BUILD.gn
++++ b/chrome/browser/ui/color/BUILD.gn
+@@ -24,6 +24,8 @@
+     "chrome_color_mixers.h",
+     "chrome_color_provider_utils.cc",
+     "chrome_color_provider_utils.h",
++    "loka_color_mixer.cc",
++    "loka_color_mixer.h",
+     "material_chrome_color_mixer.cc",
+     "material_chrome_color_mixer.h",
+     "material_new_tab_page_color_mixer.cc",
 --- a/chrome/browser/ui/color/chrome_color_mixers.cc
 +++ b/chrome/browser/ui/color/chrome_color_mixers.cc
-@@ -3,6 +3,14 @@
+@@ -3,6 +3,8 @@
  // found in the LICENSE file.
  
  #include "chrome/browser/ui/color/chrome_color_mixers.h"
 +
-+#include "ui/color/color_id.h"
-+
-+#include "ui/gfx/color_utils.h"
-+
-+#include "ui/color/color_mixer.h"
-+#include "ui/color/color_provider.h"
-+#include "ui/color/color_recipe.h"
++#include "chrome/browser/ui/color/loka_color_mixer.h"
  
  #include <memory>
  #include <string_view>
-@@ -95,4 +103,16 @@
+@@ -95,4 +97,7 @@
    if (key.app_controller) {
      key.app_controller->AddColorMixers(provider, key);
    }
 +
-+  // Loka: the window frame around the page is the space's color, which the
-+  // sidebar sets as the user color, so the sidebar's sky reads as the whole
-+  // window, like Arc's.
-+  if (key.user_color.has_value() && !key.custom_theme) {
-+    ui::ColorMixer& mixer = provider->AddMixer();
-+    mixer[ui::kColorFrameActive] = {*key.user_color};
-+    mixer[ui::kColorFrameInactive] = {
-+        color_utils::AlphaBlend(*key.user_color, SK_ColorBLACK, 0.85f)};
-+    // The strips beside the page (and the hidden toolbar) are toolbar-colored.
-+    mixer[kColorToolbar] = {*key.user_color};
-+  }
++  // Loka: last, so the space's color wins over every mixer above.
++  AddLokaColorMixer(provider, key);
  }
+--- /dev/null
++++ b/chrome/browser/ui/color/loka_color_mixer.cc
+@@ -0,0 +1,26 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#include "chrome/browser/ui/color/loka_color_mixer.h"
++
++#include "chrome/browser/ui/color/chrome_color_id.h"
++#include "third_party/skia/include/core/SkColor.h"
++#include "ui/color/color_id.h"
++#include "ui/color/color_mixer.h"
++#include "ui/color/color_provider.h"
++#include "ui/color/color_recipe.h"
++#include "ui/gfx/color_utils.h"
++
++void AddLokaColorMixer(ui::ColorProvider* provider,
++                       const ui::ColorProviderKey& key) {
++  if (!key.user_color.has_value() || key.custom_theme) {
++    return;
++  }
++  ui::ColorMixer& mixer = provider->AddMixer();
++  mixer[ui::kColorFrameActive] = {*key.user_color};
++  mixer[ui::kColorFrameInactive] = {
++      color_utils::AlphaBlend(*key.user_color, SK_ColorBLACK, 0.85f)};
++  // The strips beside the page (and the hidden toolbar) are toolbar-colored.
++  mixer[kColorToolbar] = {*key.user_color};
++}
+--- /dev/null
++++ b/chrome/browser/ui/color/loka_color_mixer.h
+@@ -0,0 +1,21 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_COLOR_LOKA_COLOR_MIXER_H_
++#define CHROME_BROWSER_UI_COLOR_LOKA_COLOR_MIXER_H_
++
++#include "ui/color/color_provider_key.h"
++
++namespace ui {
++class ColorProvider;
++}
++
++// Loka: the window frame around the page and the strips beside it take the
++// space's color, which the sidebar sets as the user color, so the sidebar's
++// sky reads as the whole window, like Arc's. Does nothing with a custom theme
++// or no user color. Add it after every other chrome/ mixer so it wins.
++void AddLokaColorMixer(ui::ColorProvider* provider,
++                       const ui::ColorProviderKey& key);
++
++#endif  // CHROME_BROWSER_UI_COLOR_LOKA_COLOR_MIXER_H_
 --- a/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc
 +++ b/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.cc
-@@ -3,6 +3,11 @@
+@@ -3,6 +3,8 @@
  // found in the LICENSE file.
  
  #include "chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h"
 +
-+#if defined(USE_AURA)
-+#include "ui/aura/window.h"
-+#include "ui/aura/window_targeter.h"
-+#endif
++#include "chrome/browser/ui/views/loka/loka_sidebar_host.h"
  
  #include <algorithm>
  #include <optional>
-@@ -77,6 +82,14 @@
- #include "ui/views/view.h"
- #include "ui/views/view_class_properties.h"
- #include "ui/views/view_utils.h"
-+#include "chrome/browser/profiles/profile.h"
-+#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
-+#include "chrome/browser/ui/webui/webui_embedding_context.h"
-+#include "ui/views/controls/webview/web_contents_set_background_color.h"
-+#include "ui/views/controls/webview/webview.h"
-+#include "ui/gfx/geometry/rounded_corners_f.h"
-+#include "ui/views/controls/native/native_view_host.h"
-+#include "url/gurl.h"
+@@ -171,6 +173,13 @@
+       kExpandOnHoverShadowElevation, kExpandOnHoverShadowAlpha));
+   shadow_frame_->SetProperty(views::kViewIgnoredByLayoutKey, true);
  
- namespace {
- constexpr int kResizeAreaWidth = 5;
-@@ -98,6 +111,11 @@
- 
- DEFINE_CLASS_CUSTOM_ELEMENT_EVENT_TYPE(VerticalTabStripRegionView,
-                                        kAnimationCompletedEvent);
-+
-+namespace {
-+// Loka: the corners of the sidebar when it floats over the page.
-+constexpr int kLokaFloatingSidebarRadius = 14;
-+}  // namespace
- 
- VerticalTabStripRegionView::VerticalTabStripRegionView(
-     tabs::VerticalTabStripStateController* state_controller,
-@@ -176,6 +194,26 @@
-         std::make_unique<VerticalTabStripFocusSwipeController>(this);
-   }
- 
-+  // Loka: the column holds the Loka sidebar, the browser's own page for spaces,
-+  // folders and tabs, in place of the tab list. It is drawn over the other
-+  // children, which Layout() keeps hidden; the tab strip model is unchanged.
-+  auto loka_sidebar =
-+      std::make_unique<views::WebView>(browser_view->GetProfile());
-+  webui::SetBrowserWindowInterface(loka_sidebar->GetWebContents(),
-+                                   browser_view->browser());
-+  views::WebContentsSetBackgroundColor::CreateForWebContentsWithColor(
-+      loka_sidebar->GetWebContents(), SK_ColorTRANSPARENT);
-+  loka_sidebar->LoadInitialURL(GURL(kLokaSidebarURL));
-+  loka_sidebar->SetProperty(views::kViewIgnoredByLayoutKey, true);
-+  loka_sidebar_ = AddChildView(std::move(loka_sidebar));
-+  auto anchor = std::make_unique<views::View>();
-+  anchor->SetProperty(views::kViewIgnoredByLayoutKey, true);
-+  anchor->SetCanProcessEventsWithinSubtree(false);
-+  loka_anchor_ = AddChildView(std::move(anchor));
-+  // The resize edge sits over the sidebar's page (see Layout), so it stays on
-+  // top for the views that take events.
++  // Loka: the column shows the Loka sidebar (spaces, folders, tabs) over
++  // Helium's tab list, which Layout() keeps hidden; the tab strip model is
++  // unchanged. The resize edge sits over the sidebar's page, so it stays the
++  // top child for the views that take events.
++  loka_host_ = AddChildView(std::make_unique<LokaSidebarHost>(browser_view));
 +  ReorderChildView(resize_area_, children().size());
 +
-   SetNotifyEnterExitOnChild(true);
-   UpdateColors();
-   UpdateInteriorMargin();
-@@ -264,6 +302,16 @@
-     return false;
-   }
+   if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
+     focus_swipe_controller_ =
+         std::make_unique<VerticalTabStripFocusSwipeController>(this);
+@@ -258,6 +267,15 @@
  
-+  // Loka: the sidebar page is the column's content, so every point on it goes
-+  // to the page (its own top row moves the window). Helium's tab list views
-+  // are hidden under it, but a hidden view keeps its last bounds, and the
-+  // bottom container's would otherwise answer "title bar" for most of the
-+  // column: no hover, and every click a window drag.
-+  if (loka_sidebar_ && loka_sidebar_->GetVisible() &&
-+      IsHitInView(loka_sidebar_, point)) {
+ bool VerticalTabStripRegionView::IsPositionInWindowCaption(
+     const gfx::Point& point) {
++  // Loka: every point on the sidebar page goes to the page (its own top row
++  // moves the window). Helium's hidden tab list keeps its last bounds, and
++  // the bottom container's would otherwise answer "title bar" for most of
++  // the column: no hover, and every click a window drag.
++  if (loka_host_ && loka_host_->GetVisible() &&
++      IsHitInView(loka_host_, point)) {
 +    return false;
 +  }
 +
-   if (IsHitInView(bottom_button_container_, point)) {
-     gfx::Point point_in_child = point;
-     views::View::ConvertPointToTarget(this, bottom_button_container_,
-@@ -318,7 +366,8 @@
+   // Check the resize area first, it should always take precedence over other
+   // children regardless of order.
+   if (IsHitInView(resize_area_, point)) {
+@@ -306,6 +324,9 @@
+   UpdateResizeAreaVisibility();
+   SetClipLayerToVisibleBounds(floating);
+   UpdateInteriorMargin();
++  // Loka: the page is clipped to the card's corners and the card casts a
++  // shadow.
++  loka_host_->SetFloating(floating, shadow_frame_);
+ 
+   auto* const background =
+       static_cast<CustomCornersBackground*>(this->background());
+@@ -318,7 +339,8 @@
    if (floating) {
      CustomCornersBackground::Corner rounded_corner;
      rounded_corner.type = CustomCornersBackground::CornerType::kRounded;
 -    rounded_corner.radius = GetGenericFrameRadius();
 +    // Loka: a softer card, like Zen's floating sidebar.
-+    rounded_corner.radius = kLokaFloatingSidebarRadius;
++    rounded_corner.radius = LokaSidebarHost::kFloatingCornerRadius;
      corners[CornerOrientation::kTopLeading] = rounded_corner;
      corners[CornerOrientation::kTopTrailing] = rounded_corner;
      corners[CornerOrientation::kBottomLeading] = rounded_corner;
-@@ -334,6 +383,16 @@
-   background->SetCorners(corners);
-   background->SetOutline(outline);
-   background->SetPaintWithNativeFrameMaterials(floating);
-+
-+  // Loka: when the sidebar floats over the page, its own page is clipped to the
-+  // card's corners and the card casts a soft shadow.
-+  if (auto* web_view = views::AsViewClass<views::WebView>(loka_sidebar_.get())) {
-+    web_view->holder()->SetNativeViewCornerRadii(
-+        floating ? gfx::RoundedCornersF(kLokaFloatingSidebarRadius)
-+                 : gfx::RoundedCornersF());
+@@ -373,6 +395,21 @@
+   // the collapsed state when expand on hover is active.
+   if (drop_arrow()) {
+     drop_arrow()->SetIndex(drop_arrow()->index());
 +  }
-+  shadow_frame_->SetShadowCornerRadius(kLokaFloatingSidebarRadius);
-+  shadow_frame_->SetShadowVisible(floating);
- }
- 
- void VerticalTabStripRegionView::AddedToWidget() {
-@@ -368,6 +427,37 @@
-   resize_area_->SetBoundsRect(
-       gfx::Rect(resize_area_x, 0, resize_area_width_, bounds().height()));
-   shadow_frame_->SetBoundsRect(GetLocalBounds());
 +
-+  // Loka: the sidebar fills the whole column, so its sky runs right up to the
-+  // page with no strip of frame between them. The resize edge still works:
-+  // the page's window doesn't take events over it, so they reach the resize
-+  // area above.
-+  if (loka_sidebar_) {
-+    loka_sidebar_->SetBoundsRect(GetLocalBounds());
-+#if defined(USE_AURA)
-+    if (aura::Window* page = static_cast<views::WebView*>(loka_sidebar_.get())
-+                                 ->holder()
-+                                 ->native_view()) {
-+      if (!page->targeter() || page->targeter() != loka_page_targeter_) {
-+        auto targeter = std::make_unique<aura::WindowTargeter>();
-+        loka_page_targeter_ = targeter.get();
-+        page->SetEventTargeter(std::move(targeter));
-+      }
-+      const gfx::Insets resize_edge =
-+          state_controller_->IsTabStripRightAligned()
-+              ? gfx::Insets::TLBR(0, resize_area_width_, 0, 0)
-+              : gfx::Insets::TLBR(0, 0, 0, resize_area_width_);
-+      loka_page_targeter_->SetInsets(resize_edge);
-+    }
-+#endif
++  // Loka: the sidebar fills the column, so its sky runs right up to the page.
++  // Its page leaves the resize edge to the resize area above it. Helium's
++  // tab list stays hidden under it.
++  if (loka_host_) {
++    loka_host_->SetResizeEdge(state_controller_->IsTabStripRightAligned(),
++                              resize_area_width_);
++    loka_host_->SetBoundsRect(GetLocalBounds());
 +    for (views::View* child : children()) {
-+      if (child != loka_sidebar_ && child != loka_anchor_ &&
-+          child != resize_area_ &&
-+          child != shadow_frame_ && child->GetVisible()) {
++      if (child != loka_host_ && child != resize_area_ &&
++          child != shadow_frame_) {
 +        child->SetVisible(false);
 +      }
 +    }
-+  }
+   }
+ }
  
-   // Ensure that we update the drop arrow position so that it does not render in
-   // the collapsed state when expand on hover is active.
-@@ -1141,3 +1231,14 @@
- 
- BEGIN_METADATA(VerticalTabStripRegionView)
- END_METADATA
-+
-+views::View* VerticalTabStripRegionView::GetLokaAnchor(const gfx::Rect& rect) {
-+  if (!loka_sidebar_ || !loka_anchor_) {
-+    return nullptr;
-+  }
-+  gfx::Rect bounds = rect;
-+  bounds.Offset(loka_sidebar_->bounds().OffsetFromOrigin());
-+  bounds.Intersect(GetLocalBounds());
-+  loka_anchor_->SetBoundsRect(bounds);
-+  return loka_anchor_;
-+}
 --- a/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h
 +++ b/chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h
-@@ -40,6 +40,12 @@
+@@ -40,6 +40,8 @@
  class VerticalTabStripStateController;
  }  // namespace tabs
  
-+#if defined(USE_AURA)
-+namespace aura {
-+class WindowTargeter;
-+}  // namespace aura
-+#endif
++class LokaSidebarHost;
 +
  namespace views {
  class ResizeArea;
  class Separator;
-@@ -142,6 +148,10 @@
+@@ -142,6 +144,9 @@
      return focus_swipe_controller_.get();
    }
  
-+  // Loka: a view over `rect` (in the sidebar page's coordinates) for a bubble
-+  // to anchor to, or null when the column shows no sidebar.
-+  views::View* GetLokaAnchor(const gfx::Rect& rect);
++  // Loka: the sidebar page that fills the column in place of the tab list.
++  LokaSidebarHost* loka_host() { return loka_host_; }
 +
   private:
    // Since VerticalTabStripRegionView inherits from AccessiblePaneView, which is
    // a FocusChangeListener, we need to have a separate focus listener to avoid
-@@ -235,6 +245,18 @@
-   raw_ptr<VerticalTabStripBottomContainer> bottom_button_container_ = nullptr;
-   raw_ptr<views::View> gemini_button_ = nullptr;
-   raw_ptr<views::ResizeArea> resize_area_ = nullptr;
-+  // Loka: the sidebar page that fills the column in place of the tab list.
-+  raw_ptr<views::View> loka_sidebar_ = nullptr;
-+  // Loka: an empty view placed over a button of the sidebar page, so bubbles
-+  // (extension popups) open from that button.
-+  raw_ptr<views::View> loka_anchor_ = nullptr;
-+#if defined(USE_AURA)
-+  // The targeter Loka puts on the sidebar page's window; it leaves the resize
-+  // edge to the resize area. Owned by that window, which may drop it (it is
-+  // only compared, never used, until it is set again).
-+  raw_ptr<aura::WindowTargeter, DisableDanglingPtrDetection>
-+      loka_page_targeter_ = nullptr;
-+#endif
-   raw_ptr<ShadowFrameView> shadow_frame_ = nullptr;
-   int resize_area_width_;
-   raw_ptr<views::FlexLayout> flex_layout_ = nullptr;
+@@ -297,6 +302,8 @@
+   base::OneShotTimer mouse_exit_timer_;
+ 
+   base::CallbackListSubscription paint_as_active_subscription_;
++
++  raw_ptr<LokaSidebarHost> loka_host_ = nullptr;
+ };
+ 
+ #endif  // CHROME_BROWSER_UI_VIEWS_FRAME_VERTICAL_TAB_STRIP_REGION_VIEW_H_
 --- /dev/null
 +++ b/chrome/browser/ui/views/loka/loka_command_bar.cc
 @@ -0,0 +1,168 @@
@@ -870,53 +749,211 @@
 +};
 +
 +#endif  // CHROME_BROWSER_UI_VIEWS_LOKA_LOKA_MENU_H_
+--- /dev/null
++++ b/chrome/browser/ui/views/loka/loka_sidebar_host.cc
+@@ -0,0 +1,93 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#include "chrome/browser/ui/views/loka/loka_sidebar_host.h"
++
++#include <memory>
++#include <utility>
++
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/views/frame/browser_view.h"
++#include "chrome/browser/ui/views/frame/shadow_frame_view.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
++#include "chrome/browser/ui/webui/webui_embedding_context.h"
++#include "third_party/skia/include/core/SkColor.h"
++#include "ui/base/metadata/metadata_impl_macros.h"
++#include "ui/gfx/geometry/rounded_corners_f.h"
++#include "ui/views/controls/native/native_view_host.h"
++#include "ui/views/controls/webview/web_contents_set_background_color.h"
++#include "ui/views/controls/webview/webview.h"
++#include "ui/views/view_class_properties.h"
++#include "url/gurl.h"
++
++#if defined(USE_AURA)
++#include "ui/aura/window.h"
++#include "ui/aura/window_targeter.h"
++#endif
++
++LokaSidebarHost::LokaSidebarHost(BrowserView* browser_view) {
++  // The region view's flex layout lays out Helium's tab list; the host is
++  // placed by hand in the region view's Layout().
++  SetProperty(views::kViewIgnoredByLayoutKey, true);
++
++  auto web_view = std::make_unique<views::WebView>(browser_view->GetProfile());
++  webui::SetBrowserWindowInterface(web_view->GetWebContents(),
++                                   browser_view->browser());
++  views::WebContentsSetBackgroundColor::CreateForWebContentsWithColor(
++      web_view->GetWebContents(), SK_ColorTRANSPARENT);
++  web_view->LoadInitialURL(GURL(kLokaSidebarURL));
++  web_view_ = AddChildView(std::move(web_view));
++
++  auto anchor = std::make_unique<views::View>();
++  anchor->SetCanProcessEventsWithinSubtree(false);
++  anchor_ = AddChildView(std::move(anchor));
++}
++
++LokaSidebarHost::~LokaSidebarHost() = default;
++
++void LokaSidebarHost::SetResizeEdge(bool strip_right_aligned, int width) {
++  resize_edge_ = strip_right_aligned ? gfx::Insets::TLBR(0, width, 0, 0)
++                                     : gfx::Insets::TLBR(0, 0, 0, width);
++  UpdatePageTargeter();
++}
++
++void LokaSidebarHost::SetFloating(bool floating,
++                                  ShadowFrameView* shadow_frame) {
++  web_view_->holder()->SetNativeViewCornerRadii(
++      floating ? gfx::RoundedCornersF(kFloatingCornerRadius)
++               : gfx::RoundedCornersF());
++  shadow_frame->SetShadowCornerRadius(kFloatingCornerRadius);
++  shadow_frame->SetShadowVisible(floating);
++}
++
++views::View* LokaSidebarHost::GetAnchor(const gfx::Rect& rect) {
++  gfx::Rect bounds = rect;
++  bounds.Offset(web_view_->bounds().OffsetFromOrigin());
++  bounds.Intersect(GetLocalBounds());
++  anchor_->SetBoundsRect(bounds);
++  return anchor_;
++}
++
++void LokaSidebarHost::Layout(PassKey) {
++  web_view_->SetBoundsRect(GetLocalBounds());
++  UpdatePageTargeter();
++}
++
++void LokaSidebarHost::UpdatePageTargeter() {
++#if defined(USE_AURA)
++  aura::Window* page = web_view_->holder()->native_view();
++  if (!page) {
++    return;
++  }
++  if (!page->targeter() || page->targeter() != page_targeter_) {
++    auto targeter = std::make_unique<aura::WindowTargeter>();
++    page_targeter_ = targeter.get();
++    page->SetEventTargeter(std::move(targeter));
++  }
++  page_targeter_->SetInsets(resize_edge_);
++#endif
++}
++
++BEGIN_METADATA(LokaSidebarHost)
++END_METADATA
+--- /dev/null
++++ b/chrome/browser/ui/views/loka/loka_sidebar_host.h
+@@ -0,0 +1,78 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_LOKA_LOKA_SIDEBAR_HOST_H_
++#define CHROME_BROWSER_UI_VIEWS_LOKA_LOKA_SIDEBAR_HOST_H_
++
++#include "base/memory/raw_ptr.h"
++#include "build/build_config.h"
++#include "ui/base/metadata/metadata_header_macros.h"
++#include "ui/gfx/geometry/insets.h"
++#include "ui/gfx/geometry/rect.h"
++#include "ui/views/view.h"
++
++class BrowserView;
++class ShadowFrameView;
++
++#if defined(USE_AURA)
++namespace aura {
++class WindowTargeter;
++}  // namespace aura
++#endif
++
++namespace views {
++class WebView;
++}  // namespace views
++
++// Loka's sidebar in the window's tab strip column: the browser's own page for
++// spaces, folders and tabs (chrome://loka-sidebar.top-chrome), filling the
++// column over Helium's tab list, which VerticalTabStripRegionView keeps
++// hidden. The region view owns one of these as a child, gives it the column's
++// bounds in Layout(), and tells it when the column floats (zen mode).
++class LokaSidebarHost : public views::View {
++  METADATA_HEADER(LokaSidebarHost, views::View)
++
++ public:
++  // The corners of the column when it floats over the page: a softer card,
++  // like Zen's floating sidebar (Helium uses the frame radius).
++  static constexpr int kFloatingCornerRadius = 14;
++
++  explicit LokaSidebarHost(BrowserView* browser_view);
++  LokaSidebarHost(const LokaSidebarHost&) = delete;
++  LokaSidebarHost& operator=(const LokaSidebarHost&) = delete;
++  ~LokaSidebarHost() override;
++
++  // The column's resize edge sits over the page. The page's window stops
++  // taking events over that strip (`width` wide, on the column's left when
++  // the strip is right-aligned), so they reach the resize area above it.
++  void SetResizeEdge(bool strip_right_aligned, int width);
++
++  // Floating: the page is clipped to the card's corners and `shadow_frame`
++  // (the region view's) casts a shadow around the card.
++  void SetFloating(bool floating, ShadowFrameView* shadow_frame);
++
++  // An empty view placed over `rect` (in the page's CSS pixels, which are the
++  // column's DIPs: the page isn't zoomed) for a bubble such as an extension
++  // popup to anchor to.
++  views::View* GetAnchor(const gfx::Rect& rect);
++
++  // views::View:
++  void Layout(PassKey) override;
++
++ private:
++  void UpdatePageTargeter();
++
++  raw_ptr<views::WebView> web_view_ = nullptr;
++  raw_ptr<views::View> anchor_ = nullptr;
++  gfx::Insets resize_edge_;
++#if defined(USE_AURA)
++  // The targeter on the page's window. Owned by that window, which may drop
++  // it; it is only compared, never used, until UpdatePageTargeter sets it
++  // again.
++  raw_ptr<aura::WindowTargeter, DisableDanglingPtrDetection> page_targeter_ =
++      nullptr;
++#endif
++};
++
++#endif  // CHROME_BROWSER_UI_VIEWS_LOKA_LOKA_SIDEBAR_HOST_H_
 --- a/chrome/browser/ui/webui/chrome_web_ui_configs.cc
 +++ b/chrome/browser/ui/webui/chrome_web_ui_configs.cc
-@@ -48,6 +48,8 @@
- #include "chrome/browser/ui/webui/ntp_tiles_internals_ui.h"
- #include "chrome/browser/ui/webui/omnibox/omnibox_ui.h"
- #include "chrome/browser/ui/webui/onboarding/onboarding_page_ui.h"
-+#include "chrome/browser/ui/webui/loka_sidebar/loka_history_ui.h"
+@@ -3,6 +3,8 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/ui/webui/chrome_web_ui_configs.h"
++
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
- #include "chrome/browser/ui/webui/policy/policy_ui.h"
- #include "chrome/browser/ui/webui/predictors/predictors_ui.h"
- #include "chrome/browser/ui/webui/regional_capabilities_internals/regional_capabilities_internals_ui.h"
-@@ -367,7 +369,12 @@
-   map.AddWebUIConfig(std::make_unique<DownloadsUIConfig>());
-   map.AddWebUIConfig(std::make_unique<DrivePickerHostUIConfig>());
-   map.AddWebUIConfig(std::make_unique<FeedbackUIConfig>());
--  map.AddWebUIConfig(std::make_unique<HistoryUIConfig>());
-+  // Loka: Loka's History page replaces Chrome's once the build has it.
-+  if (LokaHistoryUIConfig::HasPage()) {
-+    map.AddWebUIConfig(std::make_unique<LokaHistoryUIConfig>());
-+  } else {
-+    map.AddWebUIConfig(std::make_unique<HistoryUIConfig>());
-+  }
-   map.AddWebUIConfig(std::make_unique<HistorySidePanelUIConfig>());
-   map.AddWebUIConfig(std::make_unique<HistoryClustersSidePanelUIConfig>());
-   map.AddWebUIConfig(std::make_unique<InfobarInternalsUIConfig>());
-@@ -492,6 +499,15 @@
-   map.AddWebUIConfig(std::make_unique<DefaultBrowserModalUIConfig>());
-   map.AddWebUIConfig(std::make_unique<ManagedUserProfileNoticeUIConfig>());
-   map.AddWebUIConfig(std::make_unique<HeliumOnboardingPageConfig>());
-+  map.AddWebUIConfig(std::make_unique<LokaSidebarUIConfig>());
-+  if (LokaSettingsUIConfig::HasPage()) {
-+    map.AddWebUIConfig(std::make_unique<LokaSettingsUIConfig>());
-+  }
-+  // Loka: the empty tab, where chrome://newtab goes (see
-+  // LokaNewTabUIConfig::RewriteURL).
-+  if (LokaNewTabUIConfig::HasPage()) {
-+    map.AddWebUIConfig(std::make_unique<LokaNewTabUIConfig>());
-+  }
-   map.AddWebUIConfig(std::make_unique<ProfileCustomizationUIConfig>());
-   map.AddWebUIConfig(std::make_unique<ProfilePickerUIConfig>());
-   map.AddWebUIConfig(std::make_unique<SigninErrorUIConfig>());
+ 
+ #include "build/android_buildflags.h"
+ #include "build/branding_buildflags.h"
+@@ -516,4 +518,8 @@
+   map.AddWebUIConfig(std::make_unique<skills::SkillsUIConfig>());
+ #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
+         // BUILDFLAG(IS_CHROMEOS)
++
++  // Loka: the sidebar, Settings, the empty tab, and History in place of
++  // Chrome's. Last, so the History swap finds Chrome's config.
++  RegisterLokaWebUIConfigs(map);
+ }
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/BUILD.gn
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,97 @@
 +# Copyright 2026 The Loka Authors
 +# You can use, redistribute, and/or modify this source code under
 +# the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++import("//build/config/ui.gni")
 +
 +source_set("loka_sidebar") {
 +  sources = [
@@ -937,6 +974,8 @@
 +    "//chrome/browser/ui/views/loka/loka_command_bar.h",
 +    "//chrome/browser/ui/views/loka/loka_menu.cc",
 +    "//chrome/browser/ui/views/loka/loka_menu.h",
++    "//chrome/browser/ui/views/loka/loka_sidebar_host.cc",
++    "//chrome/browser/ui/views/loka/loka_sidebar_host.h",
 +  ]
 +
 +  public_deps = [
@@ -947,7 +986,9 @@
 +  deps = [
 +    "//base",
 +    "//chrome/browser/autocomplete",
++    "//chrome/browser/bookmarks",
 +    "//chrome/browser/history",
++    "//components/bookmarks/browser",
 +    "//components/history/core/browser",
 +    "//components/keyed_service/core",
 +    "//chrome/browser/extensions",
@@ -977,6 +1018,7 @@
 +    "//components/pref_registry",
 +    "//components/prefs",
 +    "//components/search_engines",
++    "//components/sessions",
 +    "//components/tab_groups",
 +    "//components/tabs:public",
 +    "//ui/base",
@@ -989,7 +1031,14 @@
 +    "//services/media_session/public/cpp",
 +    "//services/media_session/public/mojom",
 +    "//skia",
++    "//chrome/app:command_ids",
++    "//ui/views",
++    "//ui/views/controls/webview",
 +  ]
++
++  if (use_aura) {
++    deps += [ "//ui/aura" ]
++  }
 +}
 +
 +# So GN knows the C++ model's tests (scripts/loka_core_test.py builds them).
@@ -1492,7 +1541,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_MEDIA_WATCHER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.cc
-@@ -0,0 +1,846 @@
+@@ -0,0 +1,848 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1673,6 +1722,8 @@
 +  add("search", &LokaSidebarHandler::HandleSearch);
 +  add("openPage", &LokaSidebarHandler::HandleOpenPage);
 +  add("windowAction", &LokaSidebarHandler::HandleWindowAction);
++  add("browserCommand", &LokaSidebarHandler::HandleChromeMenuCommand);
++  add("takeBrowserBookmarks", &LokaSidebarHandler::HandleTakeBrowserBookmarks);
 +  add("startWindowDrag", &LokaSidebarHandler::HandleStartWindowDrag);
 +  add("getExtensions", &LokaSidebarHandler::HandleGetExtensions);
 +  add("runExtension", &LokaSidebarHandler::HandleRunExtension);
@@ -2341,7 +2392,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h
-@@ -0,0 +1,302 @@
+@@ -0,0 +1,312 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2425,6 +2476,11 @@
 +  // and focuses it. False when that window has no sidebar to take it.
 +  static bool DispatchCommand(BrowserWindowInterface* browser,
 +                              const std::string& command);
++  // A browser command (IDC_*) the sidebar owns, from BrowserCommandController:
++  // Ctrl+T, Ctrl+W, Ctrl+PgDn, Ctrl+PgUp, Ctrl+1..9 and Ctrl+L. True when the
++  // window's sidebar took it; false leaves it to Chrome.
++  static bool HandleBrowserCommand(BrowserWindowInterface* browser,
++                                   int command_id);
 +  // Hands `menu` to the menu page of `browser`'s window (LokaMenu). False
 +  // while that page hasn't loaded yet.
 +  static bool DeliverMenu(BrowserWindowInterface* browser,
@@ -2582,6 +2638,11 @@
 +  void HandleSearch(const base::ListValue& args);
 +  void HandleOpenPage(const base::ListValue& args);
 +  void HandleWindowAction(const base::ListValue& args);
++  // One of Chrome's toolbar-menu commands (new window, find, print, zoom...),
++  // which Loka offers in its own menus since it has no toolbar.
++  void HandleChromeMenuCommand(const base::ListValue& args);
++  // The browser's own bookmarks (setup imports into them), once per profile.
++  void HandleTakeBrowserBookmarks(const base::ListValue& args);
 +  void HandleStartWindowDrag(const base::ListValue& args);
 +
 +  raw_ptr<TabStripModel> observed_ = nullptr;
@@ -2646,7 +2707,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler_features.cc
-@@ -0,0 +1,985 @@
+@@ -0,0 +1,1116 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2657,10 +2718,12 @@
 +
 +#include <algorithm>
 +#include <map>
++#include <string_view>
 +#include <utility>
 +#include <vector>
 +
 +#include "base/functional/bind.h"
++#include "base/json/json_writer.h"
 +#include "base/functional/callback_helpers.h"
 +#include "base/location.h"
 +#include "base/no_destructor.h"
@@ -2668,14 +2731,17 @@
 +#include "base/strings/stringprintf.h"
 +#include "base/strings/utf_string_conversions.h"
 +#include "base/task/sequenced_task_runner.h"
++#include "chrome/app/chrome_command_ids.h"
 +#include "chrome/browser/autocomplete/chrome_autocomplete_provider_client.h"
 +#include "chrome/browser/autocomplete/chrome_autocomplete_scheme_classifier.h"
++#include "chrome/browser/bookmarks/bookmark_model_factory.h"
 +#include "chrome/browser/extensions/extension_action_runner.h"
 +#include "chrome/browser/extensions/extension_tab_util.h"
 +#include "chrome/browser/extensions/extension_view_host.h"
 +#include "chrome/browser/extensions/extension_view_host_factory.h"
 +#include "chrome/browser/platform_util.h"
 +#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/browser_commands.h"
 +#include "chrome/browser/themes/theme_service.h"
 +#include "chrome/browser/themes/theme_service_factory.h"
 +#include "chrome/browser/ui/browser_window.h"
@@ -2690,6 +2756,7 @@
 +#include "chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h"
 +#include "chrome/browser/ui/views/loka/loka_command_bar.h"
 +#include "chrome/browser/ui/views/loka/loka_menu.h"
++#include "chrome/browser/ui/views/loka/loka_sidebar_host.h"
 +#include "ui/gfx/geometry/rect.h"
 +#include "content/public/browser/render_frame_host.h"
 +#include "third_party/blink/public/mojom/frame/user_activation_notification_type.mojom.h"
@@ -2697,6 +2764,8 @@
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
 +#include "chrome/common/pref_names.h"
++#include "components/bookmarks/browser/bookmark_codec.h"
++#include "components/bookmarks/browser/bookmark_model.h"
 +#include "components/download/public/common/download_item.h"
 +#include "components/loka_sidebar/resources/grit/loka_sidebar_generated_map.h"
 +#include "components/omnibox/browser/autocomplete_classifier.h"
@@ -2704,6 +2773,7 @@
 +#include "components/omnibox/browser/autocomplete_match.h"
 +#include "components/omnibox/browser/autocomplete_result.h"
 +#include "components/prefs/pref_service.h"
++#include "components/prefs/scoped_user_pref_update.h"
 +#include "components/tabs/public/tab_interface.h"
 +#include "content/public/browser/download_manager.h"
 +#include "content/public/browser/media_session.h"
@@ -2825,6 +2895,126 @@
 +  }
 +  handler->FireWebUIListener("command", base::Value(command));
 +  return true;
++}
++
++// static
++void LokaSidebarHandler::HandleChromeMenuCommand(const base::ListValue& args) {
++  BrowserWindowInterface* browser = GetBrowser();
++  if (!browser || args.empty() || !args[0].is_string()) {
++    return;
++  }
++  // The page's names (CHROME_MENU_COMMANDS in command-bar.logic.ts) for what
++  // Chrome's toolbar menu runs.
++  static constexpr std::pair<std::string_view, int> kCommands[] = {
++      {"new-window", IDC_NEW_WINDOW},
++      {"new-private-window", IDC_NEW_INCOGNITO_WINDOW},
++      {"find", IDC_FIND},
++      {"print", IDC_PRINT},
++      {"zoom-in", IDC_ZOOM_PLUS},
++      {"zoom-out", IDC_ZOOM_MINUS},
++      {"zoom-reset", IDC_ZOOM_NORMAL},
++      {"clear-data", IDC_CLEAR_BROWSING_DATA},
++      {"about", IDC_ABOUT},
++  };
++  const std::string& name = args[0].GetString();
++  for (const auto& [each, command_id] : kCommands) {
++    if (each == name) {
++      chrome::ExecuteCommand(browser, command_id);
++      return;
++    }
++  }
++  LOG(ERROR) << "Loka: the sidebar asked for a browser command it doesn't know: "
++             << name;
++}
++
++void LokaSidebarHandler::HandleTakeBrowserBookmarks(
++    const base::ListValue& args) {
++  AllowJavascript();
++  // Setup's import page brings bookmarks into the browser's own bookmarks,
++  // which Loka doesn't show. The first window to ask gets them, once per
++  // profile, as Chrome's Bookmarks file, and makes them a pinned folder. The
++  // pref is the one place that says they were taken, so two windows starting
++  // together never both get them.
++  static constexpr char kTakenKey[] = "bookmarks.taken";
++  Profile* profile = Profile::FromWebUI(web_ui());
++  bookmarks::BookmarkModel* model =
++      profile->IsOffTheRecord()
++          ? nullptr
++          : BookmarkModelFactory::GetForBrowserContext(profile);
++  if (model && !model->loaded()) {
++    // Not read from disk yet: the page asks again in a moment.
++    ResolveJavascriptCallback(args[0], base::Value());
++    return;
++  }
++  PrefService* prefs = profile->GetPrefs();
++  const bool none = !model || (model->bookmark_bar_node()->children().empty() &&
++                               model->other_node()->children().empty() &&
++                               model->mobile_node()->children().empty());
++  if (none || prefs->GetDict(kLokaSidebarStorePref).FindString(kTakenKey)) {
++    ResolveJavascriptCallback(args[0], base::Value(""));
++    return;
++  }
++  {
++    ScopedDictPrefUpdate update(prefs, kLokaSidebarStorePref);
++    update->Set(kTakenKey, "1");
++  }
++  std::string json;
++  base::JSONWriter::Write(
++      bookmarks::BookmarkCodec().Encode(model->bookmark_bar_node(),
++                                        model->other_node(),
++                                        model->mobile_node(), std::string()),
++      &json);
++  ResolveJavascriptCallback(args[0], base::Value(json));
++}
++
++bool LokaSidebarHandler::HandleBrowserCommand(BrowserWindowInterface* browser,
++                                              int command_id) {
++  std::string command;
++  switch (command_id) {
++    case IDC_NEW_TAB:
++      // Ctrl+T opens the command bar; picking a result opens the tab.
++      command = "new-tab";
++      break;
++    case IDC_CLOSE_TAB:
++      // Ctrl+W closes the shown tab the way the sidebar does, so the window
++      // stays when it was the last one (on an empty tab, it closes the
++      // window).
++      command = "close-tab";
++      break;
++    case IDC_SELECT_NEXT_TAB:
++    case IDC_CYCLE_TO_NEXT_TAB:
++      // Ctrl+PgDn and Ctrl+Tab step through the tabs of the current space in
++      // the sidebar's order, as Chrome's step through the tabs it shows, not
++      // through the hidden tab strip's order.
++      command = "next-tab";
++      break;
++    case IDC_SELECT_PREVIOUS_TAB:
++    case IDC_CYCLE_TO_PREV_TAB:
++      command = "previous-tab";
++      break;
++    case IDC_SELECT_TAB_0:
++    case IDC_SELECT_TAB_1:
++    case IDC_SELECT_TAB_2:
++    case IDC_SELECT_TAB_3:
++    case IDC_SELECT_TAB_4:
++    case IDC_SELECT_TAB_5:
++    case IDC_SELECT_TAB_6:
++    case IDC_SELECT_TAB_7:
++      // Ctrl+1..8 go to that space.
++      command =
++          "space-" + base::NumberToString(command_id - IDC_SELECT_TAB_0 + 1);
++      break;
++    case IDC_SELECT_LAST_TAB:
++      command = "space-9";
++      break;
++    case IDC_FOCUS_LOCATION:
++      // The address field is the sidebar's command bar.
++      command = "focus-location";
++      break;
++    default:
++      return false;
++  }
++  return DispatchCommand(browser, command);
 +}
 +
 +// static
@@ -3171,7 +3361,9 @@
 +                       r.FindDouble("width").value_or(1),
 +                       r.FindDouble("height").value_or(1));
 +  }
-+  views::View* anchor = region ? region->GetLokaAnchor(button) : nullptr;
++  LokaSidebarHost* sidebar_host = region ? region->loka_host() : nullptr;
++  views::View* anchor =
++      sidebar_host ? sidebar_host->GetAnchor(button) : nullptr;
 +  if (!host || !anchor) {
 +    return;
 +  }
@@ -3634,7 +3826,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.cc
-@@ -0,0 +1,199 @@
+@@ -0,0 +1,218 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -3649,6 +3841,7 @@
 +#include "chrome/browser/profiles/profile.h"
 +#include "chrome/browser/ui/webui/extensions/extension_icon_source.h"
 +#include "chrome/browser/ui/webui/favicon_source.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_history_ui.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_tab_sleeper.h"
 +#include "chrome/browser/ui/webui/theme_source.h"
@@ -3661,6 +3854,7 @@
 +#include "content/public/browser/web_contents.h"
 +#include "content/public/browser/web_ui.h"
 +#include "content/public/browser/web_ui_data_source.h"
++#include "content/public/browser/webui_config_map.h"
 +#include "content/public/common/url_constants.h"
 +#include "services/network/public/mojom/content_security_policy.mojom.h"
 +#include "ui/webui/webui_util.h"
@@ -3834,9 +4028,26 @@
 +LokaNewTabUI::~LokaNewTabUI() = default;
 +
 +WEB_UI_CONTROLLER_TYPE_IMPL(LokaNewTabUI)
++
++void RegisterLokaWebUIConfigs(content::WebUIConfigMap& map) {
++  map.AddWebUIConfig(std::make_unique<LokaSidebarUIConfig>());
++  if (LokaSettingsUIConfig::HasPage()) {
++    map.AddWebUIConfig(std::make_unique<LokaSettingsUIConfig>());
++  }
++  // The empty tab, where chrome://newtab goes (see
++  // LokaNewTabUIConfig::RewriteURL).
++  if (LokaNewTabUIConfig::HasPage()) {
++    map.AddWebUIConfig(std::make_unique<LokaNewTabUIConfig>());
++  }
++  // Loka's History page replaces Chrome's once the build has it.
++  if (LokaHistoryUIConfig::HasPage()) {
++    map.RemoveConfig(GURL(chrome::kChromeUIHistoryURL));
++    map.AddWebUIConfig(std::make_unique<LokaHistoryUIConfig>());
++  }
++}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h
-@@ -0,0 +1,120 @@
+@@ -0,0 +1,126 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -3855,6 +4066,7 @@
 +
 +namespace content {
 +class BrowserContext;
++class WebUIConfigMap;
 +}
 +
 +namespace user_prefs {
@@ -3956,10 +4168,15 @@
 +  WEB_UI_CONTROLLER_TYPE_DECL();
 +};
 +
++// Registers Loka's pages with `map`: the sidebar, Settings and the empty tab
++// (the last two when the build has them), and Loka's History page in place of
++// Chrome's. Call after Chrome's registrations.
++void RegisterLokaWebUIConfigs(content::WebUIConfigMap& map);
++
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_UI_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_spaces_service.cc
-@@ -0,0 +1,892 @@
+@@ -0,0 +1,1026 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -3994,14 +4211,20 @@
 +#include "chrome/browser/ui/tab_ui_helper.h"
 +#include "chrome/browser/ui/tabs/tab_enums.h"
 +#include "chrome/browser/ui/tabs/tab_group_model.h"
++#include "chrome/browser/tab_list/tab_removed_reason.h"
++#include "chrome/browser/ui/browser_tabrestore.h"
 +#include "chrome/browser/ui/tabs/tab_strip_model.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
 +#include "components/loka/core/intents.h"
 +#include "components/prefs/pref_service.h"
++#include "components/sessions/content/content_serialized_navigation_builder.h"
++#include "components/sessions/core/serialized_user_agent_override.h"
 +#include "components/tab_groups/tab_group_color.h"
 +#include "components/tab_groups/tab_group_visual_data.h"
 +#include "components/tabs/public/tab_group.h"
 +#include "components/tabs/public/tab_interface.h"
++#include "content/public/browser/navigation_controller.h"
++#include "content/public/browser/navigation_entry.h"
 +#include "content/public/browser/web_contents.h"
 +#include "ui/base/page_transition_types.h"
 +#include "ui/base/window_open_disposition.h"
@@ -4085,6 +4308,11 @@
 +
 +LokaSpacesService::Window::Window() = default;
 +LokaSpacesService::Window::~Window() = default;
++LokaSpacesService::History::History() = default;
++LokaSpacesService::History::History(const History&) = default;
++LokaSpacesService::History& LokaSpacesService::History::operator=(
++    const History&) = default;
++LokaSpacesService::History::~History() = default;
 +
 +// static
 +LokaSpacesService* LokaSpacesService::Get(Profile* profile) {
@@ -4100,6 +4328,17 @@
 +
 +LokaSpacesService::LokaSpacesService(Profile* profile) : profile_(profile) {
 +  profile_->AddObserver(this);
++  if (profile_->IsOffTheRecord()) {
++    // A private window's spaces live only as long as it does. Its profile's
++    // GetPath() is the normal profile's folder, so reading or writing Loka
++    // Spaces.json here would show the user's spaces in private and save
++    // private tabs to disk, over the normal window's saves. It starts with one
++    // dark space named Private, which also says so on the horizon.
++    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
++        FROM_HERE, base::BindOnce(&LokaSpacesService::OnPrivateReady,
++                                  weak_factory_.GetWeakPtr()));
++    return;
++  }
 +  scoped_refptr<base::SequencedTaskRunner> files =
 +      base::ThreadPool::CreateSequencedTaskRunner(
 +          {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
@@ -4141,7 +4380,7 @@
 +  }
 +  windows_.clear();
 +  // The last changes reach the disk before the profile goes.
-+  if (spaces_writer_->HasPendingWrite()) {
++  if (spaces_writer_ && spaces_writer_->HasPendingWrite()) {
 +    spaces_writer_->DoScheduledWrite();
 +  }
 +  profile_->RemoveObserver(this);
@@ -4195,6 +4434,19 @@
 +  }
 +}
 +
++void LokaSpacesService::OnPrivateReady() {
++  state_ = loka::FirstState(NewId());
++  loka::Space& space = state_.spaces.front();
++  space.name = "Private";
++  space.hue = 265;
++  space.scheme = "dark";
++  ready_ = true;
++  std::vector<base::OnceClosure> waiting = std::move(when_ready_);
++  for (base::OnceClosure& done : waiting) {
++    std::move(done).Run();
++  }
++}
++
 +void LokaSpacesService::WhenReady(base::OnceClosure done) {
 +  if (ready_) {
 +    std::move(done).Run();
@@ -4210,6 +4462,9 @@
 +}
 +
 +void LokaSpacesService::SaveArchive() {
++  if (!archive_writer_) {
++    return;
++  }
 +  base::DictValue value = loka::ToValue(state_);
 +  if (std::optional<std::string> json = base::WriteJson(*value.Find("archive"))) {
 +    archive_writer_->WriteNow(std::move(*json));
@@ -4232,7 +4487,14 @@
 +  }
 +  loka::State before = std::exchange(state_, std::move(next));
 +  if (!(before == state_)) {
-+    spaces_writer_->ScheduleWrite(this);
++    // A private window's spaces are never written (no writer).
++    if (spaces_writer_) {
++      spaces_writer_->ScheduleWrite(this);
++    }
++    // A kept history goes when its tab leaves the spaces (deleted or archived).
++    std::erase_if(histories_, [&](const auto& kept) {
++      return !state_.tabs.contains(kept.first);
++    });
 +  }
 +  if (before.archive != state_.archive) {
 +    SaveArchive();
@@ -4442,9 +4704,94 @@
 +    TabStripModel* tab_strip_model,
 +    const TabStripModelChange& change,
 +    const TabStripSelectionChange& selection) {
-+  if (Window* window = FindWindow(tab_strip_model)) {
-+    Schedule(*window, Pass::kBrowser);
++  Window* window = FindWindow(tab_strip_model);
++  if (!window) {
++    return;
 +  }
++  // A closing tab's page is still here: a pinned tab or Essential keeps its
++  // history for when it opens again.
++  if (change.type() == TabStripModelChange::kRemoved) {
++    for (const TabStripModelChange::RemovedTab& removed :
++         change.GetRemove()->contents) {
++      if (removed.tab && removed.contents &&
++          TabRemoveReasonUtils::WillDeleteWebContents(removed.remove_reason)) {
++        KeepHistory(*window, TabNumber(removed.tab), removed.contents);
++      }
++    }
++  }
++  Schedule(*window, Pass::kBrowser);
++}
++
++void LokaSpacesService::KeepHistory(Window& window,
++                                    int browser_id,
++                                    content::WebContents* page) {
++  std::optional<loka::TabId> id = window.live.TabIdOf(browser_id);
++  if (!id || !state_.tabs.contains(*id)) {
++    return;
++  }
++  const bool open = std::ranges::any_of(
++      state_.spaces,
++      [&](const loka::Space& space) {
++        return std::ranges::contains(space.open, *id);
++      });
++  if (open) {
++    return;
++  }
++  content::NavigationController& controller = page->GetController();
++  History history;
++  for (int i = 0; i < controller.GetEntryCount(); ++i) {
++    content::NavigationEntry* entry = controller.GetEntryAtIndex(i);
++    if (entry->IsInitialEntry()) {
++      continue;
++    }
++    if (i == controller.GetLastCommittedEntryIndex()) {
++      history.selected = static_cast<int>(history.entries.size());
++    }
++    history.entries.push_back(
++        sessions::ContentSerializedNavigationBuilder::FromNavigationEntry(
++            static_cast<int>(history.entries.size()), entry));
++  }
++  if (history.entries.empty()) {
++    histories_.erase(*id);
++    return;
++  }
++  histories_[*id] = std::move(history);
++}
++
++std::optional<int> LokaSpacesService::OpenWithHistory(Window& window,
++                                                      const loka::TabId& id) {
++  auto kept = histories_.find(id);
++  if (kept == histories_.end()) {
++    return std::nullopt;
++  }
++  History history = std::move(kept->second);
++  histories_.erase(kept);
++  const loka::Tab& tab = state_.tabs.at(id);
++  // Forward history goes, as a new page would drop it; the tab's own address
++  // comes next, unless that's where it already was.
++  history.entries.resize(history.selected + 1);
++  const GURL home(tab.url);
++  if (history.entries.back().virtual_url() != home) {
++    sessions::SerializedNavigationEntry entry;
++    entry.set_index(static_cast<int>(history.entries.size()));
++    entry.set_virtual_url(home);
++    entry.set_original_request_url(home);
++    entry.set_title(base::UTF8ToUTF16(tab.title));
++    entry.set_transition_type(ui::PAGE_TRANSITION_AUTO_BOOKMARK);
++    entry.set_timestamp(base::Time::Now());
++    history.entries.push_back(std::move(entry));
++  }
++  content::WebContents* page = chrome::AddRestoredTab(
++      window.browser, history.entries, window.tab_strip->count(),
++      static_cast<int>(history.entries.size()) - 1,
++      /*extension_app_id=*/std::string(), /*group=*/std::nullopt,
++      /*select=*/true, /*pin=*/false, base::TimeTicks::Now(), base::Time::Now(),
++      /*storage_namespace=*/nullptr, sessions::SerializedUserAgentOverride(),
++      /*extra_data=*/{}, /*from_session_restore=*/false,
++      /*is_active_browser=*/std::nullopt);
++  tabs::TabInterface* made =
++      page ? tabs::TabInterface::MaybeGetFromContents(page) : nullptr;
++  return made ? std::optional<int>(TabNumber(made)) : std::nullopt;
 +}
 +
 +void LokaSpacesService::OnTabChangedAt(tabs::TabInterface* tab,
@@ -4741,7 +5088,11 @@
 +
 +  switch (op.kind) {
 +    case loka::Op::Kind::kCreate: {
-+      if (std::optional<int> made = open(state_.tabs.at(op.tab_id).url)) {
++      std::optional<int> made = OpenWithHistory(window, op.tab_id);
++      if (!made) {
++        made = open(state_.tabs.at(op.tab_id).url);
++      }
++      if (made) {
 +        window.live.Set(op.tab_id, *made);
 +        // Seen now, so the next look doesn't take it for a tab of its own.
 +        for (const loka::BrowserTab& tab : TabsOf(window)) {
@@ -4854,7 +5205,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_spaces_service.h
-@@ -0,0 +1,199 @@
+@@ -0,0 +1,229 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -4883,10 +5234,15 @@
 +#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 +#include "components/loka/core/spaces_model.h"
 +#include "components/loka/core/tab_links.h"
++#include "components/sessions/core/serialized_navigation_entry.h"
 +#include "components/tab_groups/tab_group_id.h"
 +
 +class BrowserWindowInterface;
 +class Profile;
++
++namespace content {
++class WebContents;
++}
 +class TabStripModel;
 +
 +// Loka's spaces for one profile, owned in the browser process: the model
@@ -4999,8 +5355,30 @@
 +    bool ui_pass = false;
 +  };
 +
++  // A pinned tab's or Essential's Back history, kept while it's unloaded so
++  // opening it again can go back to where it was.
++  struct History {
++    History();
++    History(const History&);
++    History& operator=(const History&);
++    ~History();
++
++    std::vector<sessions::SerializedNavigationEntry> entries;
++    int selected = 0;
++  };
++
++  // A private (off-the-record) profile's start: one dark Private space,
++  // nothing read or saved.
++  void OnPrivateReady();
 +  void OnLoaded(std::optional<std::string> spaces,
 +                std::optional<std::string> archive);
++  // Keeps the history of `window`'s browser tab `browser_id`, about to be
++  // closed, when it shows a pinned tab or Essential.
++  void KeepHistory(Window& window, int browser_id, content::WebContents* page);
++  // Opens Loka tab `id` in `window` from its kept history, then at its own
++  // address: Back goes to where it was when it unloaded. Null when it has no
++  // kept history.
++  std::optional<int> OpenWithHistory(Window& window, const loka::TabId& id);
 +  // Makes `next` the spaces: saves, tells observers, also when only a
 +  // window's space changed. A window whose space is gone shows the one last
 +  // used.
@@ -5048,6 +5426,9 @@
 +  int next_group_number_ = 1;
 +  std::unique_ptr<base::ImportantFileWriter> spaces_writer_;
 +  std::unique_ptr<base::ImportantFileWriter> archive_writer_;
++  // Kept until the browser quits: an unloaded tab after a restart opens with
++  // no Back history, as before.
++  std::map<loka::TabId, History> histories_;
 +  base::RepeatingTimer archive_timer_;
 +  base::ObserverList<Observer> observers_;
 +  base::WeakPtrFactory<LokaSpacesService> weak_factory_{this};

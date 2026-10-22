@@ -1,10 +1,11 @@
 // Packages the built browser as the portable Windows alpha:
 //
 //   LOKA_VERSION=0.1.0-alpha.4 bun run browser:package
+//   bun run browser:package -- --list     what the zip holds at the top level; needs no build
 //
 // makes <build checkout>\dist\Loka-<version>-windows-x64.zip and its .sha256. Inside: Loka.exe (the launcher),
-// app\ (the browser's runtime files, with the Loka sidebar built in, and first-run defaults) and README.txt. Nothing
-// is installed: unzip anywhere and run Loka.exe. The profile lives in %LOCALAPPDATA%\Loka\User Data.
+// app\ (the browser's runtime files, with the Loka sidebar built in, and first-run defaults), README.txt, and the
+// licenses with NOTICE.txt. Nothing is installed: unzip anywhere and run Loka.exe. The profile lives in %LOCALAPPDATA%\Loka\User Data.
 // Last, it points <build checkout>\dist\snapshot at the new app\ folder: the copy tests drive while a build writes
 // out\Default (testBinary in scripts/browser.mjs).
 
@@ -35,6 +36,26 @@ const dist = join(BUILD_DIR, "dist");
 const name = `Loka-${VERSION}-windows-x64`;
 const stage = join(dist, name);
 const app = join(stage, "app");
+
+// Copied beside Loka.exe under these names. A Chromium-based download carries its licenses: GPL-3.0 (Loka and
+// Helium), ungoogled-chromium's BSD license, and NOTICE.txt, which names Chromium and points to chrome://credits for
+// every third-party license.
+const LICENSES = {
+	LICENSE: join(repo, "LICENSE"),
+	"LICENSE.ungoogled_chromium": join(repo, "LICENSE.ungoogled_chromium"),
+	"NOTICE.txt": join(repo, "scripts", "alpha", "NOTICE.txt"),
+};
+const missing = Object.values(LICENSES).filter((file) => !existsSync(file));
+if (missing.length) {
+	console.error(`Not packaging without its licenses; missing:\n${missing.join("\n")}`);
+	process.exit(1);
+}
+
+if (process.argv.includes("--list")) {
+	const top = ["Loka.exe", "README.txt", ...Object.keys(LICENSES), "app\\"];
+	console.log(`${name}.zip\n${top.map((f) => `  ${name}\\${f}`).join("\n")}`);
+	process.exit(0);
+}
 
 /** @param {string} cmd @param {string[]} args @param {string} [cwd] @param {NodeJS.ProcessEnv} [env] */
 function run(cmd, args, cwd = repo, env = process.env) {
@@ -92,7 +113,8 @@ This is an early alpha:
   command bar.
 
 Your profile (tabs, spaces, settings) is in %LOCALAPPDATA%\\Loka\\User Data,
-separate from Helium, Chrome or Edge. Loka is free software under GPL-3.0.
+separate from Helium, Chrome or Edge. Loka is free software under GPL-3.0;
+see LICENSE and NOTICE.txt.
 `;
 }
 
@@ -131,6 +153,7 @@ console.log(`${files.length} runtime entries, ${(bytes / 1024 ** 2).toFixed(0)} 
 
 writeFileSync(join(app, "initial_preferences"), JSON.stringify(INITIAL_PREFERENCES, null, 2));
 writeFileSync(join(stage, "README.txt"), readme().replace(/\n/g, "\r\n"));
+for (const [file, from] of Object.entries(LICENSES)) cpSync(from, join(stage, file));
 
 const csc = join(process.env.WINDIR ?? "C:\\Windows", "Microsoft.NET", "Framework64", "v4.0.30319", "csc.exe");
 run(csc, [

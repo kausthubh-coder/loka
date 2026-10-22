@@ -1,0 +1,20 @@
+Loka
+https://github.com/kausthubh-coder/loka
+
+Loka is free software under the GNU General Public License, version 3
+(GPL-3.0). Its full text is in LICENSE, beside this file. The source code for
+this build is at the address above.
+
+Loka is built on other open-source projects:
+
+- Helium (https://github.com/imputnet/helium), by imput. GPL-3.0, the same
+  license as Loka (LICENSE).
+- ungoogled-chromium (https://github.com/ungoogled-software/ungoogled-chromium),
+  by The ungoogled-chromium Authors. Code taken from it unchanged keeps its
+  BSD 3-Clause license (LICENSE.ungoogled_chromium).
+- Chromium (https://www.chromium.org), by The Chromium Authors. BSD 3-Clause
+  license.
+
+Chromium includes many third-party components, each under its own license.
+The full list, with every license text, is built into the browser: open
+Loka and go to chrome://credits.

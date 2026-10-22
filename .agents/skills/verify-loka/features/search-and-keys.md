@@ -47,7 +47,10 @@ Preconditions: seed data.
 ## Gotchas
 
 - A web page can't take Ctrl+Tab, so the prototype uses Arc's Ctrl+Alt+arrows, and so does the real
-  browser's sidebar today (`webui/src/main.ts`). Mapping Ctrl+Tab and Ctrl+PgDn to the same step is not built.
+  browser's sidebar page (`webui/src/main.ts`). In the real browser Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+PgDn and Ctrl+PgUp
+  step through the space's rows from anywhere: the handler takes IDC_CYCLE_TO_NEXT_TAB / PREV and IDC_SELECT_NEXT_TAB /
+  PREVIOUS and hands them to the sidebar, so the order is the sidebar's, not Chrome's hidden tab strip (verify:flows
+  `shortcuts`).
 - In the real browser Ctrl+Shift+F and Ctrl+Alt+arrows come from the sidebar page's own key handler, so they work
   only while the sidebar has focus.
 - Ctrl+F stays find-in-page; sidebar search is Ctrl+Shift+F.

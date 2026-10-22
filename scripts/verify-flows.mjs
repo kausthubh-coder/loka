@@ -2517,14 +2517,22 @@ async function newTabs() {
 		bar2Target ? "showing" : `not showing; the new window has ${bars.length} command bar pages (0: never opened)`,
 	);
 	if (bar2Target) {
+		// A new window's bar is shown before its page has loaded; Escape means something once the field has focus.
+		const ready = await until(
+			() =>
+				bar2Target.run(
+					`document.querySelector("loka-command-page")?.shadowRoot?.querySelector("loka-command-bar")?.shadowRoot?.activeElement?.tagName === "INPUT"`,
+				),
+			6000,
+		);
 		await bar2Target.key("Escape");
 		const closed = await until(() => bar2Target.run(`document.visibilityState === "hidden"`), 4000);
 		await sleep(500);
 		const left = await sb2.tabs();
 		check(
 			"Escape closes the bar and the window stays on its empty tab",
-			closed && left.length === 1 && isEmptyTab(left[0]?.url ?? ""),
-			`bar ${closed ? "hidden" : "still showing"}; tabs ${show(left.map((t) => t.url))}`,
+			ready && closed && left.length === 1 && isEmptyTab(left[0]?.url ?? ""),
+			`${ready ? "" : "the bar's field never took focus; "}bar ${closed ? "hidden" : "still showing"}; tabs ${show(left.map((t) => t.url))}`,
 		);
 		bar2Target.s.close();
 	}

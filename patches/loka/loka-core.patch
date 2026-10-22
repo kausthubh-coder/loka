@@ -35,7 +35,7 @@
 +}
 --- /dev/null
 +++ b/components/loka/core/intents.cc
-@@ -0,0 +1,250 @@
+@@ -0,0 +1,253 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -197,11 +197,14 @@
 +                                : DeleteSpace(state, *space_id);
 +  }
 +  if (*op == "moveSpace") {
-+    std::optional<double> to_index = Number(intent, "toIndex");
-+    if (!space_id || !to_index) {
++    // JSON has no Infinity: the page's "past the end" arrives as null.
++    const base::Value* to_index = intent.Find("toIndex");
++    if (!space_id || !to_index || !(to_index->is_none() || to_index->is_int() ||
++                                    to_index->is_double())) {
 +      return std::nullopt;
 +    }
-+    return MoveSpace(state, *space_id, *to_index);
++    return MoveSpace(state, *space_id,
++                     to_index->is_none() ? kEnd : to_index->GetDouble());
 +  }
 +  if (*op == "createSpace" || *op == "updateSpace") {
 +    std::optional<SpaceLook> look = Look(intent);
@@ -697,7 +700,7 @@
 +#endif  // COMPONENTS_LOKA_CORE_SPACES_DELTA_H_
 --- /dev/null
 +++ b/components/loka/core/spaces_model.cc
-@@ -0,0 +1,1151 @@
+@@ -0,0 +1,1156 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1233,6 +1236,11 @@
 +  if (to.area == Place::Area::kEssentials &&
 +      from.area != Place::Area::kEssentials &&
 +      state.essentials.size() >= kEssentialsLimit) {
++    return std::nullopt;
++  }
++  // A space deleted meanwhile (another window's menu still offered it): the
++  // item stays where it was.
++  if (to.area != Place::Area::kEssentials && !FindSpace(state, to.space_id)) {
 +    return std::nullopt;
 +  }
 +  // Indexes are given against the list before the move, so moving down the

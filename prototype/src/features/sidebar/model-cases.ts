@@ -324,6 +324,7 @@ export function modelCases(): { states: Record<string, BrowserState>; cases: Cas
 	moveTo("a space moves one place down", "seed", "s-build", 1);
 	moveTo("a space moves one place up", "home", "s-home", 1);
 	moveTo("a space past the end goes to the end", "seed", "s-build", 99);
+	moveTo("Infinity (null in JSON) is the end", "seed", "s-build", Number.POSITIVE_INFINITY);
 	moveTo("a space before the start goes to the start", "seed", "s-home", -3);
 	moveTo("a space moved to its own place changes nothing", "seed", "s-school", 1);
 	moveTo("moving a missing space changes nothing", "seed", "s-x", 0);

@@ -73,6 +73,15 @@ export function spaceCounts(space: Space): { pinned: number; open: number; folde
 	return { pinned: tabsUnder(space.pinned), open: space.open.length, folders: folders(space.pinned) };
 }
 
+/**
+ * Where a space dragged in the rail lands: the index it ends up at (what moveSpace takes). `centers` are the rows'
+ * middles along the list's axis, in the order before the drag; `from` is the dragged row; `at` is the pointer. It
+ * goes after every other row whose middle the pointer has passed.
+ */
+export function spaceDropIndex(centers: number[], from: number, at: number): number {
+	return centers.filter((center, i) => i !== from && center < at).length;
+}
+
 /** A space's counts in words: "5 pinned, 3 open", "1 pinned", "Empty". */
 export function countsLabel(counts: { pinned: number; open: number }): string {
 	const parts = [counts.pinned ? `${counts.pinned} pinned` : "", counts.open ? `${counts.open} open` : ""];

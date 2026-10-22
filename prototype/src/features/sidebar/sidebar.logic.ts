@@ -206,9 +206,13 @@ function sameContainer(a: Place, b: Place): boolean {
 	return false;
 }
 
+/** The most Essentials there can be. A move that would make one more changes nothing; reordering them still works. */
+export const ESSENTIALS_LIMIT = 12;
+
 /**
  * Moves a tab or folder to a new place. Returns the state unchanged when the move is not allowed:
- * folders only live in a pinned tree, and a folder can't go inside itself or its own subfolders.
+ * folders only live in a pinned tree, a folder can't go inside itself or its own subfolders, and a tab can't join
+ * Essentials once they hold ESSENTIALS_LIMIT.
  */
 export function moveItem(state: BrowserState, id: string, to: Place): BrowserState {
 	const detached = detach(state, id);
@@ -219,6 +223,11 @@ export function moveItem(state: BrowserState, id: string, to: Place): BrowserSta
 		if (to.area !== "pinned") return state;
 		if (to.parentId !== null && containsFolder(node, to.parentId)) return state;
 	}
+	if (to.area === "essentials" && from.area !== "essentials" && state.essentials.length >= ESSENTIALS_LIMIT) {
+		return state;
+	}
+	// A space deleted meanwhile (another window's menu still offered it): the item stays where it was.
+	if (to.area !== "essentials" && !state.spaces.some((s) => s.id === to.spaceId)) return state;
 
 	// Indexes are given against the list before the move, so moving down the same list shifts by one.
 	const index = sameContainer(from, to) && from.index < to.index ? to.index - 1 : to.index;
@@ -242,6 +251,34 @@ export function moveItem(state: BrowserState, id: string, to: Place): BrowserSta
 	const pinned = insertPinned(space.pinned, to.parentId, index, node);
 	if (!pinned) return state;
 	return replaceSpace(next, to.spaceId, (s) => ({ ...s, pinned }));
+}
+
+/** Where an item sits in the list `place` names (Essentials, a space's open tabs, or one level of a pinned tree). */
+function indexIn(state: BrowserState, place: Place, id: string): number {
+	if (place.area === "essentials") return state.essentials.indexOf(id);
+	const space = state.spaces.find((s) => s.id === place.spaceId);
+	if (!space) return -1;
+	if (place.area === "open") return space.open.indexOf(id);
+	const level = place.parentId === null ? space.pinned : (findFolder(space.pinned, place.parentId)?.children ?? []);
+	return level.findIndex((n) => n.id === id);
+}
+
+/**
+ * Moves several tabs or folders to one place as one change, in the order given: the first lands at `to.index`
+ * (counted before the move, as moveItem counts it) and each next one right after the one before it. An item moveItem
+ * refuses (a folder outside the pinned tree, an Essential past the limit, an unknown id) is skipped and the rest still
+ * move, so adding several tabs to Essentials adds as many as fit, in order.
+ */
+export function moveItems(state: BrowserState, ids: string[], to: Place): BrowserState {
+	let next = state;
+	let index = to.index;
+	for (const id of ids) {
+		const moved = moveItem(next, id, { ...to, index });
+		if (moved === next) continue;
+		next = moved;
+		index = indexIn(next, to, id) + 1;
+	}
+	return next;
 }
 
 export function openTab(state: BrowserState, url: string, title = url, now = Date.now(), id = newId()): BrowserState {
@@ -328,6 +365,20 @@ export function updateSpace(state: BrowserState, spaceId: string, look: SpaceLoo
 	const name = look.name.trim();
 	if (!name) return state;
 	return replaceSpace(state, spaceId, (s) => ({ ...s, ...look, name, scheme: look.scheme ?? s.scheme }));
+}
+
+/**
+ * Moves a space so it ends up at `toIndex` in the list (counted after the move, unlike moveItem's), which is the order
+ * of Ctrl+1..9, the horizon's neighbours and the spaces menu. The index is clamped to the list. The space showing
+ * stays the one showing. An unknown id, or the place it already has, changes nothing.
+ */
+export function moveSpace(state: BrowserState, spaceId: string, toIndex: number): BrowserState {
+	const from = state.spaces.findIndex((s) => s.id === spaceId);
+	const space = state.spaces[from];
+	if (!space) return state;
+	const to = clamp(toIndex, state.spaces.length - 1);
+	if (to === from) return state;
+	return { ...state, spaces: state.spaces.toSpliced(from, 1).toSpliced(to, 0, space) };
 }
 
 /**

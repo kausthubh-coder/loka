@@ -36,7 +36,7 @@ change). `bun run build:status` names it. Off Windows, or with no binary, they a
 | Command | What it drives | Time |
 |---|---|---|
 | `bun run verify:browser` | a fresh profile: setup, rows, icons, sound, media, extensions, downloads, scheme, pinning, suggestions, window identity, the WM_NCHITTEST hit test, a real posted click, the alpha's import | ~30 s |
-| `bun run verify:flows` | what a user does, 9 flows on one profile (`-- --only <flow>[,<flow>]` for some) | minutes |
+| `bun run verify:flows` | what a user does, 13 flows on one profile (`-- --only <flow>[,<flow>]` for some) | minutes |
 | `bun run verify:perf` | CPU, frames and memory of the real sidebar, against budgets (on branches that have it) | minutes |
 
 Each starts the browser on its own throwaway profile and CDP port, stops only its own process tree, deletes its

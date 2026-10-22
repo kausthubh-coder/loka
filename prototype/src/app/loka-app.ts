@@ -8,7 +8,7 @@ import type { BrowserCommand, CommandPick, NativeMedia, NativeTab } from "../../
 import { DEMO_EXTENSIONS, DEMO_LINKS } from "../demo/demo-data";
 import { fakeBrowser, onDemoPopup, pressBrowserShortcut } from "../demo/fake-browser";
 import { fakeHistory } from "../demo/fake-history";
-import { type ActionId, isActionId } from "../features/command-bar/command-bar.logic";
+import { type ActionId, isActionId, isChromeMenuCommand } from "../features/command-bar/command-bar.logic";
 import { type Section, sectionTitle, sectionUrl } from "../features/library/library.logic";
 import type { MediaAction, NowPlaying } from "../features/media/loka-media-card";
 import { nowPlaying } from "../features/media/media.logic";
@@ -182,6 +182,9 @@ export class LokaApp extends LitElement {
 			this.showPanel("search");
 		} else if (action === "onboarding") {
 			this.tourOpen = true;
+		} else if (isChromeMenuCommand(action)) {
+			// The demo has no browser window to act on; it notes the command as the real one would get it.
+			fakeBrowser.browserCommand(action);
 		}
 	}
 

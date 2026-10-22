@@ -100,10 +100,12 @@ build:status` says which, and why.
 - CDP's Input events start inside the page: they skip Windows' hit test and Chromium's Win32 input path. A CDP click
   passes on a sidebar a real mouse would drag the window from. Anything about the top row, the frame or input needs
   the hit-test and real-click checks.
-- CDP's synthetic keys reach the page but skip the browser's own shortcuts, so a drive can't press Ctrl+T or Ctrl+L
-  as accelerators: call `chrome.send("openCommandBar", ["new-tab"])`, which is the handler they both run. Keys the
-  sidebar page handles itself (Ctrl+K, Ctrl+L, Ctrl+1..9, Ctrl+H, Escape) do arrive. A real keyboard can still
-  differ: Escape closes the Downloads panel under CDP but not with a real key.
+- CDP's key events reach only the page unless they carry `nativeVirtualKeyCode`. With one, a key down also reaches
+  the browser's accelerators and BrowserCommandController, the way verify:flows `shortcuts` presses Ctrl+T, Ctrl+W,
+  Ctrl+L, Ctrl+PgDn and Ctrl+3 on a page (`pressOnPage`). Send the key up without it: on Windows an unhandled key with
+  a native code is handed back to Windows, and a CDP key has no native event to hand back. Keys the sidebar page
+  handles itself (Ctrl+K, Ctrl+L, Ctrl+1..9, Ctrl+H, Escape) arrive either way. A real keyboard can still differ:
+  Escape closes the Downloads panel under CDP but not with a real key.
 - Not checked by any suite: `windowAction` (Minimize, Maximize, Close), dragging by the top row (`startWindowDrag`),
   `downloadAction`, `setThemeColor`, `ungroupTabs`, and tabs opened from outside the sidebar joining the space.
 - A sidebar picture taken during a fade shows panels half see-through; verify:flows waits for animations first.

@@ -21,7 +21,7 @@ from loka_brand import BRANDED_STRINGS, branded_strings  # noqa: E402
 
 # Folders only Loka writes, searched for new files no patch lists. components/loka_sidebar/dist is the built page
 # that `bun run webui:build` copies in, so it isn't source.
-LOKA_FOLDERS = ['chrome/browser/ui/webui/loka_sidebar', 'components/loka_sidebar']
+LOKA_FOLDERS = ['chrome/browser/ui/views/loka', 'chrome/browser/ui/webui/loka_sidebar', 'components/loka_sidebar']
 GENERATED = ['components/loka_sidebar/dist/']
 
 

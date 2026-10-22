@@ -229,16 +229,22 @@ export function processes(root) {
 /**
  * Starts the built browser on a throwaway profile (`C:\src\loka\profile-<name>-<time>`) with CDP on a free port,
  * setup skipped, and one normal tab so the sidebar exists. `close()` stops only this process tree and deletes the
- * profile.
- * @param {{ name: string, chrome?: string, args?: string[], url?: string }} options
+ * profile. `files` are written into the profile first, by path inside it (`Default/Bookmarks`), as if an earlier run
+ * had left them.
+ * @param {{ name: string, chrome?: string, args?: string[], url?: string, files?: Record<string, string> }} options
  */
-export async function launchBrowser({ name, chrome = chromePath(), args = [], url = "about:blank" }) {
+export async function launchBrowser({ name, chrome = chromePath(), args = [], url = "about:blank", files = {} }) {
 	const { spawn } = await import("node:child_process");
-	const { mkdirSync, rmSync } = await import("node:fs");
+	const { mkdirSync, rmSync, writeFileSync } = await import("node:fs");
+	const { dirname } = await import("node:path");
 	refuseWhileBuilding(chrome);
 	const stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
 	const profile = join(BUILD_DIR, `profile-${name}-${stamp}-${process.pid}`);
 	mkdirSync(profile, { recursive: true });
+	for (const [path, text] of Object.entries(files)) {
+		mkdirSync(dirname(join(profile, path)), { recursive: true });
+		writeFileSync(join(profile, path), text);
+	}
 	const port = await freePort();
 	const child = spawn(
 		chrome,

@@ -165,6 +165,7 @@ export const fakeBrowser: Browser = {
 	search: (query, newTab) => log("search", query, newTab),
 	openPage: (url) => log("openPage", url),
 	windowAction: (action) => log("windowAction", action),
+	browserCommand: (command) => log("browserCommand", command),
 	startWindowDrag: () => log("startWindowDrag"),
 	store: async () => store,
 	setStore: (key, value) => {
@@ -242,6 +243,7 @@ export const fakeBrowser: Browser = {
 		emit("sidebar-pinned-changed", pinned);
 	},
 	sidebarPinned: async () => localStorage.getItem(PINNED_KEY) !== "false",
+	takeBrowserBookmarks: async () => "",
 	setAutoplay: (mode) => {
 		log("setAutoplay", mode);
 		autoplay = mode;

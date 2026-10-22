@@ -1054,6 +1054,7 @@ export class LokaSidebar extends LitElement {
 			{ label: "Downloads", run: () => this.openPanel("downloads") },
 			{ label: `Archived tabs (${this.state.archive.length})`, run: () => this.openPanel("archive") },
 			{ label: "History", run: () => this.action("history") },
+			{ label: "Library", run: () => this.action("library") },
 			{ label: this.soundOn ? "Mute sounds" : "Unmute sounds", run: () => this.action("toggle-sound") },
 			{ label: "Settings", run: () => this.action("settings") },
 			{ label: "Show the welcome tour", divider: true, run: () => this.action("onboarding") },

@@ -9,6 +9,7 @@ import { resolveScheme, type Scheme } from "../../prototype/src/app/theme.logic"
 import { DEFAULT_UI, type UiPrefs } from "../../prototype/src/app/ui-prefs.logic";
 import { type ActionId, isActionId } from "../../prototype/src/features/command-bar/command-bar.logic";
 import "../../prototype/src/features/command-bar/loka-command-bar";
+import { sectionUrl } from "../../prototype/src/features/library/library.logic";
 import type { MediaAction, NowPlaying } from "../../prototype/src/features/media/loka-media-card";
 import { nowPlaying } from "../../prototype/src/features/media/media.logic";
 import { type LiveTabs, setFaviconSource } from "../../prototype/src/features/sidebar/favicon";
@@ -382,8 +383,9 @@ export class LokaPanel extends LitElement {
 			browser.setSidebarPinned(this.pinned);
 		} else if (action === "settings") {
 			browser.openPage("chrome://loka-settings/");
-		} else if (action === "history") {
-			browser.openPage("chrome://history/");
+		} else if (action === "history" || action === "library") {
+			// One Library tab: the browser goes to it and takes it to the section's address.
+			browser.openPage(sectionUrl("chrome://history/", action === "history" ? "history" : "spaces"));
 		} else if (action === "onboarding") {
 			browser.openPage("chrome://setup/");
 		} else if (action === "downloads" || action === "extensions" || action === "archive") {

@@ -1,24 +1,13 @@
 // The sidebar's line to the browser. The sidebar is a built-in browser page (chrome://loka-sidebar.top-chrome),
 // and LokaSidebarHandler (chrome/browser/ui/webui/loka_sidebar/) answers it: chrome.send carries a request, and the
-// browser answers through cr.webUIResponse or pushes news through cr.webUIListenerCallback.
+// browser answers through cr.webUIResponse or pushes news through cr.webUIListenerCallback (channel.ts). Loka's other
+// pages that the same handler answers (Settings, the command bar, the empty tab, the Library) use it too.
 
 import type { Intent } from "../../prototype/src/features/sidebar/intents.logic";
 import type { BrowserState, TabId } from "../../prototype/src/features/sidebar/sidebar.logic";
 import type { SpacesDelta } from "../../prototype/src/features/sidebar/spaces-delta.logic";
+import { channel } from "./channel";
 import type { BrowserEvent, Message } from "./messages";
-
-declare global {
-	interface Window {
-		cr: {
-			webUIResponse(id: string, ok: boolean, value: unknown): void;
-			webUIListenerCallback(event: string, ...args: unknown[]): void;
-		};
-	}
-}
-
-/** WebUI's chrome.send, which the extension typings (also loaded in this repo) don't describe. */
-const send = (message: Message, args: unknown[]) =>
-	(globalThis as unknown as { chrome: { send(message: string, args: unknown[]): void } }).chrome.send(message, args);
 
 /** A tab in this window, as the browser reports it. Ids are the browser's tab handles. */
 export interface NativeTab {
@@ -151,38 +140,7 @@ export type CommandPick =
 	| { kind: "space"; spaceId: string }
 	| { kind: "action"; action: string };
 
-const pending = new Map<string, (value: unknown) => void>();
-const listeners = new Map<string, Set<(...args: unknown[]) => void>>();
-let nextId = 0;
-
-window.cr = {
-	webUIResponse(id, _ok, value) {
-		pending.get(id)?.(value);
-		pending.delete(id);
-	},
-	webUIListenerCallback(event, ...args) {
-		for (const listener of listeners.get(event) ?? []) listener(...args);
-	},
-};
-
-function ask<T>(message: Message, ...args: unknown[]): Promise<T> {
-	const id = `loka-${nextId++}`;
-	return new Promise((resolve) => {
-		pending.set(id, resolve as (value: unknown) => void);
-		send(message, [id, ...args]);
-	});
-}
-
-function tell(message: Message, ...args: unknown[]) {
-	send(message, args);
-}
-
-function on(event: BrowserEvent, listener: (...args: unknown[]) => void): () => void {
-	const set = listeners.get(event) ?? new Set();
-	listeners.set(event, set);
-	set.add(listener);
-	return () => set.delete(listener);
-}
+const { ask, tell, on } = channel<Message, BrowserEvent>("loka");
 
 /**
  * This window's tabs as the page last heard, kept by "tabs-changed" once syncTabs has started it. Listening here first

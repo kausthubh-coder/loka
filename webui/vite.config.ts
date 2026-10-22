@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
 // Builds Loka's own browser pages into webui/dist, sharing one bundle: the sidebar (sidebar.html), the floating
-// command bar (command.html), the History page (history.html, chrome://history, with its own handler) and the
+// command bar (command.html), the Library (history.html, chrome://history, with its own history handler and the sidebar's) and the
 // Settings page (settings.html, chrome://loka-settings, answered by the sidebar's handler) and the empty tab
 // (newtab.html, chrome://loka-newtab, where chrome://newtab goes). `bun run webui:build` then copies them into the build checkout's
 // components/loka_sidebar/dist, where GN packs everything in it into loka_sidebar_generated.pak.

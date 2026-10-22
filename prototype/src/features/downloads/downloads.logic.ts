@@ -60,6 +60,21 @@ export function downloadActions(d: NativeDownload): { open: boolean; buttons: Do
 	return { open: false, buttons: ["retry", "remove"] };
 }
 
+/** A file's type as its tile shows it: the extension, upper case, at most four letters ("" for none). */
+export function fileExt(name: string): string {
+	return name.includes(".") ? (name.split(".").pop() ?? "").toUpperCase().slice(0, 4) : "";
+}
+
+/** A file type's tile color, by extension, so a list of files can be told apart at a glance. */
+export function fileHue(name: string): number {
+	const ext = name.split(".").pop()?.toLowerCase() ?? "";
+	const known: Record<string, number> = { exe: 205, msi: 205, pdf: 0, png: 150, jpg: 150, zip: 40, json: 45, mp4: 280 };
+	if (ext in known) return known[ext] ?? 220;
+	let hash = 0;
+	for (const c of ext) hash = (hash * 31 + c.charCodeAt(0)) % 360;
+	return hash;
+}
+
 /** Newest first, the way the browser's own list reads. */
 export function sortDownloads(list: NativeDownload[]): NativeDownload[] {
 	return list.toSorted((a, b) => b.startTime - a.startTime);

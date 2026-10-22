@@ -45,3 +45,4 @@ loka/loka-onboarding.patch
 loka/loka-autoplay.patch
 loka/loka-restore-session.patch
 loka/loka-core.patch
+loka/loka-kept-tab-data.patch

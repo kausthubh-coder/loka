@@ -31,6 +31,8 @@ export interface LiveTab {
 	loading?: boolean;
 	audible?: boolean;
 	muted?: boolean;
+	/** No page in memory: a pinned tab or Essential not opened yet, or closed, or a tab unloaded to save memory. */
+	unloaded?: boolean;
 }
 
 export type LiveTabs = Record<TabId, LiveTab>;

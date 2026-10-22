@@ -36,9 +36,10 @@ export type Intent =
 	| { op: "openTab"; url: string; title: string; now: number; id: TabId }
 	| { op: "navigateTab"; tabId: TabId; url: string; title: string }
 	| { op: "activateTab"; tabId: TabId; now: number }
-	| { op: "closeTab"; tabId: TabId }
+	/** A close by hand: an open tab goes to the archive, stamped `now`. */
+	| { op: "closeTab"; tabId: TabId; now: number }
 	/** Clear, and Close others: one change for many tabs. */
-	| { op: "closeTabs"; tabIds: TabId[] }
+	| { op: "closeTabs"; tabIds: TabId[]; now: number }
 	| { op: "switchSpace"; spaceId: string }
 	| { op: "createSpace"; look: SpaceLook; id: string }
 	| { op: "updateSpace"; spaceId: string; look: SpaceLook }
@@ -72,9 +73,9 @@ export function applyIntent(state: BrowserState, intent: Intent): BrowserState {
 		case "activateTab":
 			return activateTab(state, intent.tabId, intent.now);
 		case "closeTab":
-			return closeTab(state, intent.tabId);
+			return closeTab(state, intent.tabId, intent.now);
 		case "closeTabs":
-			return intent.tabIds.reduce((s, id) => closeTab(s, id), state);
+			return intent.tabIds.reduce((s, id) => closeTab(s, id, intent.now), state);
 		case "switchSpace":
 			return switchSpace(state, intent.spaceId);
 		case "createSpace":

@@ -1,0 +1,2459 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Loka v1 mockup</title>
+<style>
+/* ---------- The page around the mockup: follows T3's theme when shown there, works alone too ---------- */
+:root {
+  color-scheme: light dark;
+  --pg-text: var(--foreground, #1b1b1d);
+  --pg-muted: var(--muted-foreground, #5d5f66);
+  --pg-line: var(--border, #d9d9de);
+  --pg-chip: var(--muted, #ececef);
+  --pg-accent: var(--primary, #2563eb);
+  --pg-on-accent: var(--primary-foreground, #fff);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --pg-text: var(--foreground, #e9e9eb);
+    --pg-muted: var(--muted-foreground, #a3a4ab);
+    --pg-line: var(--border, #34353b);
+    --pg-chip: var(--muted, #26272c);
+  }
+}
+html, body { margin: 0; }
+body {
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--pg-text);
+}
+.controls {
+  display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;
+  margin-bottom: 12px;
+}
+.controls .label { color: var(--pg-muted); font-size: 13px; }
+.seg { display: inline-flex; border: 1px solid var(--pg-line); border-radius: 8px; overflow: hidden; }
+.seg button, .pg-btn {
+  font: inherit; font-size: 13px; color: var(--pg-text); background: transparent;
+  border: 0; padding: 7px 12px; min-height: 34px; cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--pg-line); }
+.seg button[aria-pressed="true"] { background: var(--pg-accent); color: var(--pg-on-accent); }
+.pg-btn { border: 1px solid var(--pg-line); border-radius: 8px; }
+.pg-btn:disabled { opacity: 0.45; cursor: default; }
+.pg-btn:hover:not(:disabled), .seg button:hover:not([aria-pressed="true"]) { background: var(--pg-chip); }
+.seg button:focus-visible, .pg-btn:focus-visible { outline: 2px solid var(--pg-accent); outline-offset: 2px; }
+.stage { width: 100%; position: relative; }
+.notes { margin-top: 16px; }
+.notes h2 { font-size: 16px; margin: 0 0 6px; }
+.notes ol { margin: 0; padding-left: 20px; }
+.notes li { max-width: 74ch; margin: 3px 0; }
+.notes kbd { font: 12px ui-monospace, "Cascadia Code", Consolas, monospace; border: 1px solid var(--pg-line); border-radius: 4px; padding: 0 4px; }
+.notes code { font: 12.5px ui-monospace, "Cascadia Code", Consolas, monospace; background: var(--pg-chip); border-radius: 4px; padding: 0 4px; }
+.notes table { border-collapse: collapse; font-size: 13.5px; margin: 8px 0 14px; }
+.notes th, .notes td { text-align: left; padding: 5px 14px 5px 0; border-bottom: 1px solid var(--pg-line); vertical-align: top; }
+.notes th { color: var(--pg-muted); font-weight: 600; }
+
+/* ---------- The two windows: the browser and the setup window ---------- */
+.win, .setup {
+  --hue: 200;
+  position: absolute; top: 0; left: 0;
+  width: 1200px; height: 760px;
+  transform-origin: 0 0;
+  isolation: isolate; overflow: hidden;
+  border-radius: 12px;
+  color: var(--ink);
+  box-shadow: 0 0 0 1px #0000001f, 0 18px 50px #0000003a;
+  -webkit-font-smoothing: antialiased;
+}
+.win {
+  display: grid; grid-template-columns: 272px 1fr;
+  font: 13.5px/1.35 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+.win[hidden], .setup[hidden] { display: none; }
+:where(.win, .setup) button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: start; }
+:where(.win, .setup) :focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
+
+/* Calm night: today's sky, quieter where the words are. The glows sit at the top corner and on the horizon; behind
+   the list the sky is one dark tone and the stars dim to a third. */
+.sky-calm {
+  color-scheme: dark;
+  --ink: #eef0f5;
+  --ink-2: #c5c8d3;
+  --ink-3: #a6aab9;
+  --icon: #d3d6df;
+  --hover: hsl(var(--hue) 40% 85% / 0.08);
+  --selected: hsl(var(--hue) 45% 85% / 0.15);
+  --selected-edge: inset 0 0 0 1px hsl(var(--hue) 60% 85% / 0.09);
+  --fill: hsl(var(--hue) 35% 85% / 0.07);
+  --fill-hover: hsl(var(--hue) 35% 85% / 0.12);
+  --line: hsl(var(--hue) 30% 85% / 0.14);
+  --accent: hsl(var(--hue) 85% 72%);
+  --on-accent: hsl(var(--hue) 45% 10%);
+  --folder: hsl(var(--hue) 70% 76%);
+  --glass: hsl(var(--hue) 30% 12% / 0.62);
+  --glass-ink: #eef0f5;
+  --card: hsl(var(--hue) 28% 12% / 0.74);
+  --card-edge: inset 0 0 0 1px hsl(var(--hue) 40% 85% / 0.12);
+  --field: hsl(var(--hue) 30% 85% / 0.08);
+  --menu: hsl(var(--hue) 24% 13% / 0.94);
+  --menu-ink: #eef0f5;
+  --menu-ink-2: #a9adbb;
+  --menu-hover: hsl(var(--hue) 40% 85% / 0.11);
+  --menu-edge: 0 0 0 1px hsl(var(--hue) 40% 85% / 0.14), 0 18px 48px #000a;
+  --danger: #ff9b8f;
+  --page: hsl(var(--hue) 10% 9%);
+  --page-2: hsl(var(--hue) 10% 13%);
+  --page-ink: #ececf1;
+  --page-ink-2: #b4b6c0;
+  --page-line: hsl(var(--hue) 10% 20%);
+  --toast: hsl(var(--hue) 25% 14% / 0.96);
+  --star-mask: linear-gradient(180deg, #000 0, #000 9%, #0000004d 24%, #0000004d 80%, #000 94%);
+}
+/* Dawn: the day sky with ink that reads. Icons and glass are ink on white, never white on a pale sky. */
+.sky-dawn {
+  color-scheme: light;
+  --ink: hsl(var(--hue) 35% 11%);
+  --ink-2: hsl(var(--hue) 20% 24%);
+  --ink-3: hsl(var(--hue) 16% 31%);
+  --icon: hsl(var(--hue) 25% 22%);
+  --hover: hsl(var(--hue) 50% 25% / 0.07);
+  --selected: hsl(0 0% 100% / 0.86);
+  --selected-edge: 0 1px 2px hsl(var(--hue) 50% 20% / 0.14), 0 0 0 0.5px hsl(var(--hue) 40% 20% / 0.12);
+  --fill: hsl(0 0% 100% / 0.5);
+  --fill-hover: hsl(0 0% 100% / 0.72);
+  --line: hsl(var(--hue) 40% 20% / 0.14);
+  --accent: oklch(from hsl(var(--hue) 80% 50%) 0.5 0.15 h);
+  --on-accent: #fff;
+  --folder: oklch(from hsl(var(--hue) 80% 50%) 0.48 0.12 h);
+  --glass: hsl(0 0% 100% / 0.82);
+  --glass-ink: hsl(var(--hue) 35% 14%);
+  --card: hsl(0 0% 100% / 0.76);
+  --card-edge: inset 0 0 0 1px hsl(var(--hue) 40% 20% / 0.1), 0 1px 3px hsl(var(--hue) 50% 20% / 0.08);
+  --field: hsl(0 0% 100% / 0.85);
+  --menu: hsl(0 0% 100% / 0.95);
+  --menu-ink: hsl(var(--hue) 35% 12%);
+  --menu-ink-2: hsl(var(--hue) 14% 36%);
+  --menu-hover: hsl(var(--hue) 50% 25% / 0.08);
+  --menu-edge: 0 0 0 1px hsl(var(--hue) 40% 20% / 0.1), 0 18px 48px hsl(var(--hue) 50% 20% / 0.25);
+  --danger: #b3261e;
+  --page: #fcfcfd;
+  --page-2: hsl(var(--hue) 30% 96%);
+  --page-ink: hsl(var(--hue) 25% 11%);
+  --page-ink-2: hsl(var(--hue) 12% 34%);
+  --page-line: hsl(var(--hue) 20% 88%);
+  --toast: hsl(var(--hue) 30% 14% / 0.96);
+  --star-mask: none;
+}
+/* Today: what ships now, for comparison. */
+.sky-today {
+  color-scheme: dark;
+  --ink: #ececf1;
+  --ink-2: #b0b1bc;
+  --ink-3: #9294a2;
+  --icon: #b0b1bc;
+  --hover: hsl(var(--hue) 30% 80% / 0.08);
+  --selected: hsl(var(--hue) 40% 85% / 0.16);
+  --selected-edge: 0 0 0 0 transparent;
+  --fill: hsl(var(--hue) 30% 85% / 0.07);
+  --fill-hover: hsl(var(--hue) 30% 85% / 0.12);
+  --line: hsl(var(--hue) 30% 85% / 0.12);
+  --accent: hsl(var(--hue) 85% 72%);
+  --on-accent: hsl(var(--hue) 45% 10%);
+  --folder: hsl(var(--hue) 70% 75%);
+  --glass: hsl(0 0% 100% / 0.12);
+  --glass-ink: #fff;
+  --card: hsl(var(--hue) 22% 13% / 0.8);
+  --card-edge: inset 0 0 0 1px hsl(var(--hue) 30% 85% / 0.12);
+  --field: hsl(var(--hue) 30% 85% / 0.08);
+  --menu: hsl(var(--hue) 22% 13% / 0.97);
+  --menu-ink: #ececf1;
+  --menu-ink-2: #a8a9b3;
+  --menu-hover: hsl(var(--hue) 30% 80% / 0.1);
+  --menu-edge: 0 0 0 1px hsl(var(--hue) 30% 85% / 0.12), 0 16px 40px #0009;
+  --danger: #ff9b8f;
+  --page: #17181c;
+  --page-2: #1f2025;
+  --page-ink: #ececf1;
+  --page-ink-2: #a8a9b3;
+  --page-line: #2a2b31;
+  --toast: hsl(var(--hue) 22% 13% / 0.97);
+  --star-mask: none;
+}
+
+/* ---------- Sky ----------
+   The backgrounds use var(--hue) in the rule itself, not through a custom property set on the window: a custom
+   property is resolved where it's declared, so .sky-was (the space being left) couldn't bring its own hue. */
+.sky { position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+.sky-was { position: absolute; inset: 0; }
+.neb { position: absolute; inset: 0; }
+.sky-calm :is(.sky, .sky-was) {
+  background: linear-gradient(180deg, hsl(var(--hue) 36% 13%) 0%, hsl(var(--hue) 30% 8.5%) 34%, hsl(var(--hue) 28% 7.5%) 72%, hsl(calc(var(--hue) - 20) 38% 8%) 100%);
+}
+.sky-calm .neb {
+  background:
+    radial-gradient(60% 26% at 0% 0%, hsl(var(--hue) 60% 36% / 0.42), transparent 70%),
+    radial-gradient(40% 16% at 100% 4%, hsl(calc(var(--hue) + 40) 55% 40% / 0.14), transparent 70%),
+    radial-gradient(90% 22% at 30% 100%, hsl(var(--hue) 75% 45% / 0.30), transparent 70%);
+}
+.sky-dawn :is(.sky, .sky-was) {
+  background:
+    radial-gradient(80% 30% at 0% 0%, hsl(calc(var(--hue) + 25) 100% 98.5%), transparent 70%),
+    linear-gradient(180deg, hsl(var(--hue) 55% 94.5%), hsl(var(--hue) 45% 91.5%) 55%, hsl(var(--hue) 48% 85%));
+}
+.sky-dawn .neb {
+  background:
+    radial-gradient(40% 10% at 70% 22%, hsl(0 0% 100% / 0.6), transparent 70%),
+    radial-gradient(90% 22% at 30% 100%, hsl(var(--hue) 80% 72% / 0.45), transparent 70%);
+}
+.sky-today :is(.sky, .sky-was) {
+  background: linear-gradient(172deg, hsl(var(--hue) 44% 16%), hsl(var(--hue) 40% 9%) 55%, hsl(calc(var(--hue) - 20) 40% 5%));
+}
+.sky-today .neb {
+  background:
+    radial-gradient(48% 40% at 10% 6%, hsl(var(--hue) 62% 38% / 0.55), transparent 70%),
+    radial-gradient(30% 22% at 32% 30%, hsl(calc(var(--hue) + 40) 60% 45% / 0.16), transparent 70%),
+    radial-gradient(34% 28% at 30% 60%, hsl(calc(var(--hue) + 40) 45% 32% / 0.22), transparent 70%),
+    radial-gradient(26% 40% at 72% 38%, hsl(calc(var(--hue) - 50) 50% 40% / 0.15), transparent 70%),
+    radial-gradient(46% 46% at 96% 96%, hsl(calc(var(--hue) - 35) 42% 26% / 0.3), transparent 70%);
+}
+/* Three star layers, far to near. The sweep wrapper is what the space switch moves, so it never fights the drift. */
+.starfield { position: absolute; inset: 0; -webkit-mask-image: var(--star-mask); mask-image: var(--star-mask); }
+.sky-dawn .starfield { display: none; }
+/* In the browser the page covers everything but the sidebar, so the stars only cover the sidebar: drifting them
+   across the whole window cost a third of the frame rate for stars no one could see. */
+#sky .starfield { right: auto; width: 280px; }
+.win.right #sky .starfield { left: auto; right: 0; }
+.sweep { position: absolute; inset: -4%; transform-origin: 50% 100%; }
+.sweep i { position: absolute; top: 0; left: 0; height: 100%; background-repeat: repeat; will-change: transform; }
+.sweep i.far { width: calc(100% + 480px); background-size: 480px 320px; }
+.sweep i.mid { width: calc(100% + 640px); background-size: 640px 420px; }
+.sweep i.near { width: calc(100% + 820px); background-size: 820px 540px; }
+@media (prefers-reduced-motion: no-preference) {
+  /* Smooth: a sub-pixel move every frame on the compositor. Each layer slides exactly one tile, so the loop has no seam. */
+  .sweep i.far { animation: drift-far 240s linear infinite; }
+  .sweep i.mid { animation: drift-mid 200s linear infinite; }
+  .sweep i.near { animation: drift-near 150s linear infinite; }
+  /* Today's sky keeps the one-pixel steps that ship now, so the difference shows. */
+  .sky-today .sweep i.far { animation: drift-far 260s steps(480) infinite; }
+  .sky-today .sweep i.mid { animation: drift-mid 210s steps(640) infinite; }
+  .sky-today .sweep i.near { animation: drift-near 150s steps(820) infinite; }
+  @keyframes drift-far { to { transform: translate3d(-480px, 0, 0); } }
+  @keyframes drift-mid { to { transform: translate3d(-640px, 0, 0); } }
+  @keyframes drift-near { to { transform: translate3d(-820px, 0, 0); } }
+}
+
+/* ---------- Sidebar ---------- */
+.side { display: flex; flex-direction: column; min-height: 0; position: relative; view-transition-name: loka-side; }
+.toprow { display: flex; align-items: center; height: 44px; padding: 0 6px; gap: 2px; }
+.toprow .gap { flex: 1; }
+.ic {
+  width: 30px; height: 30px; border-radius: 7px; display: inline-grid; place-items: center; color: var(--icon);
+  flex: none;
+}
+.ic:hover { background: var(--hover); }
+.ic:disabled { opacity: 0.4; cursor: default; background: none; }
+.ic svg { width: 16px; height: 16px; }
+.addr {
+  margin: 0 10px; height: 36px; border-radius: 10px; background: var(--fill);
+  display: flex; align-items: center; gap: 8px; padding: 0 6px 0 12px; color: var(--ink-2);
+}
+.addr:hover { background: var(--fill-hover); }
+.addr svg { width: 14px; height: 14px; flex: none; }
+.addr .host { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+.ess { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin: 10px 10px 4px; }
+.tile {
+  height: 50px; border-radius: 12px; background: var(--fill); display: grid; place-items: center; position: relative;
+}
+.tile:hover { background: var(--fill-hover); }
+.tile.active { background: var(--selected); box-shadow: var(--selected-edge), inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 55%, transparent); }
+.tile.unloaded .fav { opacity: 0.45; filter: saturate(0.4); }
+.list {
+  flex: 1; min-height: 0; overflow-y: auto; padding: 6px 10px 8px; scrollbar-width: none;
+}
+.row {
+  height: 34px; border-radius: 9px; display: flex; align-items: center; gap: 10px;
+  padding: 0 4px 0 calc(10px + var(--d, 0) * 16px); cursor: default; position: relative;
+  user-select: none;
+}
+.row:hover { background: var(--hover); }
+.row.active { background: var(--selected); box-shadow: var(--selected-edge); }
+.row .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .ic { width: 26px; height: 26px; border-radius: 6px; display: none; color: var(--ink-2); }
+.row .ic svg { width: 14px; height: 14px; }
+.row:hover .ic, .row:focus-within .ic, .row.active .ic { display: inline-grid; }
+.row .ic:hover { background: var(--fill-hover); color: var(--ink); }
+.row.unloaded .fav { opacity: 0.4; filter: saturate(0.35); }
+.row.unloaded .t { color: var(--ink-2); }
+.row .moved { display: inline-grid; }
+.row .sound { width: 14px; height: 14px; color: var(--ink-2); flex: none; }
+.row.folder .t { color: var(--ink); font-weight: 500; }
+.row.folder svg.fold { width: 18px; height: 18px; color: var(--folder); flex: none; margin: 0 -1px; }
+.row .rename {
+  flex: 1; min-width: 0; height: 24px; margin: 0 4px 0 -4px; padding: 0 6px; border-radius: 6px;
+  border: 0; outline: 2px solid var(--accent); background: var(--field); color: var(--ink); font: inherit;
+}
+/* What a right-click is about, while its menu is open. */
+.ctx-on { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 70%, transparent) !important; }
+.row.leaving { animation: leave 280ms cubic-bezier(0.4, 0, 1, 1) forwards; }
+@keyframes leave { to { opacity: 0; transform: translateX(-14px); } }
+.row.arrive { animation: arrive 320ms cubic-bezier(0.2, 0, 0, 1); }
+@keyframes arrive { from { opacity: 0; transform: translateY(-6px); } }
+.sep { display: flex; align-items: center; gap: 8px; margin: 8px 0 4px 8px; height: 26px; }
+.sep hr { flex: 1; border: 0; border-top: 1px solid var(--line); margin: 0; }
+.sep button { display: inline-flex; align-items: center; gap: 5px; color: var(--ink-3); font-size: 12.5px; padding: 3px 8px; border-radius: 6px; }
+.sep button:hover { color: var(--ink); background: var(--hover); }
+.sep svg { width: 13px; height: 13px; }
+.row.newtab { color: var(--ink-2); }
+.row.newtab svg { width: 16px; height: 16px; flex: none; margin: 0 1px; }
+.empty-pinned { color: var(--ink-3); font-size: 12.5px; padding: 6px 10px; }
+.ghost { overflow: hidden; }
+
+.fav {
+  --fh: 200; width: 16px; height: 16px; border-radius: 4px; flex: none;
+  background: hsl(var(--fh) 72% 74%); color: hsl(var(--fh) 55% 15%);
+  font: 700 10px/16px "Segoe UI", system-ui, sans-serif; text-align: center;
+}
+.fav.big { width: 22px; height: 22px; font-size: 13px; line-height: 22px; border-radius: 6px; }
+
+/* The horizon: the space's planet rising at the bottom, its neighbours either side. */
+.horizon { position: relative; height: 112px; flex: none; }
+.hzhit { position: absolute; left: 44px; right: 44px; top: 46px; bottom: 0; }
+.horizon .planet-h { position: absolute; left: -64px; top: 56px; width: 400px; height: 400px; pointer-events: none; }
+/* The planet's glow, painted once as a gradient: a drop-shadow filter on a planet that's scaling costs frames. */
+.glow { position: absolute; border-radius: 50%; pointer-events: none; scale: 1.12; background: radial-gradient(closest-side, hsl(var(--gh) 85% 60% / var(--ga, 0.4)) 80%, hsl(var(--gh) 85% 60% / 0) 100%); }
+.sky-dawn .glow { --ga: 0.3; }
+.hglow { left: -64px; top: 56px; width: 400px; height: 400px; }
+.sname {
+  position: absolute; left: 50px; right: 50px; top: 12px; height: 24px; text-align: center !important; border-radius: 7px;
+  font-weight: 600; font-size: 13.5px; color: var(--ink); letter-spacing: 0.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sname:hover { background: var(--hover); }
+.sky-today .sname { top: 80px; color: #fff; text-shadow: 0 1px 3px #000a, 0 0 10px #0006; }
+.nb { position: absolute; top: 10px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; z-index: 2; }
+.nb:hover { background: var(--hover); }
+.nb.prev { left: 14px; }
+.nb.next { right: 14px; }
+.nb, .sname { transition: opacity 320ms cubic-bezier(0.2, 0, 0, 1); }
+.glassbtn {
+  position: absolute; bottom: 10px; width: 30px; height: 30px; border-radius: 50%; z-index: 2;
+  display: grid; place-items: center; background: var(--glass); color: var(--glass-ink);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  box-shadow: 0 0 0 1px hsl(var(--hue) 40% 85% / 0.14);
+}
+.glassbtn svg { width: 15px; height: 15px; }
+.glassbtn:hover { filter: brightness(1.15); }
+.glassbtn.l { left: 12px; }
+.glassbtn.r { right: 12px; }
+.glassbtn[aria-pressed="true"] { box-shadow: 0 0 0 1.5px var(--accent); }
+/* While a switch plays, the moving planets stand in for the big one and for the neighbour the old planet lands in. */
+.horizon.orbiting .planet-h, .horizon.orbiting .hglow, .horizon.orbiting .nb.landing { visibility: hidden; }
+.nbghost { position: absolute; top: 15px; width: 18px; height: 18px; }
+.orbit { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 1; }
+.body { position: absolute; left: -64px; top: 56px; width: 400px; height: 400px; will-change: transform, opacity; }
+.body svg, .body .glow { position: absolute; inset: 0; }
+
+/* The space editor, above the horizon. */
+.pop {
+  position: absolute; left: 10px; right: 10px; bottom: 120px; z-index: 25; padding: 14px; border-radius: 14px;
+  background: var(--menu); color: var(--menu-ink); box-shadow: var(--menu-edge);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+}
+.pop[hidden] { display: none; }
+.pop h3 { margin: 0 0 10px; font-size: 13.5px; }
+.pophead { display: flex; align-items: center; gap: 10px; }
+.pophead input {
+  flex: 1; min-width: 0; height: 34px; border-radius: 9px; border: 0; padding: 0 10px; font: inherit;
+  background: var(--field); color: var(--menu-ink); box-shadow: inset 0 0 0 1px var(--line);
+}
+.pophead input:focus { outline: 2px solid var(--accent); }
+.plabel { font-size: 12px; color: var(--menu-ink-2); margin: 12px 0 6px; }
+.swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.swatch { width: 24px; height: 24px; border-radius: 50%; background: hsl(var(--sh) 70% 60%); box-shadow: inset 0 0 0 1px #0002; }
+.swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--menu), 0 0 0 4px hsl(var(--sh) 70% 60%); }
+.kinds { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.kind { display: grid; justify-items: center; gap: 2px; padding: 6px 0 4px; border-radius: 9px; font-size: 11.5px; color: var(--menu-ink-2); text-align: center !important; }
+.kind:hover { background: var(--menu-hover); }
+.kind[aria-pressed="true"] { background: var(--menu-hover); color: var(--menu-ink); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.perr { color: var(--danger); font-size: 12.5px; margin: 8px 0 0; min-height: 0; }
+.pbtns { display: flex; justify-content: flex-end; gap: 6px; margin-top: 12px; }
+.pbtn { height: 30px; padding: 0 12px !important; border-radius: 8px; font-size: 13px; }
+.pbtn:hover { background: var(--menu-hover); }
+.pbtn.primary { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.pbtn.primary:hover { filter: brightness(1.08); background: var(--accent); }
+
+/* ---------- Right-click menus ---------- */
+.cm {
+  position: absolute; z-index: 40; min-width: 212px; max-width: 290px; padding: 5px; border-radius: 12px;
+  background: var(--menu); color: var(--menu-ink); box-shadow: var(--menu-edge); font-size: 13px;
+  -webkit-backdrop-filter: blur(18px) saturate(1.3); backdrop-filter: blur(18px) saturate(1.3);
+}
+.cm .mi { display: flex; align-items: center; gap: 10px; width: 100%; height: 30px; padding: 0 10px 0 9px; border-radius: 7px; white-space: nowrap; }
+.cm .mi > svg, .cm .mi > .dot { width: 15px; height: 15px; color: var(--menu-ink-2); flex: none; }
+.cm .mi > .dot { width: 9px; height: 9px; margin: 0 3px; border-radius: 50%; background: hsl(var(--sh) 70% 60%); }
+.cm .mi .ml { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.cm .mi .k { margin-left: 14px; color: var(--menu-ink-2); font-size: 12px; display: inline-flex; }
+.cm .mi .k svg { width: 13px; height: 13px; }
+.cm .mi:hover:not(:disabled), .cm .mi:focus-visible, .cm .mi:focus, .cm .mi[aria-expanded="true"] { background: var(--menu-hover); outline: none; }
+.cm .mi.danger, .cm .mi.danger > svg { color: var(--danger); }
+.cm .mi:disabled { opacity: 0.42; cursor: default; }
+.cm .msep { height: 1px; margin: 5px 8px; background: var(--line); }
+@media (prefers-reduced-motion: no-preference) {
+  .cm { animation: cm-in 150ms cubic-bezier(0.2, 0, 0, 1); }
+  @keyframes cm-in { from { opacity: 0; transform: scale(0.97) translateY(-3px); } }
+}
+
+/* ---------- The page area ---------- */
+.panel {
+  margin: 8px 8px 8px 0; border-radius: 10px; background: var(--page); color: var(--page-ink);
+  position: relative; overflow: hidden; box-shadow: 0 0 0 1px hsl(var(--hue) 30% 50% / 0.12), 0 6px 24px #00000030;
+  view-transition-name: loka-panel;
+}
+/* Sidebar on the right: the same parts, mirrored. */
+.win.right { grid-template-columns: 1fr 272px; }
+.win.right .side { grid-column: 2; grid-row: 1; }
+.win.right .panel { grid-column: 1; grid-row: 1; margin: 8px 0 8px 8px; }
+::view-transition-group(loka-side), ::view-transition-group(loka-panel) { animation-duration: 460ms; animation-timing-function: cubic-bezier(0.3, 0, 0, 1); }
+.view { position: absolute; inset: 0; overflow-y: auto; }
+.progress { position: absolute; top: 0; left: 0; height: 2px; background: var(--accent); width: 0; z-index: 3; }
+.progress.go { animation: prog 520ms cubic-bezier(0.2, 0, 0, 1) forwards; }
+@keyframes prog { to { width: 100%; opacity: 0.2; } }
+.site { padding: 44px 56px; max-width: 760px; }
+.site header { display: flex; gap: 14px; align-items: center; margin-bottom: 28px; }
+.site header .fav { width: 42px; height: 42px; border-radius: 10px; font-size: 20px; line-height: 42px; }
+.site h1 { font-size: 22px; margin: 0; line-height: 1.2; }
+.site .host { color: var(--page-ink-2); font-size: 13px; }
+.sk { height: 10px; border-radius: 5px; background: var(--page-2); margin: 12px 0; }
+.hero { height: 150px; border-radius: 12px; margin: 24px 0; background: linear-gradient(135deg, hsl(var(--fh) 50% 50% / 0.22), hsl(var(--fh) 50% 50% / 0.08)); }
+.waking .sk, .waking .hero { animation: pulse 900ms ease-in-out infinite alternate; }
+@keyframes pulse { to { opacity: 0.45; } }
+.kept {
+  display: inline-flex; align-items: center; gap: 8px; margin-top: 18px; padding: 7px 12px; border-radius: 8px;
+  background: var(--page-2); color: var(--page-ink-2); font-size: 12.5px;
+}
+.kept svg { width: 14px; height: 14px; }
+.blank { height: 100%; display: grid; place-items: center; text-align: center; color: var(--page-ink-2); }
+.blank strong { display: block; color: var(--page-ink); font-size: 16px; margin-bottom: 4px; }
+
+/* Library */
+.lib { display: grid; grid-template-columns: 196px 1fr; min-height: 100%; }
+.lib nav { padding: 28px 12px; border-right: 1px solid var(--page-line); }
+.lib nav h1 { font-size: 18px; margin: 0 10px 18px; display: flex; align-items: center; gap: 8px; }
+.lib nav h1 svg { width: 18px; height: 18px; color: var(--accent); }
+.lib nav button { display: flex; width: 100%; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--page-ink-2); }
+.lib nav button svg { width: 15px; height: 15px; }
+.lib nav button .n { margin-left: auto; font-size: 12px; font-variant-numeric: tabular-nums; }
+.lib nav button:hover { background: var(--page-2); }
+.lib nav button[aria-current="page"] { background: var(--page-2); color: var(--page-ink); font-weight: 600; }
+.lib main { padding: 28px 32px 40px; min-width: 0; }
+.lib h2 { font-size: 20px; margin: 0 0 4px; }
+.lib .sub { color: var(--page-ink-2); font-size: 13px; margin: 0 0 16px; }
+.rule {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 12px 14px; border-radius: 10px;
+  background: var(--page-2); margin-bottom: 16px; font-size: 13px;
+}
+.rule select { font: inherit; color: var(--page-ink); background: var(--page); border: 1px solid var(--page-line); border-radius: 6px; padding: 4px 6px; }
+.rule .why { color: var(--page-ink-2); flex-basis: 100%; font-size: 12.5px; }
+.tools { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
+.search { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 200px; height: 34px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--page-line); background: var(--page); }
+.search svg { width: 15px; height: 15px; color: var(--page-ink-2); }
+.search input { flex: 1; border: 0; outline: 0; background: none; font: inherit; color: var(--page-ink); }
+.chip { height: 30px; padding: 0 10px !important; border-radius: 15px; border: 1px solid var(--page-line) !important; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--page-ink-2) !important; }
+.chip[aria-pressed="true"] { background: var(--page-ink); color: var(--page) !important; border-color: var(--page-ink) !important; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: hsl(var(--sh) 70% 60%); flex: none; display: inline-block; }
+.day { font-size: 12px; font-weight: 600; color: var(--page-ink-2); margin: 18px 0 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+.arow { display: flex; align-items: center; gap: 12px; height: 42px; padding: 0 8px; border-radius: 8px; }
+.arow:hover { background: var(--page-2); }
+.arow .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arow .meta { color: var(--page-ink-2); font-size: 12.5px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.arow .meta svg { width: 13px; height: 13px; }
+.arow .when { width: 64px; text-align: right; color: var(--page-ink-2); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.arow .act { display: inline-flex; gap: 4px; opacity: 0; }
+.arow:hover .act, .arow:focus-within .act { opacity: 1; }
+.abtn { height: 28px; padding: 0 10px !important; border-radius: 6px; border: 1px solid var(--page-line) !important; font-size: 12.5px; display: inline-flex; align-items: center; gap: 6px; }
+.abtn:hover { background: var(--page); }
+.abtn svg { width: 13px; height: 13px; }
+.abtn.ico { width: 28px; padding: 0 !important; justify-content: center; }
+.none { color: var(--page-ink-2); padding: 24px 8px; }
+
+/* Command bar and toasts */
+.cmd { position: absolute; inset: 0; background: #0000002e; display: grid; justify-items: center; align-items: start; padding-top: 120px; z-index: 5; }
+.cmd form { width: 520px; background: var(--page); border-radius: 14px; box-shadow: 0 0 0 1px var(--page-line), 0 24px 60px #0006; padding: 6px; }
+.cmd input { width: 100%; box-sizing: border-box; height: 44px; border: 0; outline: 0; background: none; font: inherit; font-size: 16px; color: var(--page-ink); padding: 0 12px; }
+.cmd p { margin: 0; padding: 4px 12px 8px; color: var(--page-ink-2); font-size: 12.5px; }
+.toast {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 6;
+  display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 14px; border-radius: 12px;
+  background: var(--toast); color: #eef0f5; box-shadow: 0 10px 30px #0006; font-size: 13px; white-space: nowrap;
+}
+.toast button { color: hsl(var(--hue) 85% 78%); font-weight: 600; padding: 6px 10px !important; border-radius: 8px; }
+.toast button:hover { background: #ffffff14; }
+@media (prefers-reduced-motion: no-preference) {
+  .toast { animation: toast 260ms cubic-bezier(0.2, 0, 0, 1); }
+  @keyframes toast { from { opacity: 0; transform: translate(-50%, 10px); } }
+}
+@media (prefers-reduced-motion: reduce) {
+  .row.leaving, .row.arrive, .progress.go { animation-duration: 1ms; }
+}
+
+/* ---------- Setup window ---------- */
+.setup { font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+.setup .starfield { -webkit-mask-image: linear-gradient(180deg, #000, #000 60%, #0000 90%); mask-image: linear-gradient(180deg, #000, #000 60%, #0000 90%); }
+.sbig {
+  position: absolute; left: -200px; top: 640px; width: 1600px; height: 1600px; z-index: 0; pointer-events: none;
+  transform-origin: 50% 4%;
+}
+.sbig.high { transform: translateY(-170px); }
+.sbig svg { filter: drop-shadow(0 0 60px hsl(var(--hue) 85% 60% / 0.42)); }
+@media (prefers-reduced-motion: no-preference) {
+  .sbig { transition: transform 1000ms cubic-bezier(0.5, 0, 0.15, 1); }
+}
+.stop { position: absolute; top: 0; left: 0; right: 0; height: 52px; display: flex; align-items: center; padding: 0 8px 0 18px; z-index: 3; }
+.brand { display: flex; gap: 9px; align-items: center; font-weight: 650; font-size: 14.5px; width: 220px; transition: opacity 300ms; }
+.brand svg { width: 24px; height: 24px; border-radius: 6px; }
+.brand.off { opacity: 0; }
+.dots { flex: 1; display: flex; justify-content: center; gap: 7px; }
+.dots i { width: 6px; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--ink) 28%, transparent); transition: width 300ms cubic-bezier(0.2, 0, 0, 1), background 300ms; }
+.dots i.done { background: color-mix(in srgb, var(--accent) 60%, transparent); }
+.dots i.on { width: 22px; background: var(--accent); }
+.wc { width: 220px; display: flex; justify-content: flex-end; gap: 2px; }
+.spages { position: absolute; inset: 52px 0 0 0; z-index: 2; }
+.spage { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding: 26px 40px 0; }
+.spage h1 { font-size: 30px; line-height: 1.15; margin: 0 0 8px; font-weight: 650; letter-spacing: -0.01em; text-align: center; outline: none; }
+.spage .lead { font-size: 15px; color: var(--ink-2); margin: 0 0 22px; max-width: 540px; text-align: center; }
+.spage.hi { padding-top: 70px; }
+.bigmark svg { width: 84px; height: 84px; border-radius: 20px; box-shadow: 0 12px 40px #0006; margin-bottom: 22px; }
+.srow { display: flex; gap: 10px; justify-content: center; }
+.btn {
+  height: 40px; padding: 0 18px !important; border-radius: 12px; font-weight: 600; font-size: 14px;
+  background: var(--card); box-shadow: var(--card-edge); display: inline-flex; align-items: center; gap: 8px;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+}
+.btn:hover { filter: brightness(1.12); }
+.btn.primary { background: var(--accent); color: var(--on-accent); box-shadow: none; }
+.btn:disabled { opacity: 0.45; cursor: default; filter: none; }
+.btn.small { height: 32px; padding: 0 12px !important; border-radius: 9px; font-size: 13px; }
+.fine { color: var(--ink-3); font-size: 12.5px; text-align: center; max-width: 470px; margin: 18px 0 0; }
+.fine + .fine { margin-top: 6px; }
+.link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; font-size: inherit; }
+.snav { position: absolute; left: 50%; bottom: 78px; width: 640px; margin-left: -320px; display: flex; justify-content: space-between; }
+.col { width: 640px; }
+.card { background: var(--card); box-shadow: var(--card-edge); border-radius: 14px; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+.flabel { font-size: 12.5px; color: var(--ink-3); font-weight: 600; margin: 14px 0 7px; letter-spacing: 0.02em; }
+.flabel:first-child { margin-top: 0; }
+
+/* Spaces step */
+.spgrid { display: grid; grid-template-columns: 320px 330px; gap: 34px; align-items: center; }
+.orrery { position: relative; width: 320px; height: 320px; }
+.orrery .ring { position: absolute; left: 50%; top: 50%; border-radius: 50%; border: 1px dashed color-mix(in srgb, var(--ink) 18%, transparent); translate: -50% -50%; }
+.orrery .sun { position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px; border-radius: 50%; background: hsl(48 100% 88%); box-shadow: 0 0 18px 6px hsl(45 100% 70% / 0.45); }
+.orrery .empty { position: absolute; left: 0; right: 0; top: calc(50% + 18px); text-align: center; color: var(--ink-3); font-size: 12.5px; }
+.orb { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+.orb .op { position: absolute; left: var(--r); top: 0; translate: -50% -50%; }
+.orb .op button, .orb .op span.ghostp { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; }
+.orb .op button:hover { background: var(--hover); }
+.orb .op button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--accent); }
+.orb .op .ghostp { opacity: 0.45; }
+.orb .op .pname { position: absolute; top: 44px; left: 50%; translate: -50% 0; font-size: 11.5px; color: var(--ink-2); white-space: nowrap; }
+@media (prefers-reduced-motion: no-preference) {
+  .orb { animation: spin var(--t) linear infinite; animation-delay: var(--dl); }
+  .orb .op > * { animation: spin var(--t) linear infinite reverse; animation-delay: var(--dl); }
+  .orb .op.new > * { animation: spin var(--t) linear infinite reverse, pop 420ms cubic-bezier(0.2, 0, 0, 1.4); animation-delay: var(--dl), 0s; }
+  @keyframes spin { to { rotate: 360deg; } }
+  @keyframes pop { from { scale: 0.2; opacity: 0; } }
+}
+.spform { padding: 18px; }
+.spform input[type="text"] {
+  width: 100%; box-sizing: border-box; height: 38px; border-radius: 10px; border: 0; padding: 0 12px; font: inherit;
+  background: var(--field); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line);
+}
+.spform input[type="text"]:focus { outline: 2px solid var(--accent); }
+.schips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.schip { height: 26px; padding: 0 10px !important; border-radius: 13px; font-size: 12.5px; background: var(--field); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink-2); }
+.schip:hover { color: var(--ink); }
+.spform .kinds .kind { color: var(--ink-2); }
+.spform .kinds .kind[aria-pressed="true"] { color: var(--ink); background: var(--hover); }
+.spform .kind:hover { background: var(--hover); }
+.spform .swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--card-solid, #0000), 0 0 0 4px hsl(var(--sh) 70% 60%); }
+.msg { font-size: 12.5px; margin: 10px 0 0; color: var(--ink-2); }
+.msg.err { color: var(--danger); }
+.spform .srow { justify-content: flex-start; margin-top: 14px; }
+
+/* Cards and options on the later steps */
+.toggles { padding: 4px 0; }
+.trow { display: flex; align-items: center; gap: 14px; padding: 11px 16px; }
+.trow + .trow { border-top: 1px solid var(--line); }
+.trow .tl { flex: 1; }
+.trow.master .tl { font-weight: 600; }
+.trow.dim .tl { color: var(--ink-3); }
+.sw { width: 40px; height: 24px; border-radius: 12px; background: color-mix(in srgb, var(--ink) 22%, transparent); position: relative; flex: none; transition: background 200ms; }
+.sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #0005; transition: translate 220ms cubic-bezier(0.2, 0, 0, 1); }
+.sw[aria-checked="true"] { background: var(--accent); }
+.sw[aria-checked="true"]::after { translate: 16px 0; }
+.sw:disabled { opacity: 0.4; cursor: default; }
+.server { display: flex; gap: 8px; margin-top: 10px; }
+.server input { flex: 1; height: 34px; border-radius: 9px; border: 0; padding: 0 10px; font: inherit; background: var(--field); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.opts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.opt { display: flex; align-items: center; gap: 12px; padding: 12px 14px !important; border-radius: 12px; background: var(--card); box-shadow: var(--card-edge); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+.opt:hover { filter: brightness(1.1); }
+.opt .ot { flex: 1; min-width: 0; }
+.opt .ot b { display: block; font-weight: 600; }
+.opt .ot span { color: var(--ink-3); font-size: 12.5px; }
+.opt .radio { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--ink) 40%, transparent); flex: none; }
+.opt[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
+.opt[aria-checked="true"] .radio { box-shadow: inset 0 0 0 5px var(--accent); }
+.opt .fav { width: 28px; height: 28px; border-radius: 8px; font-size: 15px; line-height: 28px; }
+.feature { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.feature .fhead { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 14.5px; }
+.feature .fav { width: 28px; height: 28px; border-radius: 8px; font-size: 15px; line-height: 28px; }
+.feature p { margin: 0; color: var(--ink-2); font-size: 13px; flex: 1; }
+.feature .btn { align-self: flex-start; }
+.done { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); font-weight: 600; font-size: 13px; height: 32px; }
+.done svg { width: 15px; height: 15px; }
+.brow { display: flex; align-items: center; gap: 12px; padding: 10px 16px; }
+.brow + .brow { border-top: 1px solid var(--line); }
+.brow .ot { flex: 1; }
+.brow .ot span { display: block; color: var(--ink-3); font-size: 12.5px; }
+.pw { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.pwc { padding: 16px; display: grid; justify-items: center; gap: 10px; text-align: center; }
+.pwc .fav { width: 40px; height: 40px; border-radius: 11px; font-size: 19px; line-height: 40px; }
+.pwc b { font-weight: 600; }
+.thumbs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.thumb { display: grid; gap: 8px; padding: 10px !important; border-radius: 12px; background: var(--card); box-shadow: var(--card-edge); font-weight: 600; font-size: 13px; text-align: center !important; }
+.thumb[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
+.mini { height: 70px; border-radius: 7px; display: grid; gap: 4px; padding: 5px; box-sizing: border-box; overflow: hidden; }
+.mini.night { background: linear-gradient(180deg, hsl(var(--hue) 36% 16%), hsl(var(--hue) 30% 8%)); }
+.mini.day { background: linear-gradient(180deg, hsl(var(--hue) 55% 95%), hsl(var(--hue) 48% 85%)); }
+.mini.l { grid-template-columns: 28% 1fr; }
+.mini.r { grid-template-columns: 1fr 28%; }
+.mini .ms { border-radius: 4px; background: repeating-linear-gradient(180deg, hsl(var(--hue) 40% 80% / 0.35) 0 4px, transparent 4px 9px); background-clip: content-box; padding-top: 3px; }
+.mini .mp { border-radius: 4px; background: hsl(var(--hue) 10% 92%); }
+.mini.night .mp { background: hsl(var(--hue) 10% 14%); }
+.mini.sky-only { display: block; position: relative; }
+.mini.sky-only::after { content: ""; position: absolute; left: -20%; right: -20%; top: 62%; height: 140%; border-radius: 50%; background: radial-gradient(circle at 40% 20%, hsl(var(--hue) 80% 72%), hsl(var(--hue) 55% 30%)); }
+.mini.night.sky-only::before { content: ""; position: absolute; inset: 0; background-image: radial-gradient(1px 1px at 20% 30%, #fff, transparent), radial-gradient(1px 1px at 70% 20%, #fff, transparent), radial-gradient(1px 1px at 45% 45%, #fffa, transparent), radial-gradient(1px 1px at 85% 50%, #fff8, transparent); }
+.tune { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+.segc { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 4px; border-radius: 12px; background: var(--card); box-shadow: var(--card-edge); }
+.segc button { height: 34px; border-radius: 9px; text-align: center !important; font-size: 13px; color: var(--ink-2); }
+.segc button[aria-checked="true"] { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.segc button:hover:not([aria-checked="true"]) { background: var(--hover); color: var(--ink); }
+.hint { color: var(--ink-3); font-size: 12.5px; margin: 8px 0 0; }
+.risers { display: flex; gap: 34px; justify-content: center; margin: 4px 0 26px; min-height: 0; }
+.riser { display: grid; justify-items: center; gap: 6px; font-weight: 600; font-size: 13px; }
+@media (prefers-reduced-motion: no-preference) {
+  .riser { animation: riser 900ms cubic-bezier(0.2, 0, 0, 1) both; animation-delay: calc(250ms + var(--i) * 140ms); }
+  @keyframes riser { from { opacity: 0; transform: translateY(60px) scale(0.6); } }
+}
+</style>
+</head>
+<body>
+<main>
+  <div class="controls" role="group" aria-label="Mockup controls">
+    <span class="label">Show</span>
+    <div class="seg" id="modeSeg">
+      <button type="button" data-mode="browser" aria-pressed="true">Browser</button>
+      <button type="button" data-mode="setup" aria-pressed="false">Setup</button>
+    </div>
+    <span class="label">Sky</span>
+    <div class="seg" id="skySeg">
+      <button type="button" data-sky="calm" aria-pressed="true">Calm night</button>
+      <button type="button" data-sky="dawn" aria-pressed="false">Dawn</button>
+      <button type="button" data-sky="today" aria-pressed="false">Today's sky</button>
+    </div>
+    <button type="button" class="pg-btn" id="skip">Skip 6 hours ahead</button>
+    <button type="button" class="pg-btn" id="reset">Start over</button>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="win sky-calm" id="win">
+      <div class="sky" id="sky"><div class="neb"></div><div class="starfield"><div class="sweep" data-l="far"><i class="far"></i></div><div class="sweep" data-l="mid"><i class="mid"></i></div><div class="sweep" data-l="near"><i class="near"></i></div></div></div>
+      <aside class="side" aria-label="Sidebar">
+        <div class="toprow">
+          <button class="ic" title="Menu" aria-label="Menu" aria-haspopup="menu" data-act="menu"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>
+          <button class="ic" title="Hide sidebar" aria-label="Hide sidebar" data-act="noop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg></button>
+          <button class="ic" id="back" aria-label="Back" data-act="back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg></button>
+          <button class="ic" aria-label="Forward" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+          <button class="ic" aria-label="Reload" data-act="reload"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.4-5.7L20 8.5M20 4v4.5h-4.5"/></svg></button>
+          <span class="gap"></span>
+          <button class="ic" aria-label="Minimize" data-act="noop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 12h12"/></svg></button>
+          <button class="ic" aria-label="Maximize" data-act="noop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/></svg></button>
+          <button class="ic" aria-label="Close window" data-act="noop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M7 7l10 10M17 7 7 17"/></svg></button>
+        </div>
+        <button class="addr" data-act="newtab" aria-label="Address">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+          <span class="host" id="host">github.com</span>
+        </button>
+        <div class="ess" id="ess" role="list" aria-label="Essentials"></div>
+        <div class="list" id="list" data-ctx="list"></div>
+        <div class="horizon" id="horizon" data-ctx="space"><div id="hzStatic"></div><div class="orbit" id="orbit" aria-hidden="true"></div></div>
+        <div class="pop" id="pop" role="dialog" aria-label="Space" hidden></div>
+      </aside>
+      <section class="panel" id="panel" aria-label="Page">
+        <div class="progress" id="progress"></div>
+        <div class="view" id="view"></div>
+      </section>
+    </div>
+
+    <div class="setup sky-calm" id="setup" hidden>
+      <div class="sky" id="ssky"><div class="neb"></div><div class="starfield"><div class="sweep" data-l="far"><i class="far"></i></div><div class="sweep" data-l="mid"><i class="mid"></i></div><div class="sweep" data-l="near"><i class="near"></i></div></div></div>
+      <div class="sbig high" id="sbig" aria-hidden="true"></div>
+      <header class="stop">
+        <div class="brand" id="sbrand"></div>
+        <div class="dots" id="sdots" aria-hidden="true"></div>
+        <div class="wc">
+          <button class="ic" id="ssound" data-sa="sound" aria-pressed="true" aria-label="Sound" title="Sound"></button>
+          <button class="ic" aria-label="Minimize" title="Minimize" data-sa="noop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 12h12"/></svg></button>
+          <button class="ic" aria-label="Close" title="Close" data-sa="noop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M7 7l10 10M17 7 7 17"/></svg></button>
+        </div>
+      </header>
+      <div class="spages" id="spages"></div>
+    </div>
+  </div>
+
+  <section class="notes" id="notesBrowser">
+    <h2>Things to try</h2>
+    <ol>
+      <li>Switch spaces with the small planets either side of the name, or <kbd>Ctrl</kbd>+<kbd>1</kbd> to <kbd>3</kbd>. The orbit turns: the planet you're on shrinks into the neighbour spot it now belongs in, and the one you clicked grows out of its spot until it fills the horizon. The list is ready at once; the orbit takes 380ms, most of it in the first 200ms. Press quickly a few times: a burst of switches runs at 200ms each so it keeps up with you.</li>
+      <li>Right-click anything: a pinned tab, an open tab, a folder, an Essential, the empty part of the list, the planet or its name, the page, or a row in the Archive. <kbd>Shift</kbd>+<kbd>F10</kbd> opens the same menu from the keyboard.</li>
+      <li>Open the ⋯ menu at the top left and pick <strong>Sidebar on the right</strong>. The sidebar and page swap sides.</li>
+      <li>Right-click the planet and pick <strong>Edit space…</strong>. The color and planet change live as you pick. <strong>New space…</strong> flies you to the new world.</li>
+      <li>Hover a pinned tab and press its minus. It greys out but stays put. Click it again: the page reloads and Back still works. The Lit tab under Docs has wandered off its pinned page (Lit docs); the curved arrow takes it home.</li>
+      <li>Press <strong>Skip 6 hours ahead</strong>. Open tabs you haven't used in 12 hours go to the archive. The playing lofi stream in Home stays, and so do pinned tabs and Essentials.</li>
+      <li>Compare the stars with <strong>Today's sky</strong>, which still drifts a pixel at a time.</li>
+    </ol>
+  </section>
+  <section class="notes" id="notesSetup" hidden>
+    <h2>How setup works with Helium</h2>
+    <p style="max-width:74ch;margin:0 0 4px">Loka's setup is Helium's onboarding with two Loka pages added. Helium's pages keep their words, the prefs they write and the rules that skip them, so a Helium update merges cleanly.</p>
+    <table>
+      <thead><tr><th>Page</th><th>From</th><th>What it saves</th><th>When it's skipped</th></tr></thead>
+      <tbody>
+        <tr><td>Welcome</td><td>Helium, Loka's words</td><td>Accepts the latest terms. <em>Use defaults</em> also sets <code>services.user_consented</code> and <code>completed_onboarding</code></td><td>Never</td></tr>
+        <tr><td>Make your first spaces</td><td>Loka (ships today)</td><td><code>loka.onboarding_spaces</code>: <code>{"version":1,"spaces":[{name,hue,planet}]}</code></td><td>Never; it's fine to make none</td></tr>
+        <tr><td>Make it yours</td><td>Loka (new)</td><td>Sidebar side, sky, and when open tabs are tidied (new Loka prefs)</td><td>Never</td></tr>
+        <tr><td>Helium services</td><td>Helium</td><td><code>services.enabled</code>, <code>services.ext_proxy</code> and the other service switches</td><td>Never</td></tr>
+        <tr><td>Choose a search engine</td><td>Helium</td><td>The default search engine</td><td>Never</td></tr>
+        <tr><td>Bring your browser along</td><td>Helium, with Loka's Arc and Zen cards</td><td>Chromium's import</td><td>Nothing to import</td></tr>
+        <tr><td>Password manager</td><td>Helium</td><td>Installs the extension from the Web Store</td><td>Unless <code>services.enabled</code> and <code>services.ext_proxy</code> are both on</td></tr>
+        <tr><td>Make Loka your default browser?</td><td>Helium</td><td>Asks Windows</td><td>Loka can't be default, or already is</td></tr>
+        <tr><td>Finish</td><td>Helium, Loka's words</td><td><code>completed_onboarding</code></td><td>Never</td></tr>
+      </tbody>
+    </table>
+    <h2>Things to try</h2>
+    <ol>
+      <li>Make two or three spaces. They join the orrery, and the big planet takes on what you're making.</li>
+      <li>On <strong>Helium services</strong>, turn off the first switch or the extension proxy. The Password manager page drops out, and its dot goes with it.</li>
+      <li>On <strong>Make it yours</strong>, pick Day: the setup window changes at once. Pick the right side and watch where the sidebar lands.</li>
+      <li>Finish with <strong>Open Loka</strong>: the browser opens with your spaces, side, sky and tidy-up time, and your first planet flies in. <strong>Use defaults</strong> on the first page skips straight there with sample spaces.</li>
+    </ol>
+  </section>
+</main>
+
+<script>
+"use strict";
+/* ---------- Icons ---------- */
+const I = (d, extra = "") => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${d}</svg>`;
+const ICON = {
+  minus: I('<path d="M7 12h10"/>'),
+  close: I('<path d="M7 7l10 10M17 7 7 17"/>'),
+  home: I('<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>'),
+  sound: I('<path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/>', 'class="sound"'),
+  speaker: I('<path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/>'),
+  muted: I('<path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/>'),
+  plus: I('<path d="M12 5v14M5 12h14"/>'),
+  archive: I('<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/>'),
+  books: I('<path d="M5 4h3v16H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM8 4h4v16H8zM14.6 4.8l2.9-.8 3.7 14.6-2.9.8z"/>'),
+  clock: I('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
+  search: I('<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4-4"/>'),
+  history: I('<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8.5"/><path d="M3.5 4v4.5H8M12 7.5V12l3 2"/>'),
+  download: I('<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>'),
+  restore: I('<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8.5"/><path d="M3.5 4v4.5H8"/>'),
+  trash: I('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>'),
+  folderOpen: I('<path d="M4 19V6a1 1 0 0 1 1-1h4l2 2h7a1 1 0 0 1 1 1v2"/><path d="M4 19l2.6-7.2A1.5 1.5 0 0 1 8 10.8h13l-2.7 7.4a1.5 1.5 0 0 1-1.4 1H4z"/>', 'class="fold"'),
+  folder: I('<path d="M4 18V6a1 1 0 0 1 1-1h4l2 2h8a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/>', 'class="fold"'),
+  folderPlus: I('<path d="M4 18V6a1 1 0 0 1 1-1h4l2 2h8a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M12 10.5v5M9.5 13h5"/>'),
+  file: I('<path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7z"/><path d="M14 3v4h4"/>'),
+  check: I('<path d="M5 12.5 10 17 19 7"/>'),
+  chev: I('<path d="m9 6 6 6-6 6"/>'),
+  link: I('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'),
+  dup: I('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>'),
+  pencil: I('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>'),
+  pin: I('<path d="M9 4h6l-1 6 3 3H7l3-3z"/><path d="M12 16v5"/>'),
+  unpin: I('<path d="M9 4h6l-1 6 3 3H7l3-3z"/><path d="M12 16v5M4 4l16 16"/>'),
+  grid: I('<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>'),
+  move: I('<circle cx="7" cy="12" r="3"/><path d="M12 12h8M17 9l3 3-3 3"/>'),
+  sideL: I('<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/>'),
+  sideR: I('<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M15 4v16"/>'),
+  gear: I('<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>'),
+  moon: I('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>'),
+  planet: I('<circle cx="12" cy="12" r="6"/><ellipse cx="12" cy="12" rx="10.5" ry="3.5" transform="rotate(-20 12 12)"/>'),
+  back: I('<path d="M19 12H5M11 18l-6-6 6-6"/>'),
+  reload: I('<path d="M20 12a8 8 0 1 1-2.4-5.7L20 8.5M20 4v4.5h-4.5"/>'),
+  collapse: I('<path d="m7 14 5-5 5 5"/>'),
+  expand: I('<path d="m7 10 5 5 5-5"/>'),
+  below: I('<path d="M5 6h14M5 11h9M12 15l3 3 3-3M15 11v7"/>'),
+};
+const LOGO = `<svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="lg-s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#16344a"/><stop offset="1" stop-color="#091018"/></linearGradient><clipPath id="lg-b"><circle cx="30" cy="34" r="22"/></clipPath></defs><rect width="64" height="64" rx="15" fill="url(#lg-s)"/><circle cx="30" cy="34" r="22" fill="#224859"/><circle cx="20" cy="25" r="27" fill="#78cdf5" clip-path="url(#lg-b)"/><circle cx="51" cy="12.5" r="4.5" fill="#78cdf5"/></svg>`;
+
+/* ---------- Planets (ported from prototype/src/features/sidebar/planet.ts, without the turning strip) ---------- */
+let pid = 0;
+function surface(kind, hue) {
+  if (kind === "banded" || kind === "ringed") {
+    const light = `hsl(${hue + 20} 75% 80% / 0.32)`, dark = `hsl(${hue - 15} 60% 28% / 0.38)`;
+    return `<g transform="rotate(-14 50 50)"><rect x="-10" y="18" width="120" height="6" fill="${light}"/><rect x="-10" y="31" width="120" height="9" fill="${dark}"/><rect x="-10" y="47" width="120" height="5" fill="${light}"/><rect x="-10" y="58" width="120" height="11" fill="${dark}"/><rect x="-10" y="76" width="120" height="6" fill="${light}"/>${kind === "banded" ? `<ellipse cx="64" cy="62" rx="8" ry="4" fill="hsl(${hue + 35} 85% 82% / 0.55)"/>` : ""}</g>`;
+  }
+  if (kind === "cratered") {
+    return [[32, 38, 8], [61, 28, 5], [62, 61, 10], [38, 70, 4.5], [78, 46, 3.5], [22, 58, 3]]
+      .map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="hsl(${hue} 45% 22% / 0.42)" stroke="hsl(${hue} 85% 86% / 0.28)" stroke-width="1"/>`).join("");
+  }
+  const land = `hsl(${hue + 70} 45% 46% / 0.75)`;
+  return `<path d="M18 36 C26 24 44 26 46 38 S36 58 26 54 S12 46 18 36 Z" fill="${land}"/><path d="M57 55 C65 47 82 51 80 63 S66 80 58 72 S51 62 57 55 Z" fill="${land}"/><path d="M60 18 C66 14 77 19 72 27 S59 29 60 18 Z" fill="${land}"/><g transform="rotate(-10 50 50)" fill="#fff" fill-opacity="0.5"><ellipse cx="42" cy="30" rx="17" ry="2.6"/><ellipse cx="66" cy="47" rx="12" ry="2.2"/><ellipse cx="34" cy="65" rx="15" ry="2.4"/></g>`;
+}
+function horizonSurface(kind, hue) {
+  if (kind === "banded" || kind === "ringed") {
+    const light = `hsl(${hue + 20} 75% 80% / 0.32)`, dark = `hsl(${hue - 15} 60% 28% / 0.38)`;
+    return `<rect x="-10" y="18" width="120" height="6" fill="${light}"/><rect x="-10" y="31" width="120" height="9" fill="${dark}"/><rect x="-10" y="47" width="120" height="5" fill="${light}"/><rect x="-10" y="58" width="120" height="11" fill="${dark}"/><rect x="-10" y="76" width="120" height="6" fill="${light}"/><ellipse cx="64" cy="62" rx="8" ry="4" fill="hsl(${hue + 35} 85% 82% / 0.45)"/>`;
+  }
+  return surface(kind, hue);
+}
+function planet(kind, hue, size, horizon = false, cls = "", withRing = true) {
+  const id = `pl${pid++}`;
+  const ring = (front) => {
+    if (kind !== "ringed" || !withRing) return "";
+    if (horizon) return front ? "" : `<g clip-path="url(#${id}k)"><ellipse cx="50" cy="50" rx="78" ry="53" fill="none" stroke="hsl(${hue + 30} 70% 82% / 0.6)" stroke-width="2.4"/><ellipse cx="50" cy="50" rx="72" ry="49.5" fill="none" stroke="hsl(${hue + 30} 60% 75% / 0.4)" stroke-width="1"/></g>`;
+    return `<g transform="rotate(-16 50 50)" ${front ? `clip-path="url(#${id}f)"` : ""}><ellipse cx="50" cy="50" rx="76" ry="15" fill="none" stroke="hsl(${hue + 30} 70% 82% / 0.7)" stroke-width="5"/><ellipse cx="50" cy="50" rx="66" ry="13" fill="none" stroke="hsl(${hue + 30} 60% 75% / 0.45)" stroke-width="2"/></g>`;
+  };
+  const surf = horizon
+    ? `<g transform="translate(0 4) scale(1 0.2) translate(0 -4)">${horizonSurface(kind, hue)}</g>`
+    : surface(kind, hue);
+  return `<svg class="${cls}" viewBox="0 0 100 100" width="${size}" height="${size}" overflow="visible" aria-hidden="true">
+    <defs>
+      <clipPath id="${id}b"><circle cx="50" cy="50" r="46"/></clipPath>
+      <clipPath id="${id}f" clipPathUnits="userSpaceOnUse"><rect x="-60" y="50" width="220" height="120"/></clipPath>
+      <clipPath id="${id}k" clipPathUnits="userSpaceOnUse"><rect x="-60" y="-60" width="220" height="110"/></clipPath>
+      <radialGradient id="${id}l" cx="0.35" cy="0.28" r="0.85"><stop offset="0" stop-color="hsl(${hue} 90% 82%)"/><stop offset="0.38" stop-color="hsl(${hue} 62% 55%)"/><stop offset="1" stop-color="hsl(${hue} 55% 18%)"/></radialGradient>
+      <radialGradient id="${id}s" cx="0.3" cy="0.24" r="0.95"><stop offset="0.5" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.7"/></radialGradient>
+    </defs>
+    ${ring(false)}
+    <circle cx="50" cy="50" r="46" fill="url(#${id}l)"/>
+    <g clip-path="url(#${id}b)">${surf}</g>
+    <circle cx="50" cy="50" r="46" fill="url(#${id}s)"/>
+    <circle cx="50" cy="50" r="45.5" fill="none" stroke="hsl(${hue} 90% 88% / 0.3)" stroke-width="1"/>
+    ${ring(true)}
+  </svg>`;
+}
+const SPACE_HUES = [200, 30, 150, 330, 260, 175, 0, 90];
+const HUE_NAMES = { 200: "Blue", 30: "Amber", 150: "Green", 330: "Pink", 260: "Violet", 175: "Teal", 0: "Red", 90: "Lime" };
+const KINDS = [["ringed", "Ringed"], ["banded", "Banded"], ["ocean", "Ocean"], ["cratered", "Cratered"]];
+
+/* Seeded star tiles, as sky.ts draws them. */
+function starTile(seed, w, h, count, [a, b]) {
+  let s = seed;
+  const rand = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  const stars = Array.from({ length: count }, () => {
+    const r = (a + rand() * (b - a)).toFixed(2);
+    const fill = rand() > 0.8 ? "hsl(200 90% 88%)" : "#fff";
+    const o = (0.25 + rand() * 0.65).toFixed(2);
+    return `<circle cx="${(rand() * w).toFixed(1)}" cy="${(rand() * h).toFixed(1)}" r="${r}" fill="${fill}" opacity="${o}"/>`;
+  });
+  return `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">${stars.join("")}</svg>`)}")`;
+}
+const STARS = {
+  far: starTile(7919, 480, 320, 70, [0.3, 0.7]),
+  mid: starTile(104729, 640, 420, 34, [0.5, 1]),
+  near: starTile(1299709, 820, 540, 14, [0.9, 1.5]),
+};
+for (const [layer, image] of Object.entries(STARS)) {
+  for (const el of document.querySelectorAll(`.sweep i.${layer}`)) el.style.backgroundImage = image;
+}
+
+/* ---------- Data ---------- */
+const page = (t, h, l, fh) => ({ t, h, l, fh });
+let uid = 0;
+const tab = (p, more = {}) => ({ id: `t${uid++}`, stack: [p], loaded: true, lastUsed: 0, ...more });
+const pinnedTab = (p, more = {}) => tab(p, { home: p, ...more });
+const folder = (name, children) => ({ id: `f${uid++}`, folder: true, name, open: true, children });
+
+function seed() {
+  uid = 0;
+  const essentials = [
+    tab(page("Inbox", "mail.proton.me", "M", 265)),
+    tab(page("Calendar", "calendar.proton.me", "C", 280), { loaded: false }),
+    tab(page("GitHub", "github.com", "G", 330)),
+    tab(page("YouTube", "youtube.com", "Y", 0), { loaded: false }),
+  ];
+  const lit = pinnedTab(page("Lit docs", "lit.dev", "L", 330));
+  lit.stack.push(page("Reactive controllers – Lit", "lit.dev", "L", 330), page("Lifecycle – Lit", "lit.dev", "L", 330));
+  const spaces = [
+    {
+      id: "build", name: "Build", hue: 200, kind: "ringed",
+      pinned: [
+        folder("Loka", [
+          pinnedTab(page("imputnet/helium-windows", "github.com", "G", 330)),
+          folder("Docs", [
+            pinnedTab(page("Chromium: Windows build guide", "chromium.googlesource.com", "C", 265), { loaded: false }),
+            lit,
+          ]),
+        ]),
+        pinnedTab(page("Loka v1 – Linear", "linear.app", "L", 240), { loaded: false }),
+      ],
+      open: [
+        tab(page("Chromium Code Search", "source.chromium.org", "S", 210), { lastUsed: 0.5 }),
+        tab(page("Zen Browser", "zen-browser.app", "Z", 150), { lastUsed: 2 }),
+        tab(page("Hacker News", "news.ycombinator.com", "N", 25), { lastUsed: 9 }),
+        tab(page("Arc: what we learned", "browsercompany.substack.com", "B", 15), { lastUsed: 7 }),
+      ],
+    },
+    {
+      id: "school", name: "School", hue: 30, kind: "banded",
+      pinned: [
+        folder("CS 241", [
+          pinnedTab(page("CS 241 – Canvas", "canvas.illinois.edu", "C", 0)),
+          pinnedTab(page("Lecture notes", "docs.google.com", "D", 215), { loaded: false }),
+          pinnedTab(page("Piazza – CS 241", "piazza.com", "P", 205), { loaded: false }),
+        ]),
+        pinnedTab(page("Thesis – Overleaf", "overleaf.com", "O", 130)),
+      ],
+      open: [
+        tab(page("Stack Overflow: segfault in malloc", "stackoverflow.com", "S", 30), { lastUsed: 5 }),
+        tab(page("Dijkstra's algorithm – Wikipedia", "en.wikipedia.org", "W", 220), { lastUsed: 10 }),
+        tab(page("Graph search – Khan Academy", "khanacademy.org", "K", 160), { lastUsed: 11 }),
+      ],
+    },
+    {
+      id: "home", name: "Home", hue: 150, kind: "ocean",
+      pinned: [
+        folder("Recipes", [
+          pinnedTab(page("Pad see ew – Serious Eats", "seriouseats.com", "S", 10), { loaded: false }),
+          pinnedTab(page("NYT Cooking", "cooking.nytimes.com", "N", 0), { loaded: false }),
+        ]),
+        pinnedTab(page("Budget 2026 – Sheets", "docs.google.com", "S", 140)),
+      ],
+      open: [
+        tab(page("lofi hip hop radio – beats to relax", "youtube.com", "Y", 0), { lastUsed: 11, audio: true }),
+        tab(page("Desk lamp – Amazon", "amazon.com", "A", 35), { lastUsed: 3 }),
+        tab(page("r/buildapc", "reddit.com", "R", 15), { lastUsed: 8 }),
+      ],
+    },
+  ];
+  const ago = (h) => Date.now() - h * 3600e3;
+  const arch = (p, space, when, reason) => ({ id: `a${uid++}`, page: p, space, when, reason });
+  const archive = [
+    arch(page("Figma – Loka sidebar v3", "figma.com", "F", 15), "build", ago(20), "auto"),
+    arch(page("Rust book – Ownership", "doc.rust-lang.org", "R", 25), "school", ago(23), "closed"),
+    arch(page("Weather – Champaign", "weather.gov", "W", 205), "home", ago(30), "auto"),
+    arch(page("TabRestoreService – Chromium Code Search", "source.chromium.org", "S", 210), "build", ago(52), "auto"),
+    arch(page("Midterm 1 review", "docs.google.com", "D", 215), "school", ago(76), "closed"),
+    arch(page("IKEA – Alex drawer", "ikea.com", "I", 50), "home", ago(100), "auto"),
+  ];
+  return { essentials, spaces, archive };
+}
+
+let data, state;
+let mode = "browser";
+let sky = "calm";
+function freshState() {
+  return {
+    space: 0,
+    active: data.spaces[0].pinned[0]?.children?.[0]?.id ?? firstLoaded(data.spaces[0]),
+    lastActive: {},
+    threshold: 12,
+    right: false,
+    engine: "duckduckgo.com",
+    libSection: "archive",
+    libSpace: "all",
+    query: "",
+    waking: null,
+    cmd: false,
+    cmdTarget: null,
+    toast: null,
+    renaming: null,
+    editor: null,
+  };
+}
+function start() {
+  data = seed();
+  state = freshState();
+  undoSnap = null;
+  closeMenu();
+  render();
+}
+
+/* ---------- Lookups ---------- */
+const cur = (t) => t.stack[t.stack.length - 1];
+const tabTitle = (t) => t.name || cur(t).t;
+function* walk(items) { for (const it of items) { if (it.folder) yield* walk(it.children); else yield it; } }
+/** Where an item lives: the array holding it, its index, and which list (ess, pinned, open) of which space. */
+function locate(id) {
+  const scan = (arr, ctx) => {
+    for (const [i, it] of arr.entries()) {
+      if (it.id === id) return { arr, i, item: it, ...ctx };
+      if (it.folder) { const r = scan(it.children, { ...ctx, parent: it }); if (r) return r; }
+    }
+    return null;
+  };
+  let r = scan(data.essentials, { where: "ess" });
+  if (r) return r;
+  for (const [si, s] of data.spaces.entries()) {
+    r = scan(s.pinned, { where: "pinned", space: si }) || scan(s.open, { where: "open", space: si });
+    if (r) return r;
+  }
+  return null;
+}
+function take(id) { const l = locate(id); if (l) l.arr.splice(l.i, 1); return l; }
+const spaceById = (id) => data.spaces.findIndex((s) => s.id === id);
+const fmtAge = (h) => (h < 1 ? "under an hour" : `${Math.round(h)} h`);
+const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+function firstLoaded(sp) {
+  for (const t of sp.open) if (t.loaded) return t.id;
+  for (const t of walk(sp.pinned)) if (t.loaded) return t.id;
+  return null;
+}
+/** The space as it shows: while its editor is open, with the color and planet being picked. */
+function shown(i) {
+  const s = data.spaces[i], e = state.editor;
+  return e && e.mode === "edit" && e.i === i ? { ...s, name: e.name.trim() || s.name, hue: e.hue, kind: e.kind } : s;
+}
+
+/* ---------- Rendering ---------- */
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const fav = (p, big = false) => `<span class="fav${big ? " big" : ""}" style="--fh:${p.fh}" aria-hidden="true">${esc(p.l)}</span>`;
+
+function tabRow(t, depth, where) {
+  const p = cur(t);
+  const moved = t.home && p !== t.home;
+  const cls = ["row", "tab", state.active === t.id ? "active" : "", t.loaded ? "" : "unloaded", t.arrive ? "arrive" : ""].join(" ");
+  t.arrive = false;
+  let tip = p.h;
+  if (where === "open") {
+    const left = state.threshold - t.lastUsed;
+    tip = t.audio ? `${p.h} · playing, so it won't be archived` : state.threshold === Infinity ? p.h : `${p.h} · last used ${fmtAge(t.lastUsed)} ago · archives in ${fmtAge(Math.max(left, 0))}`;
+  } else if (!t.loaded) tip = `${p.h} · unloaded, click to load`;
+  if (state.renaming === t.id) {
+    return `<div class="row tab" style="--d:${depth}">${fav(p)}<input class="rename" aria-label="Tab name" value="${esc(tabTitle(t))}" maxlength="60"></div>`;
+  }
+  const tools = where === "pinned"
+    ? `${moved ? `<button class="ic moved" data-act="home" data-id="${t.id}" title="Back to the pinned page (${esc(t.home.t)})" aria-label="Back to the pinned page">${ICON.home}</button>` : ""}
+       ${t.loaded ? `<button class="ic" data-act="unload" data-id="${t.id}" title="Unload. It stays pinned (Ctrl+W)" aria-label="Unload ${esc(tabTitle(t))}">${ICON.minus}</button>` : ""}`
+    : `<button class="ic" data-act="close" data-id="${t.id}" title="Close. It goes to the archive (Ctrl+W)" aria-label="Close ${esc(tabTitle(t))}">${ICON.close}</button>`;
+  return `<div class="${cls}" role="treeitem" tabindex="0" data-act="open" data-ctx="tab" data-id="${t.id}" style="--d:${depth}" title="${esc(tip)}" aria-selected="${state.active === t.id}">
+    ${fav(p)}<span class="t">${esc(tabTitle(t))}</span>${t.audio ? ICON.sound : ""}${tools}</div>`;
+}
+function tree(items, depth) {
+  return items.map((it) => {
+    if (!it.folder) return tabRow(it, depth, "pinned");
+    const head = state.renaming === it.id
+      ? `<div class="row folder" style="--d:${depth}">${ICON.folderOpen}<input class="rename" aria-label="Folder name" value="${esc(it.name)}" maxlength="40"></div>`
+      : `<div class="row folder" role="treeitem" tabindex="0" aria-expanded="${it.open}" data-act="fold" data-ctx="folder" data-id="${it.id}" style="--d:${depth}">${it.open ? ICON.folderOpen : ICON.folder}<span class="t">${esc(it.name)}</span></div>`;
+    return head + (it.open ? tree(it.children, depth + 1) : "");
+  }).join("");
+}
+
+function renderList() {
+  const sp = data.spaces[state.space];
+  $("list").innerHTML = `
+    <div role="tree" aria-label="Pinned in ${esc(sp.name)}">${sp.pinned.length ? tree(sp.pinned, 0) : `<div class="empty-pinned">Pin tabs here to keep them in ${esc(sp.name)}.</div>`}</div>
+    <div class="sep"><hr><button data-act="clear" title="Move every open tab in ${esc(sp.name)} to the archive">${ICON.archive}Clear</button></div>
+    <div role="tree" aria-label="Open tabs in ${esc(sp.name)}">
+      <div class="row newtab" role="button" tabindex="0" data-act="newtab">${ICON.plus}<span class="t">New tab</span></div>
+      ${sp.open.map((t) => tabRow(t, 0, "open")).join("")}
+    </div>`;
+  const input = $("list").querySelector(".rename");
+  if (input) { input.focus(); input.select(); }
+}
+function renderHorizon() {
+  const n = data.spaces.length, i = state.space, sp = shown(i);
+  const pi = (i + n - 1) % n, ni = (i + 1) % n;
+  const prev = shown(pi), next = shown(ni);
+  $("horizon").dataset.i = i;
+  $("hzStatic").innerHTML = `
+    <div class="hzhit" data-ctx="space" data-i="${i}"></div>
+    <span class="glow hglow" style="--gh:${sp.hue}"></span>
+    ${planet(sp.kind, sp.hue, 400, true, "planet-h")}
+    ${n > 2 ? `<button class="nb prev" data-act="space" data-ctx="space" data-i="${pi}" title="${esc(prev.name)} (Ctrl+${pi + 1})" aria-label="Go to ${esc(prev.name)}">${planet(prev.kind, prev.hue, 18)}</button>` : ""}
+    <button class="sname" data-act="editspace" data-ctx="space" data-i="${i}" title="Edit ${esc(sp.name)}">${esc(sp.name)}</button>
+    ${n > 1 ? `<button class="nb next" data-act="space" data-ctx="space" data-i="${ni}" title="${esc(next.name)} (Ctrl+${ni + 1})" aria-label="Go to ${esc(next.name)}">${planet(next.kind, next.hue, 18)}</button>` : ""}
+    <button class="glassbtn l" data-act="newspace" title="New space" aria-label="New space">${ICON.plus}</button>
+    <button class="glassbtn r" data-act="library" title="Library: archive, history, downloads" aria-label="Library" aria-pressed="${state.active === "library"}">${ICON.books}</button>`;
+}
+function renderSide() {
+  $("ess").innerHTML = data.essentials.map((t) =>
+    `<button class="tile ${state.active === t.id ? "active" : ""} ${t.loaded ? "" : "unloaded"}" role="listitem" data-act="open" data-ctx="ess" data-id="${t.id}" title="${esc(tabTitle(t))}${t.loaded ? "" : " · unloaded"}" aria-label="${esc(tabTitle(t))}">${fav(cur(t), true)}</button>`).join("");
+  const list = $("list"), scroll = list.scrollTop;
+  renderList();
+  list.scrollTop = scroll;
+  renderHorizon();
+  const a = locate(state.active);
+  $("host").textContent = state.active === "library" ? "loka://library" : a ? cur(a.item).h : "";
+  const back = $("back");
+  back.disabled = !(a && a.item.stack.length > 1 && a.item.loaded);
+  back.title = back.disabled ? "Back" : `Back to ${a.item.stack[a.item.stack.length - 2].t}`;
+}
+
+function renderSite(t) {
+  const p = cur(t);
+  const waking = state.waking === t.id;
+  const kept = t.justWoke && t.stack.length > 1
+    ? `<div class="kept">${ICON.history}Loaded again. Back still has ${t.stack.length - 1} page${t.stack.length > 2 ? "s" : ""}.</div>` : "";
+  return `<article class="site ${waking ? "waking" : ""}" data-ctx="page" style="--fh:${p.fh}">
+    <header>${fav(p)}<div><h1>${esc(p.t)}</h1><div class="host">${esc(p.h)}</div></div></header>
+    <div class="sk" style="width:72%"></div><div class="sk" style="width:86%"></div><div class="sk" style="width:64%"></div>
+    <div class="hero"></div>
+    <div class="sk" style="width:80%"></div><div class="sk" style="width:58%"></div>
+    ${waking ? "" : kept}
+  </article>`;
+}
+
+function dayLabel(ts) {
+  const d = new Date(ts), now = new Date();
+  const days = Math.floor((new Date(now.toDateString()) - new Date(d.toDateString())) / 864e5);
+  return days === 0 ? "Today" : days === 1 ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "long" });
+}
+const timeLabel = (ts) => new Date(ts).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+const archSpace = (a) => data.spaces.find((x) => x.id === a.space) ?? { name: "Deleted space", hue: 0, id: null };
+
+function renderLibrary() {
+  const nav = [["archive", "Archive", ICON.archive, data.archive.length], ["history", "History", ICON.history, ""], ["downloads", "Downloads", ICON.download, ""]];
+  let body = "";
+  if (state.libSection === "archive") {
+    const q = state.query.trim().toLowerCase();
+    const items = data.archive
+      .filter((a) => state.libSpace === "all" || a.space === state.libSpace)
+      .filter((a) => !q || a.page.t.toLowerCase().includes(q) || a.page.h.includes(q))
+      .sort((a, b) => b.when - a.when);
+    const groups = [];
+    for (const a of items) {
+      const label = dayLabel(a.when);
+      if (groups.at(-1)?.label !== label) groups.push({ label, items: [] });
+      groups.at(-1).items.push(a);
+    }
+    const chips = [["all", "All spaces"], ...data.spaces.map((s) => [s.id, s.name])].map(([id, name]) => {
+      const s = data.spaces.find((x) => x.id === id);
+      return `<button class="chip" data-act="libspace" data-v="${id}" aria-pressed="${state.libSpace === id}">${s ? `<span class="dot" style="--sh:${s.hue}"></span>` : ""}${esc(name)}</button>`;
+    }).join("");
+    body = `<h2>Archive</h2>
+      <p class="sub">Every tab that left the sidebar, for 30 days.</p>
+      <div class="rule">
+        <label for="thr">Archive open tabs I haven't used for</label>
+        <select id="thr" data-act="threshold">
+          ${[[12, "12 hours"], [24, "1 day"], [168, "7 days"], [720, "30 days"], [Infinity, "Never"]].map(([v, l]) => `<option value="${v}" ${state.threshold === v ? "selected" : ""}>${l}</option>`).join("")}
+        </select>
+        <span class="why">Pinned tabs, Essentials and tabs playing sound never are. Closed tabs land here too.</span>
+      </div>
+      <div class="tools">
+        <label class="search">${ICON.search}<input id="q" type="search" placeholder="Search the archive" value="${esc(state.query)}" aria-label="Search the archive"></label>
+        ${chips}
+      </div>
+      ${groups.length ? groups.map((g) => `<div class="day">${g.label}</div>${g.items.map((a) => {
+        const s = archSpace(a);
+        return `<div class="arow" data-ctx="arch" data-id="${a.id}">
+          ${fav(a.page)}<span class="t">${esc(a.page.t)}</span>
+          <span class="meta"><span class="dot" style="--sh:${s.hue}"></span>${esc(s.name)}</span>
+          <span class="meta" title="${a.reason === "auto" ? "Archived after going unused" : "You closed it"}">${a.reason === "auto" ? ICON.clock + "Unused" : ICON.close + "Closed"}</span>
+          <span class="act">
+            <button class="abtn" data-act="restore" data-id="${a.id}">${ICON.restore}Restore</button>
+            <button class="abtn ico" data-act="forget" data-id="${a.id}" title="Delete from the archive" aria-label="Delete ${esc(a.page.t)} from the archive">${ICON.trash}</button>
+          </span>
+          <span class="when">${timeLabel(a.when)}</span>
+        </div>`;
+      }).join("")}`).join("") : `<p class="none">${q ? "Nothing in the archive matches." : "Nothing archived in this space yet."}</p>`}`;
+  } else if (state.libSection === "history") {
+    const h = [
+      ["Today", [["imputnet/helium-windows", "github.com", "G", 330, "9:41"], ["Lifecycle – Lit", "lit.dev", "L", 330, "9:30"], ["Reactive controllers – Lit", "lit.dev", "L", 330, "9:28"], ["Chromium Code Search", "source.chromium.org", "S", 210, "9:02"], ["Hacker News", "news.ycombinator.com", "N", 25, "8:15"]]],
+      ["Yesterday", [["Figma – Loka sidebar v3", "figma.com", "F", 15, "18:20"], ["Dijkstra's algorithm – Wikipedia", "en.wikipedia.org", "W", 220, "16:04"], ["CS 241 – Canvas", "canvas.illinois.edu", "C", 0, "14:47"]]],
+    ];
+    body = `<h2>History</h2><p class="sub">Every page you visited in this profile.</p>
+      <div class="tools"><label class="search">${ICON.search}<input type="search" placeholder="Search history" aria-label="Search history"></label></div>
+      ${h.map(([d, rows]) => `<div class="day">${d}</div>${rows.map(([t, host, l, fh, time]) => `<div class="arow">${fav(page(t, host, l, fh))}<span class="t">${t}</span><span class="meta">${host}</span><span class="when">${time}</span></div>`).join("")}`).join("")}`;
+  } else {
+    const dl = [["loka-alpha-0.4.zip", "github.com", "214 MB", "Today"], ["CS241-lecture-12.pdf", "canvas.illinois.edu", "3.1 MB", "Today"], ["thesis-draft-v6.pdf", "overleaf.com", "1.8 MB", "Yesterday"], ["budget-2026.csv", "docs.google.com", "42 KB", "Monday"]];
+    body = `<h2>Downloads</h2><p class="sub">Files saved from any space.</p>
+      ${dl.map(([n, host, size, d]) => `<div class="arow"><span class="fav" style="--fh:220;background:none;color:var(--page-ink-2)">${ICON.file}</span><span class="t">${n}</span><span class="meta">${host} · ${size}</span><span class="act"><button class="abtn">Show in folder</button></span><span class="when">${d}</span></div>`).join("")}`;
+  }
+  return `<div class="lib">
+    <nav aria-label="Library"><h1>${ICON.books}Library</h1>
+      ${nav.map(([k, name, ic, n]) => `<button data-act="libsection" data-v="${k}" ${state.libSection === k ? 'aria-current="page"' : ""}>${ic}${name}<span class="n">${n}</span></button>`).join("")}
+    </nav>
+    <main>${body}</main>
+  </div>`;
+}
+
+function renderPanel() {
+  const view = $("view");
+  let html;
+  if (state.active === "library") html = renderLibrary();
+  else {
+    const a = locate(state.active);
+    html = a ? renderSite(a.item) : `<div class="blank"><div><strong>Nothing open in ${esc(data.spaces[state.space].name)}</strong>Press New tab or Ctrl+T.</div></div>`;
+  }
+  if (state.cmd) {
+    const target = state.cmdTarget && locate(state.cmdTarget);
+    const where = target ? `a pinned tab in ${esc(target.item.name)}` : `a new tab in ${esc(data.spaces[state.space].name)}`;
+    html += `<div class="cmd" data-act="cmdclose"><form id="cmdform"><input id="cmdin" placeholder="Search or enter an address" aria-label="Search or enter an address" autocomplete="off"><p>Enter opens it as ${where}. Esc closes.</p></form></div>`;
+  }
+  if (state.toast) {
+    html += `<div class="toast" role="status">${esc(state.toast.text)}${(state.toast.actions || []).map(([label, act, v]) => `<button data-act="${act}" data-v="${v ?? ""}">${label}</button>`).join("")}</div>`;
+  }
+  view.innerHTML = html;
+  if (state.cmd) $("cmdin").focus();
+}
+
+function renderEditor() {
+  const e = state.editor, pop = $("pop");
+  pop.hidden = !e;
+  if (!e) { pop.innerHTML = ""; return; }
+  pop.setAttribute("aria-label", e.mode === "new" ? "New space" : "Edit space");
+  pop.innerHTML = `<h3>${e.mode === "new" ? "New space" : "Edit space"}</h3>
+    <div class="pophead">${planet(e.kind, e.hue, 40)}<input id="edName" type="text" maxlength="24" placeholder="Name this space" aria-label="Space name" value="${esc(e.name)}"></div>
+    <div class="plabel">Color</div>
+    <div class="swatches">${SPACE_HUES.map((h) => `<button class="swatch" style="--sh:${h}" data-act="ed-hue" data-v="${h}" data-k="hue-${h}" aria-label="${HUE_NAMES[h]}" title="${HUE_NAMES[h]}" aria-pressed="${e.hue === h}"></button>`).join("")}</div>
+    <div class="plabel">Planet</div>
+    <div class="kinds">${KINDS.map(([k, label]) => `<button class="kind" data-act="ed-kind" data-v="${k}" data-k="kind-${k}" aria-pressed="${e.kind === k}">${planet(k, e.hue, 26)}${label}</button>`).join("")}</div>
+    ${e.err ? `<p class="perr" role="alert">${esc(e.err)}</p>` : ""}
+    <div class="pbtns"><button class="pbtn" data-act="ed-cancel">Cancel</button><button class="pbtn primary" data-act="ed-save">${e.mode === "new" ? "Create space" : "Save"}</button></div>`;
+}
+
+function render() {
+  const win = $("win");
+  win.className = `win sky-${sky}${state.right ? " right" : ""}`;
+  win.style.setProperty("--hue", shown(state.space).hue);
+  renderSide();
+  renderPanel();
+  renderEditor();
+}
+
+/** Re-renders, then puts focus back on the control that had it (matched by data-k), so a click keeps your place. */
+function keepFocus(fn) {
+  const k = document.activeElement?.dataset?.k;
+  fn();
+  if (k) document.querySelector(`[data-k="${k}"]`)?.focus();
+}
+
+/* ---------- The space switch: the orbit turns ----------
+   The horizon and its two neighbours are three places on one orbit. Switching turns it: the planet you were on
+   shrinks into the neighbour place it now belongs in, while the one you picked grows out of its place until its
+   surface fills the horizon. Nothing disappears; every planet travels to where it belongs next.
+   Coordinates are the horizon's: the big planet's centre is (136, 256) at full size, and a neighbour (an 18px
+   planet) is the same drawing at 0.045 of that size, centred at (28, 24) or (244, 24). */
+/* Timing. Switching spaces is as frequent as switching tabs, so it can't make anyone wait (Critly: Hover Restraint,
+   Novelty Budget). The list is usable on the first frame; the orbit is decoration on top and never blocks input.
+   It runs 380ms on front-loaded curves. Measured: at 90ms the leaving planet is 85% of the way home and the new
+   one about half grown (in zoom terms); by 260ms it's 95% there and the rest is settling.
+   A switch within 250ms of the last one (holding Ctrl+Tab, clicking through) runs at 200ms. The long version is
+   kept for the one rare moment: the entrance after setup. */
+const DUR = 380, FAST_DUR = 200, ENTER_DUR = 950, REPEAT_MS = 250, LAG = 0.06, LEAVE_END = 0.8;
+const CX = 136, CY = 256, RAD = 184;
+const SLOT_S = (18 * 0.46) / RAD, SLOT_Y = 24;
+const SLOT_X = { prev: 28, next: 244, offLeft: -40, offRight: 312 };
+const HORIZON = { x: CX, top: CY - RAD, s: 1 };
+// Close to cubic-bezier(0.23, 1, 0.32, 1) ("snappy"): does almost all its work in the first third.
+const snappy = (u) => 1 - Math.pow(1 - u, 5);
+const easeOut = (u) => 1 - Math.pow(1 - u, 3);
+const clamp01 = (u) => Math.min(1, Math.max(0, u));
+const smooth = (a, b, u) => { const x = clamp01((u - a) / (b - a)); return x * x * (3 - 2 * x); };
+function slotPoint(slot) {
+  return { x: SLOT_X[slot], top: SLOT_Y - RAD * SLOT_S, s: SLOT_S, off: slot.startsWith("off") };
+}
+/** A point between two places. Size changes exponentially, as a camera's zoom does; the top edge moves with it. */
+function between(a, b, ux, us) {
+  const s = a.s * Math.pow(b.s / a.s, us);
+  const top = a.top + (b.top - a.top) * us;
+  return [a.x + (b.x - a.x) * ux, top + RAD * s, s];
+}
+/** Leaving: it shrinks faster than it travels sideways, so the path curves like an orbit. It lands before the
+    arriving planet does: an exit shouldn't hold up the entrance. */
+function leavePath(end) {
+  return (t) => {
+    const u = clamp01(t / LEAVE_END), us = snappy(u);
+    return { at: between(HORIZON, end, easeOut(u), us), o: end.off ? 1 - smooth(0.4, 1, u) : 1, h: 1 - smooth(0.02, 0.35, us) };
+  };
+}
+/** Arriving: it swings in sideways faster than it grows, then settles into the horizon. */
+function arrivePath(start, lag) {
+  return (t) => {
+    const u = clamp01((t - lag) / (1 - lag)), us = easeOut(u);
+    return { at: between(start, HORIZON, snappy(u), us), o: start.off ? smooth(0, 0.3, u) : 1, h: smooth(0.4, 0.85, us) };
+  };
+}
+const pick = (i) => { const s = shown(i); return { id: s.id, kind: s.kind, hue: s.hue }; };
+/** The neighbours shown either side of space i: the one before it (with three or more spaces) and the one after. */
+function slotsOf(i) {
+  const n = data.spaces.length, out = [];
+  if (n > 2) out.push({ slot: "prev", ...pick((i + n - 1) % n) });
+  if (n > 1) out.push({ slot: "next", ...pick((i + 1) % n) });
+  return out;
+}
+/** Samples a path into keyframes: the body's transform and fade, and the crossfade between its two drawings. */
+function frames(path, n = 48) {
+  const body = [], h = [], s = [];
+  for (let k = 0; k <= n; k++) {
+    const t = k / n, p = path(t), [x, y, sc] = p.at;
+    body.push({ offset: t, transform: `translate3d(${(x - CX).toFixed(2)}px, ${(y - CY).toFixed(2)}px, 0) scale(${sc.toFixed(4)})`, opacity: p.o });
+    h.push({ offset: t, opacity: p.h });
+    s.push({ offset: t, opacity: Math.min(1, 2 * (1 - p.h)) });
+  }
+  return { body, h, s };
+}
+function bodyEl(s) {
+  const el = document.createElement("div");
+  el.className = "body";
+  el.innerHTML = `<span class="glow" style="--gh:${s.hue}"></span>` + planet(s.kind, s.hue, 400, false, "as-s") + planet(s.kind, s.hue, 400, true, "as-h");
+  return el;
+}
+/** The old space's sky (ground and nebula) laid over the new one and faded out. Stars stay: they're the same sky. */
+function skyFade(skyEl, oldHue, delay, duration) {
+  const was = document.createElement("div");
+  was.className = "sky-was";
+  was.style.setProperty("--hue", oldHue);
+  was.innerHTML = '<div class="neb"></div>';
+  skyEl.querySelector(".neb").after(was);
+  was.animate([{ opacity: 1 }, { opacity: 0 }], { duration, delay, easing: "cubic-bezier(0.4, 0, 0.6, 1)", fill: "both" })
+    .finished.then(() => was.remove(), () => was.remove());
+}
+function sweepStars(skyEl, dir, duration) {
+  for (const [layer, d] of [["far", 8], ["mid", 18], ["near", 32]]) {
+    skyEl.querySelector(`.sweep[data-l="${layer}"]`)?.animate([
+      { transform: "none" },
+      { transform: `translate3d(${-dir * d}px, 0, 0) scale(1.012)`, offset: 0.45 },
+      { transform: "none" },
+    ], { duration, easing: "cubic-bezier(0.23, 1, 0.32, 1)" });
+  }
+}
+let orbitRun = 0, orbitAnims = [], orbitBusy = false, orbitEndedAt = -Infinity;
+/** How long the next switch runs: short when switches come in a burst, so a quick flick through spaces keeps up. */
+function switchDuration() {
+  return orbitBusy || performance.now() - orbitEndedAt < REPEAT_MS ? FAST_DUR : DUR;
+}
+/**
+ * from and to are {id, kind, hue}; from is null for the entrance after setup. oldSlots are the neighbours that were
+ * showing before the switch; the new ones are read from the rendered state.
+ */
+function orbit(from, to, dir, opts = {}) {
+  const run = ++orbitRun;
+  const enter = !!opts.enter, duration = enter ? ENTER_DUR : switchDuration();
+  for (const a of orbitAnims) a.finish();
+  orbitAnims = [];
+  if (opts.oldHue !== undefined) skyFade($("sky"), opts.oldHue, 0, reduced() ? 200 : 0.8 * duration);
+  if (reduced()) return duration;
+  orbitBusy = true;
+  const hz = $("horizon"), ov = $("orbit");
+  const oldSlots = opts.oldSlots ?? [], newSlots = slotsOf(state.space);
+  ov.innerHTML = "";
+  hz.classList.add("orbiting");
+  const play = (el, kf, extra = {}) => { const a = el.animate(kf, { duration, fill: "both", ...extra }); orbitAnims.push(a); return a; };
+
+  // Old neighbours that aren't the planet coming in fade where they are; the leaving planet takes one's place.
+  for (const o of oldSlots) {
+    if (o.id === to.id) continue;
+    const g = document.createElement("div");
+    g.className = "nbghost";
+    g.style.left = `${SLOT_X[o.slot] - 9}px`;
+    g.innerHTML = planet(o.kind, o.hue, 18);
+    ov.append(g);
+    play(g, [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "scale(0.5)" }], { duration: 0.3 * duration, easing: "cubic-bezier(0.4, 0, 1, 1)" });
+  }
+  // New neighbours: the one the leaving planet lands in waits for it; any other fades in once the way is clear.
+  for (const nb of hz.querySelectorAll("#hzStatic .nb")) {
+    const s = data.spaces[Number(nb.dataset.i)];
+    if (from && s?.id === from.id) nb.classList.add("landing");
+    else play(nb, [{ opacity: 0, transform: "scale(0.5)" }, { opacity: 1, transform: "none" }], { duration: 0.5 * duration, delay: 0.3 * duration, easing: "cubic-bezier(0.23, 1, 0.32, 1)" });
+  }
+  // The name is what tells you where you are, so it's readable almost at once.
+  play(hz.querySelector("#hzStatic .sname"), [{ opacity: 0, transform: "translateY(3px)" }, { opacity: 1, transform: "none" }], { duration: 0.5 * duration, delay: 0.1 * duration, easing: "cubic-bezier(0.23, 1, 0.32, 1)" });
+
+  if (from) {
+    const end = newSlots.find((o) => o.id === from.id)?.slot ?? (dir > 0 ? "offLeft" : "offRight");
+    const el = bodyEl(from), f = frames(leavePath(slotPoint(end)));
+    ov.append(el);
+    play(el, f.body); play(el.querySelector(".as-h"), f.h); play(el.querySelector(".as-s"), f.s); play(el.querySelector(".glow"), f.h);
+  }
+  const start = enter
+    ? { x: CX, top: 18, s: 0.03, off: true }
+    : slotPoint(oldSlots.find((o) => o.id === to.id)?.slot ?? (dir > 0 ? "offRight" : "offLeft"));
+  const el = bodyEl(to), f = frames(arrivePath(start, enter ? 0 : LAG));
+  ov.append(el);
+  const last = play(el, f.body); play(el.querySelector(".as-h"), f.h); play(el.querySelector(".as-s"), f.s); play(el.querySelector(".glow"), f.h);
+  sweepStars($("sky"), dir, duration);
+  last.finished.then(() => {
+    if (orbitRun !== run) return;
+    ov.innerHTML = "";
+    hz.classList.remove("orbiting");
+    for (const nb of hz.querySelectorAll(".landing")) nb.classList.remove("landing");
+    orbitAnims = [];
+    orbitBusy = false;
+    orbitEndedAt = performance.now();
+  }, () => {});
+  return duration;
+}
+/**
+ * The list is the thing you came for, so it's there on the first frame: no delay, a 140ms settle from the side you
+ * moved toward, and the old list gone in 90ms. In a burst of switches it just swaps.
+ */
+function listSwap(dir, ghost, scroll, duration) {
+  if (reduced() || duration < DUR) return;
+  const list = $("list");
+  if (ghost) {
+    ghost.removeAttribute("id");
+    ghost.removeAttribute("data-ctx");
+    ghost.classList.add("ghost");
+    ghost.setAttribute("aria-hidden", "true");
+    ghost.inert = true;
+    ghost.style.cssText = `position:absolute;left:${list.offsetLeft}px;top:${list.offsetTop}px;width:${list.offsetWidth}px;height:${list.offsetHeight}px;box-sizing:border-box;pointer-events:none;margin:0`;
+    list.after(ghost);
+    ghost.scrollTop = scroll;
+    ghost.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: `translateX(${-dir * 8}px)` }], { duration: 90, easing: "cubic-bezier(0.4, 0, 1, 1)", fill: "forwards" })
+      .finished.then(() => ghost.remove(), () => ghost.remove());
+  }
+  list.animate([{ opacity: 0.4, transform: `translateX(${dir * 10}px)` }, { opacity: 1, transform: "none" }], { duration: 140, easing: "cubic-bezier(0.23, 1, 0.32, 1)" });
+}
+
+function goSpace(i, opts = {}) {
+  if (i === state.space || !data.spaces[i]) return;
+  const n = data.spaces.length, from = state.space;
+  const dir = opts.dir ?? (i === (from + 1) % n ? 1 : i === (from + n - 1) % n ? -1 : Math.sign(i - from));
+  const old = opts.fromBody ?? pick(from);
+  const oldSlots = opts.oldSlots ?? slotsOf(from);
+  const ghost = $("list").cloneNode(true), scroll = $("list").scrollTop;
+  closeMenu();
+  if (data.spaces[from] && locate(state.active)?.space === from) state.lastActive[data.spaces[from].id] = state.active;
+  state.space = i;
+  state.renaming = null;
+  if (!opts.keepActive && state.active !== "library" && locate(state.active)?.where !== "ess") {
+    const sp = data.spaces[i];
+    state.active = state.lastActive[sp.id] && locate(state.lastActive[sp.id]) ? state.lastActive[sp.id] : firstLoaded(sp);
+  }
+  render();
+  const duration = orbit(old, pick(i), dir, { oldHue: old.hue, oldSlots });
+  listSwap(dir, ghost, scroll, duration);
+}
+
+/* ---------- Actions ---------- */
+let toastTimer = 0;
+function toast(text, actions = []) {
+  state.toast = { text, actions };
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { state.toast = null; renderPanel(); }, 6500);
+}
+function progress() {
+  const p = $("progress");
+  p.classList.remove("go"); void p.offsetWidth; p.classList.add("go");
+}
+/** Undo works on a snapshot taken just before the change, so every undoable action restores the same way. */
+let undoSnap = null;
+function checkpoint() { undoSnap = { data: structuredClone(data), space: state.space, active: state.active }; }
+function undo() {
+  if (!undoSnap) return;
+  const was = shown(state.space);
+  data = undoSnap.data;
+  state.space = Math.min(undoSnap.space, data.spaces.length - 1);
+  state.active = undoSnap.active;
+  undoSnap = null;
+  state.toast = null;
+  render();
+  const now = shown(state.space);
+  if (now.id !== was.id) orbit(was, now, -1, { oldHue: was.hue });
+}
+
+function open(id) {
+  const a = locate(id);
+  if (!a || a.item.folder) return;
+  state.active = id;
+  state.toast = null;
+  if (a.space !== undefined) state.lastActive[data.spaces[a.space].id] = id;
+  for (const s of data.spaces) for (const t of [...walk(s.pinned), ...s.open]) t.justWoke = false;
+  for (const t of data.essentials) t.justWoke = false;
+  a.item.lastUsed = 0;
+  if (!a.item.loaded) {
+    a.item.loaded = true;
+    a.item.justWoke = true;
+    state.waking = id;
+    progress();
+    setTimeout(() => { state.waking = null; renderPanel(); }, 520);
+  }
+  render();
+}
+/** The ids of every tab an item holds: itself, or everything in a folder. */
+const tabIds = (item) => (item.folder ? [...walk(item.children)].map((t) => t.id) : [item.id]);
+function leaveIfActive(ids) {
+  if (ids.includes(state.active)) state.active = firstLoaded(data.spaces[state.space]);
+}
+
+function animateOut(ids, then) {
+  const rows = ids.map((id) => document.querySelector(`.row[data-id="${id}"]`)).filter(Boolean);
+  if (!rows.length || reduced()) return then();
+  rows.forEach((r) => r.classList.add("leaving"));
+  setTimeout(then, 280);
+}
+function toArchive(id, reason) {
+  const l = take(id);
+  if (!l) return;
+  const t = l.item;
+  const space = data.spaces[l.space ?? state.space];
+  data.archive.push({ id: `a${uid++}`, page: cur(t), space: space.id, when: Date.now(), reason, tab: t });
+  leaveIfActive([id]);
+}
+function closeTabs(ids, message) {
+  animateOut(ids, () => {
+    checkpoint();
+    for (const id of ids) toArchive(id, "closed");
+    toast(message, [["Undo", "undo"]]);
+    render();
+  });
+}
+function unload(id) {
+  const t = locate(id).item;
+  t.loaded = false;
+  leaveIfActive([id]);
+  toast("Unloaded. It stays pinned and keeps its Back history.");
+  render();
+}
+function goHome(id) {
+  const t = locate(id).item;
+  t.stack.push(t.home); t.lastUsed = 0; t.loaded = true; state.active = id;
+  progress();
+  toast(`Back on the pinned page. Back still returns to ${t.stack[t.stack.length - 2].t}.`);
+  render();
+}
+function skip(hours) {
+  const batch = [], touched = new Set();
+  for (const s of data.spaces) {
+    for (const t of s.open) t.lastUsed += hours;
+    const stale = s.open.filter((t) => t.lastUsed >= state.threshold && !t.audio && t.id !== state.active);
+    for (const t of stale) { batch.push(t.id); touched.add(s.name); }
+  }
+  animateOut(batch, () => {
+    if (batch.length) checkpoint();
+    for (const id of batch) toArchive(id, "auto");
+    if (!batch.length) toast(state.threshold === Infinity ? "Six hours later. Auto-archive is off." : `Six hours later. Nothing has gone unused for ${state.threshold} h yet.`);
+    else toast(`Archived ${batch.length} tab${batch.length > 1 ? "s" : ""} unused for ${state.threshold} h, from ${[...touched].join(", ")}`, [["Undo", "undo"], ["View", "library"]]);
+    render();
+  });
+}
+function restore(id, si) {
+  const a = data.archive.find((x) => x.id === id);
+  if (!a) return;
+  checkpoint();
+  data.archive = data.archive.filter((x) => x !== a);
+  if (si === undefined) { si = spaceById(a.space); if (si < 0) si = state.space; }
+  const t = a.tab || tab(a.page);
+  delete t.home;
+  t.lastUsed = 0; t.loaded = true; t.arrive = true;
+  data.spaces[si].open.unshift(t);
+  state.active = t.id;
+  state.lastActive[data.spaces[si].id] = t.id;
+  toast(`Restored to ${data.spaces[si].name}.`, [["Undo", "undo"]]);
+  if (si !== state.space) goSpace(si, { keepActive: true }); else render();
+}
+function moveTo(id, si) {
+  checkpoint();
+  const l = take(id);
+  const target = data.spaces[si];
+  if (l.where === "open") target.open.unshift(l.item); else target.pinned.push(l.item);
+  leaveIfActive(tabIds(l.item));
+  toast(`Moved to ${target.name}.`, [["Undo", "undo"], ["Go there", "go", si]]);
+  render();
+}
+function toEssentials(id) {
+  if (data.essentials.length >= 8) { toast("Essentials has room for 8. Remove one first."); renderPanel(); return; }
+  checkpoint();
+  const l = take(id);
+  data.essentials.push(l.item);
+  toast("Added to Essentials. It's in every space now.", [["Undo", "undo"]]);
+  render();
+}
+function fromEssentials(id) {
+  checkpoint();
+  const t = take(id).item, sp = data.spaces[state.space];
+  t.home = t.home || cur(t);
+  sp.pinned.push(t);
+  toast(`Moved to ${sp.name}'s pinned tabs.`, [["Undo", "undo"]]);
+  render();
+}
+function pin(id) {
+  checkpoint();
+  const l = take(id), sp = data.spaces[l.space];
+  l.item.home = cur(l.item);
+  sp.pinned.push(l.item);
+  toast(`Pinned to ${sp.name}. Closing it now just unloads it.`, [["Undo", "undo"]]);
+  render();
+}
+function unpin(id) {
+  checkpoint();
+  const l = take(id), sp = data.spaces[l.space];
+  delete l.item.home;
+  l.item.arrive = true;
+  sp.open.unshift(l.item);
+  toast("Unpinned. It's with your open tabs now.", [["Undo", "undo"]]);
+  render();
+}
+function duplicate(id) {
+  const t = locate(id).item;
+  const copy = tab(cur(t), { stack: t.stack.slice(), arrive: true });
+  data.spaces[state.space].open.unshift(copy);
+  open(copy.id);
+}
+function copyLink(p) {
+  navigator.clipboard?.writeText(`https://${p.h}/`).catch(() => {});
+  toast(`Copied https://${p.h}/`);
+  renderPanel();
+}
+function startRename(id) { state.renaming = id; renderList(); }
+function commitRename(value) {
+  const id = state.renaming;
+  if (!id) return;
+  state.renaming = null;
+  const l = locate(id);
+  if (l) {
+    const v = value.trim();
+    if (l.item.folder) { if (v) l.item.name = v; } else l.item.name = v && v !== cur(l.item).t ? v : undefined;
+  }
+  renderSide();
+  document.querySelector(`.row[data-id="${id}"]`)?.focus();
+}
+function newFolder(parentId) {
+  const f = folder("New folder", []);
+  const parent = parentId ? locate(parentId).item : null;
+  if (parent) { parent.open = true; parent.children.push(f); } else data.spaces[state.space].pinned.push(f);
+  state.renaming = f.id;
+  renderSide();
+}
+function deleteFolder(id) {
+  const f = locate(id).item, ids = tabIds(f);
+  checkpoint();
+  const sp = data.spaces[locate(id).space];
+  for (const t of walk(f.children)) data.archive.push({ id: `a${uid++}`, page: cur(t), space: sp.id, when: Date.now(), reason: "closed", tab: t });
+  take(id);
+  leaveIfActive(ids);
+  toast(`Deleted ${f.name}. ${ids.length ? `Its ${ids.length} tab${ids.length > 1 ? "s are" : " is"} in the archive.` : ""}`, [["Undo", "undo"]]);
+  render();
+}
+function deleteSpace(i) {
+  if (data.spaces.length < 2) return;
+  checkpoint();
+  const sp = data.spaces[i], body = pick(i), oldSlots = slotsOf(i);
+  const tabs = [...walk(sp.pinned), ...sp.open];
+  for (const t of tabs) data.archive.push({ id: `a${uid++}`, page: cur(t), space: sp.id, when: Date.now(), reason: "closed", tab: t });
+  data.spaces.splice(i, 1);
+  const msg = `Deleted ${sp.name}. ${tabs.length ? `Its ${tabs.length} tabs are in the archive.` : ""}`;
+  if (i === state.space) {
+    const next = Math.min(i, data.spaces.length - 1);
+    state.space = -1;
+    goSpace(next, { dir: 1, fromBody: body, oldSlots });
+  } else {
+    if (i < state.space) state.space--;
+    render();
+  }
+  toast(msg, [["Undo", "undo"]]);
+  renderPanel();
+}
+
+/* Sidebar side: the browser's two halves trade places, morphed with a view transition where there is one. */
+function setSide(right) {
+  if (state.right === right) return;
+  const apply = () => { state.right = right; $("win").classList.toggle("right", right); };
+  if (document.startViewTransition && !reduced() && mode === "browser") document.startViewTransition(apply);
+  else apply();
+}
+function setSky(next) {
+  sky = next;
+  for (const x of $("skySeg").children) x.setAttribute("aria-pressed", String(x.dataset.sky === sky));
+  $("win").classList.remove("sky-calm", "sky-dawn", "sky-today");
+  $("win").classList.add(`sky-${sky}`);
+  $("setup").className = `setup sky-${sky === "dawn" ? "dawn" : sky}`;
+  if (mode === "setup") setup.sky = sky === "dawn" ? "dawn" : "calm";
+}
+
+/* The space editor. Editing the space you're in previews its color and planet live, sky and all. */
+function openEditor(kind, i) {
+  closeMenu();
+  if (kind === "edit") {
+    if (i !== state.space) goSpace(i);
+    const s = data.spaces[i];
+    state.editor = { mode: "edit", i, name: s.name, hue: s.hue, kind: s.kind, err: "" };
+  } else {
+    const used = new Set(data.spaces.map((s) => s.hue));
+    state.editor = { mode: "new", name: "", hue: SPACE_HUES.find((h) => !used.has(h)) ?? SPACE_HUES[data.spaces.length % 8], kind: KINDS[data.spaces.length % 4][0], err: "" };
+  }
+  render();
+  $("edName").focus();
+}
+function closeEditor() { state.editor = null; render(); }
+function saveEditor() {
+  const e = state.editor, name = e.name.trim();
+  if (!name) { e.err = "Give this space a name first."; renderEditor(); $("edName").focus(); return; }
+  if (e.mode === "edit") {
+    Object.assign(data.spaces[e.i], { name, hue: e.hue, kind: e.kind });
+    state.editor = null;
+    render();
+    return;
+  }
+  data.spaces.push({ id: `s${uid++}`, name, hue: e.hue, kind: e.kind, pinned: [], open: [] });
+  state.editor = null;
+  renderEditor();
+  goSpace(data.spaces.length - 1, { dir: 1 });
+}
+
+/* ---------- Right-click menus ---------- */
+const mi = (label, run, o = {}) => ({ label, run, ...o });
+function moveSub(id, fromSpace) {
+  return data.spaces.map((s, i) => [s, i]).filter(([, i]) => i !== fromSpace).map(([s, i]) => mi(s.name, () => moveTo(id, i), { dot: s.hue }));
+}
+function menuFor(el) {
+  const ctx = el.dataset.ctx, id = el.dataset.id;
+  const sp = data.spaces[state.space];
+  const sideItem = mi("Sidebar on the right", () => setSide(!state.right), { check: state.right });
+  if (ctx === "tab" || ctx === "ess") {
+    const l = locate(id);
+    if (!l) return null;
+    const t = l.item, p = cur(t);
+    const subs = moveSub(id, l.space);
+    const move = mi("Move to space", null, { icon: ICON.move, sub: subs, disabled: !subs.length });
+    const ess = mi("Add to Essentials", () => toEssentials(id), { icon: ICON.grid });
+    const link = mi("Copy link", () => copyLink(p), { icon: ICON.link });
+    const dup = mi("Duplicate", () => duplicate(id), { icon: ICON.dup });
+    if (l.where === "ess") {
+      return [
+        ...(t.loaded ? [mi("Unload", () => { t.loaded = false; leaveIfActive([id]); render(); }, { icon: ICON.minus })] : []),
+        link,
+        "-",
+        mi("Remove from Essentials", () => fromEssentials(id), { icon: ICON.unpin }),
+      ];
+    }
+    if (l.where === "pinned") {
+      const moved = t.home && p !== t.home;
+      return [
+        mi("Rename…", () => startRename(id), { icon: ICON.pencil }),
+        ...(moved ? [mi("Back to pinned page", () => goHome(id), { icon: ICON.home }), mi("Pin this page instead", () => { t.home = cur(t); toast("This page is the pinned page now."); render(); }, { icon: ICON.pin })] : []),
+        ...(t.loaded ? [mi("Unload", () => unload(id), { icon: ICON.minus, kbd: "Ctrl+W" })] : []),
+        "-",
+        dup, link,
+        "-",
+        move, ess,
+        mi("Unpin", () => unpin(id), { icon: ICON.unpin }),
+        "-",
+        mi("Delete", () => closeTabs([id], "Deleted. It's in the archive."), { icon: ICON.trash, danger: true }),
+      ];
+    }
+    const below = l.arr.slice(l.i + 1).map((x) => x.id);
+    return [
+      mi(`Pin to ${sp.name}`, () => pin(id), { icon: ICON.pin }),
+      ess, move,
+      "-",
+      dup, link,
+      "-",
+      mi("Close", () => closeTabs([id], "Closed. It's in the archive."), { icon: ICON.close, kbd: "Ctrl+W" }),
+      mi("Close tabs below", () => closeTabs(below, `Closed ${below.length} tab${below.length > 1 ? "s" : ""}. They're in the archive.`), { icon: ICON.below, disabled: !below.length }),
+    ];
+  }
+  if (ctx === "folder") {
+    const l = locate(id), f = l.item, n = tabIds(f).length;
+    const subs = moveSub(id, l.space);
+    return [
+      mi("New tab in folder", () => { state.cmd = true; state.cmdTarget = id; renderPanel(); }, { icon: ICON.plus }),
+      mi("New folder inside", () => newFolder(id), { icon: ICON.folderPlus }),
+      "-",
+      mi("Rename…", () => startRename(id), { icon: ICON.pencil }),
+      mi(f.open ? "Collapse" : "Expand", () => { f.open = !f.open; renderSide(); }, { icon: f.open ? ICON.collapse : ICON.expand }),
+      mi("Unload all", () => { for (const t of walk(f.children)) t.loaded = false; leaveIfActive(tabIds(f)); toast(`Unloaded everything in ${f.name}.`); render(); }, { icon: ICON.minus, disabled: ![...walk(f.children)].some((t) => t.loaded) }),
+      mi("Move to space", null, { icon: ICON.move, sub: subs, disabled: !subs.length }),
+      "-",
+      mi(n ? `Delete folder and its ${n} tab${n > 1 ? "s" : ""}` : "Delete folder", () => animateOut(tabIds(f), () => deleteFolder(id)), { icon: ICON.trash, danger: true }),
+    ];
+  }
+  if (ctx === "list") {
+    return [
+      mi("New tab", () => { state.cmd = true; state.cmdTarget = null; renderPanel(); }, { icon: ICON.plus, kbd: "Ctrl+T" }),
+      mi("New folder", () => newFolder(null), { icon: ICON.folderPlus }),
+      mi("Clear open tabs", () => clearOpen(), { icon: ICON.archive, disabled: !sp.open.length }),
+      "-",
+      sideItem,
+    ];
+  }
+  if (ctx === "space") {
+    const i = Number(el.dataset.i ?? state.space), s = data.spaces[i];
+    if (!s) return null;
+    return [
+      ...(i !== state.space ? [mi(`Go to ${s.name}`, () => goSpace(i), { icon: ICON.planet, kbd: `Ctrl+${i + 1}` }), "-"] : []),
+      mi(`Edit ${s.name}…`, () => openEditor("edit", i), { icon: ICON.pencil }),
+      mi("New space…", () => openEditor("new"), { icon: ICON.plus }),
+      "-",
+      mi(`Delete ${s.name}`, () => deleteSpace(i), { icon: ICON.trash, danger: true, disabled: data.spaces.length < 2 }),
+    ];
+  }
+  if (ctx === "page") {
+    const l = locate(state.active);
+    if (!l) return null;
+    const t = l.item;
+    return [
+      mi("Back", () => { t.stack.pop(); progress(); render(); }, { icon: ICON.back, disabled: t.stack.length < 2 }),
+      mi("Reload", () => progress(), { icon: ICON.reload }),
+      "-",
+      ...(l.where === "open" ? [mi(`Pin to ${sp.name}`, () => pin(t.id), { icon: ICON.pin })] : []),
+      ...(l.where !== "ess" ? [mi("Add to Essentials", () => toEssentials(t.id), { icon: ICON.grid })] : []),
+      mi("Copy link", () => copyLink(cur(t)), { icon: ICON.link }),
+    ];
+  }
+  if (ctx === "arch") {
+    const a = data.archive.find((x) => x.id === id);
+    if (!a) return null;
+    return [
+      mi("Restore", () => restore(id), { icon: ICON.restore }),
+      mi("Restore to space", null, { icon: ICON.move, sub: data.spaces.map((s, i) => mi(s.name, () => restore(id, i), { dot: s.hue })) }),
+      mi("Copy link", () => copyLink(a.page), { icon: ICON.link }),
+      "-",
+      mi("Delete from archive", () => { data.archive = data.archive.filter((x) => x !== a); renderPanel(); }, { icon: ICON.trash, danger: true }),
+    ];
+  }
+  return null;
+}
+function mainMenu() {
+  return [
+    mi("New tab", () => { state.cmd = true; state.cmdTarget = null; renderPanel(); }, { icon: ICON.plus, kbd: "Ctrl+T" }),
+    mi("New space…", () => openEditor("new"), { icon: ICON.planet }),
+    mi("Library", () => openLibrary(), { icon: ICON.books }),
+    "-",
+    mi("Sidebar on the right", () => setSide(!state.right), { check: state.right }),
+    mi("Sky", null, { icon: ICON.moon, sub: [["calm", "Calm night"], ["dawn", "Dawn"], ["today", "Today's sky"]].map(([k, label]) => mi(label, () => setSky(k), { check: sky === k })) }),
+    "-",
+    mi("Settings", () => { toast("Settings aren't part of this mockup."); renderPanel(); }, { icon: ICON.gear }),
+  ];
+}
+
+let cm = null;
+function menuHTML(items, level) {
+  return items.map((it, i) => {
+    if (it === "-") return '<div class="msep" role="separator"></div>';
+    const lead = it.check !== undefined ? (it.check ? ICON.check : "<svg></svg>") : it.dot !== undefined ? `<span class="dot" style="--sh:${it.dot}"></span>` : it.icon || "<svg></svg>";
+    const role = it.check !== undefined ? `role="menuitemcheckbox" aria-checked="${!!it.check}"` : 'role="menuitem"';
+    return `<button class="mi${it.danger ? " danger" : ""}" ${role} tabindex="-1" data-mi="${level}:${i}" ${it.disabled ? "disabled" : ""} ${it.sub ? 'aria-haspopup="menu" aria-expanded="false"' : ""}>
+      ${lead}<span class="ml">${esc(it.label)}</span>${it.kbd ? `<span class="k">${it.kbd}</span>` : ""}${it.sub ? `<span class="k">${ICON.chev}</span>` : ""}</button>`;
+  }).join("");
+}
+function winPoint(cx, cy) {
+  const r = $("win").getBoundingClientRect(), s = r.width / 1200;
+  return [(cx - r.left) / s, (cy - r.top) / s];
+}
+function placeMenu(el, x, y, flipX) {
+  const W = 1200, H = 760, w = el.offsetWidth, h = el.offsetHeight;
+  if (x + w > W - 6) x = flipX !== undefined ? flipX - w : W - 6 - w;
+  if (y + h > H - 6) y = Math.max(6, H - 6 - h);
+  el.style.left = `${Math.max(6, x)}px`;
+  el.style.top = `${Math.max(6, y)}px`;
+}
+function openMenu(items, x, y, { owner = null, returnFocus = null, focusFirst = false } = {}) {
+  closeMenu();
+  const el = document.createElement("div");
+  el.className = "cm";
+  el.setAttribute("role", "menu");
+  el.innerHTML = menuHTML(items, 0);
+  $("win").append(el);
+  placeMenu(el, x, y);
+  owner?.classList.add("ctx-on");
+  cm = { el, items, sub: null, owner, returnFocus };
+  const first = el.querySelector(".mi:not(:disabled)");
+  if (focusFirst) first?.focus(); else el.tabIndex = -1, el.focus({ preventScroll: true });
+}
+function openSub(btn, focus) {
+  const [, i] = btn.dataset.mi.split(":").map(Number);
+  const it = cm.items[i];
+  if (cm.sub?.btn === btn) { if (focus) cm.sub.el.querySelector(".mi:not(:disabled)")?.focus(); return; }
+  closeSub();
+  const el = document.createElement("div");
+  el.className = "cm";
+  el.setAttribute("role", "menu");
+  el.innerHTML = menuHTML(it.sub, 1);
+  $("win").append(el);
+  const left = cm.el.offsetLeft, top = cm.el.offsetTop + btn.offsetTop - 5;
+  placeMenu(el, left + cm.el.offsetWidth - 4, top, left + 4);
+  btn.setAttribute("aria-expanded", "true");
+  cm.sub = { el, items: it.sub, btn };
+  if (focus) el.querySelector(".mi:not(:disabled)")?.focus();
+}
+function closeSub() {
+  if (!cm?.sub) return;
+  cm.sub.btn.setAttribute("aria-expanded", "false");
+  cm.sub.el.remove();
+  cm.sub = null;
+}
+function closeMenu(restore = false) {
+  if (!cm) return;
+  closeSub();
+  cm.el.remove();
+  cm.owner?.classList.remove("ctx-on");
+  if (restore) cm.returnFocus?.focus();
+  cm = null;
+}
+function menuItem(btn) {
+  const [level, i] = btn.dataset.mi.split(":").map(Number);
+  return level === 0 ? cm.items[i] : cm.sub.items[i];
+}
+function activate(btn) {
+  const it = menuItem(btn);
+  if (!it || btn.disabled) return;
+  if (it.sub) { openSub(btn, true); return; }
+  closeMenu();
+  it.run();
+}
+function openContextFor(el, x, y, viaKey) {
+  const items = menuFor(el);
+  if (!items) return;
+  openMenu(items, x, y, { owner: el.matches(".row, .tile, .arow") ? el : null, returnFocus: el, focusFirst: viaKey });
+}
+
+/* ---------- Events ---------- */
+let swallowClick = false;
+document.addEventListener("pointerdown", (e) => {
+  if (cm && !e.target.closest(".cm")) {
+    closeMenu();
+    swallowClick = $("win").contains(e.target) && e.button === 0;
+  }
+}, true);
+document.addEventListener("click", (e) => {
+  if (swallowClick) { swallowClick = false; e.stopPropagation(); e.preventDefault(); }
+}, true);
+document.addEventListener("contextmenu", (e) => {
+  if (mode !== "browser" || !$("win").contains(e.target)) return;
+  if (e.target.closest("input, textarea, select")) return;
+  e.preventDefault();
+  if (e.target.closest(".cm")) return;
+  const el = e.target.closest("[data-ctx]");
+  if (!el) { closeMenu(); return; }
+  const [x, y] = winPoint(e.clientX, e.clientY);
+  openContextFor(el, x, y, false);
+});
+document.addEventListener("pointerover", (e) => {
+  const btn = e.target.closest?.(".cm .mi");
+  if (!btn || !cm) return;
+  btn.focus({ preventScroll: true });
+  if (btn.dataset.mi.startsWith("0:")) {
+    if (menuItem(btn)?.sub && !btn.disabled) openSub(btn, false); else closeSub();
+  }
+});
+
+document.addEventListener("click", (e) => {
+  const item = e.target.closest(".cm .mi");
+  if (item) { activate(item); return; }
+  if (mode !== "browser") return;
+  if (e.target.closest("input, select")) return;
+  const el = e.target.closest("[data-act]");
+  if (!el || !$("win").contains(el)) return;
+  const act = el.dataset.act, id = el.dataset.id;
+  const sp = data.spaces[state.space];
+  switch (act) {
+    case "open": open(id); break;
+    case "fold": { const f = locate(id).item; f.open = !f.open; renderSide(); break; }
+    case "unload": unload(id); break;
+    case "home": goHome(id); break;
+    case "close": closeTabs([id], "Closed. It's in the archive."); break;
+    case "clear": clearOpen(); break;
+    case "undo": undo(); break;
+    case "go": state.toast = null; goSpace(Number(el.dataset.v)); break;
+    case "space": goSpace(Number(el.dataset.i)); break;
+    case "editspace": openEditor("edit", state.space); break;
+    case "library": openLibrary(); break;
+    case "libsection": state.libSection = el.dataset.v; renderPanel(); break;
+    case "libspace": state.libSpace = el.dataset.v; renderPanel(); break;
+    case "restore": restore(id); break;
+    case "forget": data.archive = data.archive.filter((x) => x.id !== id); renderPanel(); break;
+    case "newtab": state.cmd = true; state.cmdTarget = null; renderPanel(); break;
+    case "cmdclose": if (e.target === el) { state.cmd = false; renderPanel(); } break;
+    case "back": {
+      const t = locate(state.active)?.item;
+      if (t && t.stack.length > 1) { t.stack.pop(); progress(); render(); }
+      break;
+    }
+    case "reload": progress(); break;
+    case "newspace": openEditor("new"); break;
+    case "menu": {
+      const r = el.getBoundingClientRect();
+      const [x, y] = winPoint(r.left, r.bottom);
+      openMenu(mainMenu(), x, y + 4, { returnFocus: el, focusFirst: e.detail === 0 });
+      break;
+    }
+    case "ed-hue": keepFocus(() => { state.editor.hue = Number(el.dataset.v); render(); }); break;
+    case "ed-kind": keepFocus(() => { state.editor.kind = el.dataset.v; render(); }); break;
+    case "ed-save": saveEditor(); break;
+    case "ed-cancel": closeEditor(); break;
+  }
+  void sp;
+});
+function clearOpen() {
+  const sp = data.spaces[state.space];
+  const ids = sp.open.map((t) => t.id);
+  if (!ids.length) { toast(`No open tabs in ${sp.name}.`); renderPanel(); return; }
+  closeTabs(ids, `Moved ${ids.length} tab${ids.length > 1 ? "s" : ""} to the archive.`);
+}
+function openLibrary() { state.active = "library"; state.libSection = "archive"; state.toast = null; render(); }
+
+document.addEventListener("change", (e) => {
+  if (e.target.id === "thr") { state.threshold = Number(e.target.value); renderSide(); }
+});
+document.addEventListener("input", (e) => {
+  if (e.target.id === "q") {
+    state.query = e.target.value;
+    const pos = e.target.selectionStart;
+    renderPanel();
+    const q = $("q"); q.focus(); q.setSelectionRange(pos, pos);
+  }
+  if (e.target.id === "edName") {
+    state.editor.name = e.target.value;
+    if (state.editor.err) { state.editor.err = ""; $("pop").querySelector(".perr")?.remove(); }
+    if (state.editor.mode === "edit") renderHorizon();
+  }
+});
+document.addEventListener("focusout", (e) => {
+  if (e.target.classList?.contains("rename")) commitRename(e.target.value);
+});
+document.addEventListener("submit", (e) => {
+  if (e.target.id !== "cmdform") return;
+  e.preventDefault();
+  const v = $("cmdin").value.trim() || "New tab";
+  const host = v.includes(".") ? v.replace(/^https?:\/\//, "").split("/")[0] : state.engine;
+  const p = page(v.includes(".") ? host : `${v} – Search`, host, (host[0] || "S").toUpperCase(), 200);
+  const target = state.cmdTarget && locate(state.cmdTarget);
+  let t;
+  if (target) { t = pinnedTab(p, { arrive: true }); target.item.open = true; target.item.children.push(t); }
+  else { t = tab(p, { arrive: true }); data.spaces[state.space].open.unshift(t); }
+  state.cmd = false;
+  state.cmdTarget = null;
+  open(t.id);
+});
+document.addEventListener("keydown", (e) => {
+  if (cm) {
+    const inSub = cm.sub && cm.sub.el.contains(document.activeElement);
+    const box = inSub ? cm.sub.el : cm.el;
+    const items = [...box.querySelectorAll(".mi:not(:disabled)")];
+    const at = items.indexOf(document.activeElement);
+    const step = (d) => { e.preventDefault(); items[(at + d + items.length) % items.length]?.focus(); };
+    if (e.key === "ArrowDown") return step(at < 0 ? 0 : 1);
+    if (e.key === "ArrowUp") return step(at < 0 ? 0 : -1);
+    if (e.key === "Home") { e.preventDefault(); items[0]?.focus(); return; }
+    if (e.key === "End") { e.preventDefault(); items.at(-1)?.focus(); return; }
+    if (e.key === "ArrowRight" && !inSub && document.activeElement?.getAttribute("aria-haspopup")) { e.preventDefault(); openSub(document.activeElement, true); return; }
+    if ((e.key === "ArrowLeft" || e.key === "Escape") && inSub) { e.preventDefault(); const b = cm.sub.btn; closeSub(); b.focus(); return; }
+    if (e.key === "Escape" || e.key === "Tab") { e.preventDefault(); closeMenu(true); return; }
+    return;
+  }
+  if (mode !== "browser") return;
+  if (e.target.classList?.contains("rename")) {
+    if (e.key === "Enter") { e.preventDefault(); commitRename(e.target.value); }
+    if (e.key === "Escape") { const id = state.renaming; state.renaming = null; renderSide(); document.querySelector(`.row[data-id="${id}"]`)?.focus(); }
+    return;
+  }
+  if (e.target.id === "edName" && e.key === "Enter") { e.preventDefault(); saveEditor(); return; }
+  if (e.key === "Escape" && state.editor) { closeEditor(); return; }
+  if (e.key === "Escape" && state.cmd) { state.cmd = false; renderPanel(); return; }
+  if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+    const el = e.target.closest?.("[data-ctx]");
+    if (el && $("win").contains(el)) {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      const [x, y] = winPoint(r.left + 24, r.bottom);
+      openContextFor(el, x, y, true);
+    }
+    return;
+  }
+  if (e.key === "Enter" || e.key === " ") {
+    const row = e.target.closest?.(".row[data-act]");
+    if (row && e.target === row) { e.preventDefault(); row.click(); }
+  }
+  if (e.target.matches?.("input, textarea")) return;
+  if (e.ctrlKey && /^[1-9]$/.test(e.key)) { e.preventDefault(); goSpace(Number(e.key) - 1); }
+  if (e.ctrlKey && e.key.toLowerCase() === "t") { e.preventDefault(); state.cmd = true; state.cmdTarget = null; renderPanel(); }
+});
+$("list").addEventListener("scroll", () => closeMenu());
+
+/* ---------- Setup ----------
+   Helium's onboarding, page for page, with Loka's two pages after Welcome. Helium's words and skip rules are kept. */
+const STEP_NAMES = { welcome: "Welcome", spaces: "Spaces", tune: "Make it yours", services: "Helium services", search: "Search engine", import: "Import", passwords: "Password manager", default: "Default browser", finish: "Finish" };
+const ENGINES = [["duckduckgo.com", "DuckDuckGo", "D", 18], ["kagi.com", "Kagi", "K", 40], ["startpage.com", "Startpage", "S", 220], ["search.brave.com", "Brave", "B", 15], ["ecosia.org", "Ecosia", "E", 150], ["qwant.com", "Qwant", "Q", 330], ["google.com", "Google", "G", 215], ["bing.com", "Bing", "B", 195]];
+const MANAGERS = [["proton", "Proton Pass", "P", 265], ["bitwarden", "Bitwarden", "B", 215], ["1password", "1Password", "1", 210], ["keepassxc", "KeePassXC", "K", 120], ["dashlane", "Dashlane", "D", 175], ["icloud", "iCloud Passwords", "i", 200]];
+const SERVICES = [
+  ["enabled", "Allow connecting to Helium services"],
+  ["ext_proxy", "Proxy extension downloads and updates"],
+  ["bangs", "Allow downloading the !bangs list"],
+  ["ublock", "Allow downloading filter lists for uBlock Origin"],
+  ["updates", "Allow automatic updates"],
+  ["spellcheck", "Allow downloading dictionaries for spell check"],
+];
+const T0 = performance.now();
+let setup;
+function freshSetup() {
+  return {
+    step: "welcome",
+    spaces: [],
+    draft: { name: "", hue: 200, kind: "ringed" },
+    editing: null,
+    msg: "", msgErr: false, justMade: -1,
+    services: Object.fromEntries(SERVICES.map(([k]) => [k, true])),
+    server: false,
+    engine: "duckduckgo.com",
+    imports: {},
+    installs: {},
+    makeDefault: null,
+    right: false,
+    sky: "calm",
+    threshold: 12,
+    sound: true,
+  };
+}
+function steps() {
+  const s = setup.services;
+  return ["welcome", "spaces", "tune", "services", "search", "import", ...(s.enabled && s.ext_proxy ? ["passwords"] : []), "default", "finish"];
+}
+function nextDraft() {
+  const used = new Set(setup.spaces.map((s) => s.hue));
+  return { name: "", hue: SPACE_HUES.find((h) => !used.has(h)) ?? 200, kind: KINDS[setup.spaces.length % 4][0] };
+}
+/** The world the setup window shows: what you're making on the spaces page, otherwise your first space. */
+function setupWorld() {
+  if (setup.step === "spaces" && (setup.editing !== null || setup.spaces.length < 3)) return setup.draft;
+  return setup.spaces[0] ?? { hue: 200, kind: "ringed" };
+}
+
+function sw(key, on, disabled, labelId) {
+  return `<button class="sw" role="switch" aria-checked="${on}" aria-labelledby="${labelId}" data-sa="svc" data-v="${key}" data-k="svc-${key}" ${disabled ? "disabled" : ""}></button>`;
+}
+const radio = (sa, v, on, inner, k) => `<button class="opt" role="radio" aria-checked="${on}" data-sa="${sa}" data-v="${v}" data-k="${k ?? `${sa}-${v}`}">${inner}<span class="radio" aria-hidden="true"></span></button>`;
+const nav = (next = "Continue", disabled = false) => `<div class="snav"><button class="btn" data-sa="back">Back</button><button class="btn primary" data-sa="next" ${disabled ? "disabled" : ""}>${next}</button></div>`;
+const head = (title, lead) => `<h1 tabindex="-1">${title}</h1><p class="lead">${lead}</p>`;
+
+function orreryHTML() {
+  const rings = [58, 98, 138];
+  const now = (performance.now() - T0) / 1000;
+  const bodies = rings.map((r, i) => {
+    const s = setup.spaces[i];
+    const t = [26, 38, 52][i], phase = [0.1, 0.55, 0.8][i] * t;
+    const style = `--r:${r}px;--t:${t}s;--dl:${-(now + phase).toFixed(2)}s`;
+    if (s) {
+      return `<div class="orb" style="${style}"><div class="op${setup.justMade === i ? " new" : ""}"><button data-sa="edit" data-v="${i}" data-k="edit-${i}" aria-pressed="${setup.editing === i}" aria-label="Edit ${esc(s.name)}" title="${esc(s.name)}">${planet(s.kind, s.hue, 34)}</button></div></div>`;
+    }
+    if (i === setup.spaces.length && setup.editing === null) {
+      return `<div class="orb" style="${style}"><div class="op"><span class="ghostp" title="The space you're making">${planet(setup.draft.kind, setup.draft.hue, 30)}</span></div></div>`;
+    }
+    return "";
+  }).join("");
+  setup.justMade = -1;
+  return `<div class="orrery" aria-label="Your spaces">
+    ${rings.map((r) => `<div class="ring" style="width:${r * 2}px;height:${r * 2}px"></div>`).join("")}
+    <div class="sun"></div>
+    ${setup.spaces.length ? "" : `<div class="empty">Your spaces will orbit here</div>`}
+    ${bodies}
+  </div>`;
+}
+
+function stepHTML(step) {
+  const s = setup;
+  switch (step) {
+    case "welcome":
+      return `<div class="bigmark">${LOGO}</div>
+        <h1 tabindex="-1">Welcome to Loka</h1>
+        <p class="lead">A calm browser where every space is its own world. Set it up in about a minute, or start browsing now.</p>
+        <div class="srow"><button class="btn" data-sa="defaults">Use defaults</button><button class="btn primary" data-sa="next">Set up Loka →</button></div>
+        <p class="fine">Loka is built on Helium and uses Helium's services. By continuing, you agree to Helium's <button class="link" data-sa="noop">privacy policy</button> and <button class="link" data-sa="noop">terms of use</button>.</p>
+        <p class="fine">Use defaults turns Helium's services on for you.</p>`;
+    case "spaces": {
+      const editing = s.editing !== null, full = s.spaces.length >= 3 && !editing;
+      const used = new Set(s.spaces.map((x) => x.name.toLowerCase()));
+      const chips = ["Work", "School", "Home", "Personal", "Projects"].filter((c) => !used.has(c.toLowerCase()));
+      return `${head("Make your first spaces", "Every space is its own world, with its own pinned tabs, folders and color. Start with two or three.")}
+        <div class="spgrid">
+          ${orreryHTML()}
+          <div class="card spform">
+            <div class="flabel"><label for="spName">Name</label></div>
+            <input type="text" id="spName" maxlength="24" placeholder="Name your space" value="${esc(s.draft.name)}" ${full ? "disabled" : ""}>
+            ${!full && chips.length ? `<div class="schips">${chips.map((c) => `<button class="schip" data-sa="chip" data-v="${c}" data-k="chip-${c}">${c}</button>`).join("")}</div>` : ""}
+            <div class="flabel">Planet</div>
+            <div class="kinds">${KINDS.map(([k, label]) => `<button class="kind" data-sa="kind" data-v="${k}" data-k="skind-${k}" aria-pressed="${s.draft.kind === k}" ${full ? "disabled" : ""}>${planet(k, s.draft.hue, 28)}${label}</button>`).join("")}</div>
+            <div class="flabel">Color</div>
+            <div class="swatches">${SPACE_HUES.map((h) => `<button class="swatch" style="--sh:${h}" data-sa="hue" data-v="${h}" data-k="shue-${h}" aria-label="${HUE_NAMES[h]}" title="${HUE_NAMES[h]}" aria-pressed="${s.draft.hue === h}" ${full ? "disabled" : ""}></button>`).join("")}</div>
+            ${s.msg ? `<p class="msg${s.msgErr ? " err" : ""}" role="${s.msgErr ? "alert" : "status"}">${esc(s.msg)}</p>` : ""}
+            <div class="srow">${editing
+              ? `<button class="btn small primary" data-sa="save">Save</button><button class="btn small" data-sa="remove">Remove</button>`
+              : `<button class="btn small primary" data-sa="create" ${full ? "disabled" : ""}>Create space</button>`}</div>
+          </div>
+        </div>
+        ${nav()}`;
+    }
+    case "tune":
+      return `${head("Make it yours", "A few things people like to choose. All of them are in Settings later.")}
+        <div class="col">
+          <div class="tune">
+            <div><div class="flabel">Sidebar</div><div class="thumbs" role="radiogroup" aria-label="Sidebar side">
+              ${[["left", "Left", "l"], ["right", "Right", "r"]].map(([v, label, c]) => `<button class="thumb" role="radio" aria-checked="${s.right === (v === "right")}" data-sa="side" data-v="${v}" data-k="side-${v}"><span class="mini ${s.sky === "dawn" ? "day" : "night"} ${c}">${c === "l" ? '<span class="ms"></span><span class="mp"></span>' : '<span class="mp"></span><span class="ms"></span>'}</span>${label}</button>`).join("")}
+            </div></div>
+            <div><div class="flabel">Sky</div><div class="thumbs" role="radiogroup" aria-label="Sky">
+              ${[["calm", "Night", "night"], ["dawn", "Day", "day"]].map(([v, label, c]) => `<button class="thumb" role="radio" aria-checked="${s.sky === v}" data-sa="sky" data-v="${v}" data-k="sky-${v}"><span class="mini ${c} sky-only"></span>${label}</button>`).join("")}
+            </div></div>
+          </div>
+          <div class="flabel" style="margin-top:22px">Tidy up open tabs</div>
+          <div class="segc" role="radiogroup" aria-label="Tidy up open tabs after">
+            ${[[12, "12 hours"], [24, "1 day"], [168, "7 days"], [Infinity, "Never"]].map(([v, label]) => `<button role="radio" aria-checked="${s.threshold === v}" data-sa="tidy" data-v="${v}" data-k="tidy-${v}">${label}</button>`).join("")}
+          </div>
+          <p class="hint">Open tabs you haven't used for this long move to the archive in the Library. Pinned tabs, Essentials and tabs playing sound stay put.</p>
+        </div>
+        ${nav()}`;
+    case "services":
+      return `${head("Helium services", "Loka is built on Helium. These services run on Helium's servers, not Loka's, and stay off until you go to the next page.")}
+        <div class="col">
+          <div class="card toggles">
+            ${SERVICES.map(([k, label], i) => {
+              const off = i > 0 && !s.services.enabled;
+              return `<div class="trow${i === 0 ? " master" : ""}${off ? " dim" : ""}"><span class="tl" id="svl-${k}">${label}</span>${sw(k, s.services[k] && !off, off, `svl-${k}`)}</div>`;
+            }).join("")}
+          </div>
+          <p style="margin:12px 0 0"><button class="link" data-sa="server" aria-expanded="${s.server}">Use your own Helium services server</button></p>
+          ${s.server ? `<div class="server"><input type="text" placeholder="https://services.example.com" aria-label="Your Helium services server"><button class="btn small">Use this server</button></div>` : ""}
+        </div>
+        ${nav()}`;
+    case "search":
+      return `${head("Choose a search engine", "Sorted by privacy. You can change it later in Settings.")}
+        <div class="col"><div class="opts" role="radiogroup" aria-label="Search engine">
+          ${ENGINES.map(([host, name, l, fh]) => radio("engine", host, s.engine === host, `${fav(page(name, host, l, fh))}<span class="ot"><b>${name}</b><span>${host}</span></span>`, `engine-${l}${fh}`)).join("")}
+        </div></div>
+        ${nav()}`;
+    case "import": {
+      const btn = (key, label) => s.imports[key] === "done" ? `<span class="done">${ICON.check}Imported</span>` : `<button class="btn small" data-sa="import" data-v="${key}" data-k="import-${key}" ${s.imports[key] ? "disabled" : ""}>${s.imports[key] ? "Importing…" : label}</button>`;
+      return `${head("Bring your browser along", "Copy bookmarks, history and extensions from other browsers on this computer. Nothing is removed from them.")}
+        <div class="col">
+          <div class="opts">
+            <div class="card feature"><div class="fhead">${fav(page("Arc", "arc.net", "A", 340))}Bring your spaces from Arc</div><p>Each Arc space's pinned tabs and folders come over as a bookmarks folder, and your Favorites go in the bookmarks bar.</p>${btn("arc", "Import from Arc")}</div>
+            <div class="card feature"><div class="fhead">${fav(page("Zen", "zen-browser.app", "Z", 30))}Coming from Zen?</div><p>Your bookmarks and history come over. Zen's workspaces stay in Zen, so make them as spaces in the sidebar.</p>${btn("zen", "Import from Zen")}</div>
+          </div>
+          <div class="flabel" style="margin-top:18px">Other browsers</div>
+          <div class="card">
+            ${[["chrome", "Google Chrome", "C", 120], ["edge", "Microsoft Edge", "E", 195]].map(([k, name, l, fh]) => `<div class="brow">${fav(page(name, "", l, fh))}<span class="ot">${name}<span>Bookmarks, history and extensions</span></span>${btn(k, "Import")}</div>`).join("")}
+          </div>
+        </div>
+        ${nav()}`;
+    }
+    case "passwords":
+      return `${head("Password manager", "Loka doesn't have a built-in password manager. Want to install one from the Web Store?")}
+        <div class="col"><div class="pw">
+          ${MANAGERS.map(([k, name, l, fh]) => `<div class="card pwc">${fav(page(name, "", l, fh))}<b>${name}</b>${s.installs[k] === "done" ? `<span class="done">${ICON.check}Installed</span>` : `<button class="btn small" data-sa="install" data-v="${k}" data-k="install-${k}" ${s.installs[k] ? "disabled" : ""}>${s.installs[k] ? "Installing…" : "Install"}</button>`}</div>`).join("")}
+        </div></div>
+        ${nav()}`;
+    case "default":
+      return `${head("Make Loka your default browser?", "Links you open from other apps will open in Loka.")}
+        <div class="col"><div class="opts" role="radiogroup" aria-label="Default browser">
+          ${radio("default", "yes", s.makeDefault === "yes", `<span class="ot"><b>Yes</b><span>Make Loka my default browser.</span></span>`)}
+          ${radio("default", "no", s.makeDefault === "no", `<span class="ot"><b>Not now</b><span>I'm just trying Loka for now.</span></span>`)}
+        </div></div>
+        ${nav("Continue", !s.makeDefault)}`;
+    case "finish": {
+      const made = s.spaces.length > 0;
+      return `${made
+          ? `<div class="risers">${s.spaces.map((x, i) => `<div class="riser" style="--i:${i}">${planet(x.kind, x.hue, 64)}${esc(x.name)}</div>`).join("")}</div>${head("Your worlds are ready", "Setup is done. Your spaces are waiting in the sidebar, each with its own color and sky.")}`
+          : `${head("You're all set", "Setup is done. Make your first space from the sidebar whenever you like.")}`}
+        <div class="srow"><button class="btn" data-sa="back">Back</button><button class="btn primary" data-sa="open">Open Loka</button></div>`;
+    }
+  }
+  return "";
+}
+
+let worldKey = "";
+function syncSetupChrome() {
+  const list = steps(), at = list.indexOf(setup.step);
+  $("sdots").innerHTML = list.map((st, i) => `<i class="${i === at ? "on" : i < at ? "done" : ""}" title="${STEP_NAMES[st]}"></i>`).join("");
+  $("sbrand").innerHTML = `${LOGO}Loka`;
+  $("sbrand").classList.toggle("off", setup.step === "welcome");
+  $("ssound").innerHTML = setup.sound ? ICON.speaker : ICON.muted;
+  $("ssound").setAttribute("aria-pressed", String(setup.sound));
+  $("sbig").classList.toggle("high", setup.step === "welcome" || setup.step === "finish");
+  const w = setupWorld(), key = `${w.kind}-${w.hue}`;
+  const el = $("setup");
+  if (key !== worldKey) {
+    const oldHue = Number(el.style.getPropertyValue("--hue") || 200);
+    el.style.setProperty("--hue", w.hue);
+    if (worldKey && oldHue !== w.hue) skyFade($("ssky"), oldHue, 0, 520);
+    // No ring at this size: its far arc would cross the words above the horizon.
+    $("sbig").innerHTML = planet(w.kind, w.hue, 1600, true, "", false);
+    worldKey = key;
+  }
+}
+function currentPage() { return $("spages").lastElementChild; }
+function showStep(step, dir) {
+  setup.step = step;
+  const host = $("spages"), old = currentPage();
+  const el = document.createElement("div");
+  el.className = `spage${step === "welcome" || step === "finish" ? " hi" : ""}`;
+  el.innerHTML = stepHTML(step);
+  host.append(el);
+  if (old) {
+    old.inert = true;
+    if (reduced()) old.remove();
+    else {
+      old.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: `translateX(${-dir * 56}px)` }], { duration: 260, easing: "cubic-bezier(0.4, 0, 1, 1)", fill: "forwards" })
+        .finished.then(() => old.remove(), () => old.remove());
+      el.animate([{ opacity: 0, transform: `translateX(${dir * 56}px)` }, { opacity: 1, transform: "none" }], { duration: 460, delay: 140, easing: "cubic-bezier(0.2, 0, 0, 1)", fill: "backwards" });
+    }
+  }
+  syncSetupChrome();
+  el.querySelector("h1")?.focus({ preventScroll: true });
+}
+function refreshStep() {
+  keepFocus(() => { currentPage().innerHTML = stepHTML(setup.step); syncSetupChrome(); });
+}
+function goStep(d) {
+  const list = steps(), at = list.indexOf(setup.step);
+  const next = list[at + d];
+  if (!next) return;
+  if (setup.step === "spaces") { setup.editing = null; setup.msg = ""; if (!setup.draft.name) setup.draft = nextDraft(); }
+  showStep(next, d);
+}
+function startSetup() {
+  setup = freshSetup();
+  setup.sky = sky === "dawn" ? "dawn" : "calm";
+  worldKey = "";
+  $("sbig").getAnimations().forEach((a) => a.cancel());
+  $("setup").getAnimations().forEach((a) => a.cancel());
+  $("spages").innerHTML = "";
+  showStep("welcome", 1);
+}
+function createSpace() {
+  const name = setup.draft.name.trim();
+  if (!name) { setup.msg = "Give this space a name first."; setup.msgErr = true; refreshStep(); $("spName").focus(); return; }
+  setup.spaces.push({ ...setup.draft, name });
+  setup.justMade = setup.spaces.length - 1;
+  setup.draft = nextDraft();
+  setup.msgErr = false;
+  setup.msg = setup.spaces.length >= 3 ? "Three is a good start. You can add more from the sidebar any time." : "";
+  refreshStep();
+  if (setup.spaces.length < 3) $("spName").focus();
+}
+
+/* Leaving setup: the window falls away towards the planet, and the browser's first world flies in. */
+function finishSetup(defaults) {
+  data = seed();
+  if (!defaults && setup.spaces.length) {
+    const base = data.spaces;
+    data.spaces = setup.spaces.map((m, i) => ({ ...(base[i] ?? { id: `s${uid++}`, pinned: [], open: [] }), name: m.name, hue: m.hue, kind: m.kind }));
+    const ids = new Set(data.spaces.map((s) => s.id));
+    data.archive = data.archive.filter((a) => ids.has(a.space));
+  }
+  state = freshState();
+  undoSnap = null;
+  if (!defaults) {
+    state.right = setup.right;
+    state.threshold = setup.threshold;
+    state.engine = setup.engine;
+    setSky(setup.sky);
+  }
+  mode = "browser";
+  syncMode(false);
+  render();
+  const el = $("setup");
+  el.hidden = false;
+  if (reduced()) { el.hidden = true; return; }
+  $("sbig").animate([{ scale: "1" }, { scale: "1.5" }], { duration: 700, easing: "cubic-bezier(0.5, 0, 0.75, 0)", fill: "forwards" });
+  el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 520, delay: 160, easing: "cubic-bezier(0.4, 0, 1, 1)", fill: "forwards" })
+    .finished.then(() => { el.hidden = true; el.getAnimations().forEach((a) => a.cancel()); $("sbig").getAnimations().forEach((a) => a.cancel()); });
+  orbit(null, shown(state.space), 1, { enter: true });
+  $("list").animate([{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }], { duration: 500, delay: 650, easing: "cubic-bezier(0.2, 0, 0, 1)", fill: "backwards" });
+  $("ess").animate([{ opacity: 0 }, { opacity: 1 }], { duration: 400, delay: 550, fill: "backwards" });
+  $("panel").animate([{ opacity: 0, transform: "scale(0.985)" }, { opacity: 1, transform: "none" }], { duration: 500, delay: 450, easing: "cubic-bezier(0.2, 0, 0, 1)", fill: "backwards" });
+}
+
+$("setup").addEventListener("click", (e) => {
+  const el = e.target.closest("[data-sa]");
+  if (!el || el.disabled) return;
+  const sa = el.dataset.sa, v = el.dataset.v, s = setup;
+  switch (sa) {
+    case "next": goStep(1); break;
+    case "back": goStep(-1); break;
+    case "defaults": finishSetup(true); break;
+    case "open": finishSetup(false); break;
+    case "sound": s.sound = !s.sound; syncSetupChrome(); break;
+    case "chip": s.draft.name = v; s.msg = ""; refreshStep(); break;
+    case "kind": s.draft.kind = v; refreshStep(); break;
+    case "hue": s.draft.hue = Number(v); refreshStep(); break;
+    case "create": createSpace(); break;
+    case "edit": {
+      const i = Number(v);
+      if (s.editing === i) { s.editing = null; s.draft = nextDraft(); }
+      else { s.editing = i; s.draft = { ...s.spaces[i] }; }
+      s.msg = ""; refreshStep(); break;
+    }
+    case "save": {
+      const name = s.draft.name.trim();
+      if (!name) { s.msg = "Give this space a name first."; s.msgErr = true; refreshStep(); break; }
+      s.spaces[s.editing] = { ...s.draft, name };
+      s.editing = null; s.draft = nextDraft(); s.msg = ""; refreshStep(); break;
+    }
+    case "remove": s.spaces.splice(s.editing, 1); s.editing = null; s.draft = nextDraft(); s.msg = ""; refreshStep(); break;
+    case "side": s.right = v === "right"; refreshStep(); break;
+    case "sky": s.sky = v; setSky(v); refreshStep(); break;
+    case "tidy": s.threshold = Number(v); refreshStep(); break;
+    case "svc": s.services[v] = !s.services[v]; refreshStep(); break;
+    case "server": s.server = !s.server; refreshStep(); break;
+    case "engine": s.engine = v; refreshStep(); break;
+    case "default": s.makeDefault = v; refreshStep(); break;
+    case "import":
+      s.imports[v] = "busy"; refreshStep();
+      setTimeout(() => { s.imports[v] = "done"; if (s.step === "import") refreshStep(); }, 900);
+      break;
+    case "install":
+      s.installs[v] = "busy"; refreshStep();
+      setTimeout(() => { s.installs[v] = "done"; if (s.step === "passwords") refreshStep(); }, 1100);
+      break;
+  }
+});
+$("setup").addEventListener("input", (e) => {
+  if (e.target.id === "spName") {
+    setup.draft.name = e.target.value;
+    if (setup.msgErr) { setup.msg = ""; setup.msgErr = false; currentPage().querySelector(".msg")?.remove(); }
+  }
+});
+$("setup").addEventListener("keydown", (e) => {
+  if (e.target.id === "spName" && e.key === "Enter") {
+    e.preventDefault();
+    if (setup.editing !== null) $("setup").querySelector('[data-sa="save"]').click(); else createSpace();
+  }
+});
+
+/* ---------- The page around the windows ---------- */
+function syncMode(fresh) {
+  for (const x of $("modeSeg").children) x.setAttribute("aria-pressed", String(x.dataset.mode === mode));
+  $("win").hidden = mode !== "browser";
+  $("setup").hidden = mode !== "setup";
+  $("notesBrowser").hidden = mode !== "browser";
+  $("notesSetup").hidden = mode !== "setup";
+  $("skip").disabled = mode !== "browser";
+  closeMenu();
+  if (mode === "setup" && fresh) startSetup();
+}
+$("modeSeg").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-mode]");
+  if (!b || b.dataset.mode === mode) return;
+  mode = b.dataset.mode;
+  syncMode(true);
+  if (mode === "browser") render();
+});
+$("skySeg").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-sky]");
+  if (!b) return;
+  setSky(b.dataset.sky);
+  if (mode === "setup" && setup.step === "tune") refreshStep();
+});
+$("skip").addEventListener("click", () => skip(6));
+$("reset").addEventListener("click", () => { if (mode === "setup") startSetup(); else start(); });
+
+/* Fit the 1200 x 760 windows to whatever width the page has. */
+const stage = $("stage");
+function fit() {
+  const scale = Math.min(1, stage.clientWidth / 1200);
+  $("win").style.transform = `scale(${scale})`;
+  $("setup").style.transform = `scale(${scale})`;
+  stage.style.height = `${Math.ceil(760 * scale)}px`;
+  closeMenu();
+}
+new ResizeObserver(fit).observe(stage);
+fit();
+start();
+</script>
+</body>
+</html>

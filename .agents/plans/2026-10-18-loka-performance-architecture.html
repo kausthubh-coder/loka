@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>One frame per click, nothing awake at rest</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f7f8f9; --text: #16191d; --muted: #4f565e; --line: #d4d9de; --surface: #eaedf0;
+  --accent: #1d5f8a; --accent-soft: #e1edf5;
+  --main: #8a4b12; --comp: #1d6b48; --ipc: #5a4a9a;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #101317; --text: #e5e8eb; --muted: #a3aab2; --line: #2d333a; --surface: #1a1f25; --accent: #7cc6ef; --accent-soft: #14232e;
+    --main: #f0b27a; --comp: #7fd1a8; --ipc: #b7a8f0; }
+}
+html { background: var(--bg); color: var(--text); }
+body { margin: 0; font: 1.0625rem/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 50rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+h1 { font-size: 2.1rem; line-height: 1.15; margin: 0 0 0.6rem; text-wrap: balance; }
+h2 { font-size: 1.35rem; line-height: 1.25; margin: 2.6rem 0 0.7rem; text-wrap: balance; }
+p, li { max-width: 62ch; text-wrap: pretty; }
+p { margin: 0 0 0.8rem; }
+.lede { font-size: 1.1875rem; color: var(--muted); margin-bottom: 1.5rem; }
+code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.875em; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.asks { background: var(--accent-soft); border-radius: 10px; padding: 1rem 1.25rem 0.5rem; margin: 1.5rem 0 2rem; }
+.asks h2 { margin: 0 0 0.5rem; font-size: 1.0625rem; color: var(--accent); }
+.asks ol { margin: 0; padding-left: 1.3rem; }
+.asks li { margin-bottom: 0.55rem; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9375rem; margin: 0.3rem 0 0.8rem; }
+th, td { text-align: left; vertical-align: top; padding: 0.5rem 0.75rem 0.5rem 0; border-bottom: 1px solid var(--line); }
+th { font-weight: 600; }
+td { font-variant-numeric: tabular-nums; }
+.bad { color: var(--main); }
+/* The switch timeline: one row per thread, ticks every 16.7 ms frame. */
+figure { margin: 1rem 0 1.5rem; }
+figcaption { font-size: 0.9375rem; color: var(--muted); margin-top: 0.5rem; max-width: 62ch; }
+.tl { position: relative; display: grid; grid-template-columns: 12rem 1fr; column-gap: 0.75rem; row-gap: 0.55rem; font-size: 0.9375rem; }
+.tl .who { color: var(--muted); padding-top: 0.15rem; }
+.tl .lane { position: relative; height: 1.6rem; background:
+  repeating-linear-gradient(to right, var(--line) 0 1px, transparent 1px calc(100% * 16.7 / 400)); border-radius: 3px; }
+.tl .bar { position: absolute; top: 0.2rem; height: 1.2rem; border-radius: 3px; min-width: 4px; }
+.tl .b-input { background: var(--accent); }
+.tl .b-main { background: var(--main); }
+.tl .b-ipc { background: var(--ipc); }
+.tl .b-comp { background: var(--comp); }
+.tl .axis { grid-column: 2; display: flex; justify-content: space-between; color: var(--muted); font-variant-numeric: tabular-nums; }
+details { border-top: 1px solid var(--line); }
+details:last-of-type { border-bottom: 1px solid var(--line); }
+summary { padding-block: 0.7rem; cursor: pointer; font-weight: 500; }
+details[open] { padding-bottom: 0.9rem; }
+details ul, details ol { padding-left: 1.3rem; }
+details li { margin-bottom: 0.35rem; }
+@media (max-width: 40rem) { .tl { grid-template-columns: 8.5rem 1fr; } .tl .axis span:nth-child(even) { visibility: hidden; } h1 { font-size: 1.75rem; } }
+@media print {
+  :root { color-scheme: light; --bg: #fff; --text: #000; --muted: #333; --line: #bbb; --accent: #1d5f8a; --accent-soft: #eef5fa; --main: #8a4b12; --comp: #1d6b48; --ipc: #5a4a9a; }
+  table, figure { break-inside: avoid; } h2 { break-after: avoid; }
+}
+</style>
+</head>
+<body>
+<main>
+<h1>One frame per click, nothing awake at rest</h1>
+<p class="lede">Built on the v1 plan's C++ model. The browser sends only changes, the sidebar paints a switch on the click's own frame, and unused spaces sleep.</p>
+
+<div class="scroll">
+<table>
+<thead><tr><th>300 tabs, 100 loaded</th><th>Today (measured)</th><th>Target</th></tr></thead>
+<tbody>
+<tr><td>Space switch, key to paint</td><td class="bad">200 ms, long tasks to 108 ms</td><td>1 frame (16.7 ms)</td></tr>
+<tr><td>Per switch or tab click</td><td class="bad">6–9 sent, 7–8 back, ~125 KB</td><td>1 sent, 1 back, &lt; 1 KB</td></tr>
+<tr><td>20 background tabs retitling</td><td class="bad">1.6 MB/s in; sidebar 78% of a core</td><td>≤ 1 batch a frame; ≤ 5%</td></tr>
+<tr><td>Idle sidebar CPU / GPU</td><td class="bad">3.3% / 7.1%</td><td>≤ 2% / ≤ 3%</td></tr>
+<tr><td>Tabs in other spaces</td><td class="bad">Always loaded (6.0 GB, 109 processes)</td><td>Unloaded after 30 min unseen</td></tr>
+</tbody>
+</table>
+</div>
+
+<section class="asks" aria-labelledby="asks">
+<h2 id="asks">Decided on 18 Oct</h2>
+<ol>
+<li><b>Stars:</b> a Settings choice, <i>While I'm using Loka</i> (default), <i>Always</i> or <i>Off</i>. Both moving modes use the cheap path below.</li>
+<li><b>Hidden spaces:</b> three layers, from Arc and Zen: memory pressure, then 30 min unseen, then the 12 h archive.</li>
+<li><b>Menus:</b> one preloaded floating window, so menus look like the mockup and aren't cut off.</li>
+<li><b>First step:</b> <code>verify:perf --heavy</code>, 300 tabs with 100 loaded. Done; its baseline is the table above.</li>
+</ol>
+</section>
+
+<h2>A space switch, frame by frame</h2>
+<figure>
+<div class="tl" role="img" aria-label="Timeline of one space switch over 400 milliseconds">
+  <div class="who">Click</div><div class="lane"><span class="bar b-input" style="left:0;width:1.5%"></span></div>
+  <div class="who">Sidebar: new list</div><div class="lane"><span class="bar b-main" style="left:0;width:3.6%"></span><span class="bar b-main" style="left:8.4%;width:2%"></span></div>
+  <div class="who">Message to C++ and back</div><div class="lane"><span class="bar b-ipc" style="left:3.6%;width:4.8%"></span></div>
+  <div class="who">C++: switch tab</div><div class="lane"><span class="bar b-ipc" style="left:4.4%;width:3.4%"></span></div>
+  <div class="who">Compositor: orbit</div><div class="lane"><span class="bar b-comp" style="left:0;width:95%"></span></div>
+  <div class="axis"><span>0</span><span>100 ms</span><span>200 ms</span><span>300 ms</span><span>400 ms</span></div>
+</div>
+<figcaption>Ticks are 16.7 ms frames. The new list shows before C++ answers; its confirmation lands a frame or two later. The orbit never touches the main thread.</figcaption>
+</figure>
+
+<h2>One rule per layer</h2>
+<div class="scroll">
+<table>
+<thead><tr><th>Layer</th><th>Rule</th><th>Removes</th></tr></thead>
+<tbody>
+<tr><td>Browser (C++)</td><td>One service owns the model, tab links and saving</td><td>Whole state rewritten per event</td></tr>
+<tr><td>Messages</td><td>Intents in; changed fields out, one batch per frame</td><td>Full tab lists with inlined icons</td></tr>
+<tr><td>Sidebar page</td><td>Paint first, confirm after; touch changed rows only</td><td>The 200 ms switch</td></tr>
+<tr><td>Motion</td><td>Transform and opacity only, on the compositor</td><td>Main-thread work mid-orbit</td></tr>
+<tr><td>Memory</td><td>A tab you can't see needs no renderer</td><td>Every space loaded forever</td></tr>
+</tbody>
+</table>
+</div>
+
+<details>
+<summary>Browser: what the C++ service owns</summary>
+<ul>
+<li><code>LokaSpacesService</code>, one per profile, as in the v1 plan. It keys tabs by <code>TabHandle</code> and holds lookups as hash maps, so finding a tab's space is O(1). Today that lookup is <code>Object.entries(...).find</code> in a loop.</li>
+<li>One observer per window feeds the service. Today the sidebar, the hidden command bar, settings and the empty tab each watch the tab strip and build their own tab list.</li>
+<li>It saves with <code>ImportantFileWriter</code>, which batches writes and writes off the UI thread. A title change marks the file dirty; it doesn't write.</li>
+<li>Last-used times stay in memory and are saved with the batch, not on every activation.</li>
+<li>The archive lives in its own file, read only when the Library or archive panel opens. It never travels with the sidebar's state.</li>
+</ul>
+</details>
+
+<details>
+<summary>Messages: what crosses, and how often</summary>
+<ul>
+<li>A <code>loka_sidebar.mojom</code> interface. The page sends intents (<code>ActivateSpace</code>, <code>ActivateTab</code>, <code>MoveItem</code>). The service answers with one <code>OnChanged</code> holding just the changed fields: <code>{tab 812: title}</code>, not the tab list.</li>
+<li>C++ collects changes and sends at most one batch per 16 ms. Loading spinners and titles during a page load collapse into that batch.</li>
+<li>Icons travel as a URL, <code>chrome://favicon2/…</code> for saved pages or a small Loka icon source keyed by tab and version. The bytes never go through a message, and the browser's image cache dedupes them. Today each icon is a base64 PNG resent in every snapshot.</li>
+<li>Only the sidebar subscribes to tab changes. The command bar asks once when it opens.</li>
+<li>The page loads with one <code>GetInitialState</code> call, then only changes. Other spaces' rows arrive too: 300 rows of id, title, URL and icon URL is roughly 60 KB (an estimate). That's what lets a switch skip the round trip.</li>
+<li>The 60-second archive timer moves into C++ as one timer for the next due tab, and does nothing when archiving is off.</li>
+</ul>
+</details>
+
+<details>
+<summary>Sidebar page: how a switch fits in one frame</summary>
+<ul>
+<li><b>Paint first.</b> The page already has every space's rows, so a click swaps the list right away and sends the intent. If C++ refuses, the list goes back and nothing is lost.</li>
+<li><b>Keep recent lists built.</b> The current space and the two neighbours stay in the DOM, with <code>content-visibility: hidden</code> on the ones you can't see. Showing one skips building 150 rows, which is most of today's 108 ms long task.</li>
+<li><b>Stable rows.</b> Each change replaces only the changed row objects, so Lit's keyed <code>repeat</code> updates just those rows. Today a new <code>live</code> object on every snapshot redraws the whole template.</li>
+<li><b>Measure only when rows move.</b> FLIP measuring runs only for moves the user made (a drag, a reorder). Today it reads every row's rect before and after each state change.</li>
+<li>Rows keep <code>content-visibility: auto</code>. Virtualizing isn't needed below about 500 rows. The Library page is the exception: history can run to thousands, so it renders only what's on screen.</li>
+<li>Sounds and the audio context start on first use after idle, never inside a switch. They once blocked a switch for 340–370 ms.</li>
+</ul>
+</details>
+
+<details>
+<summary>Motion: keeping the orbit and the stars cheap</summary>
+<ul>
+<li>The orbit, the sky fade, the star sweep and the list slide are WAAPI animations on <code>transform</code> and <code>opacity</code> only. That's how the mockup does it. Once they start, the compositor runs them with no main-thread work.</li>
+<li>Planets are drawn once and scaled. Chrome rasters an animating layer at the largest scale in its keyframes, so the big planet stays sharp without redrawing each frame (inferred from how Chromium's compositor works; check in a trace).</li>
+<li>No <code>filter</code>, <code>backdrop-filter</code> or drop shadows on anything that moves. The glow is a radial gradient, as in the mockup, where a drop shadow cost about 5 fps.</li>
+<li><code>will-change</code> goes on only for the switch and comes off after, so idle GPU memory stays low.</li>
+<li>Stars cover only the sidebar, as in the mockup, where covering the whole window took idle from 60 to 38 fps.</li>
+<li>Settings › Appearance › <b>Moving stars</b>: <i>While I'm using Loka</i> (default) drifts and stops 15 s after the last input; <i>Always</i> never stops while the window shows; <i>Off</i> keeps them still. Drifting stars keep the compositor drawing at 60 Hz; the stepped drift on record measured ~7% GPU.</li>
+<li>The cheap path, for both moving modes: each depth is one pre-drawn layer, moved by <code>transform</code> only, covering the sidebar only. Nothing repaints; the GPU only re-composites three small textures each frame.</li>
+<li>Every mode stops when the window is minimised, hidden behind others, or Energy Saver is on, and with reduced motion.</li>
+<li><i>Always</i> gets its own budget, set from what <code>verify:perf</code> measures. Worth trying in C++: asking the compositor to draw the sidebar at 30 Hz while only the stars move (inferred possible; not checked).</li>
+<li>With reduced motion on, a switch is a 200 ms crossfade.</li>
+</ul>
+</details>
+
+<details>
+<summary>Memory and startup: what sleeps</summary>
+<ul>
+<li>Other spaces' tabs stay in the tab strip in collapsed groups, as today; that keeps Chromium's session restore working.</li>
+<li><b>Three layers decide when a tab sleeps.</b>
+  <ol>
+  <li>Memory pressure, any background tab: Chromium's Memory Saver, as Arc used.</li>
+  <li>A space no window shows: its tabs unload after 30 min unseen. Settings: 15 min, 30 min, 1 h, 2 h, Never.</li>
+  <li>12 h unused: open tabs go to the archive (the v1 plan).</li>
+  </ol>
+</li>
+<li>Why a timer as well as pressure: Zen tried both. Its timed unloader (5–20 min, by version) drew "unloading too quickly" complaints. It moved to Firefox's pressure-only unloader in 1.12.9b, and now has reports that tabs never unload on macOS. 30 min sits between those.</li>
+<li>Unloading uses Chromium's discard, so a tab keeps its Back history, title and icon, and reloads when you open it. Chromium's own rules skip tabs playing sound, using the camera, mic or screen share, holding unsaved form input, or downloading.</li>
+<li>Unloaded pinned tabs and Essentials are rows with no <code>WebContents</code>, plus their saved history (v1 plan).</li>
+<li>At startup only the tab each window shows is loaded. Other restored tabs wait until you open them.</li>
+<li>The sidebar's first paint comes from <code>GetInitialState</code> during page load, so there's no empty frame of sky.</li>
+</ul>
+</details>
+
+<details>
+<summary>Right-click menus: why a floating window</summary>
+<p>A menu drawn inside the sidebar page can't leave the sidebar's 280 px, so submenus and menus near the edge get cut off. The command bar already uses a top-level popup page that stays warm after first use. Menus can share that host: it opens with no process start and draws your design. Native Windows menus open fastest but can't show the planet colours or Loka's type.</p>
+</details>
+
+<details>
+<summary>Order of work: four PRs, measure first</summary>
+<ol>
+<li><b>Measure.</b> Done: <code>verify:perf --heavy</code> (300 tabs, 100 loaded, churn, clicks, message counts, <code>--bytes</code>).</li>
+<li><b>C++ service and Mojo changes</b> (v1 plan phase 2), with batching and icon URLs from day one.</li>
+<li><b>Sidebar page:</b> paint first, kept lists, stable rows, no blanket measuring.</li>
+<li><b>Motion and sleep:</b> port the orbit, star idle rule, hidden-space discard.</li>
+</ol>
+<p>Each step is its own PR and must pass <code>verify:perf</code> at 300 tabs before the next one starts.</p>
+</details>
+
+<details>
+<summary>Where today's numbers come from, and what I didn't check</summary>
+<ul>
+<li>Today's column: <code>bun run verify:perf -- --heavy --webui=checkout</code> on 18 Oct, median of 3 runs on the 15 Oct dev build (a component build, so memory reads high), this branch's sidebar code. Byte sizes are one more run with <code>--bytes</code>.</li>
+<li>Other programs used 22–47% of the 16 cores during those runs, so CPU and timing numbers are noisy. The message counts don't depend on load.</li>
+<li>Per switch: 8.6 sent (<code>getTabs</code> and <code>getGroups</code> ×1.7 each, <code>updateGroup</code> ×1.6, <code>setStore</code> ×1.2, …). Per click: 6.2 sent, 8.1 back. Churn: 1,200 sent and 1,458 back in 20 s; the hidden command bar used 12.5% of a core on it.</li>
+<li>Click to paint was 64 ms; key-to-paint for a switch was 200 ms, with long tasks up to 108 ms.</li>
+<li>Budgets: <code>scripts/verify-perf.mjs:49-77</code>.</li>
+<li>Snapshots and icons: the handler's <code>TabList()</code> and <code>ScheduleTabsChanged</code> in <code>patches/loka/loka-native-sidebar.patch</code>. Every tab-strip change in a task sends the full list plus media, with no time debounce.</li>
+<li>Whole state per event: <code>webui/src/store.ts:42-63</code> and <code>sync.ts:47-58</code>, <code>146-177</code>.</li>
+<li>Row measuring: <code>loka-sidebar.ts:894-1011</code>.</li>
+<li>The 60 KB initial-state size and "one frame or two" for the C++ confirm are estimates, measured once the C++ side exists.</li>
+<li>Orbit fps (50–60) is from the mockup in a normal browser tab, not the sidebar WebView.</li>
+<li>Zen's unloader history: <a href="https://github.com/zen-browser/desktop/discussions/3076">"unloading tabs too quickly"</a>, <a href="https://github.com/zen-browser/desktop/discussions/9087">where the timer went</a>, <a href="https://github.com/zen-browser/desktop/issues/15619">tabs never unload on macOS</a>. Firefox's unloader waits at least 10 min idle (<a href="https://bugzil.la/1729911">bug 1729911</a>). Read 18 Oct 2026.</li>
+</ul>
+</details>
+
+<details>
+<summary>Risks</summary>
+<ul>
+<li><b>Paint first, refused after.</b> If C++ refuses often, the list flickers back. It refuses only when the space was deleted in another window, which should be rare; <code>--heavy</code> should count refusals once they exist.</li>
+<li><b>Kept lists cost memory.</b> Three built lists of 150 rows is about 13,500 nodes, over today's 10,000 budget. Raise the budget for this or keep only one neighbour built.</li>
+<li><b>Discarding breaks media or forms.</b> Chromium already skips audible tabs and tabs with unsaved form input; Loka uses its rules, not its own.</li>
+</ul>
+</details>
+</main>
+<script>
+addEventListener("beforeprint", () => document.querySelectorAll("details").forEach((d) => { d.dataset.wasOpen = d.open; d.open = true; }));
+addEventListener("afterprint", () => document.querySelectorAll("details").forEach((d) => (d.open = d.dataset.wasOpen === "true")));
+</script>
+</body>
+</html>

@@ -193,16 +193,26 @@ export function modelCases(): { states: Record<string, BrowserState>; cases: Cas
 	on("activating a missing tab changes nothing", "seed", "activateTab", { tabId: "t-x", now: NOW }, (s) =>
 		activateTab(s, "t-x", NOW),
 	);
-	on("closing the shown open tab shows its neighbour", "showing", "closeTab", { tabId: "t-hn" }, (s) =>
-		closeTab(s, "t-hn"),
+	on(
+		"closing the shown open tab archives it and shows its neighbour",
+		"showing",
+		"closeTab",
+		{ tabId: "t-hn", now: NOW },
+		(s) => closeTab(s, "t-hn", NOW),
 	);
-	on("closing the last open tab shows the one before", "zenShown", "closeTab", { tabId: "t-zen" }, (s) =>
-		closeTab(s, "t-zen"),
+	on("closing the last open tab shows the one before", "zenShown", "closeTab", { tabId: "t-zen", now: NOW }, (s) =>
+		closeTab(s, "t-zen", NOW),
 	);
-	on("closing a pinned tab keeps it, with nothing shown", "seed", "closeTab", { tabId: "t-helium" }, (s) =>
-		closeTab(s, "t-helium"),
+	on(
+		"closing a pinned tab keeps it, with nothing shown, and archives nothing",
+		"seed",
+		"closeTab",
+		{ tabId: "t-helium", now: NOW },
+		(s) => closeTab(s, "t-helium", NOW),
 	);
-	on("closing a space's only open tab", "seed", "closeTab", { tabId: "t-music" }, (s) => closeTab(s, "t-music"));
+	on("closing a space's only open tab", "seed", "closeTab", { tabId: "t-music", now: NOW }, (s) =>
+		closeTab(s, "t-music", NOW),
+	);
 	on("switching spaces", "seed", "switchSpace", { spaceId: "s-school" }, (s) => switchSpace(s, "s-school"));
 	on("switching to a missing space changes nothing", "seed", "switchSpace", { spaceId: "s-x" }, (s) =>
 		switchSpace(s, "s-x"),
@@ -377,8 +387,12 @@ export function modelCases(): { states: Record<string, BrowserState>; cases: Cas
 		(s) => restoreArchived(s, "t-arc", NOW),
 	);
 
-	on("Clear closes every open tab in one change", "seed", "closeTabs", { tabIds: ["t-hn", "t-arc", "t-zen"] }, (s) =>
-		closeTab(closeTab(closeTab(s, "t-hn"), "t-arc"), "t-zen"),
+	on(
+		"Clear archives every open tab in one change",
+		"seed",
+		"closeTabs",
+		{ tabIds: ["t-hn", "t-arc", "t-zen"], now: NOW },
+		(s) => closeTab(closeTab(closeTab(s, "t-hn", NOW), "t-arc", NOW), "t-zen", NOW),
 	);
 	on("clearing the archive", "archived", "clearArchive", {}, (s) => ({ ...s, archive: [] }));
 	on("clearing an empty archive changes nothing", "seed", "clearArchive", {}, (s) => s);
@@ -493,6 +507,34 @@ export function modelCases(): { states: Record<string, BrowserState>; cases: Cas
 	);
 	adopt("the shown browser tab's space shows", "seed", [tab(8, "https://music.youtube.com", { active: true })], []);
 	adopt(
+		"a restored tab takes the tab it saved, before another tab at its address",
+		"seed",
+		[
+			tab(31, "https://news.ycombinator.com"),
+			tab(32, "https://news.ycombinator.com", { lokaId: "t-hn", active: true }),
+		],
+		["n1"],
+	);
+	adopt(
+		"a restored tab keeps its tab though it went to another page",
+		"seed",
+		[
+			tab(33, "https://lit.dev/docs/components/overview/", { title: "Components", lokaId: "t-lit" }),
+			tab(34, "https://zen-browser.app/download", { title: "Download Zen", lokaId: "t-zen", active: true }),
+		],
+		[],
+	);
+	adopt(
+		"a saved tab that's gone, or taken already, falls back to the address",
+		"seed",
+		[
+			tab(35, "https://github.com", { lokaId: "t-gone" }),
+			tab(36, "https://calendar.google.com", { lokaId: "t-cal" }),
+			tab(37, "https://example.org/", { lokaId: "t-cal" }),
+		],
+		["n1"],
+	);
+	adopt(
 		"after an import, its open tabs stay though no browser tab shows them",
 		"seed",
 		[tab(9, "https://news.ycombinator.com", { active: true }), tab(10, "https://kept.example/")],
@@ -565,13 +607,34 @@ export function modelCases(): { states: Record<string, BrowserState>; cases: Cas
 	withLive("a tab already linked isn't added twice", "tabCreated", { tab: again, now: NOW, ids: [] }, (s, l) =>
 		tabCreated(s, l, again, NOW, undefined, idsFrom([])),
 	);
-	withLive("closing an open tab's browser tab deletes it", "tabRemoved", { browserId: 22 }, (s, l) =>
-		tabRemoved(s, l, 22),
+	withLive("closing an open tab's browser tab archives it", "tabRemoved", { browserId: 22, now: NOW }, (s, l) =>
+		tabRemoved(s, l, 22, NOW),
 	);
-	withLive("closing a pinned tab's browser tab keeps it", "tabRemoved", { browserId: 21 }, (s, l) =>
-		tabRemoved(s, l, 21),
+	withLive("closing a pinned tab's browser tab keeps it", "tabRemoved", { browserId: 21, now: NOW }, (s, l) =>
+		tabRemoved(s, l, 21, NOW),
 	);
-	withLive("closing an unknown tab changes nothing", "tabRemoved", { browserId: 99 }, (s, l) => tabRemoved(s, l, 99));
+	withLive("closing an unknown tab changes nothing", "tabRemoved", { browserId: 99, now: NOW }, (s, l) =>
+		tabRemoved(s, l, 99, NOW),
+	);
+	// Hacker News's browser tab closed an hour ago, then the browser's Reopen closed tab brings it back.
+	const [hnClosed, hnClosedLive] = tabRemoved(linkedState, Object.fromEntries(live), 22, NOW - HOUR);
+	states.linkedHnClosed = hnClosed;
+	const reopened = tab(41, "https://news.ycombinator.com", { lokaId: "t-hn", active: true });
+	const [reopenedState, reopenedLive] = tabCreated(hnClosed, hnClosedLive, reopened, NOW, undefined, idsFrom([]));
+	cases.push({
+		name: "a closed tab reopened by the browser comes back out of the archive",
+		op: "tabCreated",
+		state: "linkedHnClosed",
+		args: { live: pairs(hnClosedLive), tab: reopened, now: NOW, ids: [] },
+		expect: { state: reopenedState, live: pairs(reopenedLive) },
+	});
+	const fromClosedWindow = tab(42, "https://lit.dev/docs", { lokaId: "t-lit" });
+	withLive(
+		"a tab from a reopened window takes the row it saved",
+		"tabCreated",
+		{ tab: fromClosedWindow, now: NOW, ids: [] },
+		(s, l) => tabCreated(s, l, fromClosedWindow, NOW, undefined, idsFrom([])),
+	);
 	const update = (name: string, t: BrowserTab, ids: string[] = []) =>
 		withLive(name, "tabUpdated", { tab: t, now: NOW, ids }, (s, l) => tabUpdated(s, l, t, NOW, idsFrom(ids)));
 	update("an open tab follows its page", tab(22, "https://news.ycombinator.com/item", { title: "Item" }));

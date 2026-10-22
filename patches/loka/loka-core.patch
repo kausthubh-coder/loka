@@ -155,14 +155,14 @@
 +                                    : RevealTab(state, *tab_id, *now);
 +  }
 +  if (*op == "closeTab") {
-+    if (!tab_id) {
++    if (!tab_id || !now) {
 +      return std::nullopt;
 +    }
-+    return CloseTab(state, *tab_id);
++    return CloseTab(state, *tab_id, *now);
 +  }
 +  if (*op == "closeTabs") {
 +    const base::ListValue* ids = intent.FindList("tabIds");
-+    if (!ids) {
++    if (!ids || !now) {
 +      return std::nullopt;
 +    }
 +    State next = state;
@@ -170,7 +170,7 @@
 +      if (!each.is_string()) {
 +        return std::nullopt;
 +      }
-+      next = CloseTab(next, each.GetString());
++      next = CloseTab(next, each.GetString(), *now);
 +    }
 +    return next;
 +  }
@@ -293,7 +293,7 @@
 +#endif  // COMPONENTS_LOKA_CORE_INTENTS_H_
 --- /dev/null
 +++ b/components/loka/core/model_cases_unittest.cc
-@@ -0,0 +1,270 @@
+@@ -0,0 +1,273 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -390,6 +390,9 @@
 +  tab.window_id = t.FindInt("windowId").value_or(0);
 +  tab.opener_tab_id = t.FindInt("openerTabId");
 +  tab.last_accessed = t.FindDouble("lastAccessed");
++  if (const std::string* id = t.FindString("lokaId")) {
++    tab.loka_id = *id;
++  }
 +  return tab;
 +}
 +
@@ -505,7 +508,7 @@
 +  }
 +  if (op == "tabRemoved") {
 +    return with_links(TabRemoved(state, ReadLive(args),
-+                                 args.FindInt("browserId").value_or(0)));
++                                 args.FindInt("browserId").value_or(0), now));
 +  }
 +  if (op == "tabUpdated") {
 +    return with_links(TabUpdated(state, ReadLive(args),
@@ -672,7 +675,7 @@
 +#endif  // COMPONENTS_LOKA_CORE_SPACES_DELTA_H_
 --- /dev/null
 +++ b/components/loka/core/spaces_model.cc
-@@ -0,0 +1,1066 @@
+@@ -0,0 +1,1076 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1279,12 +1282,22 @@
 +  return next;
 +}
 +
-+State CloseTab(const State& state, std::string_view tab_id) {
++State CloseTab(const State& state,
++               std::string_view tab_id,
++               std::optional<double> archived_at) {
 +  State next = state;
 +  for (Space& owner : next.spaces) {
 +    std::optional<size_t> at = IndexOf(owner.open, tab_id);
 +    if (!at) {
 +      continue;
++    }
++    auto closed = next.tabs.find(std::string(tab_id));
++    if (archived_at && closed != next.tabs.end()) {
++      next.archive.insert(next.archive.begin(),
++                          ArchivedTab{closed->second, owner.id, *archived_at});
++      if (next.archive.size() > kArchiveLimit) {
++        next.archive.resize(kArchiveLimit);
++      }
 +    }
 +    next.tabs.erase(std::string(tab_id));
 +    owner.open.erase(owner.open.begin() + *at);
@@ -1741,7 +1754,7 @@
 +}  // namespace loka
 --- /dev/null
 +++ b/components/loka/core/spaces_model.h
-@@ -0,0 +1,201 @@
+@@ -0,0 +1,204 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1888,9 +1901,12 @@
 +                  std::string_view url,
 +                  std::string_view title);
 +State ActivateTab(const State& state, std::string_view tab_id, double now);
-+// Closing an open tab deletes it; closing a pinned tab or Essential only
-+// unloads it, so the model keeps it.
-+State CloseTab(const State& state, std::string_view tab_id);
++// Closing an open tab deletes it; closed by hand (`archived_at`, when), it goes
++// to the top of the archive first, so it can come back. Closing a pinned tab or
++// Essential only unloads it, so the model keeps it.
++State CloseTab(const State& state,
++               std::string_view tab_id,
++               std::optional<double> archived_at = std::nullopt);
 +State SwitchSpace(const State& state, std::string_view space_id);
 +State CreateSpace(const State& state,
 +                  const SpaceLook& look,
@@ -1945,7 +1961,7 @@
 +#endif  // COMPONENTS_LOKA_CORE_SPACES_MODEL_H_
 --- /dev/null
 +++ b/components/loka/core/tab_links.cc
-@@ -0,0 +1,546 @@
+@@ -0,0 +1,576 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2111,9 +2127,23 @@
 +    }
 +    return ids;
 +  };
++  std::set<int> linked;
++  // A tab that saved which Loka tab it showed takes that one, though another
++  // tab has the same address or it went to another page since.
++  for (const BrowserTab& tab : tabs) {
++    if (IsEmptyTab(tab.url) || IsBlank(tab.url) || !tab.loka_id ||
++        taken.contains(*tab.loka_id) ||
++        !std::ranges::contains(candidates(), *tab.loka_id)) {
++      continue;
++    }
++    taken.insert(*tab.loka_id);
++    linked.insert(tab.id);
++    live.Set(*tab.loka_id, tab.id);
++    std::tie(next, live) = TabUpdated(next, live, tab, now, make_id);
++  }
 +  for (const BrowserTab& tab : tabs) {
 +    // A tab still on its way joins once it has a page (TabUpdated).
-+    if (IsEmptyTab(tab.url) || IsBlank(tab.url)) {
++    if (IsEmptyTab(tab.url) || IsBlank(tab.url) || linked.contains(tab.id)) {
 +      continue;
 +    }
 +    std::optional<TabId> match;
@@ -2169,6 +2199,21 @@
 +  if (live.TabIdOf(tab.id) || IsEmptyTab(tab.url) || IsBlank(tab.url)) {
 +    return {state, live};
 +  }
++  // A tab the browser reopened (Reopen closed tab, a closed window) brings
++  // back the Loka tab it saved: out of the archive, or the row it still has.
++  if (tab.loka_id && !live.BrowserIdOf(*tab.loka_id)) {
++    const TabId& saved = *tab.loka_id;
++    LiveMap linked = live;
++    linked.Set(saved, tab.id);
++    if (std::ranges::any_of(state.archive, [&](const ArchivedTab& archived) {
++          return archived.tab.id == saved;
++        })) {
++      return {RestoreArchived(state, saved, now), std::move(linked)};
++    }
++    if (HomeOf(state, saved)) {
++      return TabUpdated(state, linked, tab, now, make_id);
++    }
++  }
 +  std::optional<TabId> opener =
 +      tab.opener_tab_id ? live.TabIdOf(*tab.opener_tab_id) : std::nullopt;
 +  std::optional<std::string> opener_home =
@@ -2181,14 +2226,15 @@
 +
 +std::pair<State, LiveMap> TabRemoved(const State& state,
 +                                     const LiveMap& live,
-+                                     int browser_id) {
++                                     int browser_id,
++                                     double now) {
 +  std::optional<TabId> id = live.TabIdOf(browser_id);
 +  if (!id) {
 +    return {state, live};
 +  }
 +  LiveMap rest = live;
 +  rest.Erase(*id);
-+  return {CloseTab(state, *id), std::move(rest)};
++  return {CloseTab(state, *id, now), std::move(rest)};
 +}
 +
 +std::pair<State, LiveMap> TabUpdated(const State& state,
@@ -2211,7 +2257,7 @@
 +    return std::ranges::contains(s.open, *id);
 +  });
 +  if (is_open && IsEmptyTab(tab.url)) {
-+    return TabRemoved(state, live, tab.id);
++    return TabRemoved(state, live, tab.id, now);
 +  }
 +  Tab next = current->second;
 +  if (is_open) {
@@ -2494,7 +2540,7 @@
 +}  // namespace loka
 --- /dev/null
 +++ b/components/loka/core/tab_links.h
-@@ -0,0 +1,154 @@
+@@ -0,0 +1,159 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2531,6 +2577,9 @@
 +  int window_id = 0;
 +  std::optional<int> opener_tab_id;
 +  std::optional<double> last_accessed;
++  // The Loka tab it showed before the browser restarted, saved with the tab
++  // in the browser's session.
++  std::optional<TabId> loka_id;
 +};
 +
 +// Which browser tab shows each loaded Loka tab, in the order the links were
@@ -2619,9 +2668,11 @@
 +                                     double now,
 +                                     const std::optional<TabId>& for_tab_id,
 +                                     MakeId make_id);
++// An open tab goes to the archive, stamped `now`.
 +std::pair<State, LiveMap> TabRemoved(const State& state,
 +                                     const LiveMap& live,
-+                                     int browser_id);
++                                     int browser_id,
++                                     double now);
 +std::pair<State, LiveMap> TabUpdated(const State& state,
 +                                     const LiveMap& live,
 +                                     const BrowserTab& tab,

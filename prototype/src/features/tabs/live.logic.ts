@@ -11,6 +11,7 @@ import {
 	closeTab,
 	newId,
 	type PinnedNode,
+	restoreArchived,
 	type Space,
 	switchSpace,
 	type TabId,
@@ -26,6 +27,8 @@ export interface BrowserTab {
 	windowId: number;
 	openerTabId?: number;
 	lastAccessed?: number;
+	/** The Loka tab it showed before the browser restarted, saved with the tab in the browser's session. */
+	lokaId?: TabId;
 }
 
 export type LiveMap = Record<TabId, number>;
@@ -89,10 +92,10 @@ function addOpenTab(
 }
 
 /**
- * When Loka starts, links the tabs the browser already has to Loka's tabs by address. A browser tab with no match
- * becomes an open tab in the current space; a Loka open tab with no browser tab left is dropped (it was closed while
- * Loka wasn't running). Pinned tabs and Essentials stay either way. Empty tabs, and tabs with no page yet, are left
- * out.
+ * When Loka starts, links the tabs the browser already has to Loka's tabs: first by the Loka tab each saved in the
+ * session (`lokaId`), then by address. A browser tab with no match becomes an open tab in the current space; a Loka
+ * open tab with no browser tab left is dropped (it was closed while Loka wasn't running). Pinned tabs and Essentials
+ * stay either way. Empty tabs, and tabs with no page yet, are left out.
  */
 export function adoptTabs(
 	state: BrowserState,
@@ -114,10 +117,21 @@ export function adoptTabs(
 			...others.flatMap((s) => [...s.open, ...pinnedIds(s.pinned)]),
 		];
 	};
+	const linked = new Set<number>();
+	// A tab that saved which Loka tab it showed takes that one, though another tab has the same address or it went
+	// to another page since.
+	for (const tab of tabs) {
+		const id = tab.lokaId;
+		if (isEmptyTab(tab.url) || isBlank(tab.url) || !id || taken.has(id) || !candidates().includes(id)) continue;
+		taken.add(id);
+		linked.add(tab.id);
+		live[id] = tab.id;
+		[next, live] = tabUpdated(next, live, tab, now, makeId);
+	}
 	for (const tab of tabs) {
 		// A tab still on its way (a new window's, before chrome://newtab commits) joins once it has a page
 		// (tabUpdated); taken in now, an empty tab would show as a row until then.
-		if (isEmptyTab(tab.url) || isBlank(tab.url)) continue;
+		if (isEmptyTab(tab.url) || isBlank(tab.url) || linked.has(tab.id)) continue;
 		const match = candidates().find((id) => !taken.has(id) && next.tabs[id]?.url === tab.url);
 		if (match) {
 			taken.add(match);
@@ -148,9 +162,11 @@ function showTab(state: BrowserState, tabId: TabId, now: number): BrowserState {
 }
 
 /**
- * A tab the browser opened. If Loka asked for it (`forTabId`), it only gets linked. An empty tab stays out.
- * Otherwise it joins the open tabs of the space it was opened from (a link's opener), or the current space: a page
- * picked on an empty tab names that tab as its opener, which is in no space, so it joins the space on screen.
+ * A tab the browser opened. If Loka asked for it (`forTabId`), it only gets linked. An empty tab stays out. A tab
+ * the browser reopened (Reopen closed tab, a closed window) brings back the Loka tab it saved (`lokaId`): out of the
+ * archive, or the row it still has. Otherwise it joins the open tabs of the space it was opened from (a link's
+ * opener), or the current space: a page picked on an empty tab names that tab as its opener, which is in no space,
+ * so it joins the space on screen.
  */
 export function tabCreated(
 	state: BrowserState,
@@ -163,18 +179,33 @@ export function tabCreated(
 	if (forTabId && state.tabs[forTabId]) return [state, { ...live, [forTabId]: tab.id }];
 	// A tab still on its way to its first page joins once it has one (tabUpdated), not as an "about:blank" row.
 	if (lokaIdOf(live, tab.id) || isEmptyTab(tab.url) || isBlank(tab.url)) return [state, live];
+	const saved = tab.lokaId;
+	if (saved && !(saved in live)) {
+		if (state.archive.some((a) => a.tab.id === saved)) {
+			return [restoreArchived(state, saved, now), { ...live, [saved]: tab.id }];
+		}
+		if (homeOf(state, saved)) return tabUpdated(state, { ...live, [saved]: tab.id }, tab, now, makeId);
+	}
 	const opener = tab.openerTabId === undefined ? null : lokaIdOf(live, tab.openerTabId);
 	const openerHome = opener ? homeOf(state, opener) : null;
 	const spaceId = openerHome && openerHome !== "essentials" ? openerHome : state.activeSpaceId;
 	return addOpenTab(state, live, tab, spaceId, now, makeId());
 }
 
-/** A tab the browser closed: an open tab is gone; a pinned tab or Essential stays in the sidebar, unloaded. */
-export function tabRemoved(state: BrowserState, live: LiveMap, browserId: number): [BrowserState, LiveMap] {
+/**
+ * A tab the browser closed: an open tab goes to the archive, stamped `now`; a pinned tab or Essential stays in the
+ * sidebar, unloaded.
+ */
+export function tabRemoved(
+	state: BrowserState,
+	live: LiveMap,
+	browserId: number,
+	now: number,
+): [BrowserState, LiveMap] {
 	const id = lokaIdOf(live, browserId);
 	if (!id) return [state, live];
 	const { [id]: _gone, ...rest } = live;
-	return [closeTab(state, id), rest];
+	return [closeTab(state, id, now), rest];
 }
 
 /**
@@ -199,7 +230,7 @@ export function tabUpdated(
 	const current = state.tabs[id];
 	if (!current) return [state, live];
 	const isOpen = state.spaces.some((s) => s.open.includes(id));
-	if (isOpen && isEmptyTab(tab.url)) return tabRemoved(state, live, tab.id);
+	if (isOpen && isEmptyTab(tab.url)) return tabRemoved(state, live, tab.id, now);
 	const next = isOpen
 		? { ...current, url: tab.url, title: tab.title || tab.url }
 		: { ...current, title: tab.url === current.url && tab.title ? tab.title : current.title };

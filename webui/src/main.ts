@@ -145,12 +145,21 @@ export class LokaPanel extends LitElement {
 			const icon = byId.get(browserId)?.favicon;
 			if (icon) this.icons.set(lokaId, icon);
 		}
+		// A tab no browser tab in this window shows has no page here; one the browser unloaded keeps its tab.
 		const live: LiveTabs = {};
-		for (const [lokaId, icon] of this.icons) live[lokaId] = { icon };
+		for (const lokaId of Object.keys(this.state?.tabs ?? {})) {
+			live[lokaId] = { icon: this.icons.get(lokaId), unloaded: true };
+		}
 		for (const [lokaId, browserId] of Object.entries(links)) {
 			const tab = byId.get(browserId);
 			if (!tab) continue;
-			live[lokaId] = { icon: this.icons.get(lokaId), loading: tab.loading, audible: tab.audible, muted: tab.muted };
+			live[lokaId] = {
+				icon: this.icons.get(lokaId),
+				loading: tab.loading,
+				audible: tab.audible,
+				muted: tab.muted,
+				unloaded: tab.discarded,
+			};
 		}
 		// A title changing in the browser changes nothing here: the sidebar then has nothing to redraw.
 		this.live = keepUnchanged(this.live, live);
@@ -323,7 +332,7 @@ export class LokaPanel extends LitElement {
 		if (!shown) return;
 		const lokaId = Object.entries(linkedTabs()).find(([, id]) => id === shown.id)?.[0];
 		if (lokaId) {
-			this.apply({ op: "closeTab", tabId: lokaId });
+			this.apply({ op: "closeTab", tabId: lokaId, now: Date.now() });
 			this.unload(lokaId);
 		} else if (isEmptyTab(shown.url)) browser.windowAction("close");
 		else browser.closeTab(shown.id);

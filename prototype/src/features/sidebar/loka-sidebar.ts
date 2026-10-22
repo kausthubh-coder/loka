@@ -1,4 +1,4 @@
-import { css, html, LitElement, nothing, svg, type TemplateResult } from "lit";
+import { css, html, LitElement, nothing, render, svg, type TemplateResult } from "lit";
 import { guard } from "lit/directives/guard.js";
 import { keyed } from "lit/directives/keyed.js";
 import { repeat } from "lit/directives/repeat.js";
@@ -24,6 +24,7 @@ import type { Cue } from "../sound/sound.logic";
 import { autoScrollStep, type DropMode, dropModeAt } from "./drag.logic";
 import { essentialsDropSlots } from "./empty-states.logic";
 import { builtSpaceIds, rowsMoved } from "./lists.logic";
+import { arrivePath, leavePath, ORBIT, type OrbitPlace, orbitFrames, orbitPoint } from "./orbit.logic";
 import { planet } from "./planet";
 import {
 	activeSpace,
@@ -225,7 +226,7 @@ export class LokaSidebar extends LitElement {
 	/** Closes a tab, telling the browser too: unloading a pinned tab changes nothing in the spaces, only the browser. */
 	private closeTabFor(tabId: TabId) {
 		playCue("tab-close");
-		this.apply({ op: "closeTab", tabId });
+		this.apply({ op: "closeTab", tabId, now: Date.now() });
 		this.dispatchEvent(new CustomEvent("loka-tab-closed", { detail: tabId, bubbles: true, composed: true }));
 	}
 
@@ -636,7 +637,7 @@ export class LokaSidebar extends LitElement {
 				danger: true,
 				run: () => {
 					playCue("clear");
-					this.apply({ op: "closeTabs", tabIds: closable });
+					this.apply({ op: "closeTabs", tabIds: closable, now: Date.now() });
 				},
 			});
 		}
@@ -748,12 +749,12 @@ export class LokaSidebar extends LitElement {
 	// ---- spaces: the horizon ------------------------------------------------
 
 	/** The space `step` places away from the current one, wrapping around. Null when there is no other space. */
-	private neighbourAt(step: 1 | -1): Space | null {
-		const spaces = this.state.spaces;
+	private neighbourAt(step: 1 | -1, state = this.state): Space | null {
+		const spaces = state.spaces;
 		if (spaces.length < 2) return null;
 		// With two spaces both neighbours are the same one; show it once, on the right.
 		if (spaces.length === 2 && step === -1) return null;
-		const index = spaces.findIndex((s) => s.id === this.state.activeSpaceId);
+		const index = spaces.findIndex((s) => s.id === state.activeSpaceId);
 		return spaces[(index + step + spaces.length) % spaces.length] ?? null;
 	}
 
@@ -856,8 +857,12 @@ export class LokaSidebar extends LitElement {
 	}
 	/** The space's list before a switch, which slides out as the new one slides in. */
 	private listBefore: { el: HTMLElement; rect: DOMRect; scrollTop: number; forward: boolean } | null = null;
-	/** The horizon's planets before a space switch, which set behind the new one. */
-	private horizonBefore: { els: HTMLElement[]; forward: boolean } | null = null;
+	/** The horizon before a space switch: the space it showed and that space's neighbours, where the orbit turns from. */
+	private horizonBefore: { space: Space; left: Space | null; right: Space | null; forward: boolean } | null = null;
+	/** The orbit playing (animateHorizon): its animations, and when the last one ended, to run a burst of switches fast. */
+	private orbitAnimations: Animation[] = [];
+	private orbitRun = 0;
+	private orbitEndedAt = Number.NEGATIVE_INFINITY;
 
 	/** The now-playing card on screen: what plays, or for a moment after the browser stops reporting it, what did. */
 	private shownPlaying: NowPlaying | null = null;
@@ -909,14 +914,9 @@ export class LokaSidebar extends LitElement {
 			this.listBefore = list
 				? { el: list, rect: list.getBoundingClientRect(), scrollTop: list.scrollTop, forward }
 				: null;
-			const horizon = this.renderRoot.querySelector(".horizon");
-			this.horizonBefore = horizon
-				? {
-						els: [
-							...horizon.querySelectorAll<HTMLElement>(":scope > .world, :scope > .world-name, :scope > .neighbour"),
-						],
-						forward,
-					}
+			const was = before.spaces.find((s) => s.id === before.activeSpaceId);
+			this.horizonBefore = was
+				? { space: was, left: this.neighbourAt(-1, before), right: this.neighbourAt(1, before), forward }
 				: null;
 			return;
 		}
@@ -1023,43 +1023,127 @@ export class LokaSidebar extends LitElement {
 	}
 
 	/**
-	 * Switching spaces on the horizon: the old planet and its neighbours set, sinking and fading behind the
-	 * horizon's edge, and the new ones rise into place: first the big planet, then its neighbours, so it reads like
-	 * the sky turning. The old planets are the elements Lit just let go of, put back for their exit.
+	 * Switching spaces turns the orbit (orbit.logic.ts): the planet you were on shrinks into the neighbour place it
+	 * now belongs in, and the one you picked grows out of its place into the horizon. Stand-ins in a layer over the
+	 * horizon make the trip; the horizon's own planets stay hidden under them until it ends, so nothing in the
+	 * sidebar's layout moves. The list is usable from the first frame: the orbit never blocks input.
 	 */
 	private animateHorizon() {
 		const before = this.horizonBefore;
 		this.horizonBefore = null;
 		const horizon = this.renderRoot.querySelector<HTMLElement>(".horizon");
 		if (!before || !horizon) return;
-		const still = reducedMotion();
-		const side = before.forward ? 1 : -1;
-		const sink = (el: HTMLElement, distance: number, drift: number, duration: number) => {
-			// Gone as far as anyone using it can tell: it can't be clicked, focused or read out while it sets.
-			el.classList.add("leaving");
-			el.inert = true;
-			el.setAttribute("aria-hidden", "true");
-			horizon.prepend(el);
-			const to = still ? { opacity: 0 } : { opacity: 0, transform: `translate(${drift}px, ${distance}px)` };
-			void el
-				.animate([{ opacity: 1, transform: "none" }, to], { duration, easing: EASE_IN, fill: "forwards" })
-				.finished.then(() => el.remove());
+		const run = ++this.orbitRun;
+		const busy = this.orbitAnimations.length > 0;
+		for (const a of this.orbitAnimations) a.cancel();
+		this.orbitAnimations = [];
+		horizon.querySelector(":scope > .orbit")?.remove();
+		for (const n of horizon.querySelectorAll(".landing")) n.classList.remove("landing");
+		horizon.classList.remove("orbiting");
+		if (reducedMotion()) return;
+		const duration = busy || performance.now() - this.orbitEndedAt < ORBIT.repeatMs ? ORBIT.fast : ORBIT.duration;
+		const width = this.horizonWidth;
+		if (!width) return;
+		const to = activeSpace(this.state);
+		const left = this.neighbourAt(-1);
+		const right = this.neighbourAt(1);
+		const layer = document.createElement("div");
+		layer.className = "orbit";
+		layer.setAttribute("aria-hidden", "true");
+		horizon.append(layer);
+		horizon.classList.add("orbiting");
+		const play = (el: Element, frames: Keyframe[], options: KeyframeAnimationOptions = {}) => {
+			const a = el.animate(frames, { duration, fill: "both", ...options });
+			this.orbitAnimations.push(a);
+			return a;
 		};
-		const rise = (el: Element, distance: number, drift: number, duration: number, delay: number) => {
-			const from = still ? { opacity: 0 } : { opacity: 0, transform: `translate(${drift}px, ${distance}px)` };
-			el.animate([from, { opacity: 1, transform: "none" }], { duration, delay, easing: EASE_OUT, fill: "backwards" });
-		};
-		for (const el of before.els) {
-			if (el.isConnected) continue;
-			if (el.classList.contains("world")) sink(el, 70, -24 * side, 340);
-			else if (el.classList.contains("world-name")) sink(el, 10, 0, 140);
-			else sink(el, 46, 0, 260);
+
+		// The old neighbours, except the one coming in, fade where they are.
+		for (const [side, space] of [
+			["left", before.left],
+			["right", before.right],
+		] as const) {
+			if (!space || space.id === to.id) continue;
+			const ghost = document.createElement("div");
+			ghost.className = `ghost ${side}`;
+			render(planet(space.planet, space.hue, 22), ghost);
+			layer.append(ghost);
+			play(
+				ghost,
+				[
+					{ opacity: 1, transform: "none" },
+					{ opacity: 0, transform: "scale(0.5)" },
+				],
+				{
+					duration: 0.3 * duration,
+					easing: EASE_IN,
+				},
+			);
 		}
-		const world = horizon.querySelector(":scope > .world:not(.leaving)");
-		if (world) rise(world, 70, 24 * side, 620, 60);
-		const name = horizon.querySelector(":scope > .world-name:not(.leaving)");
-		if (name) rise(name, 8, 0, 360, 240);
-		for (const n of horizon.querySelectorAll(":scope > .neighbour:not(.leaving)")) rise(n, 46, 0, 520, 200);
+		// The new neighbours: the one the leaving planet lands in waits for it; another fades in once the way is clear.
+		for (const n of horizon.querySelectorAll<HTMLElement>(":scope > .neighbour")) {
+			const space = n.classList.contains("left") ? left : right;
+			if (space?.id === before.space.id) n.classList.add("landing");
+			else {
+				play(
+					n,
+					[
+						{ opacity: 0, transform: "scale(0.5)" },
+						{ opacity: 1, transform: "none" },
+					],
+					{
+						duration: 0.5 * duration,
+						delay: 0.3 * duration,
+						easing: EASE_OUT,
+					},
+				);
+			}
+		}
+		// The name says where you are, so it's readable almost at once.
+		const name = horizon.querySelector(":scope > .world-name");
+		if (name) {
+			play(
+				name,
+				[
+					{ opacity: 0, transform: "translateY(3px)" },
+					{ opacity: 1, transform: "none" },
+				],
+				{
+					duration: 0.5 * duration,
+					delay: 0.1 * duration,
+					easing: EASE_OUT,
+				},
+			);
+		}
+
+		const placeOf = (id: string, l: Space | null, r: Space | null, off: OrbitPlace): OrbitPlace =>
+			l?.id === id ? "left" : r?.id === id ? "right" : off;
+		const body = (space: Space, frames: ReturnType<typeof orbitFrames>) => {
+			const el = document.createElement("div");
+			el.className = "body";
+			render(html`${planet(space.planet, space.hue, 360, true)}${planet(space.planet, space.hue, 360)}`, el);
+			layer.append(el);
+			const [horizonDrawing, roundDrawing] = el.children;
+			if (horizonDrawing) play(horizonDrawing, frames.horizon);
+			if (roundDrawing) play(roundDrawing, frames.round);
+			return play(el, frames.body);
+		};
+		const end = placeOf(before.space.id, left, right, before.forward ? "offLeft" : "offRight");
+		body(before.space, orbitFrames(leavePath(orbitPoint(end, width), width), width));
+		const start = placeOf(to.id, before.left, before.right, before.forward ? "offRight" : "offLeft");
+		const last = body(to, orbitFrames(arrivePath(orbitPoint(start, width), width), width));
+		void last.finished.then(
+			() => {
+				if (this.orbitRun !== run) return;
+				layer.remove();
+				horizon.classList.remove("orbiting");
+				for (const n of horizon.querySelectorAll(".landing")) n.classList.remove("landing");
+				for (const a of this.orbitAnimations) a.cancel();
+				this.orbitAnimations = [];
+				this.orbitEndedAt = performance.now();
+			},
+			() => {},
+		);
 	}
 
 	private moreMenu(e: MouseEvent) {
@@ -1173,7 +1257,7 @@ export class LokaSidebar extends LitElement {
 		const tabId = tab.id;
 		return html`
 			<div
-				class="row ${active ? "active" : ""} ${this.dragId === tabId ? "dragging" : ""} ${this.dropClass(tabId)}"
+				class="row ${active ? "active" : ""} ${this.live[tabId]?.unloaded ? "unloaded" : ""} ${this.dragId === tabId ? "dragging" : ""} ${this.dropClass(tabId)}"
 				data-key=${tabId}
 				style="--depth: ${depth}"
 				role="treeitem"
@@ -1366,18 +1450,31 @@ export class LokaSidebar extends LitElement {
 		);
 	}
 
-	/** Keeps room under the list's last row for what sits over its bottom (the planets, the media card). */
+	/**
+	 * Keeps room under the list's last row for what sits over its bottom (the planets, the media card), and the
+	 * horizon's width for the orbit: read during a switch, it would lay out the new list a second time.
+	 */
 	private bottomObserver: ResizeObserver | null = null;
+	private horizonWidth = 0;
 
 	private watchBottom() {
 		const bottom = this.renderRoot.querySelector<HTMLElement>(".bottom");
-		if (this.bottomObserver || !bottom) return;
-		this.bottomObserver = new ResizeObserver(([entry]) => {
-			const height = entry?.borderBoxSize[0]?.blockSize ?? bottom.offsetHeight;
-			// Rows may pass under the fade's clear top; the last one scrolls up to where the card or planet starts.
-			this.renderRoot.querySelector("aside")?.style.setProperty("--bottom-room", `${Math.max(0, height - 40)}px`);
+		const horizon = this.renderRoot.querySelector<HTMLElement>(".horizon");
+		if (this.bottomObserver || !bottom || !horizon) return;
+		this.bottomObserver = new ResizeObserver((entries) => {
+			for (const entry of entries) {
+				const size = entry.borderBoxSize[0];
+				if (entry.target === horizon) {
+					this.horizonWidth = size?.inlineSize ?? horizon.clientWidth;
+					continue;
+				}
+				// Rows may pass under the fade's clear top; the last one scrolls up to where the card or planet starts.
+				const height = size?.blockSize ?? bottom.offsetHeight;
+				this.renderRoot.querySelector("aside")?.style.setProperty("--bottom-room", `${Math.max(0, height - 40)}px`);
+			}
 		});
 		this.bottomObserver.observe(bottom);
+		this.bottomObserver.observe(horizon);
 	}
 
 	/**
@@ -1588,7 +1685,7 @@ export class LokaSidebar extends LitElement {
 								title="Close every open tab in ${space.name}"
 								@click=${() => {
 									playCue("clear");
-									this.apply({ op: "closeTabs", tabIds: space.open });
+									this.apply({ op: "closeTabs", tabIds: space.open, now: Date.now() });
 								}}
 							>
 								<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v8M4.5 7.5 8 11l3.5-3.5M4 13.5h8" /></svg>Clear
@@ -1684,7 +1781,7 @@ export class LokaSidebar extends LitElement {
 											[tab, this.live[id], active, dragging, drop, index],
 											() => html`
 											<button
-												class="essential ${active ? "active" : ""} ${this.dragId === id ? "dragging" : ""} ${this.dropClass(id)}"
+												class="essential ${active ? "active" : ""} ${this.live[id]?.unloaded ? "unloaded" : ""} ${this.dragId === id ? "dragging" : ""} ${this.dropClass(id)}"
 												data-key=${id}
 												role="listitem"
 												title=${tab.title}
@@ -2274,6 +2371,18 @@ export class LokaSidebar extends LitElement {
 		.essential.dragging {
 			opacity: 0.4;
 		}
+		/* A tab with no page in memory: its icon fades, so what's loaded stands out. Opening it loads it. */
+		.row.unloaded .fav {
+			opacity: 0.4;
+			filter: saturate(0.35);
+		}
+		.row.unloaded .label {
+			color: var(--loka-ink-2);
+		}
+		.essential.unloaded .fav {
+			opacity: 0.45;
+			filter: saturate(0.4);
+		}
 		/* The copy of a dragged row or tile that follows the pointer. */
 		.drag-ghost {
 			position: fixed;
@@ -2682,8 +2791,45 @@ export class LokaSidebar extends LitElement {
 		.neighbour:active {
 			filter: brightness(0.92);
 		}
-		.horizon .leaving {
+		/* While the orbit turns, its stand-ins take the place of the big planet and of the neighbour the old planet lands
+		   in (animateHorizon). */
+		.horizon.orbiting > .world,
+		.horizon.orbiting > .neighbour.landing {
+			visibility: hidden;
+		}
+		.orbit {
+			position: absolute;
+			inset: 0;
+			z-index: 1;
 			pointer-events: none;
+		}
+		.orbit .body {
+			position: absolute;
+			left: 50%;
+			top: 36px;
+			width: 360px;
+			height: 360px;
+			margin-left: -180px;
+			will-change: transform, opacity;
+		}
+		.orbit .body > * {
+			position: absolute !important;
+			inset: 0;
+		}
+		.orbit .body svg.planet {
+			filter: drop-shadow(0 -3px 14px hsl(var(--hue) 85% 65% / 0.35));
+		}
+		.orbit .ghost {
+			position: absolute;
+			top: 20px;
+			width: 22px;
+			height: 22px;
+		}
+		.orbit .ghost.left {
+			left: 22px;
+		}
+		.orbit .ghost.right {
+			right: 22px;
 		}
 		/* The +, at the bottom corner over the planet, makes a new tab, folder or space. */
 		.new {

@@ -1073,6 +1073,15 @@ async function oneRun(run, host) {
 				return true;
 			})()`,
 		);
+		// The sidebar keeps the last space's list built (lists.logic.ts builtSpaceIds), so the first switches add that
+		// list for good. Two switches before measuring leave the same list kept as the ten below end with (Ctrl+2's),
+		// so nodeGrowth counts only what ten switches leave behind.
+		for (const digit of [2, 1]) {
+			await ctrlDigit(sidebar, digit);
+			await sleep(400);
+		}
+		await sleep(1500);
+		await evaluate(sidebar, "(window.__perfSwitches = 0, true)");
 		await scenario("switch", { frames: true, pages }, async () => {
 			for (const digit of [2, 1, 3, 1, 2, 1, 3, 1, 2, 1]) {
 				await ctrlDigit(sidebar, digit);

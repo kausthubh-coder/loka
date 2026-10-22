@@ -268,16 +268,21 @@ export function activateTab(state: BrowserState, tabId: TabId, now = Date.now())
 }
 
 /**
- * Closing an open tab deletes it. Closing a pinned or essential tab only unloads it,
+ * Closing an open tab deletes it. Closed by hand (`archivedAt`, when), it goes to the top of the archive first, so it
+ * can come back (Restore, or the browser's Reopen closed tab). Closing a pinned or essential tab only unloads it,
  * the way Arc keeps pinned tabs around.
  */
-export function closeTab(state: BrowserState, tabId: TabId): BrowserState {
+export function closeTab(state: BrowserState, tabId: TabId, archivedAt?: number): BrowserState {
 	const owner = state.spaces.find((s) => s.open.includes(tabId));
 	let next = state;
 	if (owner) {
 		const index = owner.open.indexOf(tabId);
-		const { [tabId]: _closed, ...tabs } = state.tabs;
-		next = replaceSpace({ ...state, tabs }, owner.id, (s) => {
+		const { [tabId]: closed, ...tabs } = state.tabs;
+		const archive =
+			archivedAt !== undefined && closed
+				? [{ tab: closed, spaceId: owner.id, archivedAt }, ...state.archive].slice(0, ARCHIVE_LIMIT)
+				: state.archive;
+		next = replaceSpace({ ...state, tabs, archive }, owner.id, (s) => {
 			const open = s.open.toSpliced(index, 1);
 			const neighbour = open[Math.min(index, open.length - 1)] ?? null;
 			return { ...s, open, activeTabId: s.activeTabId === tabId ? neighbour : s.activeTabId };

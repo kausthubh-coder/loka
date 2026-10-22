@@ -340,7 +340,7 @@ export class LokaApp extends LitElement {
 			const tab = activeTab(this.state);
 			if (tab) {
 				playCue("tab-close");
-				this.apply((s) => closeTab(s, tab.id));
+				this.apply((s) => closeTab(s, tab.id, Date.now()));
 			}
 			return;
 		}

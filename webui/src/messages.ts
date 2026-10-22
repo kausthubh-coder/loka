@@ -24,10 +24,25 @@ export const MESSAGES = [
 	"windowAction",
 	"startWindowDrag",
 	"extensionAction",
+	// The floating menu window (LokaMenu): the sidebar shows a menu; the menu page says its size, what was picked, or
+	// to close.
+	"showMenu",
+	"menuReady",
+	"menuPicked",
+	"closeMenu",
 ] as const;
 
 /** News the handler pushes with FireWebUIListener. */
-export const EVENTS = ["spaces-changed", "links-changed", "tabs-changed", "store-changed"] as const;
+export const EVENTS = [
+	"spaces-changed",
+	"links-changed",
+	"tabs-changed",
+	"store-changed",
+	// The menu window: the menu to draw (to menu.html); what was picked, or that it closed (to the sidebar).
+	"menu-show",
+	"menu-picked",
+	"menu-closed",
+] as const;
 
 /**
  * Requests the handler in patches/loka doesn't answer yet (the browser drops them). The build checkout may be ahead:

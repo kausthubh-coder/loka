@@ -610,6 +610,266 @@
 +};
 +
 +#endif  // CHROME_BROWSER_UI_VIEWS_LOKA_LOKA_COMMAND_BAR_H_
+--- /dev/null
++++ b/chrome/browser/ui/views/loka/loka_menu.cc
+@@ -0,0 +1,178 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#include "chrome/browser/ui/views/loka/loka_menu.h"
++
++#include <algorithm>
++#include <map>
++#include <string>
++#include <utility>
++
++#include "base/no_destructor.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#include "chrome/browser/ui/views/frame/browser_view.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
++#include "chrome/browser/ui/webui/webui_embedding_context.h"
++#include "content/public/browser/web_contents.h"
++#include "ui/display/display.h"
++#include "ui/display/screen.h"
++#include "ui/gfx/geometry/rect.h"
++#include "ui/views/controls/webview/web_contents_set_background_color.h"
++#include "ui/views/controls/webview/webview.h"
++#include "url/gurl.h"
++
++namespace {
++
++constexpr int kShadow = 10;
++
++std::map<BrowserWindowInterface*, std::unique_ptr<LokaMenu>>& Menus() {
++  static base::NoDestructor<
++      std::map<BrowserWindowInterface*, std::unique_ptr<LokaMenu>>>
++      menus;
++  return *menus;
++}
++
++LokaMenu* Find(BrowserWindowInterface* browser) {
++  auto it = Menus().find(browser);
++  return it == Menus().end() ? nullptr : it->second.get();
++}
++
++}  // namespace
++
++// static
++void LokaMenu::Preload(BrowserWindowInterface* browser) {
++  auto& menu = Menus()[browser];
++  if (!menu) {
++    menu.reset(new LokaMenu(browser));
++  }
++  menu->EnsureWidget();
++}
++
++// static
++void LokaMenu::Show(BrowserWindowInterface* browser,
++                    base::Value menu,
++                    const gfx::Point& anchor) {
++  Preload(browser);
++  LokaMenu* self = Find(browser);
++  if (!self || !self->widget_) {
++    return;
++  }
++  self->anchor_ = anchor;
++  // The page may still be loading the first time: it takes the menu when it's
++  // ready. Otherwise it hears it now.
++  if (!LokaSidebarHandler::DeliverMenu(browser, menu)) {
++    self->pending_menu_ = std::move(menu);
++  }
++}
++
++// static
++void LokaMenu::Place(BrowserWindowInterface* browser, const gfx::Size& size) {
++  LokaMenu* self = Find(browser);
++  if (!self || !self->widget_ || size.IsEmpty()) {
++    return;
++  }
++  // At the pointer, flipped up or left where the screen ends, and kept on it.
++  const gfx::Rect screen = display::Screen::Get()
++                               ->GetDisplayNearestPoint(self->anchor_)
++                               .work_area();
++  // The page leaves room for the menu's shadow on every side (SHADOW in
++  // menu.ts): the window starts that much up and left of the pointer.
++  int x = self->anchor_.x() - kShadow;
++  int y = self->anchor_.y() - kShadow;
++  if (x + size.width() > screen.right()) {
++    x = std::max(screen.x(), x - size.width());
++  }
++  if (y + size.height() > screen.bottom()) {
++    y = std::max(screen.y(), screen.bottom() - size.height());
++  }
++  self->widget_->SetBounds(gfx::Rect(gfx::Point(x, y), size));
++  if (!self->widget_->IsVisible()) {
++    self->widget_->Show();
++  }
++  self->widget_->Activate();
++  self->web_view_->RequestFocus();
++  self->web_view_->GetWebContents()->Focus();
++}
++
++// static
++void LokaMenu::Hide(BrowserWindowInterface* browser, bool picked) {
++  LokaMenu* self = Find(browser);
++  if (!self || !self->widget_ || !self->widget_->IsVisible()) {
++    return;
++  }
++  self->widget_->Hide();
++  if (self->browser_widget_) {
++    self->browser_widget_->Activate();
++  }
++  if (!picked) {
++    LokaSidebarHandler::MenuClosed(browser);
++  }
++}
++
++// static
++std::optional<base::Value> LokaMenu::TakePendingMenu(
++    BrowserWindowInterface* browser) {
++  LokaMenu* self = Find(browser);
++  if (!self) {
++    return std::nullopt;
++  }
++  return std::exchange(self->pending_menu_, std::nullopt);
++}
++
++LokaMenu::LokaMenu(BrowserWindowInterface* browser) : browser_(browser) {
++  BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser);
++  browser_widget_ = browser_view ? browser_view->GetWidget() : nullptr;
++  if (browser_widget_) {
++    browser_widget_observation_.Observe(browser_widget_.get());
++  }
++}
++
++LokaMenu::~LokaMenu() = default;
++
++void LokaMenu::EnsureWidget() {
++  if (widget_ || !browser_widget_) {
++    return;
++  }
++  widget_ = std::make_unique<views::Widget>();
++  views::Widget::InitParams params(
++      views::Widget::InitParams::CLIENT_OWNS_WIDGET,
++      views::Widget::InitParams::TYPE_WINDOW_FRAMELESS);
++  params.opacity = views::Widget::InitParams::WindowOpacity::kTranslucent;
++  params.parent = browser_widget_->GetNativeView();
++  params.context = browser_widget_->GetNativeWindow();
++  params.shadow_type = views::Widget::InitParams::ShadowType::kNone;
++  params.name = "LokaMenu";
++  widget_->Init(std::move(params));
++
++  auto web_view = std::make_unique<views::WebView>(browser_->GetProfile());
++  webui::SetBrowserWindowInterface(web_view->GetWebContents(), browser_);
++  views::WebContentsSetBackgroundColor::CreateForWebContentsWithColor(
++      web_view->GetWebContents(), SK_ColorTRANSPARENT);
++  web_view->LoadInitialURL(GURL(std::string(kLokaSidebarURL) + "menu.html"));
++  web_view_ = widget_->SetContentsView(std::move(web_view));
++  widget_->SetVisibilityChangedAnimationsEnabled(false);
++  widget_observation_.Observe(widget_.get());
++}
++
++void LokaMenu::OnWidgetActivationChanged(views::Widget* widget, bool active) {
++  // A click anywhere else closes it, as a menu does.
++  if (widget == widget_.get() && !active) {
++    Hide(browser_, /*picked=*/false);
++  }
++}
++
++void LokaMenu::OnWidgetDestroying(views::Widget* widget) {
++  if (widget == browser_widget_) {
++    widget_observation_.Reset();
++    browser_widget_observation_.Reset();
++    widget_.reset();
++    browser_widget_ = nullptr;
++    // Deletes this.
++    Menus().erase(browser_);
++  } else if (widget == widget_.get()) {
++    widget_observation_.Reset();
++  }
++}
+--- /dev/null
++++ b/chrome/browser/ui/views/loka/loka_menu.h
+@@ -0,0 +1,76 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_LOKA_LOKA_MENU_H_
++#define CHROME_BROWSER_UI_VIEWS_LOKA_LOKA_MENU_H_
++
++#include <memory>
++#include <optional>
++
++#include "base/memory/raw_ptr.h"
++#include "base/scoped_observation.h"
++#include "base/values.h"
++#include "ui/gfx/geometry/point.h"
++#include "ui/gfx/geometry/size.h"
++#include "ui/views/widget/widget.h"
++#include "ui/views/widget/widget_observer.h"
++
++class BrowserWindowInterface;
++
++namespace views {
++class WebView;
++}
++
++// The sidebar's right-click and "..." menus, drawn by Loka's own page
++// (chrome://loka-sidebar.top-chrome/menu.html) in a frameless, transparent
++// window of their own, so a menu can reach past the sidebar's edge and isn't
++// cut off. One per browser window, made when its sidebar loads and kept, so a
++// menu opens with no page to start. The flow:
++//   sidebar showMenu(menu, x, y) -> Show: the page hears "menu-show"
++//   page menuReady(w, h)          -> Place: sized, placed, shown, focused
++//   page menuPicked(path) or a click elsewhere -> Hide; the sidebar hears
++//   "menu-picked" or "menu-closed".
++class LokaMenu : public views::WidgetObserver {
++ public:
++  // Makes `browser`'s menu window and loads its page, hidden.
++  static void Preload(BrowserWindowInterface* browser);
++  // Hands `menu` to the page, to open at `anchor` (screen DIPs) once the
++  // page says how big it is.
++  static void Show(BrowserWindowInterface* browser,
++                   base::Value menu,
++                   const gfx::Point& anchor);
++  // The page's size for the menu it was handed: shows it there.
++  static void Place(BrowserWindowInterface* browser, const gfx::Size& size);
++  // Hides the menu. The sidebar hears "menu-closed" unless `picked`.
++  static void Hide(BrowserWindowInterface* browser, bool picked);
++  // The menu waiting for a page that hadn't loaded, taken once.
++  static std::optional<base::Value> TakePendingMenu(
++      BrowserWindowInterface* browser);
++
++  LokaMenu(const LokaMenu&) = delete;
++  LokaMenu& operator=(const LokaMenu&) = delete;
++  ~LokaMenu() override;
++
++  // views::WidgetObserver:
++  void OnWidgetActivationChanged(views::Widget* widget, bool active) override;
++  void OnWidgetDestroying(views::Widget* widget) override;
++
++ private:
++  explicit LokaMenu(BrowserWindowInterface* browser);
++
++  void EnsureWidget();
++
++  raw_ptr<BrowserWindowInterface> browser_;
++  raw_ptr<views::Widget> browser_widget_;
++  std::unique_ptr<views::Widget> widget_;
++  raw_ptr<views::WebView> web_view_ = nullptr;
++  gfx::Point anchor_;
++  std::optional<base::Value> pending_menu_;
++  base::ScopedObservation<views::Widget, views::WidgetObserver>
++      browser_widget_observation_{this};
++  base::ScopedObservation<views::Widget, views::WidgetObserver>
++      widget_observation_{this};
++};
++
++#endif  // CHROME_BROWSER_UI_VIEWS_LOKA_LOKA_MENU_H_
 --- a/chrome/browser/ui/webui/chrome_web_ui_configs.cc
 +++ b/chrome/browser/ui/webui/chrome_web_ui_configs.cc
 @@ -48,6 +48,8 @@
@@ -653,7 +913,7 @@
    map.AddWebUIConfig(std::make_unique<SigninErrorUIConfig>());
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/BUILD.gn
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,82 @@
 +# Copyright 2026 The Loka Authors
 +# You can use, redistribute, and/or modify this source code under
 +# the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -675,6 +935,8 @@
 +    "loka_tab_sleeper.h",
 +    "//chrome/browser/ui/views/loka/loka_command_bar.cc",
 +    "//chrome/browser/ui/views/loka/loka_command_bar.h",
++    "//chrome/browser/ui/views/loka/loka_menu.cc",
++    "//chrome/browser/ui/views/loka/loka_menu.h",
 +  ]
 +
 +  public_deps = [
@@ -1229,7 +1491,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_MEDIA_WATCHER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.cc
-@@ -0,0 +1,824 @@
+@@ -0,0 +1,829 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1430,6 +1692,10 @@
 +  add("openCommandBar", &LokaSidebarHandler::HandleOpenCommandBar);
 +  add("closeCommandBar", &LokaSidebarHandler::HandleCloseCommandBar);
 +  add("commandPicked", &LokaSidebarHandler::HandleCommandPicked);
++  add("showMenu", &LokaSidebarHandler::HandleShowMenu);
++  add("menuReady", &LokaSidebarHandler::HandleMenuReady);
++  add("menuPicked", &LokaSidebarHandler::HandleMenuPicked);
++  add("closeMenu", &LokaSidebarHandler::HandleCloseMenu);
 +}
 +
 +void LokaSidebarHandler::OnJavascriptAllowed() {
@@ -1783,7 +2049,8 @@
 +  // Only a window's sidebar keeps its tabs in step; the command bar,
 +  // Settings and the empty tab just show the spaces.
 +  const GURL& url = web_ui()->GetWebContents()->GetVisibleURL();
-+  const bool sidebar = url.host() == kLokaSidebarHost && !IsCommandBarPage();
++  const bool sidebar =
++      url.host() == kLokaSidebarHost && !IsCommandBarPage() && !IsMenuPage();
 +  service->WhenReady(base::BindOnce(
 +      [](base::WeakPtr<LokaSidebarHandler> self, base::Value callback,
 +         bool sidebar) {
@@ -2056,7 +2323,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h
-@@ -0,0 +1,286 @@
+@@ -0,0 +1,300 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2140,6 +2407,12 @@
 +  // and focuses it. False when that window has no sidebar to take it.
 +  static bool DispatchCommand(BrowserWindowInterface* browser,
 +                              const std::string& command);
++  // Hands `menu` to the menu page of `browser`'s window (LokaMenu). False
++  // while that page hasn't loaded yet.
++  static bool DeliverMenu(BrowserWindowInterface* browser,
++                          const base::Value& menu);
++  // The menu window closed with nothing picked: tells the window's sidebar.
++  static void MenuClosed(BrowserWindowInterface* browser);
 +  // Hands `command` to the floating command bar's page of `browser`'s window.
 +  // False while that page hasn't loaded yet.
 +  static bool DeliverCommandBarCommand(BrowserWindowInterface* browser,
@@ -2238,6 +2511,14 @@
 +  void OnSidebarPinnedChanged();
 +  // Whether this handler serves the floating command bar, not the sidebar.
 +  bool IsCommandBarPage();
++  // Whether it serves the menu window's page (menu.html).
++  bool IsMenuPage();
++  // The menu window: the sidebar shows a menu at (x, y) in its page; the
++  // menu page says its size, what was picked, or to close.
++  void HandleShowMenu(const base::ListValue& args);
++  void HandleMenuReady(const base::ListValue& args);
++  void HandleMenuPicked(const base::ListValue& args);
++  void HandleCloseMenu(const base::ListValue& args);
 +
 +  BrowserWindowInterface* GetBrowser();
 +  TabStripModel* GetTabStrip();
@@ -2345,7 +2626,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler_features.cc
-@@ -0,0 +1,891 @@
+@@ -0,0 +1,985 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2388,6 +2669,10 @@
 +#include "chrome/browser/ui/views/frame/browser_view.h"
 +#include "chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h"
 +#include "chrome/browser/ui/views/loka/loka_command_bar.h"
++#include "chrome/browser/ui/views/loka/loka_menu.h"
++#include "ui/gfx/geometry/rect.h"
++#include "content/public/browser/render_frame_host.h"
++#include "third_party/blink/public/mojom/frame/user_activation_notification_type.mojom.h"
 +#include "chrome/browser/ui/webui/extensions/extension_icon_source.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
@@ -2433,6 +2718,14 @@
 +      std::map<BrowserWindowInterface*, LokaSidebarHandler*>>
 +      bars;
 +  return *bars;
++}
++
++// Each window's menu page (menu.html in LokaMenu's window).
++std::map<BrowserWindowInterface*, LokaSidebarHandler*>& MenuPages() {
++  static base::NoDestructor<
++      std::map<BrowserWindowInterface*, LokaSidebarHandler*>>
++      menus;
++  return *menus;
 +}
 +
 +// Whether the build has the command bar's own page; until it does, the
@@ -2530,6 +2823,80 @@
 +  return web_ui()->GetWebContents()->GetVisibleURL().path() == "/command.html";
 +}
 +
++bool LokaSidebarHandler::IsMenuPage() {
++  return web_ui()->GetWebContents()->GetVisibleURL().path() == "/menu.html";
++}
++
++// static
++bool LokaSidebarHandler::DeliverMenu(BrowserWindowInterface* browser,
++                                     const base::Value& menu) {
++  auto it = MenuPages().find(browser);
++  if (it == MenuPages().end() || !it->second->IsJavascriptAllowed()) {
++    return false;
++  }
++  it->second->FireWebUIListener("menu-show", menu);
++  return true;
++}
++
++// static
++void LokaSidebarHandler::MenuClosed(BrowserWindowInterface* browser) {
++  auto it = Sidebars().find(browser);
++  if (it != Sidebars().end() && it->second->IsJavascriptAllowed()) {
++    it->second->FireWebUIListener("menu-closed");
++  }
++}
++
++void LokaSidebarHandler::HandleShowMenu(const base::ListValue& args) {
++  BrowserWindowInterface* browser = GetBrowser();
++  if (!browser || args.size() < 3 || !args[0].is_dict()) {
++    return;
++  }
++  // (x, y) is in the sidebar page; the window opens there on the screen.
++  const gfx::Rect page = web_ui()->GetWebContents()->GetContainerBounds();
++  const gfx::Point anchor(
++      page.x() + static_cast<int>(args[1].GetIfDouble().value_or(0)),
++      page.y() + static_cast<int>(args[2].GetIfDouble().value_or(0)));
++  LokaMenu::Show(browser, args[0].Clone(), anchor);
++}
++
++void LokaSidebarHandler::HandleMenuReady(const base::ListValue& args) {
++  // The page's first call, with no size, says it has loaded: it can hear
++  // "menu-show" from now on (StartObservingFeatures takes a waiting menu).
++  AllowJavascript();
++  BrowserWindowInterface* browser = GetBrowser();
++  if (!browser || args.size() < 2) {
++    return;
++  }
++  LokaMenu::Place(browser,
++                  gfx::Size(static_cast<int>(args[0].GetIfDouble().value_or(0)),
++                            static_cast<int>(args[1].GetIfDouble().value_or(0))));
++}
++
++void LokaSidebarHandler::HandleMenuPicked(const base::ListValue& args) {
++  BrowserWindowInterface* browser = GetBrowser();
++  if (!browser || args.empty()) {
++    return;
++  }
++  LokaMenu::Hide(browser, /*picked=*/true);
++  auto it = Sidebars().find(browser);
++  if (it != Sidebars().end() && it->second->IsJavascriptAllowed()) {
++    // The item runs in the sidebar, as if picked there: the keyboard goes
++    // back to it, and the click counts as its user gesture, so an item can
++    // open a file picker (Import) or use the clipboard (Copy link).
++    content::WebContents* sidebar = it->second->web_ui()->GetWebContents();
++    sidebar->Focus();
++    sidebar->GetPrimaryMainFrame()->NotifyUserActivation(
++        blink::mojom::UserActivationNotificationType::kInteraction);
++    it->second->FireWebUIListener("menu-picked", args[0]);
++  }
++}
++
++void LokaSidebarHandler::HandleCloseMenu(const base::ListValue& args) {
++  if (BrowserWindowInterface* browser = GetBrowser()) {
++    LokaMenu::Hide(browser, /*picked=*/false);
++  }
++}
++
 +void LokaSidebarHandler::HandleOpenCommandBar(const base::ListValue& args) {
 +  BrowserWindowInterface* browser = GetBrowser();
 +  if (!browser || args.empty() || !args[0].is_string()) {
@@ -2569,6 +2936,12 @@
 +  if (BrowserWindowInterface* browser = GetBrowser()) {
 +    if (web_ui()->GetWebContents()->GetVisibleURL().host() != kLokaSidebarHost) {
 +      // Loka's Settings page: it uses the store, not the window's shortcuts.
++    } else if (IsMenuPage()) {
++      MenuPages()[browser] = this;
++      // A menu was asked for before its page had loaded.
++      if (std::optional<base::Value> menu = LokaMenu::TakePendingMenu(browser)) {
++        FireWebUIListener("menu-show", *menu);
++      }
 +    } else if (IsCommandBarPage()) {
 +      CommandBars()[browser] = this;
 +      // The bar was asked for before its page had loaded.
@@ -2578,6 +2951,8 @@
 +      }
 +    } else {
 +      Sidebars()[browser] = this;
++      // Its menus open in a window kept loaded, so the first one is quick.
++      LokaMenu::Preload(browser);
 +    }
 +  }
 +  if (auto* model = ToolbarActionsModel::Get(profile);
@@ -2595,7 +2970,7 @@
 +}
 +
 +void LokaSidebarHandler::StopObservingFeatures() {
-+  for (auto* map : {&Sidebars(), &CommandBars()}) {
++  for (auto* map : {&Sidebars(), &CommandBars(), &MenuPages()}) {
 +    for (auto it = map->begin(); it != map->end();) {
 +      it = it->second == this ? map->erase(it) : std::next(it);
 +    }

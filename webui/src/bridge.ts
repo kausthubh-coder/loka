@@ -3,8 +3,9 @@
 // browser answers through cr.webUIResponse or pushes news through cr.webUIListenerCallback (channel.ts). Loka's other
 // pages that the same handler answers (Settings, the command bar, the empty tab, the Library) use it too.
 
+import type { MenuModel } from "../../prototype/src/features/menu/menu.logic";
 import type { Intent } from "../../prototype/src/features/sidebar/intents.logic";
-import type { BrowserState, TabId } from "../../prototype/src/features/sidebar/sidebar.logic";
+import type { BrowserState, SpaceScheme, TabId } from "../../prototype/src/features/sidebar/sidebar.logic";
 import type { SpacesDelta } from "../../prototype/src/features/sidebar/spaces-delta.logic";
 import { channel } from "./channel";
 import type { BrowserEvent, Message } from "./messages";
@@ -30,6 +31,12 @@ export interface NativeTab {
 	groupId: number;
 	openerId?: number;
 	lastAccessed: number;
+}
+
+/** A menu as the floating menu window draws it: the items, and the space's color and light or dark. */
+export interface ShownMenu extends MenuModel {
+	hue: number;
+	scheme: SpaceScheme;
 }
 
 /** A tab group in the window, as getGroups reports it (verify:flows reads them). */
@@ -272,6 +279,19 @@ export const browser = {
 	/** From command.html: pass what was picked to this window's sidebar, which gets it through onCommandPicked. */
 	commandPicked: (pick: CommandPick) => tell("commandPicked", pick),
 	onCommandPicked: (listener: (pick: CommandPick) => void) => on("command-picked", (p) => listener(p as CommandPick)),
+	/**
+	 * The sidebar's menus open in a window of their own (menu.html), at (x, y) in the sidebar page, so they can reach
+	 * past its edge. The sidebar hears what was picked (onMenuPicked) or that it closed (onMenuClosed).
+	 */
+	showMenu: (menu: ShownMenu, x: number, y: number) => tell("showMenu", menu, x, y),
+	onMenuPicked: (listener: (path: number[]) => void) => on("menu-picked", (p) => listener(p as number[])),
+	onMenuClosed: (listener: () => void) => on("menu-closed", () => listener()),
+	/** The menu page: the menu to draw. */
+	onMenuShow: (listener: (menu: ShownMenu) => void) => on("menu-show", (m) => listener(m as ShownMenu)),
+	/** The menu page's size for it, in CSS px: the browser shows the window that big, at the pointer. */
+	menuReady: (width: number, height: number) => tell("menuReady", width, height),
+	menuPicked: (path: number[]) => tell("menuPicked", path),
+	closeMenu: () => tell("closeMenu"),
 };
 
 /** Everything the sidebar can ask of the browser. The prototype's fake (prototype/src/demo/) has the same shape. */

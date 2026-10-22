@@ -395,7 +395,11 @@ async function main() {
 		const { targetId: audioId } = await browserSession.call("Target.createTarget", { url: `${origin}/audio` });
 
 		// 3. The sidebar is the native page.
-		const sidebarTarget = await until(async () => (await targets()).find((t) => t.url.startsWith(SIDEBAR_URL)), 20000);
+		// The sidebar itself: the command bar and menu pages (command.html, menu.html) live on the same host.
+		const sidebarTarget = await until(
+			async () => (await targets()).find((t) => t.url === `${SIDEBAR_URL}/` || t.url === `${SIDEBAR_URL}/sidebar.html`),
+			20000,
+		);
 		check(
 			"sidebar target",
 			Boolean(sidebarTarget),
@@ -801,9 +805,17 @@ async function main() {
 		const chooser = new Promise((resolve) => sidebar.on("Page.fileChooserOpened", resolve));
 		await evaluate(sidebar, clickExpression("More"));
 		await sleep(400);
-		// A file input opens its picker only from a user gesture. The click's evaluate can wait until the picker is
-		// answered, so it isn't awaited before the chooser event.
-		const picking = evaluate(sidebar, clickExpression("Import spaces (JSON)"), true).catch(() => false);
+		// The menu opens in the browser's menu window (menu.html); the item runs back in the sidebar, which the
+		// browser gives the click's user gesture, so its file input can open a picker. The click's evaluate can wait
+		// until the picker is answered, so it isn't awaited before the chooser event.
+		const menuTarget = await until(
+			async () => (await targets()).find((t) => t.url === `${SIDEBAR_URL}/menu.html`),
+			5000,
+		);
+		const menuPage = menuTarget ? await connect(menuTarget.webSocketDebuggerUrl) : null;
+		const picking = menuPage
+			? evaluate(menuPage, clickExpression("Import spaces (JSON)"), true).catch(() => false)
+			: Promise.resolve("no menu window");
 		const opened = await Promise.race([chooser, sleep(5000).then(() => null)]);
 		if (opened)
 			await sidebar.call("DOM.setFileInputFiles", { files: [ALPHA_EXPORT], backendNodeId: opened.backendNodeId });

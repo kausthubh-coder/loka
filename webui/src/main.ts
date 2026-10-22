@@ -199,6 +199,9 @@ export class LokaPanel extends LitElement {
 		// Ctrl+T and Ctrl+L, when the browser hands them to this page rather than to its floating command bar.
 		browser.onCommand((command) => this.onBrowserCommand(command));
 		browser.onCommandPicked((pick) => this.runPick(pick));
+		// The sidebar's menus open in the browser's menu window, which says what was picked.
+		browser.onMenuPicked((path) => this.sidebar()?.menuPicked(path));
+		browser.onMenuClosed(() => this.sidebar()?.menuClosed());
 		void browser.media().then((media) => {
 			this.media = media;
 		});
@@ -491,6 +494,7 @@ export class LokaPanel extends LitElement {
 					.pinned=${this.pinned}
 					.soundOn=${this.ui.sound}
 					.demo=${false}
+					.floatingMenus=${true}
 					@loka-tab-mute=${(e: CustomEvent<string>) => this.toggleMute(e.detail)}
 					@loka-tab-reload=${(e: CustomEvent<string>) => this.reloadTab(e.detail)}
 				></loka-sidebar>

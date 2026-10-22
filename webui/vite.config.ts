@@ -18,6 +18,7 @@ export default defineConfig({
 			input: {
 				sidebar: resolve(import.meta.dirname, "sidebar.html"),
 				command: resolve(import.meta.dirname, "command.html"),
+				menu: resolve(import.meta.dirname, "menu.html"),
 				history: resolve(import.meta.dirname, "history.html"),
 				settings: resolve(import.meta.dirname, "settings.html"),
 				newtab: resolve(import.meta.dirname, "newtab.html"),

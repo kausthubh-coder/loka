@@ -340,6 +340,18 @@ async function main() {
 				if (/helium|chromium/i.test(setup.title)) leftovers.unshift(`title "${setup.title}"`);
 				// Setup credits Helium on purpose today, so its mentions are listed for a person to judge, not failed.
 				note("setup mentions Helium or Chromium", leftovers.join(" | ") || "none");
+				// Setup draws a page only once it's reached, so this reads the password page's subtitle where that page
+				// gets it: the strings the browser gave setup (loadTimeData, the page's getString("passwordSubtitle")).
+				/** @type {string} */
+				const passwordSubtitle = await evaluate(
+					page,
+					`globalThis.loadTimeData?.getString("passwordSubtitle") ?? "no loadTimeData"`,
+				);
+				check(
+					"setup's password page says how to bring passwords over",
+					passwordSubtitle.includes("export your passwords from your old browser as a CSV file"),
+					passwordSubtitle,
+				);
 				const shot = await page.call("Page.captureScreenshot", { format: "png" }, 20000).catch(() => null);
 				if (shot) writeFileSync(join(evidence, "setup.png"), Buffer.from(shot.data, "base64"));
 

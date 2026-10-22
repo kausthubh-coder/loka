@@ -3960,7 +3960,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_UI_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_spaces_service.cc
-@@ -0,0 +1,992 @@
+@@ -0,0 +1,996 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -4245,6 +4245,10 @@
 +  loka::State before = std::exchange(state_, std::move(next));
 +  if (!(before == state_)) {
 +    spaces_writer_->ScheduleWrite(this);
++    // A kept history goes when its tab leaves the spaces (deleted or archived).
++    std::erase_if(histories_, [&](const auto& kept) {
++      return !state_.tabs.contains(kept.first);
++    });
 +  }
 +  if (before.archive != state_.archive) {
 +    SaveArchive();

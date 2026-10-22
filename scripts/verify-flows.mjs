@@ -546,7 +546,11 @@ async function attachSidebar(b, pick = () => true) {
 				const page = await shownMenu();
 				return page && (await page.has(label, opts.role)) ? page : null;
 			}, 6000);
-			if (!menu) throw new Error(`no menu window shows ${show(label)}`);
+			if (!menu) {
+				const shown = await shownMenu();
+				const items = shown ? await shown.names("[role=menuitem]").catch(() => []) : [];
+				throw new Error(`no menu window shows ${show(label)}; the shown menu has ${show(items)}`);
+			}
 			return menu.click(label, opts);
 		},
 		/** @param {string} role @returns {Promise<string[]>} */
@@ -2513,14 +2517,22 @@ async function newTabs() {
 		bar2Target ? "showing" : `not showing; the new window has ${bars.length} command bar pages (0: never opened)`,
 	);
 	if (bar2Target) {
+		// A new window's bar is shown before its page has loaded; Escape means something once the field has focus.
+		const ready = await until(
+			() =>
+				bar2Target.run(
+					`document.querySelector("loka-command-page")?.shadowRoot?.querySelector("loka-command-bar")?.shadowRoot?.activeElement?.tagName === "INPUT"`,
+				),
+			6000,
+		);
 		await bar2Target.key("Escape");
 		const closed = await until(() => bar2Target.run(`document.visibilityState === "hidden"`), 4000);
 		await sleep(500);
 		const left = await sb2.tabs();
 		check(
 			"Escape closes the bar and the window stays on its empty tab",
-			closed && left.length === 1 && isEmptyTab(left[0]?.url ?? ""),
-			`bar ${closed ? "hidden" : "still showing"}; tabs ${show(left.map((t) => t.url))}`,
+			ready && closed && left.length === 1 && isEmptyTab(left[0]?.url ?? ""),
+			`${ready ? "" : "the bar's field never took focus; "}bar ${closed ? "hidden" : "still showing"}; tabs ${show(left.map((t) => t.url))}`,
 		);
 		bar2Target.s.close();
 	}
@@ -2634,7 +2646,7 @@ async function pressOnPage(key, mods) {
 	const page = shown ? await pageOf(shown.url) : null;
 	if (!page) throw new Error(`no page target for the shown tab ${show(shown?.url)}`);
 	const modifiers = (mods.ctrl ? 2 : 0) | (mods.shift ? 8 : 0);
-	const NAMED = /** @type {Record<string, number>} */ ({ PageDown: 34, PageUp: 33 });
+	const NAMED = /** @type {Record<string, number>} */ ({ PageDown: 34, PageUp: 33, Tab: 9 });
 	const named = NAMED[key];
 	const code = named ? key : /^\d$/.test(key) ? `Digit${key}` : `Key${key.toUpperCase()}`;
 	const vk = named ?? key.toUpperCase().charCodeAt(0);
@@ -2647,8 +2659,8 @@ async function pressOnPage(key, mods) {
 
 /**
  * The browser's own shortcuts pressed on a page go to the sidebar (BrowserCommandController hands them to
- * LokaSidebarHandler::HandleBrowserCommand), not to Chrome's tab strip: Ctrl+PgDn and Ctrl+PgUp step through the
- * space's rows, Ctrl+T opens the command bar and makes no tab, Ctrl+L opens it on the shown address, Ctrl+3 shows the
+ * LokaSidebarHandler::HandleBrowserCommand), not to Chrome's tab strip: Ctrl+PgDn/PgUp and Ctrl+(Shift+)Tab step
+ * through the space's rows, Ctrl+T opens the command bar and makes no tab, Ctrl+L opens it on the shown address, Ctrl+3 shows the
  * third space, and Ctrl+W closes the shown tab the way its x does and the window stays.
  */
 async function shortcuts() {
@@ -2672,10 +2684,14 @@ async function shortcuts() {
 	await pressOnPage("PageUp", { ctrl: true });
 	const previous = await showing("QA Papa");
 	check("Ctrl+PgUp steps back", previous, await shownNow());
-	note(
-		"not checked here",
-		"Ctrl+Tab and Ctrl+Shift+Tab: on Windows they are IDC_CYCLE_TO_NEXT_TAB and IDC_CYCLE_TO_PREV_TAB, which the sidebar doesn't take, so Chrome steps through its tab strip",
-	);
+	// Ctrl+Tab is a separate command on Windows (IDC_CYCLE_TO_NEXT_TAB); it follows the sidebar too, not Chrome's
+	// hidden tab strip.
+	await pressOnPage("Tab", { ctrl: true });
+	const cycled = await showing("QA Oscar");
+	check("Ctrl+Tab on a page steps to the space's next row", cycled, await shownNow());
+	await pressOnPage("Tab", { ctrl: true, shift: true });
+	const cycledBack = await showing("QA Papa");
+	check("Ctrl+Shift+Tab steps back", cycledBack, await shownNow());
 
 	const before = await sb.tabs();
 	await pressOnPage("t", { ctrl: true });
@@ -2736,6 +2752,73 @@ async function shortcuts() {
 	await step("ctrl-w", true);
 }
 
+/**
+ * The browser's own commands from the sidebar's ... menu (Loka has no toolbar menu): New window, About Loka, and a
+ * private window, which shows one dark Private space and never puts its tabs in the saved spaces.
+ */
+async function browserMenu() {
+	const sb = ctx.sidebar;
+	await inResearch();
+	/** Opens a window from the ... menu and attaches to its sidebar. @param {string} item */
+	const windowFromMenu = async (item) => {
+		const known = new Set((await ctx.browser.targets()).map((t) => t.id));
+		await sb.click("More");
+		await sb.click(item, { role: "[role=menuitem]" });
+		const opened = await attachSidebar(ctx.browser, (t) => !known.has(t.id)).catch(() => null);
+		return { opened, known };
+	};
+	/** @param {Sidebar} other @param {Set<string>} known */
+	const closeWindow = async (other, known) => {
+		const id = (await ctx.browser.targets()).find((t) => t.url === SIDEBAR_URL && !known.has(t.id))?.id;
+		await other.tell("windowAction", "close");
+		await until(async () => !(await ctx.browser.targets()).some((t) => t.id === id), 8000);
+		other.s.close();
+	};
+
+	const fresh = await windowFromMenu("New window");
+	check(
+		"... > New window opens a window with its own sidebar",
+		fresh.opened,
+		fresh.opened ? "sidebar attached" : "none",
+	);
+	if (fresh.opened) await closeWindow(fresh.opened, fresh.known);
+
+	await sb.click("More");
+	await sb.click("About Loka", { role: "[role=menuitem]" });
+	const about = await until(
+		async () => (await sb.tabs()).find((t) => t.url.startsWith("chrome://settings/help")),
+		6000,
+	);
+	check("... > About Loka opens the About page", about, show((await sb.tabs()).map((t) => t.url)));
+
+	const secretUrl = `http://${ctx.host}/site/secret`;
+	const priv = await windowFromMenu("New private window");
+	const privateSidebar = priv.opened;
+	const pst = privateSidebar ? await until(() => privateSidebar.state(), 8000) : null;
+	check(
+		"... > New private window opens one dark space named Private",
+		pst && show(pst.spaces.map((s) => [s.name, s.scheme])) === show([["Private", "dark"]]),
+		show(pst?.spaces.map((s) => [s.name, s.scheme])),
+	);
+	if (priv.opened) {
+		const p = priv.opened;
+		await p.ask("createTab", secretUrl, true);
+		const inPrivate = await until(async () => openTitles(await p.state(), "Private").includes("QA Secret"), 8000);
+		check("a page opened there is a row in Private", inPrivate, show(openTitles(await p.state(), "Private")));
+		// The normal profile saves within 2 s of a change; give it longer, then read what's on disk.
+		await sleep(4000);
+		const saved = readFileSync(join(profile, "Default", "Loka Spaces.json"), "utf8");
+		const normal = await sb.state();
+		check(
+			"the private tab never reaches the saved spaces or the normal window",
+			!saved.includes("/site/secret") && !Object.values(normal.tabs).some((t) => t.url === secretUrl),
+			`saved file ${saved.includes("/site/secret") ? "has" : "hasn't"} it; normal window ${show(normal.spaces.map((s) => s.name))}`,
+		);
+		await step("private-window", true);
+		await closeWindow(p, priv.known);
+	}
+}
+
 const NEEDS = {
 	"4-states": ["3-tabs"],
 	"5-pinning": ["3-tabs"],
@@ -2760,6 +2843,7 @@ async function main() {
 		["11-sleep", sleeping],
 		["12-windows", windowSpaces],
 		["13-shortcuts", shortcuts],
+		["14-browser-menu", browserMenu],
 	];
 	// --only <flow>[,<flow>] runs those flows after the ones they build on (first run always; restart needs them all).
 	const onlyAt = process.argv.indexOf("--only");

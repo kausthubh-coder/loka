@@ -1539,7 +1539,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_MEDIA_WATCHER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.cc
-@@ -0,0 +1,846 @@
+@@ -0,0 +1,847 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1720,6 +1720,7 @@
 +  add("search", &LokaSidebarHandler::HandleSearch);
 +  add("openPage", &LokaSidebarHandler::HandleOpenPage);
 +  add("windowAction", &LokaSidebarHandler::HandleWindowAction);
++  add("browserCommand", &LokaSidebarHandler::HandleChromeMenuCommand);
 +  add("startWindowDrag", &LokaSidebarHandler::HandleStartWindowDrag);
 +  add("getExtensions", &LokaSidebarHandler::HandleGetExtensions);
 +  add("runExtension", &LokaSidebarHandler::HandleRunExtension);
@@ -2388,7 +2389,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h
-@@ -0,0 +1,307 @@
+@@ -0,0 +1,310 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2634,6 +2635,9 @@
 +  void HandleSearch(const base::ListValue& args);
 +  void HandleOpenPage(const base::ListValue& args);
 +  void HandleWindowAction(const base::ListValue& args);
++  // One of Chrome's toolbar-menu commands (new window, find, print, zoom...),
++  // which Loka offers in its own menus since it has no toolbar.
++  void HandleChromeMenuCommand(const base::ListValue& args);
 +  void HandleStartWindowDrag(const base::ListValue& args);
 +
 +  raw_ptr<TabStripModel> observed_ = nullptr;
@@ -2698,7 +2702,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler_features.cc
-@@ -0,0 +1,1038 @@
+@@ -0,0 +1,1071 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2709,6 +2713,7 @@
 +
 +#include <algorithm>
 +#include <map>
++#include <string_view>
 +#include <utility>
 +#include <vector>
 +
@@ -2729,6 +2734,7 @@
 +#include "chrome/browser/extensions/extension_view_host_factory.h"
 +#include "chrome/browser/platform_util.h"
 +#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/browser_commands.h"
 +#include "chrome/browser/themes/theme_service.h"
 +#include "chrome/browser/themes/theme_service_factory.h"
 +#include "chrome/browser/ui/browser_window.h"
@@ -2882,6 +2888,35 @@
 +}
 +
 +// static
++void LokaSidebarHandler::HandleChromeMenuCommand(const base::ListValue& args) {
++  BrowserWindowInterface* browser = GetBrowser();
++  if (!browser || args.empty() || !args[0].is_string()) {
++    return;
++  }
++  // The page's names (CHROME_MENU_COMMANDS in command-bar.logic.ts) for what
++  // Chrome's toolbar menu runs.
++  static constexpr std::pair<std::string_view, int> kCommands[] = {
++      {"new-window", IDC_NEW_WINDOW},
++      {"new-private-window", IDC_NEW_INCOGNITO_WINDOW},
++      {"find", IDC_FIND},
++      {"print", IDC_PRINT},
++      {"zoom-in", IDC_ZOOM_PLUS},
++      {"zoom-out", IDC_ZOOM_MINUS},
++      {"zoom-reset", IDC_ZOOM_NORMAL},
++      {"clear-data", IDC_CLEAR_BROWSING_DATA},
++      {"about", IDC_ABOUT},
++  };
++  const std::string& name = args[0].GetString();
++  for (const auto& [each, command_id] : kCommands) {
++    if (each == name) {
++      chrome::ExecuteCommand(browser, command_id);
++      return;
++    }
++  }
++  LOG(ERROR) << "Loka: the sidebar asked for a browser command it doesn't know: "
++             << name;
++}
++
 +bool LokaSidebarHandler::HandleBrowserCommand(BrowserWindowInterface* browser,
 +                                              int command_id) {
 +  std::string command;
@@ -2897,12 +2932,14 @@
 +      command = "close-tab";
 +      break;
 +    case IDC_SELECT_NEXT_TAB:
-+      // Ctrl+PgDn steps through the tabs of the current space, in the
-+      // sidebar's order. Ctrl+Tab is IDC_CYCLE_TO_NEXT_TAB, which isn't
-+      // taken here, so Chrome steps through its tab strip.
++    case IDC_CYCLE_TO_NEXT_TAB:
++      // Ctrl+PgDn and Ctrl+Tab step through the tabs of the current space in
++      // the sidebar's order, as Chrome's step through the tabs it shows, not
++      // through the hidden tab strip's order.
 +      command = "next-tab";
 +      break;
 +    case IDC_SELECT_PREVIOUS_TAB:
++    case IDC_CYCLE_TO_PREV_TAB:
 +      command = "previous-tab";
 +      break;
 +    case IDC_SELECT_TAB_0:
@@ -4089,7 +4126,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_UI_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_spaces_service.cc
-@@ -0,0 +1,996 @@
+@@ -0,0 +1,1026 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -4241,6 +4278,17 @@
 +
 +LokaSpacesService::LokaSpacesService(Profile* profile) : profile_(profile) {
 +  profile_->AddObserver(this);
++  if (profile_->IsOffTheRecord()) {
++    // A private window's spaces live only as long as it does. Its profile's
++    // GetPath() is the normal profile's folder, so reading or writing Loka
++    // Spaces.json here would show the user's spaces in private and save
++    // private tabs to disk, over the normal window's saves. It starts with one
++    // dark space named Private, which also says so on the horizon.
++    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
++        FROM_HERE, base::BindOnce(&LokaSpacesService::OnPrivateReady,
++                                  weak_factory_.GetWeakPtr()));
++    return;
++  }
 +  scoped_refptr<base::SequencedTaskRunner> files =
 +      base::ThreadPool::CreateSequencedTaskRunner(
 +          {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
@@ -4282,7 +4330,7 @@
 +  }
 +  windows_.clear();
 +  // The last changes reach the disk before the profile goes.
-+  if (spaces_writer_->HasPendingWrite()) {
++  if (spaces_writer_ && spaces_writer_->HasPendingWrite()) {
 +    spaces_writer_->DoScheduledWrite();
 +  }
 +  profile_->RemoveObserver(this);
@@ -4336,6 +4384,19 @@
 +  }
 +}
 +
++void LokaSpacesService::OnPrivateReady() {
++  state_ = loka::FirstState(NewId());
++  loka::Space& space = state_.spaces.front();
++  space.name = "Private";
++  space.hue = 265;
++  space.scheme = "dark";
++  ready_ = true;
++  std::vector<base::OnceClosure> waiting = std::move(when_ready_);
++  for (base::OnceClosure& done : waiting) {
++    std::move(done).Run();
++  }
++}
++
 +void LokaSpacesService::WhenReady(base::OnceClosure done) {
 +  if (ready_) {
 +    std::move(done).Run();
@@ -4351,6 +4412,9 @@
 +}
 +
 +void LokaSpacesService::SaveArchive() {
++  if (!archive_writer_) {
++    return;
++  }
 +  base::DictValue value = loka::ToValue(state_);
 +  if (std::optional<std::string> json = base::WriteJson(*value.Find("archive"))) {
 +    archive_writer_->WriteNow(std::move(*json));
@@ -4373,7 +4437,10 @@
 +  }
 +  loka::State before = std::exchange(state_, std::move(next));
 +  if (!(before == state_)) {
-+    spaces_writer_->ScheduleWrite(this);
++    // A private window's spaces are never written (no writer).
++    if (spaces_writer_) {
++      spaces_writer_->ScheduleWrite(this);
++    }
 +    // A kept history goes when its tab leaves the spaces (deleted or archived).
 +    std::erase_if(histories_, [&](const auto& kept) {
 +      return !state_.tabs.contains(kept.first);
@@ -5088,7 +5155,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_spaces_service.h
-@@ -0,0 +1,226 @@
+@@ -0,0 +1,229 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -5250,6 +5317,9 @@
 +    int selected = 0;
 +  };
 +
++  // A private (off-the-record) profile's start: one dark Private space,
++  // nothing read or saved.
++  void OnPrivateReady();
 +  void OnLoaded(std::optional<std::string> spaces,
 +                std::optional<std::string> archive);
 +  // Keeps the history of `window`'s browser tab `browser_id`, about to be

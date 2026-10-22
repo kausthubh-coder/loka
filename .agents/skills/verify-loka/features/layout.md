@@ -30,6 +30,15 @@ from inside the address field; Downloads is a button in the bottom row beside th
   was closed (opening the panel clears it), and a 4 s toast above the bottom row naming the file
   (`newlyFinished` in downloads.logic.ts). Escape closes any panel.
 - `pages-once`: opening Settings again goes to the existing tab, even from another space.
+- `more-menu`: the top row's `...` has New window (Ctrl+N), New private window (Ctrl+Shift+N), New space,
+  `This page` (Find on page, Print, Zoom in, Zoom out, Reset zoom), then the sidebar's panels and pages, Settings,
+  Clear browsing data and About Loka. The browser's own entries go to the handler as `browserCommand`,
+  which runs the matching IDC_ command; in the prototype they only log.
+- `private-window`: a private window's sidebar has one dark space named `Private`. Its spaces live in memory only:
+  `LokaSpacesService` for an off-the-record profile never reads or writes `Loka Spaces.json` (that profile's
+  `GetPath()` is the normal profile's folder) and is gone when the window closes.
+- `restore-session`: Loka opens the last session by default and doesn't show Chromium's "Restore pages?" infobar
+  (`kSessionRestoreInfobar` off, `loka-restore-session.patch`).
 
 ## How to get to it (user POV)
 
@@ -58,7 +67,11 @@ Preconditions: seed data.
   open off unpins the sidebar in the browser" and the rail (its rows, a click on Sound, the "autoplay" search, the
   chips at 640 px), with pictures in light and dark; `panels` checks Downloads with a real download: "Downloads is in
   the bottom row, not the address field", "the finished download shows briefly and leaves a dot on Downloads",
-  "opening it clears the dot and the toast". Not checked in the browser: the
+  "opening it clears the dot and the toast". `browser-menu` checks "... > New window opens a window with its own
+  sidebar", "... > About Loka opens the About page", "... > New private window opens one dark space named Private",
+  "a page opened there is a row in Private" and "the private tab never reaches the saved spaces or the normal
+  window" (it reads `Loka Spaces.json` from disk). Not checked in the browser: Find, Print, Zoom and Clear browsing
+  data from the menu, the restore infobar, and the
   top row's Hide button, edge peek, Minimize, Maximize, Close, dragging the window by the top row, Reload, and
   download actions.
 - **Real input by hand.** To check a point the way Windows does: `powershell -NoProfile -File

@@ -3,6 +3,7 @@
 // browser answers through cr.webUIResponse or pushes news through cr.webUIListenerCallback (channel.ts). Loka's other
 // pages that the same handler answers (Settings, the command bar, the empty tab, the Library) use it too.
 
+import type { ChromeMenuCommand } from "../../prototype/src/features/command-bar/command-bar.logic";
 import type { MenuModel } from "../../prototype/src/features/menu/menu.logic";
 import type { Intent } from "../../prototype/src/features/sidebar/intents.logic";
 import type { BrowserState, SpaceScheme, TabId } from "../../prototype/src/features/sidebar/sidebar.logic";
@@ -205,6 +206,8 @@ export const browser = {
 	openPage: (url: string) => tell("openPage", url),
 	/** The window's own buttons: the sidebar is its title bar. "maximize" toggles back to restored. */
 	windowAction: (action: "minimize" | "maximize" | "close") => tell("windowAction", action),
+	/** One of the browser's own commands (new window, find, print, zoom...), as Chrome's toolbar menu runs it. */
+	browserCommand: (command: ChromeMenuCommand) => tell("browserCommand", command),
 	/** Starts moving the window with the mouse press that's down now. */
 	startWindowDrag: () => tell("startWindowDrag"),
 	store: () => ask<Record<string, string>>("getStore"),

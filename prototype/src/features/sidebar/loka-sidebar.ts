@@ -1,4 +1,5 @@
 import { css, html, LitElement, nothing, svg, type TemplateResult } from "lit";
+import { guard } from "lit/directives/guard.js";
 import { keyed } from "lit/directives/keyed.js";
 import { repeat } from "lit/directives/repeat.js";
 import type { Browser, NativeDownload, NativeExtension } from "../../../../webui/src/bridge";
@@ -22,12 +23,14 @@ import { playCue } from "../sound/sound";
 import type { Cue } from "../sound/sound.logic";
 import { autoScrollStep, type DropMode, dropModeAt } from "./drag.logic";
 import { essentialsDropSlots } from "./empty-states.logic";
+import { builtSpaceIds, rowsMoved } from "./lists.logic";
 import { planet } from "./planet";
 import {
 	activeSpace,
 	activeTab,
 	type BrowserState,
 	exportState,
+	type FolderNode,
 	folderHolds,
 	groupIntoFolder,
 	importState,
@@ -37,6 +40,7 @@ import {
 	pinnedRows,
 	type Space,
 	switchesForward,
+	type Tab,
 	type TabId,
 } from "./sidebar.logic";
 import { SWIPE_GAP, SWIPE_IDLE, type SwipeState, swipeWheel } from "./swipe.logic";
@@ -79,6 +83,9 @@ const PANEL_NAMES: Record<Panel, string> = {
 	archive: "Archived tabs",
 	search: "Search the sidebar",
 };
+
+/** The rows and Essentials that slide when rows move: the shown list's, never a kept list's. */
+const ROW_ELEMENTS = ".scroll.shown [data-key], .essentials [data-key]";
 
 /** Where an element sat before an update, and which list it was in, to animate from. */
 interface Was {
@@ -369,7 +376,7 @@ export class LokaSidebar extends LitElement {
 	/** Near the list's top or bottom edge, the list scrolls towards it, faster the closer the pointer is. */
 	private autoScroll = () => {
 		if (!this.dragId) return;
-		const list = this.renderRoot.querySelector<HTMLElement>(".scroll:not(.leaving-list)");
+		const list = this.renderRoot.querySelector<HTMLElement>(".scroll.shown");
 		if (list) {
 			const r = list.getBoundingClientRect();
 			const { x, y } = this.pointer;
@@ -689,7 +696,7 @@ export class LokaSidebar extends LitElement {
 		else if (e.key === "ArrowLeft" && folderOpen === true) run();
 		else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
 			e.preventDefault();
-			const rows = [...this.renderRoot.querySelectorAll<HTMLElement>('[role="treeitem"]')];
+			const rows = [...this.renderRoot.querySelectorAll<HTMLElement>('.scroll.shown [role="treeitem"]')];
 			const at = rows.indexOf(e.currentTarget as HTMLElement);
 			rows[at + (e.key === "ArrowDown" ? 1 : -1)]?.focus();
 		} else return;
@@ -826,8 +833,29 @@ export class LokaSidebar extends LitElement {
 
 	/** Where each row and Essential was before this update, to animate from. Null when nothing should move. */
 	private rowsBefore: Map<string, Was> | null = null;
+	/** The rows' and Essentials' running slides and fades, so a new move can stop them without asking every row. */
+	private rowAnimations = new Set<Animation>();
+	/** The space shown before this one, whose list stays built for a switch back (builtSpaceIds). */
+	private lastSpaceId: string | null = null;
+	/** Lists sliding out after a switch, by list, so a switch back can stop one. */
+	private listExits = new Map<HTMLElement, Animation>();
+	/** A space whose list is no longer kept, still in the page until the switch has painted (builtSpaceIds). */
+	private leavingSpaceId: string | null = null;
+
+	/** Takes the list no longer kept out of the page after the frame that shows the switch. */
+	private dropLeavingList() {
+		const leaving = this.leavingSpaceId;
+		if (!leaving) return;
+		requestAnimationFrame(() =>
+			setTimeout(() => {
+				if (this.leavingSpaceId !== leaving) return;
+				this.leavingSpaceId = null;
+				this.requestUpdate();
+			}, 0),
+		);
+	}
 	/** The space's list before a switch, which slides out as the new one slides in. */
-	private listBefore: { el: HTMLElement; rect: DOMRect; forward: boolean } | null = null;
+	private listBefore: { el: HTMLElement; rect: DOMRect; scrollTop: number; forward: boolean } | null = null;
 	/** The horizon's planets before a space switch, which set behind the new one. */
 	private horizonBefore: { els: HTMLElement[]; forward: boolean } | null = null;
 
@@ -873,8 +901,14 @@ export class LokaSidebar extends LitElement {
 		if (before.activeSpaceId !== this.state.activeSpaceId) {
 			const forward = switchesForward(this.state, before.activeSpaceId, this.state.activeSpaceId);
 			this.slideFrom = forward ? "right" : "left";
-			const list = this.renderRoot.querySelector<HTMLElement>(".scroll:not(.leaving-list)");
-			this.listBefore = list ? { el: list, rect: list.getBoundingClientRect(), forward } : null;
+			// The list kept until now, unless it's the one being shown, leaves the page after this frame (updated).
+			this.leavingSpaceId = this.lastSpaceId !== this.state.activeSpaceId ? this.lastSpaceId : null;
+			this.lastSpaceId = before.activeSpaceId;
+			// Read before the DOM changes, while layout is still clean: reading after would lay out the new list first.
+			const list = this.renderRoot.querySelector<HTMLElement>(".scroll.shown");
+			this.listBefore = list
+				? { el: list, rect: list.getBoundingClientRect(), scrollTop: list.scrollTop, forward }
+				: null;
 			const horizon = this.renderRoot.querySelector(".horizon");
 			this.horizonBefore = horizon
 				? {
@@ -886,13 +920,12 @@ export class LokaSidebar extends LitElement {
 				: null;
 			return;
 		}
+		// Measuring every row costs a layout and a read per row: only when a row moves, comes or goes (a drag, a
+		// folder opening, a tab closed), never for a new title, a page loading or the tab shown.
+		if (!rowsMoved(before, this.state)) return;
 		// Same space, new state: the DOM still shows the old rows, so this is where they are now.
 		this.rowsBefore = new Map(
-			[
-				...this.renderRoot.querySelectorAll<HTMLElement>(
-					".scroll:not(.leaving-list) [data-key], .essentials [data-key]",
-				),
-			].map((el) => [
+			[...this.renderRoot.querySelectorAll<HTMLElement>(ROW_ELEMENTS)].map((el) => [
 				el.dataset.key ?? "",
 				{ el, rect: el.getBoundingClientRect(), tile: el.classList.contains("essential") },
 			]),
@@ -908,65 +941,75 @@ export class LokaSidebar extends LitElement {
 	private animateRows() {
 		const before = this.rowsBefore;
 		this.rowsBefore = null;
-		const scroll = this.renderRoot.querySelector<HTMLElement>(".scroll:not(.leaving-list)");
+		const scroll = this.renderRoot.querySelector<HTMLElement>(".scroll.shown");
 		const grid = this.renderRoot.querySelector<HTMLElement>(".essentials");
 		if (!before || !scroll || !grid) return;
 		const still = reducedMotion();
 		const now = new Map(
-			[
-				...this.renderRoot.querySelectorAll<HTMLElement>(
-					".scroll:not(.leaving-list) [data-key], .essentials [data-key]",
-				),
-			].map((el) => [el.dataset.key ?? "", el]),
+			[...this.renderRoot.querySelectorAll<HTMLElement>(ROW_ELEMENTS)].map((el) => [el.dataset.key ?? "", el]),
 		);
+		// All the writes that change what a read sees, then all the reads, then the animations: reads between writes
+		// would lay the list out again for every row.
+		for (const animation of this.rowAnimations) animation.cancel();
+		this.rowAnimations.clear();
+		const rects = new Map([...now].map(([key, el]) => [key, el.getBoundingClientRect()]));
+		const animate = (el: HTMLElement, keyframes: Keyframe[], options: KeyframeAnimationOptions) => {
+			const animation = el.animate(keyframes, options);
+			this.rowAnimations.add(animation);
+			animation.finished.then(
+				() => this.rowAnimations.delete(animation),
+				() => {},
+			);
+		};
 		for (const [key, el] of now) {
-			for (const a of el.getAnimations()) if (a.id === "row") a.cancel();
 			const was = before.get(key);
 			const tile = el.classList.contains("essential");
 			if (!was) {
 				const from = still ? { opacity: 0 } : { opacity: 0, transform: tile ? "scale(0.85)" : "translateY(-6px)" };
-				el.animate([from, { opacity: 1, transform: "none" }], { duration: 220, easing: EASE_OUT, id: "row" });
+				animate(el, [from, { opacity: 1, transform: "none" }], { duration: 220, easing: EASE_OUT });
 				continue;
 			}
-			if (still) continue;
-			const rect = el.getBoundingClientRect();
+			const rect = rects.get(key);
+			if (still || !rect) continue;
 			if (was.tile !== tile) {
 				// Between a row and a tile: the icon travels, so the new shape grows from where the old one's icon was.
 				const fromX = was.tile ? was.rect.left + was.rect.width / 2 : was.rect.left + 20;
 				const fromY = was.rect.top + was.rect.height / 2;
 				const dx = fromX - (tile ? rect.left + rect.width / 2 : rect.left + 20);
 				const dy = fromY - (rect.top + rect.height / 2);
-				el.animate(
+				animate(
+					el,
 					[
 						{ transform: `translate(${dx}px, ${dy}px) scale(0.6)`, opacity: 0.4 },
 						{ transform: "none", opacity: 1 },
 					],
-					{ duration: 320, easing: EASE_OUT, id: "row" },
+					{ duration: 320, easing: EASE_OUT },
 				);
 				continue;
 			}
 			const dx = was.rect.left - rect.left;
 			const dy = was.rect.top - rect.top;
 			if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-				el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], {
+				animate(el, [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], {
 					duration: 240,
 					easing: EASE_OUT,
-					id: "row",
 				});
 			}
 		}
+		const boxes = { grid: grid.getBoundingClientRect(), scroll: scroll.getBoundingClientRect() };
+		const scrolled = scroll.scrollTop;
 		for (const [key, { el, rect, tile }] of before) {
 			if (now.has(key) || el.isConnected) continue;
 			// Lit has let go of the old element; put it back where it was, on top, just long enough to fade.
 			const home = tile ? grid : scroll;
-			const box = home.getBoundingClientRect();
+			const box = tile ? boxes.grid : boxes.scroll;
 			el.classList.add("leaving");
 			el.inert = true;
 			el.setAttribute("aria-hidden", "true");
 			el.removeAttribute("data-key");
 			el.removeAttribute("role");
 			Object.assign(el.style, {
-				top: `${rect.top - box.top + (tile ? 0 : scroll.scrollTop)}px`,
+				top: `${rect.top - box.top + (tile ? 0 : scrolled)}px`,
 				left: `${rect.left - box.left}px`,
 				width: `${rect.width}px`,
 				height: `${rect.height}px`,
@@ -1097,15 +1140,37 @@ export class LokaSidebar extends LitElement {
 		</button>`;
 	}
 
+	/**
+	 * A tab's row. `where` names its place (space, folder, index), which `place` works out: the row is drawn again
+	 * only when it, the tab, its page or its highlight changes (guard), so a change to one tab redraws one row.
+	 */
 	private tabRow(
 		tabId: TabId,
 		depth: number,
 		place: (mode: DropMode) => Place | null,
 		closable: boolean,
-	): TemplateResult {
+		where: string,
+		activeTabId: TabId | null,
+	) {
 		const tab = this.state.tabs[tabId];
-		if (!tab) return html``;
-		const active = activeSpace(this.state).activeTabId === tabId;
+		if (!tab) return nothing;
+		const active = activeTabId === tabId;
+		const dragging = this.dragId === tabId;
+		const drop = this.dropClass(tabId);
+		const live = this.live[tabId];
+		return guard([tab, live, active, dragging, drop, depth, closable, where], () =>
+			this.tabRowView(tab, depth, place, closable, active),
+		);
+	}
+
+	private tabRowView(
+		tab: Tab,
+		depth: number,
+		place: (mode: DropMode) => Place | null,
+		closable: boolean,
+		active: boolean,
+	): TemplateResult {
+		const tabId = tab.id;
 		return html`
 			<div
 				class="row ${active ? "active" : ""} ${this.dragId === tabId ? "dragging" : ""} ${this.dropClass(tabId)}"
@@ -1152,15 +1217,17 @@ export class LokaSidebar extends LitElement {
 		`;
 	}
 
-	private pinnedRow(row: PinnedRow, spaceId: string): TemplateResult {
+	private pinnedRow(row: PinnedRow, space: Space) {
 		const { node, depth, parentId, index } = row;
+		const spaceId = space.id;
+		const where = `${spaceId}/${parentId}/${index}`;
 		const sibling = (mode: DropMode): Place => ({
 			area: "pinned",
 			spaceId,
 			parentId,
 			index: mode === "before" ? index : index + 1,
 		});
-		if (node.kind === "tab") return this.tabRow(node.id, depth, sibling, false);
+		if (node.kind === "tab") return this.tabRow(node.id, depth, sibling, false, where, space.activeTabId);
 
 		const folderPlace = (mode: DropMode): Place => {
 			// Dropping on the lower half of an open folder puts the item first inside it, which is where it shows.
@@ -1169,8 +1236,22 @@ export class LokaSidebar extends LitElement {
 			return sibling(mode);
 		};
 		const renaming = this.renamingId === node.id;
-		const activeId = activeSpace(this.state).activeTabId;
+		const activeId = space.activeTabId;
 		const holdsActive = !node.open && activeId !== null && folderHolds(node, activeId);
+		const dragging = this.dragId === node.id;
+		const drop = this.dropClass(node.id);
+		return guard([node, depth, where, renaming, holdsActive, dragging, drop], () =>
+			this.folderRowView(node, depth, folderPlace, renaming, holdsActive),
+		);
+	}
+
+	private folderRowView(
+		node: FolderNode,
+		depth: number,
+		folderPlace: (mode: DropMode) => Place,
+		renaming: boolean,
+		holdsActive: boolean,
+	): TemplateResult {
 		return html`
 			<div
 				class="row folder ${this.dragId === node.id ? "dragging" : ""} ${this.dropClass(node.id)}"
@@ -1232,35 +1313,57 @@ export class LokaSidebar extends LitElement {
 		const before = this.listBefore;
 		this.listBefore = null;
 		const aside = this.renderRoot.querySelector("aside");
-		if (!before || !aside || before.el.isConnected || reducedMotion()) return;
+		if (!before || !aside) return;
+		const shown = this.renderRoot.querySelector<HTMLElement>(".scroll.shown");
+		// A list shown again while it was still leaving (a quick switch back) stops leaving where it is.
+		const leaving = shown && this.listExits.get(shown);
+		if (shown && leaving) {
+			leaving.cancel();
+			this.listExits.delete(shown);
+			shown.style.cssText = "";
+		}
 		const { el, rect } = before;
+		if (el === shown || reducedMotion()) return;
+		// A kept list leaves where it is and stays built once it's out of sight; one Lit let go of (its space is no
+		// longer built) is put back just for its exit.
+		const kept = el.isConnected;
 		const box = aside.getBoundingClientRect();
-		const scrolled = el.scrollTop;
 		el.classList.remove("from-left", "from-right");
 		el.classList.add("leaving-list");
-		el.inert = true;
-		el.setAttribute("aria-hidden", "true");
+		if (!kept) {
+			el.inert = true;
+			el.setAttribute("aria-hidden", "true");
+		}
 		Object.assign(el.style, {
 			top: `${rect.top - box.top}px`,
 			left: `${rect.left - box.left}px`,
 			width: `${rect.width}px`,
 			height: `${rect.height}px`,
 		});
-		aside.append(el);
-		el.scrollTop = scrolled;
-		void el
-			.animate(
-				[
-					{ opacity: 1, translate: "0 0" },
-					{ opacity: 0, translate: `${before.forward ? -56 : 56}px 0` },
-				],
-				{
-					duration: 220,
-					easing: EASE_IN,
-					fill: "forwards",
-				},
-			)
-			.finished.then(() => el.remove());
+		if (!kept) aside.append(el);
+		el.scrollTop = before.scrollTop;
+		const exit = el.animate(
+			[
+				{ opacity: 1, translate: "0 0" },
+				{ opacity: 0, translate: `${before.forward ? -56 : 56}px 0` },
+			],
+			{ duration: 220, easing: EASE_IN, fill: "forwards" },
+		);
+		this.listExits.set(el, exit);
+		exit.finished.then(
+			() => {
+				this.listExits.delete(el);
+				if (!kept) {
+					el.remove();
+					return;
+				}
+				// Out of sight: back to a kept list, hidden by its class rather than by the exit's last frame.
+				el.classList.remove("leaving-list");
+				el.style.cssText = "";
+				exit.cancel();
+			},
+			() => {},
+		);
 	}
 
 	/** Keeps room under the list's last row for what sits over its bottom (the planets, the media card). */
@@ -1294,6 +1397,7 @@ export class LokaSidebar extends LitElement {
 			this.hold("menu", open);
 		}
 		this.watchBottom();
+		this.dropLeavingList();
 		this.animateListExit();
 		this.animateRows();
 		this.animateHorizon();
@@ -1436,19 +1540,98 @@ export class LokaSidebar extends LitElement {
 		</div>`;
 	}
 
+	/**
+	 * A space's list: its pinned tree, the divider and its open tabs. The one on screen is `shown`; the other built
+	 * one stays in the page for a quick switch back, not drawn, laid out or reachable (`kept`, see builtSpaceIds).
+	 */
+	private spaceList(space: Space, shown: boolean, draggingTab: boolean): TemplateResult {
+		const rows = pinnedRows(space.pinned);
+		// Above the divider is pinned: a tab dropped on the gap or the divider itself goes to the end of the pinned list.
+		const toPinnedEnd = (): Place => ({ area: "pinned", spaceId: space.id, parentId: null, index: Infinity });
+		const openStart = (): Place => ({ area: "open", spaceId: space.id, index: 0 });
+		const slide = shown && this.slideFrom ? `from-${this.slideFrom}` : "";
+		return html`<div
+			class="scroll ${shown ? "shown" : "kept"} ${slide}"
+			.inert=${!shown}
+			aria-hidden=${shown ? nothing : "true"}
+		>
+			<div class="pinned" role="tree" aria-label="Pinned in ${space.name}">
+				${repeat(
+					rows,
+					(row) => row.node.id,
+					(row) => this.pinnedRow(row, space),
+				)}
+				<div
+					class="end-zone ${draggingTab ? "ready" : ""} ${this.dropClass("pinned-end")}"
+					data-key="pinned-end"
+					.dropZone=${{ key: "pinned-end", place: toPinnedEnd } satisfies DropZone}
+				></div>
+			</div>
+
+			<div
+				class="divider"
+				data-key="divider"
+				.dropZone=${
+					{
+						key: "pinned-end",
+						// Its top half pins at the end of the pinned list; its bottom half is the first open tab.
+						place: (mode: DropMode): Place => (mode === "before" ? toPinnedEnd() : openStart()),
+						keyFor: (mode: DropMode) => (mode === "before" ? "pinned-end" : "open-start"),
+					} satisfies DropZone
+				}
+			>
+				<span></span>
+				${
+					space.open.length > 0
+						? html`<button
+								class="clear"
+								title="Close every open tab in ${space.name}"
+								@click=${() => {
+									playCue("clear");
+									this.apply({ op: "closeTabs", tabIds: space.open });
+								}}
+							>
+								<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v8M4.5 7.5 8 11l3.5-3.5M4 13.5h8" /></svg>Clear
+							</button>`
+						: nothing
+				}
+			</div>
+
+			<div class="open" role="tree" aria-label="Open tabs in ${space.name}">
+				<button
+					class="row new-tab ${this.dropClass("open-start")}"
+					data-key="new-tab"
+					@click=${() => this.command("new-tab")}
+					.dropZone=${{ key: "open-start", place: openStart } satisfies DropZone}
+				>
+					<svg class="plus" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" /></svg><span class="label">New tab</span>
+				</button>
+				${repeat(
+					space.open,
+					(id) => id,
+					(id, index) =>
+						this.tabRow(
+							id,
+							0,
+							(mode) => ({ area: "open", spaceId: space.id, index: mode === "before" ? index : index + 1 }),
+							true,
+							`open/${space.id}/${index}`,
+							space.activeTabId,
+						),
+				)}
+			</div>
+		</div>`;
+	}
+
 	override render() {
 		const state = this.state;
 		const space = activeSpace(state);
-		const rows = pinnedRows(space.pinned);
 		const count = state.essentials.length;
 		const draggingTab = this.dragId !== null && state.tabs[this.dragId] !== undefined;
 		const slots = essentialsDropSlots(count, draggingTab);
 		// Essentials fill the row they're in, so one is one big tile; a drag adds the free cell to drop in.
 		const columns = Math.min(4, Math.max(1, count + slots));
 		const toEssentials = (): Place => ({ area: "essentials", index: Infinity });
-		// Above the divider is pinned: a tab dropped on the gap or the divider itself goes to the end of the pinned list.
-		const toPinnedEnd = (): Place => ({ area: "pinned", spaceId: space.id, parentId: null, index: Infinity });
-		const openStart = (): Place => ({ area: "open", spaceId: space.id, index: 0 });
 
 		return html`
 			<aside
@@ -1495,7 +1678,11 @@ export class LokaSidebar extends LitElement {
 										const tab = state.tabs[id];
 										if (!tab) return nothing;
 										const active = space.activeTabId === id;
-										return html`
+										const dragging = this.dragId === id;
+										const drop = this.dropClass(id);
+										return guard(
+											[tab, this.live[id], active, dragging, drop, index],
+											() => html`
 											<button
 												class="essential ${active ? "active" : ""} ${this.dragId === id ? "dragging" : ""} ${this.dropClass(id)}"
 												data-key=${id}
@@ -1518,7 +1705,8 @@ export class LokaSidebar extends LitElement {
 											>
 												${this.favicon(id, tab.url, 24)}
 											</button>
-										`;
+										`,
+										);
 									},
 								)}
 								${
@@ -1534,75 +1722,13 @@ export class LokaSidebar extends LitElement {
 								}
 							</div>`
 				}
-				${keyed(
-					space.id,
-					html`<div
-				class="scroll ${this.slideFrom ? `from-${this.slideFrom}` : ""}"
-			>
-					<div class="pinned" role="tree" aria-label="Pinned in ${space.name}">
-						${repeat(
-							rows,
-							(row) => row.node.id,
-							(row) => this.pinnedRow(row, space.id),
-						)}
-						<div
-							class="end-zone ${draggingTab ? "ready" : ""} ${this.dropClass("pinned-end")}"
-							data-key="pinned-end"
-							.dropZone=${{ key: "pinned-end", place: toPinnedEnd } satisfies DropZone}
-						></div>
-					</div>
-
-					<div
-						class="divider"
-						data-key="divider"
-						.dropZone=${
-							{
-								key: "pinned-end",
-								// Its top half pins at the end of the pinned list; its bottom half is the first open tab.
-								place: (mode: DropMode): Place => (mode === "before" ? toPinnedEnd() : openStart()),
-								keyFor: (mode: DropMode) => (mode === "before" ? "pinned-end" : "open-start"),
-							} satisfies DropZone
-						}
-					>
-						<span></span>
-						${
-							space.open.length > 0
-								? html`<button
-										class="clear"
-										title="Close every open tab in ${space.name}"
-										@click=${() => {
-											playCue("clear");
-											this.apply({ op: "closeTabs", tabIds: space.open });
-										}}
-									>
-										<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v8M4.5 7.5 8 11l3.5-3.5M4 13.5h8" /></svg>Clear
-									</button>`
-								: nothing
-						}
-					</div>
-
-					<div class="open" role="tree" aria-label="Open tabs in ${space.name}">
-						<button
-							class="row new-tab ${this.dropClass("open-start")}"
-							data-key="new-tab"
-							@click=${() => this.command("new-tab")}
-							.dropZone=${{ key: "open-start", place: openStart } satisfies DropZone}
-						>
-							<svg class="plus" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" /></svg><span class="label">New tab</span>
-						</button>
-						${repeat(
-							space.open,
-							(id) => id,
-							(id, index) =>
-								this.tabRow(
-									id,
-									0,
-									(mode) => ({ area: "open", spaceId: space.id, index: mode === "before" ? index : index + 1 }),
-									true,
-								),
-						)}
-					</div>
-				</div>`,
+				${repeat(
+					builtSpaceIds(state, this.lastSpaceId, this.leavingSpaceId),
+					(id) => id,
+					(id) => {
+						const built = state.spaces.find((s) => s.id === id);
+						return built ? this.spaceList(built, built.id === space.id, draggingTab) : nothing;
+					},
 				)}
 
 				<div class="bottom">
@@ -2694,6 +2820,15 @@ export class LokaSidebar extends LitElement {
 				translate: -56px 0;
 				opacity: 0;
 			}
+		}
+		/* A list kept built for a switch back: in the page, out of the layout, and neither drawn nor hit. Showing it
+		   again only lays out and draws the rows on screen; nothing is built. */
+		.scroll.kept:not(.leaving-list) {
+			position: absolute;
+			inset: 0;
+			content-visibility: hidden;
+			visibility: hidden;
+			pointer-events: none;
 		}
 		/* The list being left, sliding out over where the new one comes in. */
 		.scroll.leaving-list {

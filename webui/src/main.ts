@@ -3,7 +3,7 @@
 
 import { css, html, LitElement, nothing } from "lit";
 import type { Act } from "../../prototype/src/app/loka-app";
-import { setStarMotion, skyLayer, skyStyles, skyTurn } from "../../prototype/src/app/sky";
+import { type NebulaNow, setStarMotion, skyLayer, skyNow, skyStyles, skyTurn } from "../../prototype/src/app/sky";
 import { reducedMotion, themeTokens } from "../../prototype/src/app/theme";
 import { resolveScheme, type Scheme } from "../../prototype/src/app/theme.logic";
 import { DEFAULT_UI, type UiPrefs } from "../../prototype/src/app/ui-prefs.logic";
@@ -13,6 +13,7 @@ import { sectionUrl } from "../../prototype/src/features/library/library.logic";
 import type { MediaAction, NowPlaying } from "../../prototype/src/features/media/loka-media-card";
 import { nowPlaying } from "../../prototype/src/features/media/media.logic";
 import { type LiveTabs, setFaviconSource } from "../../prototype/src/features/sidebar/favicon";
+import { keepUnchanged } from "../../prototype/src/features/sidebar/keep-unchanged.logic";
 import "../../prototype/src/features/sidebar/loka-sidebar";
 import type { LokaSidebar } from "../../prototype/src/features/sidebar/loka-sidebar";
 import { SPACE_HUES } from "../../prototype/src/features/sidebar/planet";
@@ -114,7 +115,6 @@ export class LokaPanel extends LitElement {
 		if (!before) return;
 		const next = act(intent);
 		if (!next || next === before) return;
-		this.followScheme(next);
 		if (this.pending) {
 			this.pending = next;
 			return;
@@ -152,11 +152,15 @@ export class LokaPanel extends LitElement {
 			if (!tab) continue;
 			live[lokaId] = { icon: this.icons.get(lokaId), loading: tab.loading, audible: tab.audible, muted: tab.muted };
 		}
-		this.live = live;
+		// A title changing in the browser changes nothing here: the sidebar then has nothing to redraw.
+		this.live = keepUnchanged(this.live, live);
 	};
 
 	private setTabs = (tabs: NativeTab[]) => {
 		this.tabs = tabs;
+		// Which tab is on screen, and whether a playing one is muted, decide the now-playing card (render). `live`
+		// often stays the same object now, so it can't be what redraws the page.
+		this.requestUpdate();
 		this.refreshLive();
 		const empty = this.started ? null : startsEmpty(tabs);
 		if (empty !== null) {
@@ -173,9 +177,10 @@ export class LokaPanel extends LitElement {
 		})();
 		watch(({ state, ui, onboarding }) => {
 			if (onboarding) void this.applySetup();
-			// A change from elsewhere, or the browser correcting this page: drawn as it comes, or after a crossfade.
+			// A change from elsewhere, or the browser correcting this page: drawn as it comes, or after a crossfade. The
+			// parts that didn't change stay the objects drawn, so their rows don't redraw.
 			if (state && this.pending) this.pending = state;
-			else if (state) this.state = state;
+			else if (state) this.state = this.state ? keepUnchanged(this.state, state) : state;
 			if (ui) this.ui = ui;
 		});
 		browser.onTabsChanged(this.setTabs);
@@ -216,13 +221,24 @@ export class LokaPanel extends LitElement {
 		for (const intent of onboardingIntents(this.state, onboardingSpaces(json))) this.apply(intent);
 	}
 
+	/** The old sky's nebula on a switch, read before the switch is drawn (skyNow). */
+	private nebulaBefore: NebulaNow | null = null;
+
+	protected override willUpdate(changed: Map<string, unknown>) {
+		const before = changed.get("state") as BrowserState | null | undefined;
+		if (before && this.state && before.activeSpaceId !== this.state.activeSpaceId) {
+			this.nebulaBefore = skyNow(this.renderRoot);
+		}
+	}
+
 	protected override updated(changed: Map<string, unknown>) {
 		const before = changed.get("state") as BrowserState | null | undefined;
 		const state = this.state;
 		if (!state) return;
 		if (before && before.activeSpaceId !== state.activeSpaceId) {
 			const forward = switchesForward(state, before.activeSpaceId, state.activeSpaceId);
-			skyTurn(this.renderRoot, forward, activeSpace(before).hue, this.schemeOf(before, null));
+			skyTurn(this.renderRoot, forward, activeSpace(before).hue, this.schemeOf(before, null), this.nebulaBefore);
+			this.nebulaBefore = null;
 		}
 		this.followScheme(this.pending ?? state);
 		this.followFrame(this.pending ?? state);
@@ -396,13 +412,18 @@ export class LokaPanel extends LitElement {
 		}
 	}
 
+	/** The card's last contents, kept as the same object while they stay the same, so the sidebar needn't redraw. */
+	private playing: NowPlaying | null = null;
+
 	/** The card shows media from another tab; the browser's tab ids map back to Loka's through the sync's links. */
 	private nowPlaying(state: BrowserState): NowPlaying | null {
 		const media = nowPlaying(this.media, this.shownTab()?.id);
 		if (!media) return null;
 		const lokaId = Object.entries(linkedTabs()).find(([, id]) => id === media.tabId)?.[0];
 		const tab = lokaId ? (state.tabs[lokaId] ?? null) : null;
-		return { media, tab, muted: this.tabs.find((t) => t.id === media.tabId)?.muted ?? false };
+		const now = { media, tab, muted: this.tabs.find((t) => t.id === media.tabId)?.muted ?? false };
+		this.playing = this.playing ? keepUnchanged(this.playing, now) : now;
+		return this.playing;
 	}
 
 	private onMedia(action: MediaAction) {

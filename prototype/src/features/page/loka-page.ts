@@ -1,7 +1,7 @@
 import { css, html, LitElement } from "lit";
 import type { Browser } from "../../../../webui/src/bridge";
 import type { HistoryBridge } from "../../../../webui/src/history-bridge";
-import type { Update } from "../../app/loka-app";
+import type { Act } from "../../app/loka-app";
 import type { UiPrefs } from "../../app/ui-prefs.logic";
 import "../history/loka-history";
 import "../settings/loka-settings";
@@ -28,7 +28,7 @@ export class LokaPage extends LitElement {
 	declare tab: Tab | null;
 	declare spaceName: string;
 	declare state: BrowserState;
-	declare apply: Update;
+	declare apply: Act;
 	declare ui: UiPrefs;
 	declare setUi: SetUi;
 	declare pinned: boolean;

@@ -362,9 +362,9 @@ async function ctrlDigit(sidebar, digit) {
 	await sidebar.call("Input.dispatchKeyEvent", { type: "keyUp", ...key });
 }
 
-/** The spaces as the profile's store has them. @param {Session} sidebar @returns {Promise<BrowserState>} */
+/** The spaces as the browser has them. @param {Session} sidebar @returns {Promise<BrowserState>} */
 async function savedState(sidebar) {
-	return JSON.parse((await evaluate(sidebar, askExpression("getStore")))["state.v1"]);
+	return (await evaluate(sidebar, askExpression("getSpaces"))).state;
 }
 
 /**
@@ -809,10 +809,10 @@ async function oneRun(run, host) {
 		const tabTarget = await b.target((t) => t.type === "page" && t.url === `http://${host}/tab`);
 		const tab = await connect(tabTarget.webSocketDebuggerUrl);
 
-		// The spaces go into the profile's store, then the sidebar reloads and reads them like at startup.
+		// The browser takes the spaces whole (as an import does), then the sidebar reloads and reads them like at startup.
 		await sleep(1500);
-		const json = JSON.stringify(perfState(host));
-		await evaluate(sidebar, `(chrome.send("setStore", ["state.v1", ${JSON.stringify(json)}]), true)`);
+		const intent = { op: "replaceState", state: perfState(host) };
+		await evaluate(sidebar, `(chrome.send("spacesDo", [0, ${JSON.stringify(intent)}]), true)`);
 		await sleep(500);
 		await sidebar.call("Page.reload", {});
 		await sleep(500);
@@ -828,8 +828,7 @@ async function oneRun(run, host) {
 		const shownRows = await evaluate(sidebar, `${SIDEBAR_ROOT}?.querySelectorAll('[role="treeitem"]').length ?? 0`);
 		if (shownRows < BUILD_PINNED)
 			throw new Error(`the sidebar shows ${shownRows} rows, not ${BUILD_PINNED}+ (${rows})`);
-		const store = await evaluate(sidebar, askExpression("getStore"));
-		const saved = JSON.parse(store["state.v1"] ?? "null");
+		const saved = await savedState(sidebar);
 		if (saved?.spaces?.length !== 3) throw new Error("the profile doesn't have the three spaces");
 		details.rows = shownRows;
 		if (heavy) {

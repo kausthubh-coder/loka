@@ -22,6 +22,7 @@ import {
 	tabRemoved,
 	tabUpdated,
 } from "../tabs/live.logic";
+import { applyIntent, type Intent } from "./intents.logic";
 import {
 	activateTab,
 	archiveStale,
@@ -48,6 +49,7 @@ import {
 	updateSpace,
 } from "./sidebar.logic";
 import { seedState } from "./sidebar.seed";
+import { toDelta } from "./spaces-delta.logic";
 
 const NOW = Date.UTC(2026, 9, 15, 3, 0);
 const HOUR = 60 * 60 * 1000;
@@ -92,12 +94,19 @@ export function modelCases(): { states: Record<string, BrowserState>; cases: Cas
 		showing: activateTab(seed, "t-hn", NOW),
 		archived: archiveStale(seed, NOW, 4 * HOUR),
 		home: switchSpace(seed, "s-home"),
+		zenShown: activateTab(seed, "t-zen", NOW),
+		cscClosed: toggleFolder(seed, "f-csc281"),
+		schoolClosed: switchSpace(toggleFolder(seed, "f-csc281"), "s-school"),
 	};
 	const cases: Case[] = [];
+	// The sidebar's own changes run as intents, the way the page sends them; `run` says the same thing with the rule
+	// itself, so the dispatcher is checked too.
 	const on = (name: string, state: string, op: string, args: Record<string, Json>, run: (s: BrowserState) => Json) => {
 		const s = states[state];
 		if (!s) throw new Error(`no state ${state}`);
-		cases.push({ name, op, state, args, expect: { state: run(s) } });
+		const next = applyIntent(s, { op, ...args } as Intent);
+		if (!Bun.deepEquals(next, run(s))) throw new Error(`applyIntent and ${op} disagree on "${name}"`);
+		cases.push({ name, op, state, args, expect: { delta: toDelta(s, next), state: next } });
 	};
 
 	// ---- moving tabs and folders ----
@@ -187,15 +196,9 @@ export function modelCases(): { states: Record<string, BrowserState>; cases: Cas
 	on("closing the shown open tab shows its neighbour", "showing", "closeTab", { tabId: "t-hn" }, (s) =>
 		closeTab(s, "t-hn"),
 	);
-	on("closing the last open tab shows the one before", "seed", "closeTab", { tabId: "t-zen" }, (s) =>
-		closeTab(activateTab(s, "t-zen", NOW), "t-zen"),
+	on("closing the last open tab shows the one before", "zenShown", "closeTab", { tabId: "t-zen" }, (s) =>
+		closeTab(s, "t-zen"),
 	);
-	// The case above closes from a state it made itself; spell that state out.
-	const lastCase = cases.at(-1);
-	if (lastCase) {
-		states.zenShown = activateTab(seed, "t-zen", NOW);
-		lastCase.state = "zenShown";
-	}
 	on("closing a pinned tab keeps it, with nothing shown", "seed", "closeTab", { tabId: "t-helium" }, (s) =>
 		closeTab(s, "t-helium"),
 	);
@@ -324,28 +327,17 @@ export function modelCases(): { states: Record<string, BrowserState>; cases: Cas
 	on("ungrouping keeps the insides in the folder's place", "seed", "ungroupFolder", { folderId: "f-loka" }, (s) =>
 		ungroupFolder(s, "f-loka"),
 	);
-	on("ungrouping a nested folder opens its parent", "seed", "ungroupFolder", { folderId: "f-game" }, (s) =>
-		ungroupFolder(toggleFolder(s, "f-csc281"), "f-game"),
+	on("ungrouping a nested folder opens its parent", "cscClosed", "ungroupFolder", { folderId: "f-game" }, (s) =>
+		ungroupFolder(s, "f-game"),
 	);
-	{
-		const last = cases.at(-1);
-		if (last) {
-			states.cscClosed = toggleFolder(seed, "f-csc281");
-			last.state = "cscClosed";
-		}
-	}
 	on("ungrouping a tab does nothing", "seed", "ungroupFolder", { folderId: "t-hn" }, (s) => ungroupFolder(s, "t-hn"));
 	const group = (name: string, state: string, targetId: string, draggedId: string) => {
-		const s = states[state];
-		if (!s) throw new Error(`no state ${state}`);
-		const [next, id] = groupIntoFolder(s, targetId, draggedId, "Group", "f-group");
-		cases.push({
-			name,
-			op: "groupIntoFolder",
-			state,
-			args: { targetId, draggedId, name: "Group", id: "f-group" },
-			expect: id === null ? { refused: true } : { state: next },
-		});
+		// Refused, the spaces stay as they were.
+		on(name, state, "groupIntoFolder", { targetId, draggedId, name: "Group", id: "f-group" }, (s) =>
+			groupIntoFolder(s, targetId, draggedId, "Group", "f-group")[1] === null
+				? s
+				: groupIntoFolder(s, targetId, draggedId, "Group", "f-group")[0],
+		);
 	};
 	group("two pinned tabs become a folder in the target's place", "seed", "t-lit", "t-chromium");
 	group("an open target puts both at the end of pinned", "seed", "t-hn", "t-zen");
@@ -385,6 +377,14 @@ export function modelCases(): { states: Record<string, BrowserState>; cases: Cas
 		(s) => restoreArchived(s, "t-arc", NOW),
 	);
 
+	on("Clear closes every open tab in one change", "seed", "closeTabs", { tabIds: ["t-hn", "t-arc", "t-zen"] }, (s) =>
+		closeTab(closeTab(closeTab(s, "t-hn"), "t-arc"), "t-zen"),
+	);
+	on("clearing the archive", "archived", "clearArchive", {}, (s) => ({ ...s, archive: [] }));
+	on("clearing an empty archive changes nothing", "seed", "clearArchive", {}, (s) => s);
+	on("replacing the spaces with a good file", "seed", "replaceState", { state: states.home }, () => states.home);
+	on("a bad replacement is refused", "seed", "replaceState", { state: { ...seed, activeSpaceId: "s-x" } }, (s) => s);
+
 	// ---- finding and stepping ----
 	on(
 		"revealing a tab in a closed folder in another space opens the way to it",
@@ -403,16 +403,9 @@ export function modelCases(): { states: Record<string, BrowserState>; cases: Cas
 	on("stepping back from nothing shown goes to the last", "home", "stepTab", { step: -1, now: NOW }, (s) =>
 		stepTab(s, -1, NOW),
 	);
-	on("stepping skips the insides of closed folders", "cscClosed", "stepTab", { step: 1, now: NOW }, (s) =>
-		stepTab(switchSpace(s, "s-school"), 1, NOW),
+	on("stepping skips the insides of closed folders", "schoolClosed", "stepTab", { step: 1, now: NOW }, (s) =>
+		stepTab(s, 1, NOW),
 	);
-	{
-		const last = cases.at(-1);
-		if (last) {
-			states.schoolClosed = switchSpace(states.cscClosed as BrowserState, "s-school");
-			last.state = "schoolClosed";
-		}
-	}
 
 	// ---- importing ----
 	const imports = (name: string, json: Json) => {
@@ -454,15 +447,15 @@ export function modelCases(): { states: Record<string, BrowserState>; cases: Cas
 	imports("a null time is refused", nullTime);
 
 	// ---- the browser's tabs ----
-	const adopt = (name: string, state: string, tabs: BrowserTab[], ids: string[]) => {
+	const adopt = (name: string, state: string, tabs: BrowserTab[], ids: string[], keepUnloaded = false) => {
 		const s = states[state];
 		if (!s) throw new Error(`no state ${state}`);
-		const [next, live] = adoptTabs(s, tabs, NOW, idsFrom(ids));
+		const [next, live] = adoptTabs(s, tabs, NOW, idsFrom(ids), keepUnloaded);
 		cases.push({
 			name,
 			op: "adoptTabs",
 			state,
-			args: { tabs, now: NOW, ids },
+			args: { tabs, now: NOW, ids, keepUnloaded },
 			expect: { state: next, live: pairs(live) },
 		});
 	};
@@ -499,6 +492,13 @@ export function modelCases(): { states: Record<string, BrowserState>; cases: Cas
 		["n1", "n2"],
 	);
 	adopt("the shown browser tab's space shows", "seed", [tab(8, "https://music.youtube.com", { active: true })], []);
+	adopt(
+		"after an import, its open tabs stay though no browser tab shows them",
+		"seed",
+		[tab(9, "https://news.ycombinator.com", { active: true }), tab(10, "https://kept.example/")],
+		["n1"],
+		true,
+	);
 
 	const [linkedState, linked] = adoptTabs(
 		seed,
@@ -545,6 +545,10 @@ export function modelCases(): { states: Record<string, BrowserState>; cases: Cas
 		"tabCreated",
 		{ tab: fromEssential, now: NOW, ids: ["n1"] },
 		(s, l) => tabCreated(s, l, fromEssential, NOW, undefined, idsFrom(["n1"])),
+	);
+	const onItsWay = tab(34, "about:blank", { active: true });
+	withLive("a new tab with no page yet waits for one", "tabCreated", { tab: onItsWay, now: NOW, ids: [] }, (s, l) =>
+		tabCreated(s, l, onItsWay, NOW, undefined, idsFrom([])),
 	);
 	const empty = tab(32, "chrome://newtab/", { openerTabId: 21 });
 	withLive("an empty tab never joins", "tabCreated", { tab: empty, now: NOW, ids: [] }, (s, l) =>

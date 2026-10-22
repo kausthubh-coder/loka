@@ -810,10 +810,8 @@ async function main() {
 		const picked = await Promise.race([picking, sleep(5000).then(() => "still waiting")]);
 		/** @type {{ spaces: { name: string }[], tabs: Record<string, { url: string }> } | null} */
 		const imported = await until(async () => {
-			/** @type {Record<string, string> | string} */
-			const store = await ask("getStore");
-			const saved = typeof store === "object" ? store["state.v1"] : undefined;
-			const state = saved ? JSON.parse(saved) : null;
+			const spaces = await ask("getSpaces");
+			const state = typeof spaces === "object" ? spaces.state : null;
 			const urls = state ? Object.values(state.tabs).map((/** @type {{ url: string }} */ t) => t.url) : [];
 			return urls.includes("https://example.com/") && urls.includes("https://www.wikipedia.org/") ? state : null;
 		}, 10000);
@@ -821,7 +819,7 @@ async function main() {
 			"Import spaces (JSON) takes the alpha's export",
 			Boolean(imported),
 			imported
-				? `state.v1 now has ${imported.spaces.map((x) => x.name).join(", ")} with the alpha's sites`
+				? `the spaces now have ${imported.spaces.map((x) => x.name).join(", ")} with the alpha's sites`
 				: `menu item ${picked}, file chooser ${opened ? "answered" : "never opened"}, alerts: ${alerts.join(" | ") || "none"}`,
 		);
 		const deadPages = imported ? Object.values(imported.tabs).filter((t) => t.url.includes(ALPHA_EXTENSION_ID)) : [];

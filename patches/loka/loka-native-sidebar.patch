@@ -653,7 +653,7 @@
    map.AddWebUIConfig(std::make_unique<SigninErrorUIConfig>());
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/BUILD.gn
-@@ -0,0 +1,77 @@
+@@ -0,0 +1,80 @@
 +# Copyright 2026 The Loka Authors
 +# You can use, redistribute, and/or modify this source code under
 +# the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -669,6 +669,8 @@
 +    "loka_sidebar_handler_features.cc",
 +    "loka_sidebar_ui.cc",
 +    "loka_sidebar_ui.h",
++    "loka_spaces_service.cc",
++    "loka_spaces_service.h",
 +    "loka_tab_sleeper.cc",
 +    "loka_tab_sleeper.h",
 +    "//chrome/browser/ui/views/loka/loka_command_bar.cc",
@@ -697,6 +699,7 @@
 +    "//chrome/browser/profiles:profile",
 +    "//chrome/browser/resource_coordinator",
 +    "//chrome/browser/ui/browser_window",
++    "//components/loka/core",
 +    "//components/performance_manager",
 +    "//chrome/browser/search_engines",
 +    "//chrome/browser/ui/tabs:tab_enums",
@@ -733,7 +736,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_history_ui.cc
-@@ -0,0 +1,211 @@
+@@ -0,0 +1,215 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -755,6 +758,7 @@
 +#include "chrome/browser/ui/navigator/browser_navigator.h"
 +#include "chrome/browser/ui/navigator/browser_navigator_params.h"
 +#include "chrome/browser/ui/webui/favicon_source.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h"
 +#include "components/favicon_base/favicon_url_parser.h"
 +#include "components/history/core/browser/history_service.h"
 +#include "components/history/core/browser/history_types.h"
@@ -820,6 +824,9 @@
 +      profile, std::make_unique<FaviconSource>(
 +                   profile, chrome::FaviconUrlFormat::kFavicon2));
 +  web_ui->AddMessageHandler(std::make_unique<LokaHistoryHandler>());
++  // The page is Loka's Library: its spaces, archived tabs and downloads come
++  // from the sidebar's handler.
++  web_ui->AddMessageHandler(std::make_unique<LokaSidebarHandler>());
 +}
 +
 +LokaHistoryUI::~LokaHistoryUI() = default;
@@ -1222,7 +1229,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_MEDIA_WATCHER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.cc
-@@ -0,0 +1,834 @@
+@@ -0,0 +1,821 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1253,6 +1260,7 @@
 +#include "chrome/browser/ui/tabs/tab_group_model.h"
 +#include "chrome/browser/ui/tabs/tab_strip_model.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
++#include "components/loka/core/spaces_delta.h"
 +#include "chrome/browser/ui/webui/webui_embedding_context.h"
 +#include "chrome/common/pref_names.h"
 +#include "components/prefs/pref_service.h"
@@ -1289,27 +1297,6 @@
 +namespace {
 +
 +// Loka's group colors are the browser's own names for them.
-+tab_groups::TabGroupColorId ColorFromName(const std::string& name) {
-+  static constexpr std::pair<const char*, tab_groups::TabGroupColorId>
-+      kColors[] = {
-+          {"grey", tab_groups::TabGroupColorId::kGrey},
-+          {"blue", tab_groups::TabGroupColorId::kBlue},
-+          {"red", tab_groups::TabGroupColorId::kRed},
-+          {"yellow", tab_groups::TabGroupColorId::kYellow},
-+          {"green", tab_groups::TabGroupColorId::kGreen},
-+          {"pink", tab_groups::TabGroupColorId::kPink},
-+          {"purple", tab_groups::TabGroupColorId::kPurple},
-+          {"cyan", tab_groups::TabGroupColorId::kCyan},
-+          {"orange", tab_groups::TabGroupColorId::kOrange},
-+      };
-+  for (const auto& [n, color] : kColors) {
-+    if (name == n) {
-+      return color;
-+    }
-+  }
-+  return tab_groups::TabGroupColorId::kGrey;
-+}
-+
 +int TabId(tabs::TabInterface* tab) {
 +  return tab->GetHandle().raw_value();
 +}
@@ -1405,6 +1392,8 @@
 +    web_ui()->RegisterMessageCallback(
 +        name, base::BindRepeating(handler, base::Unretained(this)));
 +  };
++  add("getSpaces", &LokaSidebarHandler::HandleGetSpaces);
++  add("spacesDo", &LokaSidebarHandler::HandleSpacesDo);
 +  add("syncTabs", &LokaSidebarHandler::HandleSyncTabs);
 +  add("getTabs", &LokaSidebarHandler::HandleGetTabs);
 +  add("getGroups", &LokaSidebarHandler::HandleGetGroups);
@@ -1418,9 +1407,6 @@
 +  add("goForward", &LokaSidebarHandler::HandleGoForward);
 +  add("reload", &LokaSidebarHandler::HandleReload);
 +  add("setMuted", &LokaSidebarHandler::HandleSetMuted);
-+  add("groupTabs", &LokaSidebarHandler::HandleGroupTabs);
-+  add("updateGroup", &LokaSidebarHandler::HandleUpdateGroup);
-+  add("ungroupTabs", &LokaSidebarHandler::HandleUngroupTabs);
 +  add("search", &LokaSidebarHandler::HandleSearch);
 +  add("openPage", &LokaSidebarHandler::HandleOpenPage);
 +  add("windowAction", &LokaSidebarHandler::HandleWindowAction);
@@ -1474,11 +1460,12 @@
 +  }
 +  weak_factory_.InvalidateWeakPtrs();
 +  // A reloaded page starts from nothing and hears everything again.
++  watching_spaces_ = false;
++  spaces_observation_.Reset();
 +  watching_tabs_ = false;
 +  tabs_timer_.Stop();
 +  sent_tabs_.clear();
 +  sent_order_.clear();
-+  sent_groups_ = base::ListValue();
 +  sent_media_ = base::ListValue();
 +  sent_extensions_ = base::ListValue();
 +  sent_store_ = base::DictValue();
@@ -1532,16 +1519,6 @@
 +    ++next_group_number_;
 +  }
 +  return it->second;
-+}
-+
-+std::optional<tab_groups::TabGroupId> LokaSidebarHandler::GroupFromNumber(
-+    int number) {
-+  for (const auto& [group, n] : group_numbers_) {
-+    if (n == number) {
-+      return group;
-+    }
-+  }
-+  return std::nullopt;
 +}
 +
 +std::string LokaSidebarHandler::FaviconUrl(tabs::TabInterface* tab) {
@@ -1657,11 +1634,6 @@
 +      ids.Append(id);
 +    }
 +    changes.Set("order", std::move(ids));
-+  }
-+  base::ListValue groups = GroupList();
-+  if (groups != sent_groups_) {
-+    changes.Set("groups", groups.Clone());
-+    sent_groups_ = std::move(groups);
 +  }
 +  std::erase_if(favicons_, [&now](const auto& entry) {
 +    return !now.contains(entry.first);
@@ -1783,6 +1755,99 @@
 +  ResolveJavascriptCallback(args[0], GroupList());
 +}
 +
++base::ListValue LokaSidebarHandler::LinkPairs() {
++  base::ListValue pairs;
++  BrowserWindowInterface* browser = GetBrowser();
++  if (!browser) {
++    return pairs;
++  }
++  for (const auto& [id, browser_id] :
++       LokaSpacesService::Get(Profile::FromWebUI(web_ui()))
++           ->LinksIn(browser)
++           .entries()) {
++    base::ListValue pair;
++    pair.Append(id);
++    pair.Append(browser_id);
++    pairs.Append(std::move(pair));
++  }
++  return pairs;
++}
++
++void LokaSidebarHandler::HandleGetSpaces(const base::ListValue& args) {
++  AllowJavascript();
++  if (args.empty()) {
++    return;
++  }
++  LokaSpacesService* service =
++      LokaSpacesService::Get(Profile::FromWebUI(web_ui()));
++  // Only a window's sidebar keeps its tabs in step; the command bar,
++  // Settings and the empty tab just show the spaces.
++  const GURL& url = web_ui()->GetWebContents()->GetVisibleURL();
++  const bool sidebar = url.host() == kLokaSidebarHost && !IsCommandBarPage();
++  service->WhenReady(base::BindOnce(
++      [](base::WeakPtr<LokaSidebarHandler> self, base::Value callback,
++         bool sidebar) {
++        if (!self || !self->IsJavascriptAllowed()) {
++          return;
++        }
++        LokaSpacesService* service =
++            LokaSpacesService::Get(Profile::FromWebUI(self->web_ui()));
++        if (sidebar && self->GetBrowser()) {
++          service->AttachWindow(self->GetBrowser());
++        }
++        self->watching_spaces_ = true;
++        if (!self->spaces_observation_.IsObserving()) {
++          self->spaces_observation_.Observe(service);
++        }
++        base::DictValue reply;
++        reply.Set("state", loka::ToValue(service->state()));
++        reply.Set("links", self->LinkPairs());
++        self->ResolveJavascriptCallback(callback, reply);
++      },
++      weak_factory_.GetWeakPtr(), args[0].Clone(), sidebar));
++}
++
++void LokaSidebarHandler::HandleSpacesDo(const base::ListValue& args) {
++  if (args.size() < 2 || !args[0].is_int() || !args[1].is_dict()) {
++    return;
++  }
++  LokaSpacesService* service =
++      LokaSpacesService::Get(Profile::FromWebUI(web_ui()));
++  acking_ = args[0].GetInt();
++  acked_ = false;
++  if (!service->Apply(args[1].GetDict())) {
++    LOG(ERROR) << "Loka: the sidebar sent an intent the browser doesn't know";
++  }
++  // Nothing changed (a refused move): the page still hears its intent is
++  // done, so it drops its own copy of the change.
++  if (!acked_ && IsJavascriptAllowed()) {
++    base::DictValue ack;
++    ack.Set("ack", *acking_);
++    FireWebUIListener("spaces-changed", ack);
++  }
++  acking_.reset();
++}
++
++void LokaSidebarHandler::OnSpacesChanged(const loka::State& before,
++                                         const loka::State& after) {
++  if (!watching_spaces_ || !IsJavascriptAllowed()) {
++    return;
++  }
++  base::DictValue delta = loka::ToDelta(before, after);
++  if (acking_ && !acked_) {
++    delta.Set("ack", *acking_);
++    acked_ = true;
++  }
++  FireWebUIListener("spaces-changed", delta);
++}
++
++void LokaSidebarHandler::OnLinksChanged(BrowserWindowInterface* window) {
++  if (!watching_spaces_ || !IsJavascriptAllowed() || window != GetBrowser()) {
++    return;
++  }
++  FireWebUIListener("links-changed", LinkPairs());
++}
++
 +void LokaSidebarHandler::HandleGetStore(const base::ListValue& args) {
 +  AllowJavascript();
 +  sent_store_ = StoreValue();
@@ -1896,77 +1961,6 @@
 +  }
 +}
 +
-+void LokaSidebarHandler::HandleGroupTabs(const base::ListValue& args) {
-+  AllowJavascript();
-+  TabStripModel* tab_strip = GetTabStrip();
-+  if (!tab_strip || args.size() < 3 || !args[1].is_list()) {
-+    ResolveJavascriptCallback(args[0], base::Value());
-+    return;
-+  }
-+  std::vector<int> indices;
-+  for (const base::Value& id : args[1].GetList()) {
-+    if (tabs::TabInterface* tab = FindTab(id)) {
-+      indices.push_back(tab_strip->GetIndexOfTab(tab));
-+    }
-+  }
-+  if (indices.empty()) {
-+    ResolveJavascriptCallback(args[0], base::Value());
-+    return;
-+  }
-+  std::sort(indices.begin(), indices.end());
-+  std::optional<tab_groups::TabGroupId> group =
-+      args[2].is_int() ? GroupFromNumber(args[2].GetInt()) : std::nullopt;
-+  if (group && tab_strip->group_model()->ContainsTabGroup(*group)) {
-+    tab_strip->AddToExistingGroup(indices, *group);
-+  } else {
-+    group = tab_strip->AddToNewGroup(indices);
-+  }
-+  // The page hears of the group before it gets its number.
-+  SendTabsChanged();
-+  ResolveJavascriptCallback(args[0], base::Value(GroupNumber(*group)));
-+}
-+
-+void LokaSidebarHandler::HandleUpdateGroup(const base::ListValue& args) {
-+  TabStripModel* tab_strip = GetTabStrip();
-+  if (!tab_strip || args.size() < 4 || !args[0].is_int()) {
-+    return;
-+  }
-+  std::optional<tab_groups::TabGroupId> id = GroupFromNumber(args[0].GetInt());
-+  if (!id || !tab_strip->group_model()->ContainsTabGroup(*id)) {
-+    return;
-+  }
-+  TabGroup* group = tab_strip->group_model()->GetTabGroup(*id);
-+  const tab_groups::TabGroupVisualData* old = group->visual_data();
-+  std::u16string title = args[1].is_string()
-+                             ? base::UTF8ToUTF16(args[1].GetString())
-+                             : old->title();
-+  tab_groups::TabGroupColorId color = args[2].is_string()
-+                                          ? ColorFromName(args[2].GetString())
-+                                          : old->color();
-+  bool collapsed =
-+      args[3].is_bool() ? args[3].GetBool() : old->is_collapsed();
-+  tab_strip->ChangeTabGroupVisuals(
-+      *id, tab_groups::TabGroupVisualData(title, color, collapsed));
-+}
-+
-+void LokaSidebarHandler::HandleUngroupTabs(const base::ListValue& args) {
-+  TabStripModel* tab_strip = GetTabStrip();
-+  if (!tab_strip || args.empty() || !args[0].is_list()) {
-+    return;
-+  }
-+  std::vector<int> indices;
-+  for (const base::Value& id : args[0].GetList()) {
-+    if (tabs::TabInterface* tab = FindTab(id)) {
-+      indices.push_back(tab_strip->GetIndexOfTab(tab));
-+    }
-+  }
-+  if (indices.empty()) {
-+    return;
-+  }
-+  std::sort(indices.begin(), indices.end());
-+  tab_strip->RemoveFromGroup(indices);
-+}
-+
 +void LokaSidebarHandler::HandleSearch(const base::ListValue& args) {
 +  BrowserWindowInterface* browser = GetBrowser();
 +  if (!browser || args.size() < 2 || !args[0].is_string()) {
@@ -2059,7 +2053,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h
-@@ -0,0 +1,268 @@
+@@ -0,0 +1,286 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2084,6 +2078,7 @@
 +#include "base/values.h"
 +#include "chrome/browser/extensions/extension_uninstall_dialog.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_media_watcher.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_spaces_service.h"
 +#include "chrome/browser/extensions/extension_action_dispatcher.h"
 +#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 +#include "chrome/browser/ui/toolbar/toolbar_actions_model.h"
@@ -2104,17 +2099,16 @@
 +class TabInterface;
 +}
 +
-+// The sidebar's line to its window: the real tabs and tab groups, and Loka's
-+// store in the profile's prefs. Tabs are named by their TabHandle and groups
++// The sidebar's line to its window: the real tabs, Loka's spaces (kept by
++// LokaSpacesService), and Loka's settings in the profile's prefs. Tabs are named by their TabHandle and groups
 +// by a number this handler hands out, so the page works with plain numbers.
 +//
 +// Page -> browser (chrome.send):
-+//   syncTabs(cb), getTabs(cb), getGroups(cb), getStore(cb),
++//   getSpaces(cb), spacesDo(seq, intent), syncTabs(cb), getTabs(cb), getGroups(cb), getStore(cb),
 +//   setStore(key, value|null),
 +//   createTab(cb, url, active), activateTab(id), closeTab(id),
 +//   navigateTab(id, url), goBack(id), goForward(id), reload(id),
-+//   setMuted(id, muted), groupTabs(cb, ids, groupId|-1),
-+//   updateGroup(groupId, title, color, collapsed), ungroupTabs(ids),
++//   setMuted(id, muted),
 +//   search(query, newTab), openPage(url),
 +//   windowAction("minimize"|"maximize"|"close"), startWindowDrag(),
 +//   getExtensions(cb), runExtension(id, anchor), setExtensionPinned(id, on),
@@ -2122,7 +2116,9 @@
 +//   mediaAction(tabId, action), suggest(query), setSidebarPinned(on),
 +//   getSidebarPinned(cb), setColorScheme("light"|"dark"|"system")
 +// Browser -> page (WebUI listeners):
-+//   "tabs-changed" ({tabs?, removed?, order?, groups?}, only what changed
++//   "spaces-changed" (what changed in the spaces, with `ack` for the
++//   page's own intent), "links-changed" (this window's links),
++//   "tabs-changed" ({tabs?, removed?, order?}, only what changed
 +//   since the last one, after syncTabs), "store-changed" (the keys another
 +//   page changed), "extensions-changed", "downloads-changed",
 +//   "media-changed", "suggestions" (query, list),
@@ -2134,7 +2130,8 @@
 +                           public download::AllDownloadItemNotifier::Observer,
 +                           public AutocompleteController::Observer,
 +                           public extensions::ExtensionHostObserver,
-+                           public extensions::ExtensionUninstallDialog::Delegate {
++                           public extensions::ExtensionUninstallDialog::Delegate,
++                           public LokaSpacesService::Observer {
 + public:
 +  // Ctrl+T and Ctrl+L: hands `command` to the sidebar of `browser`'s window
 +  // and focuses it. False when that window has no sidebar to take it.
@@ -2200,6 +2197,11 @@
 +  void OnExtensionUninstallDialogClosed(bool did_start_uninstall,
 +                                        const std::u16string& error) override;
 +
++  // LokaSpacesService::Observer:
++  void OnSpacesChanged(const loka::State& before,
++                       const loka::State& after) override;
++  void OnLinksChanged(BrowserWindowInterface* window) override;
++
 + private:
 +  // The browser features beyond tabs, in loka_sidebar_handler_features.cc.
 +  void StartObservingFeatures();
@@ -2239,14 +2241,13 @@
 +  // The tab with this id, if it's in this window.
 +  tabs::TabInterface* FindTab(const base::Value& id);
 +  int GroupNumber(const tab_groups::TabGroupId& group);
-+  std::optional<tab_groups::TabGroupId> GroupFromNumber(int number);
 +
 +  base::ListValue TabList();
 +  base::DictValue TabData(tabs::TabInterface* tab, int index);
 +  std::string FaviconUrl(tabs::TabInterface* tab);
 +  base::ListValue GroupList();
 +  base::DictValue StoreValue();
-+  // What changed in the window's tabs and groups since the page last heard,
++  // What changed in the window's tabs since the page last heard,
 +  // and remembers it as heard. Empty when nothing did.
 +  base::DictValue TabChanges();
 +
@@ -2256,6 +2257,13 @@
 +  void OnStoreChanged();
 +  void StartObserving();
 +
++  // The spaces, from LokaSpacesService: getSpaces answers {state, links}
++  // once they're read (and makes a sidebar's window follow them); spacesDo
++  // applies an intent and answers with a "spaces-changed" carrying its `ack`.
++  void HandleGetSpaces(const base::ListValue& args);
++  void HandleSpacesDo(const base::ListValue& args);
++  // This window's links, Loka tab id to browser tab, as [[id, tab], ...].
++  base::ListValue LinkPairs();
 +  void HandleSyncTabs(const base::ListValue& args);
 +  void HandleGetTabs(const base::ListValue& args);
 +  void HandleGetGroups(const base::ListValue& args);
@@ -2269,15 +2277,20 @@
 +  void HandleGoForward(const base::ListValue& args);
 +  void HandleReload(const base::ListValue& args);
 +  void HandleSetMuted(const base::ListValue& args);
-+  void HandleGroupTabs(const base::ListValue& args);
-+  void HandleUpdateGroup(const base::ListValue& args);
-+  void HandleUngroupTabs(const base::ListValue& args);
 +  void HandleSearch(const base::ListValue& args);
 +  void HandleOpenPage(const base::ListValue& args);
 +  void HandleWindowAction(const base::ListValue& args);
 +  void HandleStartWindowDrag(const base::ListValue& args);
 +
 +  raw_ptr<TabStripModel> observed_ = nullptr;
++  // The page asked for the spaces and hears their changes.
++  bool watching_spaces_ = false;
++  // The page's intent being applied, and whether a change has carried its
++  // number back yet.
++  std::optional<int> acking_;
++  bool acked_ = false;
++  base::ScopedObservation<LokaSpacesService, LokaSpacesService::Observer>
++      spaces_observation_{this};
 +  PrefChangeRegistrar pref_change_registrar_;
 +  // Only a page that called syncTabs hears "tabs-changed" (the sidebar). The
 +  // command bar, Settings and the empty tab ask when they need the tabs.
@@ -2287,7 +2300,6 @@
 +  // What the page has heard, to send it only what changed.
 +  std::map<int32_t, base::DictValue> sent_tabs_;
 +  std::vector<int32_t> sent_order_;
-+  base::ListValue sent_groups_;
 +  base::ListValue sent_media_;
 +  base::ListValue sent_extensions_;
 +  base::DictValue sent_store_;
@@ -3547,6 +3559,985 @@
 +};
 +
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_UI_H_
+--- /dev/null
++++ b/chrome/browser/ui/webui/loka_sidebar/loka_spaces_service.cc
+@@ -0,0 +1,798 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#include "chrome/browser/ui/webui/loka_sidebar/loka_spaces_service.h"
++
++#include <algorithm>
++#include <cmath>
++#include <utility>
++
++#include "base/files/file_path.h"
++#include "base/files/file_util.h"
++#include "base/functional/bind.h"
++#include "base/json/json_reader.h"
++#include "base/json/json_writer.h"
++#include "base/location.h"
++#include "base/logging.h"
++#include "base/no_destructor.h"
++#include "base/strings/utf_string_conversions.h"
++#include "base/task/sequenced_task_runner.h"
++#include "base/task/single_thread_task_runner.h"
++#include "base/task/thread_pool.h"
++#include "base/time/time.h"
++#include "base/uuid.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
++#include "chrome/browser/ui/navigator/browser_navigator.h"
++#include "chrome/browser/ui/navigator/browser_navigator_params.h"
++#include "chrome/browser/ui/tab_ui_helper.h"
++#include "chrome/browser/ui/tabs/tab_enums.h"
++#include "chrome/browser/ui/tabs/tab_group_model.h"
++#include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
++#include "components/loka/core/intents.h"
++#include "components/prefs/pref_service.h"
++#include "components/tab_groups/tab_group_color.h"
++#include "components/tab_groups/tab_group_visual_data.h"
++#include "components/tabs/public/tab_group.h"
++#include "components/tabs/public/tab_interface.h"
++#include "content/public/browser/web_contents.h"
++#include "ui/base/page_transition_types.h"
++#include "ui/base/window_open_disposition.h"
++#include "url/gurl.h"
++
++namespace {
++
++const char kServiceKey[] = "loka.spaces_service";
++const base::FilePath::CharType kSpacesFile[] =
++    FILE_PATH_LITERAL("Loka Spaces.json");
++const base::FilePath::CharType kArchiveFile[] =
++    FILE_PATH_LITERAL("Loka Archive.json");
++// How long saving waits to batch changes. A crash loses at most this much.
++constexpr base::TimeDelta kSaveAfter = base::Seconds(2);
++constexpr base::TimeDelta kArchiveEvery = base::Minutes(1);
++constexpr double kDefaultArchiveHours = 12;
++// The spaces' key in the loka.store pref, where the sidebar kept them before.
++const char kOldStateKey[] = "state.v1";
++const char kUiKey[] = "ui.v1";
++
++double Now() {
++  return base::Time::Now().InMillisecondsFSinceUnixEpoch();
++}
++
++std::string NewId() {
++  return base::Uuid::GenerateRandomV4().AsLowercaseString();
++}
++
++tab_groups::TabGroupColorId ColorFromName(const std::string& name) {
++  static constexpr std::pair<const char*, tab_groups::TabGroupColorId>
++      kColors[] = {
++          {"grey", tab_groups::TabGroupColorId::kGrey},
++          {"blue", tab_groups::TabGroupColorId::kBlue},
++          {"red", tab_groups::TabGroupColorId::kRed},
++          {"yellow", tab_groups::TabGroupColorId::kYellow},
++          {"green", tab_groups::TabGroupColorId::kGreen},
++          {"pink", tab_groups::TabGroupColorId::kPink},
++          {"purple", tab_groups::TabGroupColorId::kPurple},
++          {"cyan", tab_groups::TabGroupColorId::kCyan},
++          {"orange", tab_groups::TabGroupColorId::kOrange},
++      };
++  for (const auto& [n, color] : kColors) {
++    if (name == n) {
++      return color;
++    }
++  }
++  return tab_groups::TabGroupColorId::kGrey;
++}
++
++std::optional<std::string> ReadFile(const base::FilePath& path) {
++  std::string text;
++  if (!base::ReadFileToString(path, &text)) {
++    return std::nullopt;
++  }
++  return text;
++}
++
++// The settings' archiveAfterHours, read as parseUiPrefs reads it: 12 when
++// missing, 0 never.
++double ArchiveHours(const std::string* ui_json) {
++  std::optional<base::Value> ui =
++      ui_json ? base::JSONReader::Read(*ui_json, base::JSON_PARSE_RFC)
++              : std::nullopt;
++  const base::Value* hours =
++      ui && ui->is_dict() ? ui->GetDict().Find("archiveAfterHours") : nullptr;
++  std::optional<double> value = hours ? hours->GetIfDouble() : std::nullopt;
++  if (!value || !std::isfinite(*value) || *value < 0) {
++    return kDefaultArchiveHours;
++  }
++  return *value;
++}
++
++int TabNumber(tabs::TabInterface* tab) {
++  return tab->GetHandle().raw_value();
++}
++
++}  // namespace
++
++LokaSpacesService::Window::Window() = default;
++LokaSpacesService::Window::~Window() = default;
++
++// static
++LokaSpacesService* LokaSpacesService::Get(Profile* profile) {
++  auto* service =
++      static_cast<LokaSpacesService*>(profile->GetUserData(kServiceKey));
++  if (!service) {
++    auto made = std::make_unique<LokaSpacesService>(profile);
++    service = made.get();
++    profile->SetUserData(kServiceKey, std::move(made));
++  }
++  return service;
++}
++
++LokaSpacesService::LokaSpacesService(Profile* profile) : profile_(profile) {
++  profile_->AddObserver(this);
++  scoped_refptr<base::SequencedTaskRunner> files =
++      base::ThreadPool::CreateSequencedTaskRunner(
++          {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
++           base::TaskShutdownBehavior::BLOCK_SHUTDOWN});
++  const base::FilePath spaces = profile_->GetPath().Append(kSpacesFile);
++  const base::FilePath archive = profile_->GetPath().Append(kArchiveFile);
++  spaces_writer_ = std::make_unique<base::ImportantFileWriter>(
++      spaces, files, kSaveAfter);
++  archive_writer_ = std::make_unique<base::ImportantFileWriter>(
++      archive, files, kSaveAfter);
++  files->PostTaskAndReplyWithResult(
++      FROM_HERE,
++      base::BindOnce(
++          [](base::FilePath spaces, base::FilePath archive) {
++            return std::make_pair(ReadFile(spaces), ReadFile(archive));
++          },
++          spaces, archive),
++      base::BindOnce(
++          [](base::WeakPtr<LokaSpacesService> self,
++             std::pair<std::optional<std::string>, std::optional<std::string>>
++                 files) {
++            if (self) {
++              self->OnLoaded(std::move(files.first), std::move(files.second));
++            }
++          },
++          weak_factory_.GetWeakPtr()));
++}
++
++LokaSpacesService::~LokaSpacesService() {
++  if (profile_) {
++    OnProfileWillBeDestroyed(profile_);
++  }
++}
++
++void LokaSpacesService::OnProfileWillBeDestroyed(Profile* profile) {
++  archive_timer_.Stop();
++  for (const std::unique_ptr<Window>& window : windows_) {
++    window->tab_strip->RemoveObserver(this);
++  }
++  windows_.clear();
++  // The last changes reach the disk before the profile goes.
++  if (spaces_writer_->HasPendingWrite()) {
++    spaces_writer_->DoScheduledWrite();
++  }
++  profile_->RemoveObserver(this);
++  profile_ = nullptr;
++}
++
++void LokaSpacesService::OnLoaded(std::optional<std::string> spaces,
++                                 std::optional<std::string> archive) {
++  std::optional<loka::State> loaded;
++  bool save = false;
++  if (spaces) {
++    std::optional<base::Value> value =
++        base::JSONReader::Read(*spaces, base::JSON_PARSE_RFC);
++    if (value && value->is_dict()) {
++      std::optional<base::Value> archived =
++          archive ? base::JSONReader::Read(*archive, base::JSON_PARSE_RFC)
++                  : std::nullopt;
++      value->GetDict().Set("archive", archived && archived->is_list()
++                                          ? std::move(*archived)
++                                          : base::Value(base::ListValue()));
++      loaded = loka::ImportState(*value);
++    }
++    if (!loaded) {
++      LOG(ERROR) << "Loka Spaces.json doesn't hold valid spaces; starting from "
++                    "the older copy in the profile's prefs.";
++    }
++  }
++  if (!loaded) {
++    // Migrating: the sidebar kept the spaces in the loka.store pref.
++    const std::string* old = profile_->GetPrefs()
++                                 ->GetDict(kLokaSidebarStorePref)
++                                 .FindString(kOldStateKey);
++    loaded = old ? loka::ImportStateJson(*old) : std::nullopt;
++    save = true;
++  }
++  if (!loaded) {
++    loaded = loka::FirstState(NewId());
++  }
++  state_ = std::move(*loaded);
++  ready_ = true;
++  if (save) {
++    spaces_writer_->ScheduleWrite(this);
++    SaveArchive();
++  }
++  archive_timer_.Start(FROM_HERE, kArchiveEvery,
++                       base::BindRepeating(&LokaSpacesService::ArchiveOld,
++                                           base::Unretained(this)));
++  std::vector<base::OnceClosure> waiting = std::move(when_ready_);
++  for (base::OnceClosure& done : waiting) {
++    std::move(done).Run();
++  }
++}
++
++void LokaSpacesService::WhenReady(base::OnceClosure done) {
++  if (ready_) {
++    std::move(done).Run();
++    return;
++  }
++  when_ready_.push_back(std::move(done));
++}
++
++std::optional<std::string> LokaSpacesService::SerializeData() {
++  base::DictValue value = loka::ToValue(state_);
++  value.Remove("archive");
++  return base::WriteJson(value);
++}
++
++void LokaSpacesService::SaveArchive() {
++  base::DictValue value = loka::ToValue(state_);
++  if (std::optional<std::string> json = base::WriteJson(*value.Find("archive"))) {
++    archive_writer_->WriteNow(std::move(*json));
++  }
++}
++
++void LokaSpacesService::Commit(loka::State next) {
++  if (next == state_) {
++    return;
++  }
++  loka::State before = std::exchange(state_, std::move(next));
++  spaces_writer_->ScheduleWrite(this);
++  if (before.archive != state_.archive) {
++    SaveArchive();
++  }
++  for (Observer& observer : observers_) {
++    observer.OnSpacesChanged(before, state_);
++  }
++}
++
++bool LokaSpacesService::Apply(const base::DictValue& intent) {
++  if (!ready_) {
++    return false;
++  }
++  std::optional<loka::State> next = loka::ApplyIntent(state_, intent);
++  if (!next) {
++    return false;
++  }
++  const std::string* op = intent.FindString("op");
++  if (op && *op == "replaceState" && !(*next == state_)) {
++    // New spaces (an import, another device's): the old links mean nothing
++    // in them, so the open tabs are matched again by address, as at startup.
++    // Without this, every tab not in the new spaces would close.
++    for (const std::unique_ptr<Window>& window : windows_) {
++      window->live = loka::LiveMap();
++      window->groups.clear();
++    }
++    AdoptAll(std::move(*next), /*keep_unloaded=*/true);
++    return true;
++  }
++  Commit(std::move(*next));
++  // Every window follows what the sidebar asked for, as each window's sync
++  // did when another window changed the spaces.
++  for (const std::unique_ptr<Window>& window : windows_) {
++    Schedule(*window, Pass::kUi);
++  }
++  return true;
++}
++
++void LokaSpacesService::AttachWindow(BrowserWindowInterface* browser) {
++  if (!profile_ || FindWindow(browser)) {
++    return;
++  }
++  if (!ready_) {
++    WhenReady(base::BindOnce(&LokaSpacesService::AttachWindow,
++                             weak_factory_.GetWeakPtr(),
++                             base::Unretained(browser)));
++    return;
++  }
++  auto attach = [this](BrowserWindowInterface* each) {
++    if (FindWindow(each)) {
++      return;
++    }
++    auto window = std::make_unique<Window>();
++    window->browser = each;
++    window->tab_strip = each->GetTabStripModel();
++    window->number = next_window_number_++;
++    window->shown_space = state_.active_space_id;
++    each->GetTabStripModel()->AddObserver(this);
++    windows_.push_back(std::move(window));
++  };
++  if (adopted_) {
++    // A window opened later: its tabs come in as new ones at the first look.
++    attach(browser);
++    Schedule(*windows_.back(), Pass::kBrowser);
++    return;
++  }
++  // The first sidebar: take over every window's tabs at once, so a window
++  // whose sidebar loads later doesn't lose its open tabs.
++  for (BrowserWindowInterface* each : GetAllBrowserWindowInterfaces()) {
++    if (each->GetProfile() == profile_ &&
++        each->GetType() == BrowserWindowInterface::TYPE_NORMAL) {
++      attach(each);
++    }
++  }
++  attach(browser);
++  AdoptAll(state_, /*keep_unloaded=*/false);
++}
++
++void LokaSpacesService::AdoptAll(const loka::State& from,
++                                 bool keep_unloaded) {
++  adopted_ = true;
++  std::vector<loka::BrowserTab> tabs;
++  for (const std::unique_ptr<Window>& window : windows_) {
++    std::vector<loka::BrowserTab> each = TabsOf(*window);
++    for (const loka::BrowserTab& tab : each) {
++      window->seen[tab.id] = tab;
++    }
++    tabs.insert(tabs.end(), each.begin(), each.end());
++  }
++  auto [next, live] =
++      loka::AdoptTabs(from, tabs, Now(), [] { return NewId(); }, keep_unloaded);
++  for (const auto& [lokaId, browser_id] : live.entries()) {
++    for (const std::unique_ptr<Window>& window : windows_) {
++      if (window->seen.contains(browser_id)) {
++        window->live.Set(lokaId, browser_id);
++        break;
++      }
++    }
++  }
++  Commit(std::move(next));
++  for (const std::unique_ptr<Window>& window : windows_) {
++    window->shown_space = state_.active_space_id;
++    for (Observer& observer : observers_) {
++      observer.OnLinksChanged(window->browser);
++    }
++    Schedule(*window, Pass::kBrowser);
++  }
++}
++
++const loka::LiveMap& LokaSpacesService::LinksIn(
++    BrowserWindowInterface* browser) const {
++  static const base::NoDestructor<loka::LiveMap> kNone;
++  for (const std::unique_ptr<Window>& window : windows_) {
++    if (window->browser == browser) {
++      return window->live;
++    }
++  }
++  return *kNone;
++}
++
++void LokaSpacesService::AddObserver(Observer* observer) {
++  observers_.AddObserver(observer);
++}
++
++void LokaSpacesService::RemoveObserver(Observer* observer) {
++  observers_.RemoveObserver(observer);
++}
++
++LokaSpacesService::Window* LokaSpacesService::FindWindow(
++    BrowserWindowInterface* browser) {
++  for (const std::unique_ptr<Window>& window : windows_) {
++    if (window->browser == browser) {
++      return window.get();
++    }
++  }
++  return nullptr;
++}
++
++LokaSpacesService::Window* LokaSpacesService::FindWindow(
++    TabStripModel* tab_strip) {
++  for (const std::unique_ptr<Window>& window : windows_) {
++    if (window->tab_strip == tab_strip) {
++      return window.get();
++    }
++  }
++  return nullptr;
++}
++
++void LokaSpacesService::OnTabStripModelChanged(
++    TabStripModel* tab_strip_model,
++    const TabStripModelChange& change,
++    const TabStripSelectionChange& selection) {
++  if (Window* window = FindWindow(tab_strip_model)) {
++    Schedule(*window, Pass::kBrowser);
++  }
++}
++
++void LokaSpacesService::OnTabChangedAt(tabs::TabInterface* tab,
++                                       TabChangeType change_type) {
++  // Spinners and progress change many times a second; only an address or
++  // title matters to the spaces.
++  if (change_type != TabChangeType::kAll) {
++    return;
++  }
++  if (Window* window = FindWindow(tab->GetBrowserWindowInterface())) {
++    Schedule(*window, Pass::kBrowser);
++  }
++}
++
++void LokaSpacesService::OnTabStripModelDestroyed(
++    TabStripModel* tab_strip_model) {
++  // The window is going: it's half torn down, so only its tab strip, kept
++  // from when it was attached, is safe to compare. TabStripModelObserver has
++  // already stopped observing it.
++  std::erase_if(windows_, [&](const std::unique_ptr<Window>& window) {
++    return window->tab_strip == tab_strip_model;
++  });
++}
++
++int LokaSpacesService::GroupNumber(const tab_groups::TabGroupId& group) {
++  auto [it, inserted] = group_numbers_.try_emplace(group, next_group_number_);
++  if (inserted) {
++    ++next_group_number_;
++  }
++  return it->second;
++}
++
++std::optional<tab_groups::TabGroupId> LokaSpacesService::GroupFromNumber(
++    int number) {
++  for (const auto& [group, n] : group_numbers_) {
++    if (n == number) {
++      return group;
++    }
++  }
++  return std::nullopt;
++}
++
++std::vector<loka::BrowserTab> LokaSpacesService::TabsOf(Window& window) {
++  std::vector<loka::BrowserTab> tabs;
++  TabStripModel* tab_strip = window.tab_strip;
++  for (int i = 0; i < tab_strip->count(); ++i) {
++    tabs::TabInterface* tab = tab_strip->GetTabAtIndex(i);
++    TabUIHelper* helper = TabUIHelper::From(tab);
++    GURL url = helper ? helper->GetLastCommittedURL() : GURL();
++    if ((!url.is_valid() || url.is_empty()) && helper) {
++      url = helper->GetVisibleURL();
++    }
++    loka::BrowserTab each;
++    each.id = TabNumber(tab);
++    each.url = url.spec();
++    each.title = helper ? base::UTF16ToUTF8(helper->GetTitle()) : std::string();
++    each.active = i == tab_strip->active_index();
++    std::optional<tab_groups::TabGroupId> group = tab->GetGroup();
++    each.group_id = group ? GroupNumber(*group) : -1;
++    each.window_id = window.number;
++    if (tabs::TabInterface* opener = tab_strip->GetOpenerOfTabAt(i)) {
++      each.opener_tab_id = TabNumber(opener);
++    }
++    each.last_accessed =
++        tab->GetContents()->GetLastActiveTime().InMillisecondsFSinceUnixEpoch();
++    tabs.push_back(std::move(each));
++  }
++  return tabs;
++}
++
++void LokaSpacesService::Schedule(Window& window, Pass pass) {
++  if (pass == Pass::kUi) {
++    window.ui_pass = true;
++  }
++  if (window.pending) {
++    return;
++  }
++  window.pending = true;
++  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
++      FROM_HERE, base::BindOnce(&LokaSpacesService::LookAndPass,
++                                weak_factory_.GetWeakPtr(), window.number));
++}
++
++void LokaSpacesService::LookAndPass(int window_number) {
++  auto it = std::ranges::find(windows_, window_number,
++                              [](const std::unique_ptr<Window>& window) {
++                                return window->number;
++                              });
++  if (it == windows_.end() || !profile_) {
++    return;
++  }
++  Window& window = **it;
++  window.pending = false;
++  Look(window);
++  const Pass pass = window.ui_pass ? Pass::kUi : Pass::kBrowser;
++  window.ui_pass = false;
++  Reconcile(window, pass);
++}
++
++void LokaSpacesService::Look(Window& window) {
++  std::vector<loka::BrowserTab> tabs = TabsOf(window);
++  std::map<int, loka::BrowserTab> before = std::move(window.seen);
++  // A tab keeps the opener it had when first seen: a new tab waits for its
++  // first page before joining a space, and if the tab that opened it (an
++  // empty tab) closes meanwhile, the browser hands it that tab's opener,
++  // which may be in another space.
++  for (loka::BrowserTab& tab : tabs) {
++    if (auto old = before.find(tab.id); old != before.end()) {
++      tab.opener_tab_id = old->second.opener_tab_id;
++    }
++  }
++  window.seen.clear();
++  for (const loka::BrowserTab& tab : tabs) {
++    window.seen[tab.id] = tab;
++  }
++  loka::State next = state_;
++  const loka::LiveMap links = window.live;
++  for (const loka::BrowserTab& tab : tabs) {
++    auto old = before.find(tab.id);
++    if (old == before.end()) {
++      if (window.empty_tabs.erase(tab.id)) {
++        continue;
++      }
++      // A tab dragged in from another window brings its link along.
++      for (const std::unique_ptr<Window>& other : windows_) {
++        if (other.get() == &window) {
++          continue;
++        }
++        if (std::optional<loka::TabId> id = other->live.TabIdOf(tab.id)) {
++          other->live.Erase(*id);
++          window.live.Set(*id, tab.id);
++          for (Observer& observer : observers_) {
++            observer.OnLinksChanged(other->browser);
++          }
++        }
++      }
++      std::tie(next, window.live) = loka::TabCreated(
++          next, window.live, tab, Now(), std::nullopt, [] { return NewId(); });
++      continue;
++    }
++    if (old->second.title != tab.title || old->second.url != tab.url) {
++      std::tie(next, window.live) =
++          loka::TabUpdated(next, window.live, tab, Now(), [] { return NewId(); });
++    }
++    if (tab.active && !old->second.active) {
++      next = loka::TabActivated(next, window.live, tab.id, Now());
++    }
++  }
++  for (const auto& [id, tab] : before) {
++    if (window.seen.contains(id)) {
++      continue;
++    }
++    // Moving to another window isn't closing: that window takes the link.
++    tabs::TabInterface* still = tabs::TabHandle(id).Get();
++    if (still && still->GetBrowserWindowInterface() &&
++        FindWindow(still->GetBrowserWindowInterface())) {
++      continue;
++    }
++    std::tie(next, window.live) = loka::TabRemoved(next, window.live, id);
++  }
++  const bool changed = !(next == state_);
++  Commit(std::move(next));
++  if (!(links == window.live)) {
++    for (Observer& observer : observers_) {
++      observer.OnLinksChanged(window.browser);
++    }
++  }
++  // Other windows follow, as each window's sync followed another's writes.
++  if (changed) {
++    for (const std::unique_ptr<Window>& other : windows_) {
++      if (other.get() != &window) {
++        Schedule(*other, Pass::kUi);
++      }
++    }
++  }
++}
++
++void LokaSpacesService::Reconcile(Window& window, Pass pass) {
++  TabStripModel* tab_strip = window.tab_strip;
++  // Groups closed by hand are forgotten.
++  std::set<int> known;
++  if (tab_strip->group_model()) {
++    for (const tab_groups::TabGroupId& group :
++         tab_strip->group_model()->ListTabGroups()) {
++      known.insert(GroupNumber(group));
++    }
++  }
++  std::erase_if(window.groups, [&](const auto& entry) {
++    return !known.contains(entry.second.id);
++  });
++  std::vector<loka::BrowserTab> tabs = TabsOf(window);
++  // The window is never left on another space's tab: after a switch, or when
++  // the tab on screen was just moved to another space, it shows this space's
++  // tab (or a new empty one).
++  auto on_screen = std::ranges::find_if(tabs, &loka::BrowserTab::active);
++  std::optional<loka::TabId> on_screen_loka =
++      on_screen == tabs.end() ? std::nullopt
++                              : window.live.TabIdOf(on_screen->id);
++  std::optional<std::string> home =
++      on_screen_loka ? loka::HomeOf(state_, *on_screen_loka) : std::nullopt;
++  const bool elsewhere = home && *home != "essentials" &&
++                         *home != state_.active_space_id;
++  const bool switched =
++      pass == Pass::kUi &&
++      (window.shown_space != state_.active_space_id || elsewhere);
++  window.shown_space = state_.active_space_id;
++  const loka::LiveMap links = window.live;
++  for (const loka::Op& op :
++       loka::PlanReconcile(state_, window.live, tabs, window.groups, switched)) {
++    const bool moves_focus = op.kind == loka::Op::Kind::kActivate ||
++                             op.kind == loka::Op::Kind::kCreate ||
++                             op.kind == loka::Op::Kind::kEmptyTab;
++    if (pass == Pass::kUi || !moves_focus) {
++      Run(window, op);
++    }
++  }
++  if (!(links == window.live)) {
++    for (Observer& observer : observers_) {
++      observer.OnLinksChanged(window.browser);
++    }
++  }
++}
++
++void LokaSpacesService::Run(Window& window, const loka::Op& op) {
++  BrowserWindowInterface* browser = window.browser;
++  TabStripModel* tab_strip = window.tab_strip;
++  auto index_of = [&](int id) {
++    tabs::TabInterface* tab = tabs::TabHandle(id).Get();
++    return tab ? tab_strip->GetIndexOfTab(tab) : TabStripModel::kNoTab;
++  };
++  auto indices_of = [&](const std::vector<int>& ids) {
++    std::vector<int> indices;
++    for (int id : ids) {
++      int index = index_of(id);
++      if (index != TabStripModel::kNoTab) {
++        indices.push_back(index);
++      }
++    }
++    std::ranges::sort(indices);
++    return indices;
++  };
++  auto open = [&](const std::string& spec) -> std::optional<int> {
++    NavigateParams params(browser, GURL(spec), ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
++    params.disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
++    Navigate(&params);
++    tabs::TabInterface* tab =
++        params.navigated_or_inserted_contents
++            ? tabs::TabInterface::MaybeGetFromContents(
++                  params.navigated_or_inserted_contents)
++            : nullptr;
++    return tab ? std::optional<int>(TabNumber(tab)) : std::nullopt;
++  };
++  auto visuals = [&](int group_number, const std::optional<std::string>& title,
++                     const std::optional<std::string>& color,
++                     std::optional<bool> collapsed) {
++    std::optional<tab_groups::TabGroupId> id = GroupFromNumber(group_number);
++    if (!id || !tab_strip->group_model()->ContainsTabGroup(*id)) {
++      return;
++    }
++    const tab_groups::TabGroupVisualData* old =
++        tab_strip->group_model()->GetTabGroup(*id)->visual_data();
++    tab_strip->ChangeTabGroupVisuals(
++        *id, tab_groups::TabGroupVisualData(
++                 title ? base::UTF8ToUTF16(*title) : old->title(),
++                 color ? ColorFromName(*color) : old->color(),
++                 collapsed.value_or(old->is_collapsed())));
++  };
++  auto record = [&](const std::string& key) -> loka::GroupRecord* {
++    auto it = std::ranges::find(
++        window.groups, key,
++        &std::pair<std::string, loka::GroupRecord>::first);
++    return it == window.groups.end() ? nullptr : &it->second;
++  };
++
++  switch (op.kind) {
++    case loka::Op::Kind::kCreate: {
++      if (std::optional<int> made = open(state_.tabs.at(op.tab_id).url)) {
++        window.live.Set(op.tab_id, *made);
++        // Seen now, so the next look doesn't take it for a tab of its own.
++        for (const loka::BrowserTab& tab : TabsOf(window)) {
++          if (tab.id == *made) {
++            window.seen[tab.id] = tab;
++          }
++        }
++      }
++      break;
++    }
++    case loka::Op::Kind::kEmptyTab:
++      if (std::optional<int> made = open("chrome://newtab/")) {
++        window.empty_tabs.insert(*made);
++      }
++      break;
++    case loka::Op::Kind::kActivate: {
++      int index = index_of(op.browser_id);
++      if (index != TabStripModel::kNoTab) {
++        tab_strip->ActivateTabAt(index);
++      }
++      break;
++    }
++    case loka::Op::Kind::kRemove: {
++      int index = index_of(op.browser_id);
++      if (index != TabStripModel::kNoTab) {
++        tab_strip->CloseWebContentsAt(
++            index, TabCloseTypes::CLOSE_USER_GESTURE |
++                       TabCloseTypes::CLOSE_CREATE_HISTORICAL_TAB);
++      }
++      break;
++    }
++    case loka::Op::Kind::kGroup: {
++      std::vector<int> indices = indices_of(op.browser_ids);
++      if (indices.empty()) {
++        break;
++      }
++      loka::GroupRecord* existing = record(op.key);
++      std::optional<tab_groups::TabGroupId> group =
++          existing ? GroupFromNumber(existing->id) : std::nullopt;
++      if (group && tab_strip->group_model()->ContainsTabGroup(*group)) {
++        tab_strip->AddToExistingGroup(indices, *group);
++      } else {
++        group = tab_strip->AddToNewGroup(indices);
++      }
++      const int number = GroupNumber(*group);
++      visuals(number, op.title, op.color, false);
++      loka::GroupRecord fresh{number, false, op.title, op.color};
++      if (loka::GroupRecord* kept = record(op.key)) {
++        *kept = fresh;
++      } else {
++        window.groups.emplace_back(op.key, fresh);
++      }
++      break;
++    }
++    case loka::Op::Kind::kLook:
++      visuals(op.group_id, op.title, op.color, std::nullopt);
++      if (loka::GroupRecord* kept = record(op.key)) {
++        kept->title = op.title;
++        kept->color = op.color;
++      }
++      break;
++    case loka::Op::Kind::kUngroup: {
++      std::vector<int> indices = indices_of(op.browser_ids);
++      if (!indices.empty()) {
++        tab_strip->RemoveFromGroup(indices);
++      }
++      break;
++    }
++    case loka::Op::Kind::kCollapse:
++      visuals(op.group_id, std::nullopt, std::nullopt, op.collapsed);
++      for (auto& [key, group] : window.groups) {
++        if (group.id == op.group_id) {
++          group.collapsed = op.collapsed;
++        }
++      }
++      break;
++  }
++}
++
++void LokaSpacesService::ArchiveOld() {
++  if (!profile_) {
++    return;
++  }
++  const double hours =
++      ArchiveHours(profile_->GetPrefs()->GetDict(kLokaSidebarStorePref).FindString(
++          kUiKey));
++  if (hours <= 0) {
++    return;
++  }
++  // A tab playing sound stays, however long ago it was shown.
++  std::set<loka::TabId> audible;
++  for (const std::unique_ptr<Window>& window : windows_) {
++    for (const auto& [id, browser_id] : window->live.entries()) {
++      tabs::TabInterface* tab = tabs::TabHandle(browser_id).Get();
++      if (tab && tab->GetContents()->IsCurrentlyAudible()) {
++        audible.insert(id);
++      }
++    }
++  }
++  loka::State next =
++      loka::ArchiveStale(state_, Now(), hours * 60 * 60 * 1000, audible);
++  if (next == state_) {
++    return;
++  }
++  Commit(std::move(next));
++  // Archived tabs' browser tabs close; nothing else moves.
++  for (const std::unique_ptr<Window>& window : windows_) {
++    Schedule(*window, Pass::kBrowser);
++  }
++}
+--- /dev/null
++++ b/chrome/browser/ui/webui/loka_sidebar/loka_spaces_service.h
+@@ -0,0 +1,175 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SPACES_SERVICE_H_
++#define CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SPACES_SERVICE_H_
++
++#include <map>
++#include <memory>
++#include <optional>
++#include <set>
++#include <string>
++#include <utility>
++#include <vector>
++
++#include "base/files/important_file_writer.h"
++#include "base/functional/callback.h"
++#include "base/memory/raw_ptr.h"
++#include "base/memory/weak_ptr.h"
++#include "base/observer_list.h"
++#include "base/observer_list_types.h"
++#include "base/supports_user_data.h"
++#include "base/timer/timer.h"
++#include "base/values.h"
++#include "chrome/browser/profiles/profile_observer.h"
++#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
++#include "components/loka/core/spaces_model.h"
++#include "components/loka/core/tab_links.h"
++#include "components/tab_groups/tab_group_id.h"
++
++class BrowserWindowInterface;
++class Profile;
++class TabStripModel;
++
++// Loka's spaces for one profile, owned in the browser process: the model
++// (components/loka/core), saving it, and keeping every window's real tabs in
++// step with it. The sidebar pages show it and send intents
++// (intents.logic.ts); they never write the spaces themselves.
++//
++// Saved in the profile as "Loka Spaces.json", the archive apart in "Loka
++// Archive.json", through ImportantFileWriter: batched, written off the UI
++// thread, atomically. The first run takes the spaces the sidebar used to keep
++// in the loka.store pref, and leaves the pref as it was, so going back to an
++// older build loses nothing.
++//
++// Each window keeps its own links (which browser tab shows which Loka tab)
++// and tab groups (one per space shown in it), as the page's sync did. The same
++// two rules hold: only Loka moves a window's focus (a pass after an intent may
++// activate and open tabs; a pass after the browser's own events never does),
++// and every change starts from the current spaces, so nothing is written over.
++class LokaSpacesService : public base::SupportsUserData::Data,
++                          public ProfileObserver,
++                          public TabStripModelObserver,
++                          public base::ImportantFileWriter::DataSerializer {
++ public:
++  class Observer : public base::CheckedObserver {
++   public:
++    // The spaces changed from `before` to `after`.
++    virtual void OnSpacesChanged(const loka::State& before,
++                                 const loka::State& after) {}
++    // The links of `window`'s tabs to Loka's changed.
++    virtual void OnLinksChanged(BrowserWindowInterface* window) {}
++  };
++
++  // The profile's service, made on first use.
++  static LokaSpacesService* Get(Profile* profile);
++
++  explicit LokaSpacesService(Profile* profile);
++  LokaSpacesService(const LokaSpacesService&) = delete;
++  LokaSpacesService& operator=(const LokaSpacesService&) = delete;
++  ~LokaSpacesService() override;
++
++  // Runs `done` once the saved spaces are read (at once if they are).
++  void WhenReady(base::OnceClosure done);
++  bool ready() const { return ready_; }
++  const loka::State& state() const { return state_; }
++
++  // Applies the page's intent. False when it isn't one; true otherwise, also
++  // when the rules refused it and nothing changed.
++  bool Apply(const base::DictValue& intent);
++
++  // Starts keeping `window`'s tabs in step. Its sidebar calls this once loaded.
++  void AttachWindow(BrowserWindowInterface* window);
++  // Which browser tab (by TabHandle) shows each loaded Loka tab in `window`.
++  const loka::LiveMap& LinksIn(BrowserWindowInterface* window) const;
++
++  void AddObserver(Observer* observer);
++  void RemoveObserver(Observer* observer);
++
++  // ProfileObserver:
++  void OnProfileWillBeDestroyed(Profile* profile) override;
++
++  // TabStripModelObserver:
++  void OnTabStripModelChanged(TabStripModel* tab_strip_model,
++                              const TabStripModelChange& change,
++                              const TabStripSelectionChange& selection) override;
++  void OnTabChangedAt(tabs::TabInterface* tab,
++                      TabChangeType change_type) override;
++  void OnTabStripModelDestroyed(TabStripModel* tab_strip_model) override;
++
++  // base::ImportantFileWriter::DataSerializer:
++  std::optional<std::string> SerializeData() override;
++
++ private:
++  // Why a window's tabs are being brought in step: after an intent (Loka may
++  // move focus and open tabs), or after the browser's own events (it may not).
++  enum class Pass { kUi, kBrowser };
++
++  struct Window {
++    Window();
++    Window(const Window&) = delete;
++    Window& operator=(const Window&) = delete;
++    ~Window();
++
++    raw_ptr<BrowserWindowInterface> browser;
++    raw_ptr<TabStripModel> tab_strip;
++    int number = 0;
++    loka::LiveMap live;
++    loka::Groups groups;
++    // The space the window was last made to show, to notice a switch.
++    std::string shown_space;
++    // Each tab as last seen, to turn the next look into events.
++    std::map<int, loka::BrowserTab> seen;
++    // Empty tabs Loka opened here, until a look sees them.
++    std::set<int> empty_tabs;
++    // A look and pass is posted.
++    bool pending = false;
++    // A pass after an intent is owed.
++    bool ui_pass = false;
++  };
++
++  void OnLoaded(std::optional<std::string> spaces,
++                std::optional<std::string> archive);
++  // Makes `next` the spaces: saves, tells observers.
++  void Commit(loka::State next);
++  // Writes the archive's own file now: it changes at most once a minute.
++  void SaveArchive();
++
++  Window* FindWindow(BrowserWindowInterface* browser);
++  Window* FindWindow(TabStripModel* tab_strip);
++  std::vector<loka::BrowserTab> TabsOf(Window& window);
++  int GroupNumber(const tab_groups::TabGroupId& group);
++  std::optional<tab_groups::TabGroupId> GroupFromNumber(int number);
++  // Asks for a look at `window`'s tabs and a pass after it, once per task.
++  void Schedule(Window& window, Pass pass);
++  void LookAndPass(int window_number);
++  // Turns what changed in `window`'s tabs since the last look into model
++  // events.
++  void Look(Window& window);
++  void Reconcile(Window& window, Pass pass);
++  void Run(Window& window, const loka::Op& op);
++  void ArchiveOld();
++  // Takes over the tabs every open window already has, matching them by
++  // address to the tabs in `from`, which become the spaces: once the spaces
++  // are read and the first sidebar has loaded, and after spaces are replaced
++  // (`keep_unloaded`: the new spaces' open tabs stay though no tab shows them).
++  void AdoptAll(const loka::State& from, bool keep_unloaded);
++
++  raw_ptr<Profile> profile_;
++  bool ready_ = false;
++  bool adopted_ = false;
++  std::vector<base::OnceClosure> when_ready_;
++  loka::State state_;
++  std::vector<std::unique_ptr<Window>> windows_;
++  int next_window_number_ = 1;
++  std::map<tab_groups::TabGroupId, int> group_numbers_;
++  int next_group_number_ = 1;
++  std::unique_ptr<base::ImportantFileWriter> spaces_writer_;
++  std::unique_ptr<base::ImportantFileWriter> archive_writer_;
++  base::RepeatingTimer archive_timer_;
++  base::ObserverList<Observer> observers_;
++  base::WeakPtrFactory<LokaSpacesService> weak_factory_{this};
++};
++
++#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SPACES_SERVICE_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_tab_sleeper.cc
 @@ -0,0 +1,154 @@

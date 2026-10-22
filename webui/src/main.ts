@@ -2,7 +2,7 @@
 // Clicks change the spaces (saved in the profile); sync.ts makes this window's real tabs follow.
 
 import { css, html, LitElement, nothing } from "lit";
-import type { Update } from "../../prototype/src/app/loka-app";
+import type { Act } from "../../prototype/src/app/loka-app";
 import { restWhenIdle, skyLayer, skyStyles, skyTurn } from "../../prototype/src/app/sky";
 import { reducedMotion, themeTokens } from "../../prototype/src/app/theme";
 import { resolveScheme, type Scheme } from "../../prototype/src/app/theme.logic";
@@ -16,20 +16,12 @@ import "../../prototype/src/features/sidebar/loka-sidebar";
 import type { LokaSidebar } from "../../prototype/src/features/sidebar/loka-sidebar";
 import { SPACE_HUES } from "../../prototype/src/features/sidebar/planet";
 import {
-	activateTab,
 	activeSpace,
 	type BrowserState,
-	closeTab,
-	createFolder,
-	createSpace,
-	deleteSpace,
-	revealTab,
+	newId,
 	type SpaceLook,
-	stepTab,
 	switchesForward,
-	switchSpace,
 	type TabId,
-	updateSpace,
 } from "../../prototype/src/features/sidebar/sidebar.logic";
 import { playCue, setSoundPrefs } from "../../prototype/src/features/sound/sound";
 import "../../prototype/src/features/spaces/loka-space-editor";
@@ -40,21 +32,21 @@ import { faviconUrl } from "./favicon-url";
 import { frameColor } from "./frame-color.logic";
 import { type Hold, type HoldReason, holdChanged, NO_HOLD } from "./hold.logic";
 import { shownAddress, startsEmpty } from "./new-tab.logic";
-import { applyOnboarding, onboardingSpaces } from "./onboarding.logic";
+import { onboardingIntents, onboardingSpaces } from "./onboarding.logic";
 import {
+	act,
+	browserTabOf,
+	linkedTabs,
 	markOnboardingApplied,
 	onLinksChanged,
 	pendingOnboarding,
 	readState,
 	readUi,
 	watch,
-	writeState,
 	writeUi,
 } from "./store";
-import { browserTabOf, changeSpaces, linkedTabs, openEmptyTab, spacesChanged, startSync } from "./sync";
 
 setFaviconSource(faviconUrl);
-startSync();
 // Fifteen seconds after the last pointer, key or wheel on the sidebar, its sky holds still (see restWhenIdle).
 restWhenIdle(15_000);
 
@@ -117,11 +109,12 @@ export class LokaPanel extends LitElement {
 	 */
 	private pending: BrowserState | null = null;
 
-	apply: Update = (change) => {
+	/** Changes the spaces: drawn now, saved and followed by the browser (store.ts act). */
+	apply: Act = (intent) => {
 		const before = this.pending ?? this.state;
 		if (!before) return;
-		const next = change(before);
-		void writeState(next).then(spacesChanged);
+		const next = act(intent);
+		if (!next || next === before) return;
 		this.followScheme(next);
 		if (this.pending) {
 			this.pending = next;
@@ -181,11 +174,13 @@ export class LokaPanel extends LitElement {
 		})();
 		watch(({ state, ui, onboarding }) => {
 			if (onboarding) void this.applySetup();
-			if (state) this.state = state;
+			// A change from elsewhere, or the browser correcting this page: drawn as it comes, or after a crossfade.
+			if (state && this.pending) this.pending = state;
+			else if (state) this.state = state;
 			if (ui) this.ui = ui;
 		});
 		browser.onTabsChanged(this.setTabs);
-		void browser.syncTabs().then(({ tabs }) => this.setTabs(tabs));
+		void browser.syncTabs().then((tabs) => this.setTabs(tabs));
 		// The sync links a new browser tab to its Loka tab a moment after the browser reports it.
 		onLinksChanged(this.refreshLive);
 		window.addEventListener("keydown", this.onKey);
@@ -211,16 +206,12 @@ export class LokaPanel extends LitElement {
 		});
 	}
 
-	/**
-	 * Takes in the spaces made in setup, once. Through the sync's queue: on a first run the sync is still taking over
-	 * the window's tabs, and a change built on this page's copy of the spaces would be written over by it.
-	 */
+	/** Takes in the spaces made in setup, once, as intents: a tab the browser takes in meanwhile stays. */
 	private async applySetup() {
 		const json = await pendingOnboarding();
 		if (!json || !this.state) return;
 		markOnboardingApplied(json);
-		const spaces = onboardingSpaces(json);
-		if (spaces.length) await changeSpaces((s) => applyOnboarding(s, spaces));
+		for (const intent of onboardingIntents(this.state, onboardingSpaces(json))) this.apply(intent);
 	}
 
 	protected override updated(changed: Map<string, unknown>) {
@@ -259,7 +250,7 @@ export class LokaPanel extends LitElement {
 		if (this.editing || !(e.ctrlKey || e.metaKey)) return;
 		if (e.altKey && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
 			e.preventDefault();
-			this.apply((s) => stepTab(s, e.key === "ArrowDown" ? 1 : -1));
+			this.apply({ op: "stepTab", step: e.key === "ArrowDown" ? 1 : -1, now: Date.now() });
 		} else if (e.shiftKey && e.key.toLowerCase() === "f") {
 			e.preventDefault();
 			this.sidebar()?.openPanel("search");
@@ -275,7 +266,7 @@ export class LokaPanel extends LitElement {
 			if (target) {
 				e.preventDefault();
 				if (target.id !== this.state?.activeSpaceId) playCue("space");
-				this.apply((s) => switchSpace(s, target.id));
+				this.apply({ op: "switchSpace", spaceId: target.id });
 			}
 		}
 	};
@@ -288,7 +279,7 @@ export class LokaPanel extends LitElement {
 	/** A browser shortcut, handed over by the browser (see BrowserCommand). */
 	private onBrowserCommand(command: BrowserCommand) {
 		if (command === "next-tab" || command === "previous-tab") {
-			this.apply((s) => stepTab(s, command === "next-tab" ? 1 : -1));
+			this.apply({ op: "stepTab", step: command === "next-tab" ? 1 : -1, now: Date.now() });
 		} else if (command === "close-tab") {
 			this.closeShownTab();
 		} else if (command !== "new-tab" && command !== "focus-location") {
@@ -298,7 +289,7 @@ export class LokaPanel extends LitElement {
 			const target = n === 9 ? spaces.at(-1) : spaces[n - 1];
 			if (target && target.id !== this.state?.activeSpaceId) {
 				playCue("space");
-				this.apply((s) => switchSpace(s, target.id));
+				this.apply({ op: "switchSpace", spaceId: target.id });
 			}
 		} else {
 			this.openOwnCommandBar(command);
@@ -314,7 +305,7 @@ export class LokaPanel extends LitElement {
 		if (!shown) return;
 		const lokaId = Object.entries(linkedTabs()).find(([, id]) => id === shown.id)?.[0];
 		if (lokaId) {
-			this.apply((s) => closeTab(s, lokaId));
+			this.apply({ op: "closeTab", tabId: lokaId });
 			this.unload(lokaId);
 		} else if (isEmptyTab(shown.url)) browser.windowAction("close");
 		else browser.closeTab(shown.id);
@@ -335,11 +326,12 @@ export class LokaPanel extends LitElement {
 			else if (newTab || !shown) void browser.createTab(pick.url, true);
 			else browser.navigateTab(shown.id, pick.url);
 		} else if (pick.kind === "tab") {
-			this.apply((s) => activateTab(switchSpace(s, pick.spaceId), pick.tabId));
+			this.apply({ op: "switchSpace", spaceId: pick.spaceId });
+			this.apply({ op: "activateTab", tabId: pick.tabId, now: Date.now() });
 		} else if (pick.kind === "browser-tab") {
 			browser.activateTab(pick.tabId);
 		} else if (pick.kind === "space") {
-			this.apply((s) => switchSpace(s, pick.spaceId));
+			this.apply({ op: "switchSpace", spaceId: pick.spaceId });
 		} else if (isActionId(pick.action)) {
 			this.run(pick.action);
 		}
@@ -358,7 +350,7 @@ export class LokaPanel extends LitElement {
 	private reloadTab(tabId: TabId) {
 		const browserId = browserTabOf(tabId);
 		if (browserId !== undefined) browser.reload(browserId);
-		else this.apply((s) => activateTab(s, tabId));
+		else this.apply({ op: "activateTab", tabId, now: Date.now() });
 	}
 
 	private run(action: ActionId) {
@@ -378,7 +370,7 @@ export class LokaPanel extends LitElement {
 				look: { name: space.name, hue: space.hue, planet: space.planet, scheme: space.scheme },
 			};
 		} else if (action === "new-folder") {
-			this.apply((s) => createFolder(s, space.id, null, "New folder")[0]);
+			this.apply({ op: "createFolder", spaceId: space.id, parentId: null, name: "New folder", id: newId() });
 		} else if (action === "toggle-sound") {
 			this.ui = { ...this.ui, sound: !this.ui.sound };
 			void writeUi(this.ui);
@@ -417,7 +409,7 @@ export class LokaPanel extends LitElement {
 		const { tabId, playing: on } = playing.media;
 		if (action === "go") {
 			const lokaId = playing.tab?.id;
-			if (lokaId) this.apply((s) => revealTab(s, lokaId));
+			if (lokaId) this.apply({ op: "revealTab", tabId: lokaId, now: Date.now() });
 			else browser.activateTab(tabId);
 		} else if (action === "toggle") browser.mediaAction(tabId, on ? "pause" : "play");
 		else if (action === "previous" || action === "next") browser.mediaAction(tabId, action);
@@ -434,15 +426,15 @@ export class LokaPanel extends LitElement {
 
 	/**
 	 * A tab closed from the sidebar. A pinned tab or Essential stays in the spaces, so only the browser tab goes, now.
-	 * A closed open tab is gone from the spaces: the sync shows the next tab first and then closes it, so the
-	 * browser never picks a tab from another space in between.
+	 * A closed open tab is gone from the spaces: the browser shows the next tab first and then closes it, so it never
+	 * picks a tab from another space in between.
 	 */
 	private unload(tabId: TabId) {
 		if (!this.state?.tabs[tabId]) return;
 		const browserId = browserTabOf(tabId);
 		if (browserId === undefined) return;
 		// The window's last tab: an empty tab takes its place first, so the window stays open.
-		if (this.tabs.length === 1) void openEmptyTab().then(() => browser.closeTab(browserId));
+		if (this.tabs.length === 1) void browser.createTab("", true).then(() => browser.closeTab(browserId));
 		else browser.closeTab(browserId);
 	}
 
@@ -452,7 +444,11 @@ export class LokaPanel extends LitElement {
 		this.editing = null;
 		this.preview = null;
 		if (editing.mode === "create") playCue("space-new");
-		this.apply((s) => (editing.mode === "create" ? createSpace(s, look)[0] : updateSpace(s, editing.spaceId, look)));
+		this.apply(
+			editing.mode === "create"
+				? { op: "createSpace", look, id: newId() }
+				: { op: "updateSpace", spaceId: editing.spaceId, look },
+		);
 	}
 
 	private deleteEditedSpace() {
@@ -460,7 +456,7 @@ export class LokaPanel extends LitElement {
 		if (editing?.mode !== "edit") return;
 		this.editing = null;
 		this.preview = null;
-		this.apply((s) => deleteSpace(s, editing.spaceId));
+		this.apply({ op: "deleteSpace", spaceId: editing.spaceId });
 	}
 
 	override render() {

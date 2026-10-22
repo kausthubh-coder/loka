@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/components/loka/core/BUILD.gn
-@@ -0,0 +1,28 @@
+@@ -0,0 +1,32 @@
 +# Copyright 2026 The Loka Authors
 +# You can use, redistribute, and/or modify this source code under
 +# the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -11,6 +11,10 @@
 +# minutes, not the hours chrome takes.
 +static_library("core") {
 +  sources = [
++    "intents.cc",
++    "intents.h",
++    "spaces_delta.cc",
++    "spaces_delta.h",
 +    "spaces_model.cc",
 +    "spaces_model.h",
 +    "tab_links.cc",
@@ -30,8 +34,266 @@
 +  ]
 +}
 --- /dev/null
++++ b/components/loka/core/intents.cc
+@@ -0,0 +1,228 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#include "components/loka/core/intents.h"
++
++#include <set>
++#include <string>
++
++namespace loka {
++
++namespace {
++
++const std::string* Text(const base::DictValue& intent, std::string_view key) {
++  return intent.FindString(key);
++}
++
++std::optional<double> Number(const base::DictValue& intent,
++                             std::string_view key) {
++  const base::Value* value = intent.Find(key);
++  return value ? value->GetIfDouble() : std::nullopt;
++}
++
++std::optional<SpaceLook> Look(const base::DictValue& intent) {
++  const base::DictValue* look = intent.FindDict("look");
++  if (!look) {
++    return std::nullopt;
++  }
++  const std::string* name = look->FindString("name");
++  std::optional<double> hue = Number(*look, "hue");
++  const std::string* planet = look->FindString("planet");
++  if (!name || !hue || !planet) {
++    return std::nullopt;
++  }
++  const std::string* scheme = look->FindString("scheme");
++  return SpaceLook{*name, *hue, *planet,
++                   scheme ? std::optional<std::string>(*scheme) : std::nullopt};
++}
++
++// A drop's place. A missing or null index (Infinity, once it's JSON) is the
++// end.
++std::optional<Place> ToPlace(const base::DictValue* to) {
++  if (!to) {
++    return std::nullopt;
++  }
++  const std::string* area = to->FindString("area");
++  std::optional<double> number = Number(*to, "index");
++  const double index = number.value_or(kEnd);
++  if (!area) {
++    return std::nullopt;
++  }
++  if (*area == "essentials") {
++    return Place::Essentials(index);
++  }
++  const std::string* space_id = to->FindString("spaceId");
++  if (!space_id) {
++    return std::nullopt;
++  }
++  if (*area == "open") {
++    return Place::Open(*space_id, index);
++  }
++  if (*area != "pinned") {
++    return std::nullopt;
++  }
++  const std::string* parent_id = to->FindString("parentId");
++  return Place::Pinned(
++      *space_id,
++      parent_id ? std::optional<std::string>(*parent_id) : std::nullopt,
++      index);
++}
++
++}  // namespace
++
++std::optional<State> ApplyIntent(const State& state,
++                                 const base::DictValue& intent) {
++  const std::string* op = Text(intent, "op");
++  if (!op) {
++    return std::nullopt;
++  }
++  const std::string* id = Text(intent, "id");
++  const std::string* tab_id = Text(intent, "tabId");
++  const std::string* space_id = Text(intent, "spaceId");
++  const std::string* folder_id = Text(intent, "folderId");
++  const std::string* url = Text(intent, "url");
++  const std::string* title = Text(intent, "title");
++  const std::string* name = Text(intent, "name");
++  std::optional<double> now = Number(intent, "now");
++
++  if (*op == "moveItem") {
++    std::optional<Place> to = ToPlace(intent.FindDict("to"));
++    if (!id || !to) {
++      return std::nullopt;
++    }
++    return MoveItem(state, *id, *to);
++  }
++  if (*op == "openTab" || *op == "focusOrOpen") {
++    if (!url || !title || !now || !id) {
++      return std::nullopt;
++    }
++    return *op == "openTab" ? OpenTab(state, *url, *title, *now, *id)
++                            : FocusOrOpen(state, *url, *title, *now, *id);
++  }
++  if (*op == "navigateTab") {
++    if (!tab_id || !url || !title) {
++      return std::nullopt;
++    }
++    return NavigateTab(state, *tab_id, *url, *title);
++  }
++  if (*op == "activateTab" || *op == "restoreArchived" || *op == "revealTab") {
++    if (!tab_id || !now) {
++      return std::nullopt;
++    }
++    if (*op == "activateTab") {
++      return ActivateTab(state, *tab_id, *now);
++    }
++    return *op == "restoreArchived" ? RestoreArchived(state, *tab_id, *now)
++                                    : RevealTab(state, *tab_id, *now);
++  }
++  if (*op == "closeTab") {
++    if (!tab_id) {
++      return std::nullopt;
++    }
++    return CloseTab(state, *tab_id);
++  }
++  if (*op == "closeTabs") {
++    const base::ListValue* ids = intent.FindList("tabIds");
++    if (!ids) {
++      return std::nullopt;
++    }
++    State next = state;
++    for (const base::Value& each : *ids) {
++      if (!each.is_string()) {
++        return std::nullopt;
++      }
++      next = CloseTab(next, each.GetString());
++    }
++    return next;
++  }
++  if (*op == "switchSpace" || *op == "deleteSpace") {
++    if (!space_id) {
++      return std::nullopt;
++    }
++    return *op == "switchSpace" ? SwitchSpace(state, *space_id)
++                                : DeleteSpace(state, *space_id);
++  }
++  if (*op == "createSpace" || *op == "updateSpace") {
++    std::optional<SpaceLook> look = Look(intent);
++    if (!look) {
++      return std::nullopt;
++    }
++    if (*op == "createSpace") {
++      return id ? std::optional<State>(CreateSpace(state, *look, *id))
++                : std::nullopt;
++    }
++    return space_id ? std::optional<State>(UpdateSpace(state, *space_id, *look))
++                    : std::nullopt;
++  }
++  if (*op == "createFolder") {
++    const base::Value* parent = intent.Find("parentId");
++    if (!space_id || !name || !id || !parent ||
++        !(parent->is_none() || parent->is_string())) {
++      return std::nullopt;
++    }
++    return CreateFolder(
++        state, *space_id,
++        parent->is_string() ? std::optional<std::string>(parent->GetString())
++                            : std::nullopt,
++        *name, *id);
++  }
++  if (*op == "renameFolder") {
++    if (!folder_id || !name) {
++      return std::nullopt;
++    }
++    return RenameFolder(state, *folder_id, *name);
++  }
++  if (*op == "toggleFolder" || *op == "ungroupFolder") {
++    if (!folder_id) {
++      return std::nullopt;
++    }
++    return *op == "toggleFolder" ? ToggleFolder(state, *folder_id)
++                                 : UngroupFolder(state, *folder_id);
++  }
++  if (*op == "groupIntoFolder") {
++    const std::string* target = Text(intent, "targetId");
++    const std::string* dragged = Text(intent, "draggedId");
++    if (!target || !dragged || !name || !id) {
++      return std::nullopt;
++    }
++    return GroupIntoFolder(state, *target, *dragged, *name, *id)
++        .value_or(state);
++  }
++  if (*op == "archiveStale") {
++    std::optional<double> max_age = Number(intent, "maxAgeMs");
++    const base::ListValue* keep_list = intent.FindList("keep");
++    if (!now || !max_age || !keep_list) {
++      return std::nullopt;
++    }
++    std::set<TabId> keep;
++    for (const base::Value& each : *keep_list) {
++      if (each.is_string()) {
++        keep.insert(each.GetString());
++      }
++    }
++    return ArchiveStale(state, *now, *max_age, keep);
++  }
++  if (*op == "clearArchive") {
++    State next = state;
++    next.archive.clear();
++    return next;
++  }
++  if (*op == "stepTab") {
++    std::optional<int> step = intent.FindInt("step");
++    if (!step || !now || (*step != 1 && *step != -1)) {
++      return std::nullopt;
++    }
++    return StepTab(state, *step, *now);
++  }
++  if (*op == "replaceState") {
++    const base::Value* replacement = intent.Find("state");
++    if (!replacement) {
++      return std::nullopt;
++    }
++    return ImportState(*replacement).value_or(state);
++  }
++  return std::nullopt;
++}
++
++}  // namespace loka
+--- /dev/null
++++ b/components/loka/core/intents.h
+@@ -0,0 +1,24 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#ifndef COMPONENTS_LOKA_CORE_INTENTS_H_
++#define COMPONENTS_LOKA_CORE_INTENTS_H_
++
++#include <optional>
++
++#include "base/values.h"
++#include "components/loka/core/spaces_model.h"
++
++namespace loka {
++
++// Applies what the sidebar asked for, `{op, ...arguments}`, the same way the
++// page's applyIntent (prototype/src/features/sidebar/intents.logic.ts) does.
++// The state comes back unchanged when the rule refuses. Nullopt when the
++// intent isn't one this knows or its arguments are malformed.
++std::optional<State> ApplyIntent(const State& state,
++                                 const base::DictValue& intent);
++
++}  // namespace loka
++
++#endif  // COMPONENTS_LOKA_CORE_INTENTS_H_
+--- /dev/null
 +++ b/components/loka/core/model_cases_unittest.cc
-@@ -0,0 +1,359 @@
+@@ -0,0 +1,270 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -53,6 +315,8 @@
 +#include "base/json/json_writer.h"
 +#include "base/strings/utf_string_conversions.h"
 +#include "base/values.h"
++#include "components/loka/core/intents.h"
++#include "components/loka/core/spaces_delta.h"
 +#include "components/loka/core/spaces_model.h"
 +#include "components/loka/core/tab_links.h"
 +#include "testing/gtest/include/gtest/gtest.h"
@@ -105,14 +369,6 @@
 +  return State();
 +}
 +
-+double Number(const base::DictValue& args, std::string_view key) {
-+  const base::Value* value = args.Find(key);
-+  if (!value || value->is_none()) {
-+    return kEnd;
-+  }
-+  return value->GetDouble();
-+}
-+
 +std::optional<std::string> OptionalString(const base::DictValue& args,
 +                                          std::string_view key) {
 +  const std::string* value = args.FindString(key);
@@ -122,24 +378,6 @@
 +std::string String(const base::DictValue& args, std::string_view key) {
 +  const std::string* value = args.FindString(key);
 +  return value ? *value : std::string();
-+}
-+
-+SpaceLook ReadLook(const base::DictValue& look) {
-+  return SpaceLook{String(look, "name"), look.FindDouble("hue").value_or(0),
-+                   String(look, "planet"), OptionalString(look, "scheme")};
-+}
-+
-+Place ReadPlace(const base::DictValue& to) {
-+  const std::string area = String(to, "area");
-+  const double index = Number(to, "index");
-+  if (area == "essentials") {
-+    return Place::Essentials(index);
-+  }
-+  if (area == "pinned") {
-+    return Place::Pinned(String(to, "spaceId"), OptionalString(to, "parentId"),
-+                         index);
-+  }
-+  return Place::Open(String(to, "spaceId"), index);
 +}
 +
 +BrowserTab ReadTab(const base::DictValue& t) {
@@ -234,85 +472,19 @@
 +    return std::move(result);
 +  };
 +
-+  if (op == "moveItem") {
-+    return with_state(
-+        MoveItem(state, String(args, "id"), ReadPlace(*args.FindDict("to"))));
-+  }
-+  if (op == "openTab") {
-+    return with_state(OpenTab(state, String(args, "url"), String(args, "title"),
-+                              now, String(args, "id")));
-+  }
-+  if (op == "navigateTab") {
-+    return with_state(NavigateTab(state, String(args, "tabId"),
-+                                  String(args, "url"), String(args, "title")));
-+  }
-+  if (op == "activateTab") {
-+    return with_state(ActivateTab(state, String(args, "tabId"), now));
-+  }
-+  if (op == "closeTab") {
-+    return with_state(CloseTab(state, String(args, "tabId")));
-+  }
-+  if (op == "switchSpace") {
-+    return with_state(SwitchSpace(state, String(args, "spaceId")));
-+  }
-+  if (op == "createSpace") {
-+    return with_state(CreateSpace(state, ReadLook(*args.FindDict("look")),
-+                                  String(args, "id")));
-+  }
-+  if (op == "updateSpace") {
-+    return with_state(UpdateSpace(state, String(args, "spaceId"),
-+                                  ReadLook(*args.FindDict("look"))));
-+  }
-+  if (op == "deleteSpace") {
-+    return with_state(DeleteSpace(state, String(args, "spaceId")));
-+  }
-+  if (op == "focusOrOpen") {
-+    return with_state(FocusOrOpen(state, String(args, "url"),
-+                                  String(args, "title"), now,
-+                                  String(args, "id")));
-+  }
-+  if (op == "createFolder") {
-+    return with_state(CreateFolder(state, String(args, "spaceId"),
-+                                   OptionalString(args, "parentId"),
-+                                   String(args, "name"), String(args, "id")));
-+  }
-+  if (op == "renameFolder") {
-+    return with_state(
-+        RenameFolder(state, String(args, "folderId"), String(args, "name")));
-+  }
-+  if (op == "toggleFolder") {
-+    return with_state(ToggleFolder(state, String(args, "folderId")));
-+  }
-+  if (op == "ungroupFolder") {
-+    return with_state(UngroupFolder(state, String(args, "folderId")));
-+  }
-+  if (op == "groupIntoFolder") {
-+    std::optional<State> grouped =
-+        GroupIntoFolder(state, String(args, "targetId"),
-+                        String(args, "draggedId"), String(args, "name"),
-+                        String(args, "id"));
-+    if (!grouped) {
-+      result.Set("refused", true);
-+      return std::move(result);
++  // The sidebar's own changes go through ApplyIntent, as they do from the
++  // page: the case's op and arguments are the intent.
++  if (op != "importState" && op != "planReconcile" && op != "groupColor" &&
++      op != "firstState" && !op.starts_with("tab") && op != "adoptTabs") {
++    base::DictValue intent = args.Clone();
++    intent.Set("op", op);
++    std::optional<State> next = ApplyIntent(state, intent);
++    if (!next) {
++      return std::nullopt;
 +    }
-+    return with_state(*grouped);
-+  }
-+  if (op == "archiveStale") {
-+    std::set<TabId> keep;
-+    for (const base::Value& id : *args.FindList("keep")) {
-+      keep.insert(id.GetString());
-+    }
-+    return with_state(
-+        ArchiveStale(state, now, args.FindDouble("maxAgeMs").value_or(0), keep));
-+  }
-+  if (op == "restoreArchived") {
-+    return with_state(RestoreArchived(state, String(args, "tabId"), now));
-+  }
-+  if (op == "revealTab") {
-+    return with_state(RevealTab(state, String(args, "tabId"), now));
-+  }
-+  if (op == "stepTab") {
-+    return with_state(StepTab(state, args.FindInt("step").value_or(1), now));
++    // And what the sidebar hears of it.
++    result.Set("delta", ToDelta(state, *next));
++    return with_state(*next);
 +  }
 +  if (op == "importState") {
 +    std::optional<State> imported = ImportState(*args.Find("json"));
@@ -323,7 +495,8 @@
 +    return with_state(*imported);
 +  }
 +  if (op == "adoptTabs") {
-+    return with_links(AdoptTabs(state, ReadTabs(args), now, make_id));
++    return with_links(AdoptTabs(state, ReadTabs(args), now, make_id,
++                                args.FindBool("keepUnloaded").value_or(false)));
 +  }
 +  if (op == "tabCreated") {
 +    return with_links(TabCreated(state, ReadLive(args),
@@ -392,8 +565,114 @@
 +}  // namespace
 +}  // namespace loka
 --- /dev/null
++++ b/components/loka/core/spaces_delta.cc
+@@ -0,0 +1,78 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#include "components/loka/core/spaces_delta.h"
++
++#include <string>
++#include <vector>
++
++namespace loka {
++
++namespace {
++
++base::ListValue Strings(const std::vector<std::string>& strings) {
++  base::ListValue list;
++  for (const std::string& s : strings) {
++    list.Append(s);
++  }
++  return list;
++}
++
++std::vector<std::string> SpaceIds(const State& state) {
++  std::vector<std::string> ids;
++  for (const Space& space : state.spaces) {
++    ids.push_back(space.id);
++  }
++  return ids;
++}
++
++}  // namespace
++
++base::DictValue ToDelta(const State& before, const State& after) {
++  base::DictValue delta;
++  base::DictValue tabs;
++  for (const auto& [id, tab] : after.tabs) {
++    auto old = before.tabs.find(id);
++    if (old == before.tabs.end() || !(old->second == tab)) {
++      tabs.Set(id, TabToValue(tab));
++    }
++  }
++  for (const auto& [id, tab] : before.tabs) {
++    if (!after.tabs.contains(id)) {
++      tabs.Set(id, base::Value());
++    }
++  }
++  if (!tabs.empty()) {
++    delta.Set("tabs", std::move(tabs));
++  }
++  if (before.essentials != after.essentials) {
++    delta.Set("essentials", Strings(after.essentials));
++  }
++  base::ListValue spaces;
++  for (const Space& space : after.spaces) {
++    const Space* old = FindSpace(before, space.id);
++    if (!old || !(*old == space)) {
++      spaces.Append(SpaceToValue(space));
++    }
++  }
++  if (!spaces.empty()) {
++    delta.Set("spaces", std::move(spaces));
++  }
++  if (SpaceIds(before) != SpaceIds(after)) {
++    delta.Set("spaceOrder", Strings(SpaceIds(after)));
++  }
++  if (before.active_space_id != after.active_space_id) {
++    delta.Set("activeSpaceId", after.active_space_id);
++  }
++  if (before.archive != after.archive) {
++    base::ListValue archive;
++    for (const ArchivedTab& archived : after.archive) {
++      archive.Append(ArchivedToValue(archived));
++    }
++    delta.Set("archive", std::move(archive));
++  }
++  return delta;
++}
++
++}  // namespace loka
+--- /dev/null
++++ b/components/loka/core/spaces_delta.h
+@@ -0,0 +1,22 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#ifndef COMPONENTS_LOKA_CORE_SPACES_DELTA_H_
++#define COMPONENTS_LOKA_CORE_SPACES_DELTA_H_
++
++#include "base/values.h"
++#include "components/loka/core/spaces_model.h"
++
++namespace loka {
++
++// What changed from `before` to `after`, as the sidebar hears it
++// ("spaces-changed"): changed tabs (null for one that's gone), essentials,
++// changed spaces whole, the spaces' order when it changed, the active space,
++// the archive. The page's applyDelta (spaces-delta.logic.ts) applies it; the
++// shared cases hold this to the page's toDelta.
++base::DictValue ToDelta(const State& before, const State& after);
++
++}  // namespace loka
++
++#endif  // COMPONENTS_LOKA_CORE_SPACES_DELTA_H_
+--- /dev/null
 +++ b/components/loka/core/spaces_model.cc
-@@ -0,0 +1,1054 @@
+@@ -0,0 +1,1066 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -651,7 +930,7 @@
 +
 +// ---- JSON -------------------------------------------------------------------
 +
-+base::DictValue TabToValue(const Tab& tab) {
++base::DictValue WriteTab(const Tab& tab) {
 +  base::DictValue value;
 +  value.Set("id", tab.id);
 +  value.Set("title", tab.title);
@@ -1326,45 +1605,57 @@
 +  return ActivateTab(state, order[static_cast<size_t>(next)], now);
 +}
 +
++base::DictValue SpaceToValue(const Space& space) {
++  base::DictValue s;
++  s.Set("id", space.id);
++  s.Set("name", space.name);
++  s.Set("hue", space.hue);
++  s.Set("planet", space.planet);
++  s.Set("scheme", space.scheme);
++  base::ListValue pinned;
++  for (const PinnedNode& node : space.pinned) {
++    pinned.Append(NodeToValue(node));
++  }
++  s.Set("pinned", std::move(pinned));
++  s.Set("open", StringsToValue(space.open));
++  if (space.active_tab_id) {
++    s.Set("activeTabId", *space.active_tab_id);
++  } else {
++    s.Set("activeTabId", base::Value());
++  }
++  return s;
++}
++
++base::DictValue TabToValue(const Tab& tab) {
++  return WriteTab(tab);
++}
++
++base::DictValue ArchivedToValue(const ArchivedTab& archived) {
++  base::DictValue a;
++  a.Set("tab", WriteTab(archived.tab));
++  a.Set("spaceId", archived.space_id);
++  a.Set("archivedAt", archived.archived_at);
++  return a;
++}
++
 +base::DictValue ToValue(const State& state) {
 +  base::DictValue value;
 +  value.Set("version", 1);
 +  base::DictValue tabs;
 +  for (const auto& [id, tab] : state.tabs) {
-+    tabs.Set(id, TabToValue(tab));
++    tabs.Set(id, WriteTab(tab));
 +  }
 +  value.Set("tabs", std::move(tabs));
 +  value.Set("essentials", StringsToValue(state.essentials));
 +  base::ListValue spaces;
 +  for (const Space& space : state.spaces) {
-+    base::DictValue s;
-+    s.Set("id", space.id);
-+    s.Set("name", space.name);
-+    s.Set("hue", space.hue);
-+    s.Set("planet", space.planet);
-+    s.Set("scheme", space.scheme);
-+    base::ListValue pinned;
-+    for (const PinnedNode& node : space.pinned) {
-+      pinned.Append(NodeToValue(node));
-+    }
-+    s.Set("pinned", std::move(pinned));
-+    s.Set("open", StringsToValue(space.open));
-+    if (space.active_tab_id) {
-+      s.Set("activeTabId", *space.active_tab_id);
-+    } else {
-+      s.Set("activeTabId", base::Value());
-+    }
-+    spaces.Append(std::move(s));
++    spaces.Append(SpaceToValue(space));
 +  }
 +  value.Set("spaces", std::move(spaces));
 +  value.Set("activeSpaceId", state.active_space_id);
 +  base::ListValue archive;
 +  for (const ArchivedTab& archived : state.archive) {
-+    base::DictValue a;
-+    a.Set("tab", TabToValue(archived.tab));
-+    a.Set("spaceId", archived.space_id);
-+    a.Set("archivedAt", archived.archived_at);
-+    archive.Append(std::move(a));
++    archive.Append(ArchivedToValue(archived));
 +  }
 +  value.Set("archive", std::move(archive));
 +  return value;
@@ -1450,7 +1741,7 @@
 +}  // namespace loka
 --- /dev/null
 +++ b/components/loka/core/spaces_model.h
-@@ -0,0 +1,198 @@
+@@ -0,0 +1,201 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1640,6 +1931,9 @@
 +
 +// The saved form, the same JSON the prototype writes (exportState).
 +base::DictValue ToValue(const State& state);
++base::DictValue TabToValue(const Tab& tab);
++base::DictValue SpaceToValue(const Space& space);
++base::DictValue ArchivedToValue(const ArchivedTab& archived);
 +// Parses saved or exported spaces. Nullopt unless every tab exists and sits in
 +// exactly one place. Fills in what older files lack and drops the 0.1.0
 +// alpha's own pages.
@@ -1651,7 +1945,7 @@
 +#endif  // COMPONENTS_LOKA_CORE_SPACES_MODEL_H_
 --- /dev/null
 +++ b/components/loka/core/tab_links.cc
-@@ -0,0 +1,542 @@
+@@ -0,0 +1,546 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1794,7 +2088,8 @@
 +std::pair<State, LiveMap> AdoptTabs(const State& state,
 +                                    const std::vector<BrowserTab>& tabs,
 +                                    double now,
-+                                    MakeId make_id) {
++                                    MakeId make_id,
++                                    bool keep_unloaded) {
 +  LiveMap live;
 +  State next = state;
 +  std::set<TabId> taken;
@@ -1839,9 +2134,10 @@
 +                                      now, make_id());
 +    taken.insert(live.TabIdOf(tab.id).value_or(""));
 +  }
-+  // Open tabs that no browser tab took are gone.
++  // Open tabs that no browser tab took are gone: closed while Loka wasn't
++  // running.
 +  const std::vector<Space> spaces = next.spaces;
-+  for (const Space& space : spaces) {
++  for (const Space& space : keep_unloaded ? std::vector<Space>() : spaces) {
 +    for (const TabId& id : space.open) {
 +      if (!live.BrowserIdOf(id)) {
 +        next = CloseTab(next, id);
@@ -1868,7 +2164,9 @@
 +    linked.Set(*for_tab_id, tab.id);
 +    return {state, std::move(linked)};
 +  }
-+  if (live.TabIdOf(tab.id) || IsEmptyTab(tab.url)) {
++  // A tab still on its way to its first page joins once it has one
++  // (TabUpdated), not as an "about:blank" row.
++  if (live.TabIdOf(tab.id) || IsEmptyTab(tab.url) || IsBlank(tab.url)) {
 +    return {state, live};
 +  }
 +  std::optional<TabId> opener =
@@ -2196,7 +2494,7 @@
 +}  // namespace loka
 --- /dev/null
 +++ b/components/loka/core/tab_links.h
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,154 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2307,10 +2605,14 @@
 +// chrome://newtab and Loka's empty page: never one of Loka's tabs.
 +bool IsEmptyTab(std::string_view url);
 +
++// Links the browser's tabs to Loka's by address, as when Loka starts. Open
++// tabs no browser tab took are dropped, unless `keep_unloaded` (after an
++// import, whose open tabs were never loaded here).
 +std::pair<State, LiveMap> AdoptTabs(const State& state,
 +                                    const std::vector<BrowserTab>& tabs,
 +                                    double now,
-+                                    MakeId make_id);
++                                    MakeId make_id,
++                                    bool keep_unloaded = false);
 +std::pair<State, LiveMap> TabCreated(const State& state,
 +                                     const LiveMap& live,
 +                                     const BrowserTab& tab,

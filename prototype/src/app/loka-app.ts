@@ -14,6 +14,7 @@ import { nowPlaying } from "../features/media/media.logic";
 import { applyTour, type TourResult } from "../features/onboarding/onboarding.logic";
 import type { LiveTabs } from "../features/sidebar/favicon";
 import { hostOf } from "../features/sidebar/favicon";
+import { applyIntent, type Intent } from "../features/sidebar/intents.logic";
 import type { LokaSidebar, Panel } from "../features/sidebar/loka-sidebar";
 import { SPACE_HUES } from "../features/sidebar/planet";
 import {
@@ -53,7 +54,10 @@ function loadState(): BrowserState {
 	return (saved && importState(saved)) || seedState();
 }
 
-export type Update = (change: (state: BrowserState) => BrowserState) => void;
+/** How the prototype changes its own spaces. */
+type Update = (change: (state: BrowserState) => BrowserState) => void;
+/** How a component asks for a change: an intent, as the browser's sidebar sends it (intents.logic.ts). */
+export type Act = (intent: Intent) => void;
 
 type Editing = { mode: "create"; look: SpaceLook } | { mode: "edit"; spaceId: string; look: SpaceLook };
 
@@ -134,6 +138,9 @@ export class LokaApp extends LitElement {
 			fade.finished.catch(() => {});
 		} else this.state = next;
 	};
+
+	/** The prototype applies an intent to its own spaces, the way the browser applies one to the saved spaces. */
+	act: Act = (intent) => this.apply((s) => applyIntent(s, intent));
 
 	setUi = (change: Partial<UiPrefs>) => {
 		this.ui = { ...this.ui, ...change, sidebarWidth: clampWidth(change.sidebarWidth ?? this.ui.sidebarWidth) };
@@ -473,7 +480,7 @@ export class LokaApp extends LitElement {
 				}
 				<loka-sidebar
 					.state=${this.state}
-					.apply=${this.apply}
+					.apply=${this.act}
 					.playing=${this.nowPlaying()}
 					.live=${live}
 					.browser=${fakeBrowser}
@@ -494,7 +501,7 @@ export class LokaApp extends LitElement {
 					.tab=${activeTab(this.state)}
 					.spaceName=${space.name}
 					.state=${this.state}
-					.apply=${this.apply}
+					.apply=${this.act}
 					.ui=${this.ui}
 					.setUi=${this.setUi}
 					.pinned=${this.pinned}

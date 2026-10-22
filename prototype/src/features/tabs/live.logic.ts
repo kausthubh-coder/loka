@@ -99,6 +99,7 @@ export function adoptTabs(
 	tabs: BrowserTab[],
 	now: number,
 	makeId: () => TabId = newId,
+	keepUnloaded = false,
 ): [BrowserState, LiveMap] {
 	let live: LiveMap = {};
 	let next = state;
@@ -126,9 +127,12 @@ export function adoptTabs(
 		[next, live] = addOpenTab(next, live, tab, next.activeSpaceId, now, makeId());
 		taken.add(lokaIdOf(live, tab.id) ?? "");
 	}
-	// Open tabs that no browser tab took are gone.
-	for (const space of next.spaces) {
-		for (const id of space.open) if (!(id in live)) next = closeTab(next, id);
+	// Open tabs that no browser tab took are gone: closed while Loka wasn't running. Not after an import
+	// (`keepUnloaded`), whose open tabs were never loaded here.
+	if (!keepUnloaded) {
+		for (const space of next.spaces) {
+			for (const id of space.open) if (!(id in live)) next = closeTab(next, id);
+		}
 	}
 	const active = tabs.find((t) => t.active);
 	const activeId = active ? lokaIdOf(live, active.id) : null;
@@ -157,7 +161,8 @@ export function tabCreated(
 	makeId: () => TabId = newId,
 ): [BrowserState, LiveMap] {
 	if (forTabId && state.tabs[forTabId]) return [state, { ...live, [forTabId]: tab.id }];
-	if (lokaIdOf(live, tab.id) || isEmptyTab(tab.url)) return [state, live];
+	// A tab still on its way to its first page joins once it has one (tabUpdated), not as an "about:blank" row.
+	if (lokaIdOf(live, tab.id) || isEmptyTab(tab.url) || isBlank(tab.url)) return [state, live];
 	const opener = tab.openerTabId === undefined ? null : lokaIdOf(live, tab.openerTabId);
 	const openerHome = opener ? homeOf(state, opener) : null;
 	const spaceId = openerHome && openerHome !== "essentials" ? openerHome : state.activeSpaceId;

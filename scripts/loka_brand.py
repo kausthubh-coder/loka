@@ -141,7 +141,11 @@ def rewrite_branding():
 # The strings files the product's name comes from, renamed on every apply (also with --no-names). Generated rather
 # than kept as a patch: a saved copy of a renamed file conflicts with every Chromium or Helium change to it, while
 # renaming the file as it is never does. patches_check.py compares them with this renaming of their original.
-BRANDED_STRINGS = ['chrome/app/chromium_strings.grd']
+BRANDED_STRINGS = [
+    'chrome/app/chromium_strings.grd',
+    'chrome/app/settings_chromium_strings.grdp',
+    'components/components_chromium_strings.grd',
+]
 
 
 def loka_substitution(tree: Path = SOURCE_TREE):

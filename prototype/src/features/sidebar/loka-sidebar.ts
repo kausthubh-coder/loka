@@ -225,7 +225,7 @@ export class LokaSidebar extends LitElement {
 	/** Closes a tab, telling the browser too: unloading a pinned tab changes nothing in the spaces, only the browser. */
 	private closeTabFor(tabId: TabId) {
 		playCue("tab-close");
-		this.apply({ op: "closeTab", tabId });
+		this.apply({ op: "closeTab", tabId, now: Date.now() });
 		this.dispatchEvent(new CustomEvent("loka-tab-closed", { detail: tabId, bubbles: true, composed: true }));
 	}
 
@@ -636,7 +636,7 @@ export class LokaSidebar extends LitElement {
 				danger: true,
 				run: () => {
 					playCue("clear");
-					this.apply({ op: "closeTabs", tabIds: closable });
+					this.apply({ op: "closeTabs", tabIds: closable, now: Date.now() });
 				},
 			});
 		}
@@ -1173,7 +1173,7 @@ export class LokaSidebar extends LitElement {
 		const tabId = tab.id;
 		return html`
 			<div
-				class="row ${active ? "active" : ""} ${this.dragId === tabId ? "dragging" : ""} ${this.dropClass(tabId)}"
+				class="row ${active ? "active" : ""} ${this.live[tabId]?.unloaded ? "unloaded" : ""} ${this.dragId === tabId ? "dragging" : ""} ${this.dropClass(tabId)}"
 				data-key=${tabId}
 				style="--depth: ${depth}"
 				role="treeitem"
@@ -1588,7 +1588,7 @@ export class LokaSidebar extends LitElement {
 								title="Close every open tab in ${space.name}"
 								@click=${() => {
 									playCue("clear");
-									this.apply({ op: "closeTabs", tabIds: space.open });
+									this.apply({ op: "closeTabs", tabIds: space.open, now: Date.now() });
 								}}
 							>
 								<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v8M4.5 7.5 8 11l3.5-3.5M4 13.5h8" /></svg>Clear
@@ -1684,7 +1684,7 @@ export class LokaSidebar extends LitElement {
 											[tab, this.live[id], active, dragging, drop, index],
 											() => html`
 											<button
-												class="essential ${active ? "active" : ""} ${this.dragId === id ? "dragging" : ""} ${this.dropClass(id)}"
+												class="essential ${active ? "active" : ""} ${this.live[id]?.unloaded ? "unloaded" : ""} ${this.dragId === id ? "dragging" : ""} ${this.dropClass(id)}"
 												data-key=${id}
 												role="listitem"
 												title=${tab.title}
@@ -2273,6 +2273,18 @@ export class LokaSidebar extends LitElement {
 		.row.dragging,
 		.essential.dragging {
 			opacity: 0.4;
+		}
+		/* A tab with no page in memory: its icon fades, so what's loaded stands out. Opening it loads it. */
+		.row.unloaded .fav {
+			opacity: 0.4;
+			filter: saturate(0.35);
+		}
+		.row.unloaded .label {
+			color: var(--loka-ink-2);
+		}
+		.essential.unloaded .fav {
+			opacity: 0.45;
+			filter: saturate(0.4);
 		}
 		/* The copy of a dragged row or tile that follows the pointer. */
 		.drag-ghost {

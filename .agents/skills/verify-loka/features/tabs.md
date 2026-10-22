@@ -1,7 +1,8 @@
 # Tabs
 
 Users open tabs from the Ctrl+K bar, switch by clicking, close open tabs, and pin or unpin them. Closing an open tab
-deletes it. Closing a pinned or essential tab only unloads it, so it stays in the sidebar.
+by hand moves it to the top of Archived tabs, so it can come back. Closing a pinned or essential tab only unloads it,
+so it stays in the sidebar, with its icon faded, and opens again at the address it was pinned with.
 
 ## Sub-features
 
@@ -15,6 +16,13 @@ deletes it. Closing a pinned or essential tab only unloads it, so it stays in th
 - `tab-reorder` drags a row before or after another; dropping under a pinned row pins it.
 - `tab-pin` uses right-click > `Pin to space`; `Unpin` moves it back to the top of the open tabs.
 - `tab-unload` uses right-click > `Unload tab` on a pinned tab. It stays pinned, with no active tab.
+- `tab-unloaded-look`: in the real browser a row or Essential with no page in memory (never opened, closed, or
+  unloaded by the browser) has a faded, greyed icon and a dimmer title (`.unloaded`, from `live[id].unloaded`). The
+  prototype has no notion of loaded, so it never shows it.
+- `tab-reopen`: in the real browser each tab keeps which Loka tab it shows in the session (`loka.tab`, through
+  `SessionServiceBase::SetKeptTabData` in `loka-kept-tab-data.patch`). After a restart or crash a tab takes that row
+  before any address match; a tab the browser reopens (Reopen closed tab, a reopened window) brings its row back out
+  of the archive, or takes the row it still has.
 - `tab-move-space` uses right-click > `Move to space` > `<space>` (the submenu opens under its item; Right opens it,
   Left closes it).
 - `tab-menu` also has Duplicate, Copy link, Mute or Unmute, Reload, Close tab and Close other tabs. Right-click on the
@@ -47,8 +55,13 @@ Preconditions: seed data, `Build` space active.
 - **In the browser.** `bun run verify -- --ux tabs` runs it, verify:browser ("sidebar lists real tabs", "a real
   click (posted WM_LBUTTONDOWN/UP) on a tab's row switches to it") and verify:flows `tabs`: "pages opened from the
   command bar land in Research, newest first", "clicking a row makes it the browser's tab", "x closes the tab in the
-  browser", "a middle click closes a tab", "Move to Play moves the tab there", "Ctrl+L opens the bar on the shown
-  address". Not checked in the browser: `Clear`, `Close tab` from the menu, and the real Ctrl+T and Ctrl+W keys.
+  browser", "a middle click closes a tab", "closed tabs go to the top of the archive, so they can come back", "Move
+  to Play moves the tab there", "Ctrl+L opens the bar on the shown address"; `pinning`: "and looks unloaded: its icon
+  faded", "and looks loaded again", "closing a pinned tab's browser tab after it went elsewhere keeps its row", "and
+  opening it again goes to the address it was pinned with"; and `restart`: "after the restart, Research's QA Twin
+  row opens the tab that was Research's" (and Play's), two tabs at one address told apart by the id each saved.
+  Not checked in the browser: `Clear`, `Close tab` from the menu, the real Ctrl+T and Ctrl+W keys, and Reopen closed
+  tab.
 
 ## Gotchas
 

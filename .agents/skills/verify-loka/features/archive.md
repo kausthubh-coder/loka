@@ -1,7 +1,8 @@
 # Archive
 
-Open tabs not shown for 12 hours (by default) move to Archived tabs. Pinned tabs, Essentials, the tab a space is
-showing and tabs playing sound never do. Archived tabs can be searched and brought back to the top of their own
+Open tabs not shown for 12 hours (by default) move to Archived tabs, and so do open tabs closed by hand (the `x`, a
+middle click, Ctrl+W, Clear, Close other tabs, or the browser closing the tab), newest first. Pinned tabs, Essentials,
+the tab a space is showing and tabs playing sound never do. Archived tabs can be searched and brought back to the top of their own
 space. Separately, the loaded tabs of spaces no window shows unload after 30 minutes out of sight (by default): they
 keep their row, Back history, title and icon, and load again when opened.
 
@@ -37,9 +38,11 @@ hours ago, all inside the 12-hour default.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs archive`.
 - **In the browser.** `bun run verify -- --ux archive` runs it and verify:flows `panels` ("the Archive panel opens"),
   `settings` (both settings' defaults and that each saves) and `sleep` (a QA page in Research unloads while Play
-  shows, keeps its row, and loads again in the same tab when clicked; the setting is set to 0.05 minutes there).
-  Not checked in the browser: tabs actually archiving (it needs old `lastActiveAt` values or a 60 s wait),
-  restoring, search and Clear, and that Chromium's rules keep a tab playing sound loaded.
+  shows, keeps its row, and loads again in the same tab when clicked; the setting is set to 0.05 minutes there), and
+  `tabs` ("closed tabs go to the top of the archive, so they can come back").
+  Not checked in the browser: tabs archiving by age (it needs old `lastActiveAt` values or a 60 s wait), restoring,
+  search and Clear, Reopen closed tab bringing a row back (CDP can't press browser shortcuts; the model cases cover
+  the rule), and that Chromium's rules keep a tab playing sound loaded.
 
 ## Gotchas
 

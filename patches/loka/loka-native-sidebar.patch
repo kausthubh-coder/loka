@@ -913,7 +913,7 @@
    map.AddWebUIConfig(std::make_unique<SigninErrorUIConfig>());
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/BUILD.gn
-@@ -0,0 +1,82 @@
+@@ -0,0 +1,83 @@
 +# Copyright 2026 The Loka Authors
 +# You can use, redistribute, and/or modify this source code under
 +# the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -964,6 +964,7 @@
 +    "//components/loka/core",
 +    "//components/performance_manager",
 +    "//chrome/browser/search_engines",
++    "//chrome/browser/sessions",
 +    "//chrome/browser/ui/tabs:tab_enums",
 +    "//chrome/browser/ui/tabs:tab_group",
 +    "//chrome/browser/ui/tabs:tab_strip",
@@ -3958,7 +3959,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_UI_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_spaces_service.cc
-@@ -0,0 +1,870 @@
+@@ -0,0 +1,892 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -3984,6 +3985,8 @@
 +#include "base/time/time.h"
 +#include "base/uuid.h"
 +#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/sessions/session_service.h"
++#include "chrome/browser/sessions/session_service_factory.h"
 +#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 +#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 +#include "chrome/browser/ui/navigator/browser_navigator.h"
@@ -4018,6 +4021,9 @@
 +// The spaces' key in the loka.store pref, where the sidebar kept them before.
 +const char kOldStateKey[] = "state.v1";
 +const char kUiKey[] = "ui.v1";
++// Which Loka tab a browser tab shows, kept with it in the session, so after a
++// restart or crash it finds its row by id, not by address.
++const char kLokaTabKey[] = "loka.tab";
 +
 +double Now() {
 +  return base::Time::Now().InMillisecondsFSinceUnixEpoch();
@@ -4388,9 +4394,7 @@
 +  }
 +  Commit(std::move(next));
 +  for (const std::unique_ptr<Window>& window : windows_) {
-+    for (Observer& observer : observers_) {
-+      observer.OnLinksChanged(window->browser);
-+    }
++    LinksChanged(*window);
 +    Schedule(*window, Pass::kBrowser);
 +  }
 +}
@@ -4506,6 +4510,10 @@
 +    }
 +    each.last_accessed =
 +        tab->GetContents()->GetLastActiveTime().InMillisecondsFSinceUnixEpoch();
++    if (const std::string* kept = SessionServiceBase::GetKeptTabData(
++            tab->GetContents(), kLokaTabKey)) {
++      each.loka_id = *kept;
++    }
 +    tabs.push_back(std::move(each));
 +  }
 +  return tabs;
@@ -4572,9 +4580,7 @@
 +        if (std::optional<loka::TabId> id = other->live.TabIdOf(tab.id)) {
 +          other->live.Erase(*id);
 +          window.live.Set(*id, tab.id);
-+          for (Observer& observer : observers_) {
-+            observer.OnLinksChanged(other->browser);
-+          }
++          LinksChanged(*other);
 +        }
 +      }
 +      std::tie(next, window.live) = loka::TabCreated(
@@ -4599,15 +4605,14 @@
 +        FindWindow(still->GetBrowserWindowInterface())) {
 +      continue;
 +    }
-+    std::tie(next, window.live) = loka::TabRemoved(next, window.live, id);
++    std::tie(next, window.live) =
++        loka::TabRemoved(next, window.live, id, Now());
 +  }
 +  next = TakeView(window, std::move(next), /*used=*/false);
 +  const bool changed = !(next == state_);
 +  Commit(std::move(next));
 +  if (!(links == window.live)) {
-+    for (Observer& observer : observers_) {
-+      observer.OnLinksChanged(window.browser);
-+    }
++    LinksChanged(window);
 +  }
 +  // Other windows close and regroup tabs to match, keeping their focus.
 +  if (changed) {
@@ -4659,9 +4664,27 @@
 +    }
 +  }
 +  if (!(links == window.live)) {
-+    for (Observer& observer : observers_) {
-+      observer.OnLinksChanged(window.browser);
++    LinksChanged(window);
++  }
++}
++
++void LokaSpacesService::LinksChanged(Window& window) {
++  if (SessionService* session =
++          SessionServiceFactory::GetForProfileIfExisting(profile_)) {
++    for (const auto& [id, browser_id] : window.live.entries()) {
++      tabs::TabInterface* tab = tabs::TabHandle(browser_id).Get();
++      if (!tab) {
++        continue;
++      }
++      const std::string* kept =
++          SessionServiceBase::GetKeptTabData(tab->GetContents(), kLokaTabKey);
++      if (!kept || *kept != id) {
++        session->SetKeptTabData(tab->GetContents(), kLokaTabKey, id);
++      }
 +    }
++  }
++  for (Observer& observer : observers_) {
++    observer.OnLinksChanged(window.browser);
 +  }
 +}
 +
@@ -4831,7 +4854,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_spaces_service.h
-@@ -0,0 +1,196 @@
+@@ -0,0 +1,199 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -5003,6 +5026,9 @@
 +  // events.
 +  void Look(Window& window);
 +  void Reconcile(Window& window, Pass pass);
++  // Saves in the session which Loka tab each of `window`'s tabs shows, and
++  // tells observers its links changed.
++  void LinksChanged(Window& window);
 +  void Run(Window& window, const loka::Op& op);
 +  void ArchiveOld();
 +  // Takes over the tabs every open window already has, matching them by

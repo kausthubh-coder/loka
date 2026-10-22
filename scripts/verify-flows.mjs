@@ -1104,6 +1104,12 @@ async function tabs() {
 	await sb.click("QA Charlie", { role: "[role=treeitem]", button: "middle" });
 	const middle = await until(async () => !(await sb.tabs()).some((t) => t.title === "QA Charlie"), 5000);
 	check("a middle click closes a tab", middle, show((await sb.tabs()).map((t) => t.title)));
+	const archived = (await sb.state()).archive.slice(0, 2).map((a) => a.tab.title);
+	check(
+		"closed tabs go to the top of the archive, so they can come back",
+		show(archived) === show(["QA Charlie", "QA Delta"]),
+		show(archived),
+	);
 	await step("closed-two");
 
 	// Reorder: Alpha above Bravo.
@@ -1438,6 +1444,12 @@ async function pinning() {
 		(await sb.rows()).some((r) => r.label === "QA Foxtrot"),
 		"row there",
 	);
+	const foxtrotLooks = () =>
+		sb.run(
+			`(() => { const row = window.__qa.find("QA Foxtrot", "[role=treeitem]"); return row ? (row.classList.contains("unloaded") ? "unloaded" : "loaded") : "no row"; })()`,
+		);
+	const faded = await until(async () => (await foxtrotLooks()) === "unloaded", 3000);
+	check("and looks unloaded: its icon faded", faded, await foxtrotLooks());
 	await step("unloaded");
 	await sb.click("QA Foxtrot", { role: "[role=treeitem]" });
 	const reloaded = await until(
@@ -1457,7 +1469,42 @@ async function pinning() {
 		6000,
 	);
 	check("with its own icon on the row", icon, show(icon));
+	check("and looks loaded again", (await foxtrotLooks()) === "loaded", await foxtrotLooks());
 	await step("reloaded");
+
+	// Closing the browser tab itself, as Ctrl+W does, after the pinned tab went to another page: the row stays, and
+	// opening it again goes back to the address it was pinned with.
+	const foxtrotUrl = `http://${ctx.host}/site/foxtrot`;
+	const foxtrotPage = (await ctx.browser.targets()).find((t) => t.type === "page" && t.url === foxtrotUrl);
+	if (foxtrotPage) {
+		const s = await connect(foxtrotPage.webSocketDebuggerUrl);
+		await s.call("Page.navigate", { url: `http://${ctx.host}/site/elsewhere` });
+		s.close();
+	}
+	const wandered = await until(
+		async () => (await sb.tabs()).find((t) => t.title === "QA Elsewhere" && !t.loading),
+		5000,
+	);
+	if (wandered && foxtrotPage) {
+		await ctx.browser.browserSession.call("Target.closeTarget", { targetId: foxtrotPage.id });
+	}
+	const gone = await until(async () => !(await sb.tabs()).some((t) => t.title === "QA Elsewhere"), 5000);
+	const stillPinned = (await sb.rows()).some((r) => r.label === "QA Foxtrot");
+	check(
+		"closing a pinned tab's browser tab after it went elsewhere keeps its row",
+		wandered && gone && stillPinned && (await foxtrotLooks()) === "unloaded",
+		`went elsewhere: ${Boolean(wandered)}; closed: ${Boolean(gone)}; row: ${await foxtrotLooks()}`,
+	);
+	await sb.click("QA Foxtrot", { role: "[role=treeitem]" });
+	const reset = await until(
+		async () => (await sb.tabs()).find((t) => t.active && t.url === foxtrotUrl && !t.loading),
+		8000,
+	);
+	check(
+		"and opening it again goes to the address it was pinned with",
+		reset,
+		show((await sb.tabs()).find((t) => t.active)),
+	);
 
 	// Out of a pinned folder into the open tabs and back in, with a real mouse grabbing Foxtrot by its icon.
 	await sb.realDrag({ re: "^QA Foxtrot$" }, { re: "^QA Hotel$" }, 0.8);
@@ -2163,6 +2210,31 @@ async function restart() {
 		await ctx.browser.browserSession.call("Target.closeTarget", { targetId });
 	}
 	await until(async () => !(await ctx.sidebar.tabs()).some((t) => t.url.startsWith("chrome://settings")), 5000);
+	// Two tabs at one address, in Research and in Play, and the browser quits showing Play. Matched by address, the
+	// first restored tab (Research's) would take Play's row; each tab saves its Loka tab in the session instead. Each
+	// page remembers its space in sessionStorage, which the session brings back with it.
+	const twinUrl = `http://${ctx.host}/site/twin`;
+	/** @param {{ webSocketDebuggerUrl: string }} target @param {string} space */
+	const mark = async (target, space) => {
+		const s = await connect(target.webSocketDebuggerUrl);
+		await evaluate(s, `sessionStorage.setItem("loka-qa-space", ${JSON.stringify(space)})`);
+		s.close();
+	};
+	await inResearch();
+	await openSite("twin");
+	const researchTwin = (await ctx.browser.targets()).find((t) => t.type === "page" && t.url === twinUrl);
+	if (researchTwin) await mark(researchTwin, "Research");
+	await ctx.sidebar.key("2", { ctrl: true });
+	await until(async () => shownSpace(await ctx.sidebar.state())?.name === "Play", 5000);
+	const { targetId: playTwinId } = await ctx.browser.browserSession.call("Target.createTarget", { url: twinUrl });
+	const inPlay = await until(async () => openTitles(await ctx.sidebar.state(), "Play").includes("QA Twin"), 8000);
+	const playTwin = (await ctx.browser.targets()).find((t) => t.id === playTwinId);
+	if (playTwin) await mark(playTwin, "Play");
+	check(
+		"QA Twin is open in Research and in Play",
+		researchTwin && playTwin && inPlay && openTitles(await ctx.sidebar.state(), "Research").includes("QA Twin"),
+		`Research ${show(openTitles(await ctx.sidebar.state(), "Research"))}, Play ${show(openTitles(await ctx.sidebar.state(), "Play"))}`,
+	);
 	const before = await snapshot();
 	const openBefore = (await ctx.sidebar.tabs()).map((t) => t.url).filter((u) => u.startsWith("http"));
 	const emptyBefore = (await ctx.sidebar.tabs()).some((t) => isEmptyTab(t.url));
@@ -2225,6 +2297,35 @@ async function restart() {
 	}
 	check("the command bar stays closed over them", barsShowing === 0, `${barsShowing} command bars showing`);
 	await step("after-restart", true);
+
+	// Each space's QA Twin row opens the page that was that space's.
+	const shownTwin = async () => {
+		for (const t of await ctx.browser.targets()) {
+			if (t.type !== "page" || t.url !== twinUrl) continue;
+			const s = await connect(t.webSocketDebuggerUrl);
+			const space = await evaluate(
+				s,
+				`document.visibilityState === "visible" ? sessionStorage.getItem("loka-qa-space") : null`,
+			);
+			s.close();
+			if (space) return space;
+		}
+		return null;
+	};
+	for (const [space, key] of [
+		["Research", "1"],
+		["Play", "2"],
+	]) {
+		await ctx.sidebar.key(String(key), { ctrl: true });
+		await until(async () => shownSpace(await ctx.sidebar.state())?.name === space, 5000);
+		await ctx.sidebar.click("QA Twin", { role: "[role=treeitem]" });
+		const shown = await until(shownTwin, 8000);
+		check(
+			`after the restart, ${space}'s QA Twin row opens the tab that was ${space}'s`,
+			shown === space,
+			`it opens the tab that was ${shown ?? "nobody"}'s`,
+		);
+	}
 }
 
 /** Whether two tab lists are the same tabs, with the same one shown. @param {NativeTab[]} a @param {NativeTab[]} b */

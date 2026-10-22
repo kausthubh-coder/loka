@@ -53,6 +53,25 @@ describe("when Loka starts, it takes over the browser's tabs", () => {
 		expect(Object.values(linked)).toEqual([3]);
 	});
 
+	test("after a restart a tab takes the Loka tab it saved, not the first at its address", () => {
+		// Two browser tabs on Hacker News; the second showed the sidebar's Hacker News row before the restart.
+		const [state, live] = adoptTabs(
+			seedState(NOW),
+			[
+				tab(31, "https://news.ycombinator.com"),
+				tab(32, "https://news.ycombinator.com", { title: "Hacker News", lokaId: "t-hn" }),
+				tab(33, "https://zen-browser.app/download", { title: "Download Zen", lokaId: "t-zen" }),
+			],
+			NOW,
+		);
+		expect(live["t-hn"]).toBe(32);
+		expect(live["t-zen"]).toBe(33);
+		expect(state.tabs["t-zen"]).toMatchObject({ url: "https://zen-browser.app/download", title: "Download Zen" });
+		// The other Hacker News tab is a new open tab in the current space.
+		const build = state.spaces.find((s) => s.id === "s-build");
+		expect(titles(state, build?.open ?? [])).toEqual(["https://news.ycombinator.com", "Hacker News", "Download Zen"]);
+	});
+
 	test("a first launch starts with one space holding every open browser tab", () => {
 		const [state, live] = adoptTabs(firstState(), [tab(1, "https://a.example/"), tab(2, "https://b.example/")], NOW);
 		const opened = state.spaces.map((s) => ({ name: s.name, open: s.open.map((id) => state.tabs[id]?.url) }));
@@ -131,13 +150,15 @@ describe("the browser's tab events update the spaces", () => {
 		expect(live).toEqual({ ...live0, "t-lit": 30 });
 	});
 
-	test("closing an open tab in the browser removes it; closing a pinned one only unloads it", () => {
+	test("closing an open tab in the browser archives it; closing a pinned one only unloads it", () => {
 		const [s0, live0] = start();
 		const [withNew, live1] = tabCreated(s0, live0, tab(40, "https://x.example/"), NOW);
 		const newId = Object.keys(live1).find((id) => live1[id] === 40) ?? "";
-		const [afterOpen] = tabRemoved(withNew, live1, 40);
+		const [afterOpen] = tabRemoved(withNew, live1, 40, NOW);
 		expect(afterOpen.tabs[newId]).toBeUndefined();
-		const [afterPinned, live2] = tabRemoved(s0, live0, 21);
+		expect(afterOpen.archive[0]).toMatchObject({ tab: { id: newId, url: "https://x.example/" }, archivedAt: NOW });
+		const [afterPinned, live2] = tabRemoved(s0, live0, 21, NOW);
+		expect(afterPinned.archive).toEqual(s0.archive);
 		expect(homeOf(afterPinned, "t-canvas")).toBe("s-school");
 		expect(live2["t-canvas"]).toBeUndefined();
 	});

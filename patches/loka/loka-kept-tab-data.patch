@@ -1,0 +1,156 @@
+--- a/chrome/browser/sessions/session_service_base.cc
++++ b/chrome/browser/sessions/session_service_base.cc
+@@ -154,6 +154,26 @@
+   const BrowserWindowInterface::Type type_;
+ };
+ 
++// Loka: what a tab keeps through rewrites of the session (SetKeptTabData).
++class KeptTabData : public base::SupportsUserData::Data {
++ public:
++  static const void* UserDataKey() {
++    static const char kKey = 0;
++    return &kKey;
++  }
++  static KeptTabData* From(content::WebContents* tab) {
++    return static_cast<KeptTabData*>(tab->GetUserData(UserDataKey()));
++  }
++  static KeptTabData& For(content::WebContents* tab) {
++    if (!From(tab)) {
++      tab->SetUserData(UserDataKey(), std::make_unique<KeptTabData>());
++    }
++    return *From(tab);
++  }
++
++  std::map<std::string, std::string> data;
++};
++
+ }  // namespace
+ 
+ // SessionServiceBase
+@@ -196,6 +216,52 @@
+ }
+ void SessionServiceBase::RemoveObserver(SessionServiceBaseObserver* observer) {
+   session_service_base_observers_.RemoveObserver(observer);
++}
++
++void SessionServiceBase::SetKeptTabData(content::WebContents* tab,
++                                        const std::string& key,
++                                        const std::string& data) {
++  KeptTabData::For(tab).data[key] = data;
++  sessions::SessionTabHelper* helper =
++      sessions::SessionTabHelper::FromWebContents(tab);
++  if (!helper || !helper->window_id().is_valid() ||
++      !ShouldTrackChangesToWindow(helper->window_id())) {
++    return;
++  }
++  ScheduleCommand(sessions::CreateAddTabExtraDataCommand(helper->session_id(),
++                                                         key, data));
++}
++
++// static
++const std::string* SessionServiceBase::GetKeptTabData(
++    content::WebContents* tab,
++    const std::string& key) {
++  KeptTabData* kept = KeptTabData::From(tab);
++  if (!kept) {
++    return nullptr;
++  }
++  auto it = kept->data.find(key);
++  return it == kept->data.end() ? nullptr : &it->second;
++}
++
++// static
++void SessionServiceBase::CopyKeptTabData(
++    content::WebContents* tab,
++    std::map<std::string, std::string>* extra_data) {
++  if (KeptTabData* kept = KeptTabData::From(tab)) {
++    extra_data->insert(kept->data.begin(), kept->data.end());
++  }
++}
++
++// static
++void SessionServiceBase::RestoreKeptTabData(
++    content::WebContents* tab,
++    const std::map<std::string, std::string>& extra_data) {
++  for (const auto& [key, data] : extra_data) {
++    if (key.starts_with("loka.")) {
++      KeptTabData::For(tab).data[key] = data;
++    }
++  }
+ }
+ 
+ // static
+@@ -670,6 +736,14 @@
+   if (is_pinned) {
+     command_storage_manager()->AppendRebuildCommand(
+         sessions::CreatePinnedStateCommand(session_id, true));
++  }
++
++  // Loka: the tab's kept data survives the rewrite.
++  if (KeptTabData* kept = KeptTabData::From(tab)) {
++    for (const auto& [key, data] : kept->data) {
++      command_storage_manager()->AppendRebuildCommand(
++          sessions::CreateAddTabExtraDataCommand(session_id, key, data));
++    }
+   }
+ 
+   // Record the association between the sessionStorage namespace and the tab.
+--- a/chrome/browser/sessions/session_service_base.h
++++ b/chrome/browser/sessions/session_service_base.h
+@@ -196,6 +196,26 @@
+   void AddObserver(SessionServiceBaseObserver* observer);
+   void RemoveObserver(SessionServiceBaseObserver* observer);
+ 
++  // Loka: saves `data` under `key` with `tab` in the session, and writes it
++  // again whenever the session file is rewritten (SessionService's
++  // AddTabExtraData writes it once, and the next rewrite drops it). A restored
++  // tab gets it back as extra data (RestoreKeptTabData).
++  void SetKeptTabData(content::WebContents* tab,
++                      const std::string& key,
++                      const std::string& data);
++  // What SetKeptTabData saved under `key` for `tab`, or null.
++  static const std::string* GetKeptTabData(content::WebContents* tab,
++                                           const std::string& key);
++  // Adds what `tab` kept to `extra_data`, for a closed tab the browser can
++  // reopen.
++  static void CopyKeptTabData(content::WebContents* tab,
++                              std::map<std::string, std::string>* extra_data);
++  // Gives a restored tab back the data it kept: its extra data's keys that
++  // start with "loka.".
++  static void RestoreKeptTabData(
++      content::WebContents* tab,
++      const std::map<std::string, std::string>& extra_data);
++
+  protected:
+   // Creates a SessionService for the specified profile.
+   SessionServiceBase(Profile* profile, SessionServiceType type);
+--- a/chrome/browser/ui/browser_live_tab_context.cc
++++ b/chrome/browser/ui/browser_live_tab_context.cc
+@@ -17,6 +17,7 @@
+ #include "chrome/browser/glic/glic_tab_restore_helper.h"
+ #include "chrome/browser/performance_manager/public/background_tab_loading_policy.h"
+ #include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/sessions/session_service_base.h"
+ #include "chrome/browser/sessions/session_service_utils.h"
+ #include "chrome/browser/sessions/tab_restore_service_factory.h"
+ #include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
+@@ -178,6 +179,9 @@
+ 
+   glic::PopulateGlicExtraData(tab_strip_model_->GetTabAtIndex(index),
+                               &extra_data);
++  // Loka: a reopened tab gets back the data it kept (SetKeptTabData).
++  SessionServiceBase::CopyKeptTabData(
++      tab_strip_model_->GetTabAtIndex(index)->GetContents(), &extra_data);
+ 
+   return extra_data;
+ }
+--- a/chrome/browser/ui/browser_tabrestore.cc
++++ b/chrome/browser/ui/browser_tabrestore.cc
+@@ -84,6 +84,7 @@
+                                extension_app_id);
+ 
+   glic::RestoreGlicStateFromExtraData(web_contents.get(), extra_data);
++  SessionServiceBase::RestoreKeptTabData(web_contents.get(), extra_data);
+   send_tab_to_self::SendTabToSelfActivationTracker::RestoreFromExtraData(
+       web_contents.get(), extra_data);
+ 

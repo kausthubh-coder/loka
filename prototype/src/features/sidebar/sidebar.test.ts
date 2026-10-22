@@ -118,6 +118,13 @@ describe("reordering", () => {
 		expect(space(state, "s-build").open).toEqual(["t-arc", "t-hn", "t-zen"]);
 	});
 
+	test("a move to a space that's gone leaves the tab where it was", () => {
+		// Another window's menu still offered a space this one deleted.
+		const seed = seedState();
+		expect(moveItem(seed, "t-hn", { area: "open", spaceId: "s-gone", index: 0 })).toBe(seed);
+		expect(moveItems(seed, ["t-hn", "t-zen"], { area: "open", spaceId: "s-gone", index: 0 })).toBe(seed);
+	});
+
 	test("pinning an essential moves it out of essentials", () => {
 		const state = moveItem(seedState(), "t-yt", { area: "pinned", spaceId: "s-home", parentId: null, index: 0 });
 		expect(state.essentials).toEqual(["t-mail", "t-cal", "t-gh"]);

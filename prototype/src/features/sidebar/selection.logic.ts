@@ -1,7 +1,7 @@
 // Picking several rows: Ctrl+click (Cmd on a Mac) adds or takes one, Shift+click or Shift+arrow takes the run from
 // the last one picked. A selection is the sidebar's own state, never saved with the spaces, and holds tabs only: a
-// run across the pinned tree passes over its folders. It never spans two lists: the pinned tree and the open tabs
-// are picked from apart.
+// run across the pinned tree passes over its folders. A run (Shift) stays in one list, the pinned tree or the open
+// tabs, and replaces the selection; Ctrl+click can pick from both, and the menu acts on each list's picks.
 
 import { activeSpace, type BrowserState, ESSENTIALS_LIMIT, pinnedRows, type TabId } from "./sidebar.logic";
 

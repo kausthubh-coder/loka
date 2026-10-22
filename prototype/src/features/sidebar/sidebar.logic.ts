@@ -226,6 +226,8 @@ export function moveItem(state: BrowserState, id: string, to: Place): BrowserSta
 	if (to.area === "essentials" && from.area !== "essentials" && state.essentials.length >= ESSENTIALS_LIMIT) {
 		return state;
 	}
+	// A space deleted meanwhile (another window's menu still offered it): the item stays where it was.
+	if (to.area !== "essentials" && !state.spaces.some((s) => s.id === to.spaceId)) return state;
 
 	// Indexes are given against the list before the move, so moving down the same list shifts by one.
 	const index = sameContainer(from, to) && from.index < to.index ? to.index - 1 : to.index;

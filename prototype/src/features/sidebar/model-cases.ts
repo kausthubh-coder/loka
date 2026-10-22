@@ -124,6 +124,14 @@ export function modelCases(): { states: Record<string, BrowserState>; cases: Cas
 	move("a tab joins the Essentials", "seed", "t-arc", { area: "essentials", index: 1 });
 	move("an Essential goes to another space's open tabs", "seed", "t-gh", { area: "open", spaceId: "s-home", index: 0 });
 	move("past the end means the end", "seed", "t-hn", { area: "open", spaceId: "s-school", index: Infinity });
+	move("a move to a space that's gone changes nothing", "seed", "t-hn", { area: "open", spaceId: "s-gone", index: 0 });
+	on(
+		"several tabs to a space that's gone change nothing",
+		"seed",
+		"moveItems",
+		{ itemIds: ["t-hn", "t-zen"], to: { area: "open", spaceId: "s-gone", index: 0 } },
+		(s) => moveItems(s, ["t-hn", "t-zen"], { area: "open", spaceId: "s-gone", index: 0 }),
+	);
 	move("a negative index means the start", "seed", "t-arc", { area: "essentials", index: -3 });
 	move("a tab sent to another space stops being the one its old space shows", "showing", "t-hn", {
 		area: "open",

@@ -674,6 +674,28 @@ async function main() {
 			!win.titles.some((t) => /chromium|helium/i.test(t)),
 			win.titles.map((t) => `"${t}"`).join(", "),
 		);
+		// The pages a user opens in the first week name the product: Settings' About page and its default-browser row.
+		const { targetId: helpId } = await browserSession.call("Target.createTarget", { url: "chrome://settings/help" });
+		const helpTarget = await until(async () => (await targets()).find((t) => t.id === helpId), 5000);
+		const help = helpTarget ? await connect(helpTarget.webSocketDebuggerUrl) : null;
+		if (help) sessions.push(help);
+		/** @type {string} */
+		const helpText = help
+			? await until(async () => {
+					/** @type {string} */
+					const text = await evaluate(help, ALL_TEXT);
+					return text.includes("Loka") ? text : null;
+				}, 8000).then((text) => text ?? evaluate(help, ALL_TEXT))
+			: "";
+		// The engine's version ("Chromium 155") and the credit to the Chromium project name the engine, as Brave and
+		// Edge do; anything else naming Chromium is the product's name leaking.
+		const asProduct = helpText.replace(/Chromium \d[\d.]*|the Chromium open source project/g, "");
+		const helpLeaks = [...asProduct.matchAll(/[^.\n]*\bchromium\b[^.\n]*/gi)].map((m) => m[0].trim());
+		check(
+			"Settings' About page says About Loka and never Chromium",
+			helpText.includes("About Loka") && helpLeaks.length === 0,
+			helpLeaks.slice(0, 3).join(" | ") || (helpText.includes("About Loka") ? "About Loka" : "no About Loka"),
+		);
 		const others = win.titles.filter((t) => t !== shown);
 		if (others.length) note("other visible windows", others.map((t) => `"${t}"`).join(", "));
 		check("window screenshot", existsSync(join(evidence, "window.png")), win.shot || "not saved");

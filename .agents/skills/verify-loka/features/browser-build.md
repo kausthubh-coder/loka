@@ -31,7 +31,8 @@ Preconditions: Windows, and a build checkout. `bun run build:status` first.
 
 - **One command.** `bun run verify -- --ux browser-build` runs patches:check and verify:browser.
 - **Gate.** verify:browser's identity checks: 'chrome.exe ProductName is "Loka"', 'the window is titled "<tab> -
-  Loka"', "no window title says Chromium or Helium", "first run opens only Loka's setup".
+  Loka"', "no window title says Chromium or Helium", "Settings' About page says About Loka and never Chromium" (the
+  engine's version and the credit to the Chromium project aside), "first run opens only Loka's setup".
 - **Patches.** `bun run patches:check` exits 0 with `<n> files in C:\src\loka\build\src match patches/loka.`, or
   lists each un-exported file and the
   `scripts/export_patch.py` command that captures it.

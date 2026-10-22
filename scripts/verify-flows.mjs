@@ -2423,6 +2423,54 @@ async function sleeping() {
 	await step("slept-and-back");
 }
 
+/**
+ * Two windows show two spaces: a new window opens on the space last used, and switching one window's space leaves the
+ * other's space and tab on screen where they were.
+ */
+async function windowSpaces() {
+	const sb = ctx.sidebar;
+	await inResearch();
+	await openSite("lima");
+	const onScreen = (await sb.tabs()).find((t) => t.active);
+	const known = new Set((await ctx.browser.targets()).map((t) => t.id));
+	await ctx.browser.browserSession.call("Target.createTarget", { url: "chrome://newtab/", newWindow: true });
+	const sb2 = await attachSidebar(ctx.browser, (t) => !known.has(t.id));
+	const opened = await until(async () => shownSpace(await sb2.state())?.name === "Research", 8000);
+	check("a new window opens on the space last used", opened, `it shows "${shownSpace(await sb2.state())?.name}"`);
+
+	await sb2.key("2", { ctrl: true });
+	const switched = await until(async () => {
+		const f = await browserFollows(sb2);
+		return shownSpace(await sb2.state())?.name === "Play" && f.ok ? f : null;
+	}, 8000);
+	check("the new window switches to Play", switched, switched?.detail ?? (await browserFollows(sb2)).detail);
+	await sleep(1000);
+	const first = await browserFollows(sb);
+	const stillActive = (await sb.tabs()).find((t) => t.active);
+	check(
+		"the first window still shows Research, on the same tab",
+		shownSpace(await sb.state())?.name === "Research" && first.ok && stillActive?.id === onScreen?.id,
+		`${first.detail}; on screen before ${onScreen?.title}, now ${stillActive?.title}`,
+	);
+	await step("two-windows-two-spaces", true);
+
+	await sb.key("3", { ctrl: true });
+	const moved = await until(async () => shownSpace(await sb.state())?.name === "Code Lab", 5000);
+	await sleep(1000);
+	const second = await browserFollows(sb2);
+	check(
+		"switching the first window leaves the new one on Play",
+		moved && shownSpace(await sb2.state())?.name === "Play" && second.ok,
+		`first shows "${shownSpace(await sb.state())?.name}"; ${second.detail}`,
+	);
+
+	const sidebarId = (await ctx.browser.targets()).find((t) => t.url === SIDEBAR_URL && !known.has(t.id))?.id;
+	await sb2.tell("windowAction", "close");
+	await until(async () => !(await ctx.browser.targets()).some((t) => t.id === sidebarId), 8000);
+	sb2.s.close();
+	await inResearch();
+}
+
 const NEEDS = {
 	"4-states": ["3-tabs"],
 	"5-pinning": ["3-tabs"],
@@ -2445,6 +2493,7 @@ async function main() {
 		["9-restart", restart],
 		["10-new-tab", newTabs],
 		["11-sleep", sleeping],
+		["12-windows", windowSpaces],
 	];
 	// --only <flow>[,<flow>] runs those flows after the ones they build on (first run always; restart needs them all).
 	const onlyAt = process.argv.indexOf("--only");

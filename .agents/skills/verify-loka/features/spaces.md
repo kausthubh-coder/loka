@@ -18,6 +18,10 @@ the previous and next spaces are small planets on the left and right.
 - `space-tab-group`: in the real browser each space's tabs are one tab group named and colored after it, and the
   other spaces' groups are folded away.
 - `space-new` opens the space editor with `Space N` and the next color; creating switches to it.
+- `space-per-window`: in the real browser each window shows its own space. A new window opens on the space last
+  used (the saved `activeSpaceId`); switching one window leaves the others' spaces and tabs on screen alone. After a
+  restart each window shows the space of the tab it had on screen. The browser keeps the space per window
+  (`LokaSpacesService`), and each page hears its own window's space as `activeSpaceId`.
 
 ## How to get to it (user POV)
 
@@ -44,8 +48,11 @@ Preconditions: seed data (Build, School, Home).
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs spaces`.
 - **In the browser.** `bun run verify -- --ux spaces` runs it and verify:flows `spaces`: "clicking Play's planet
   shows Play", "the browser follows to Play", "Ctrl+3 shows Code Lab", "picking Code Lab in the command bar shows
-  it", "the browser shows Work's tab group, the rest folded", "switching to the empty space opens a new tab in it".
-  Not checked in the browser: the swipe, drag-hover switching, and each space keeping its own active tab.
+  it", "the browser shows Work's tab group, the rest folded", "switching to the empty space opens a new tab in it";
+  and `windows`: "a new window opens on the space last used", "the new window switches to Play", "the first window
+  still shows Research, on the same tab", "switching the first window leaves the new one on Play".
+  Not checked in the browser: the swipe, drag-hover switching, each space keeping its own active tab, and windows
+  keeping their spaces through a restart.
 
 ## Gotchas
 

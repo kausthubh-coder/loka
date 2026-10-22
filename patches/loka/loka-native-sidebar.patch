@@ -1491,7 +1491,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_MEDIA_WATCHER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.cc
-@@ -0,0 +1,829 @@
+@@ -0,0 +1,846 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2066,8 +2066,12 @@
 +        if (!self->spaces_observation_.IsObserving()) {
 +          self->spaces_observation_.Observe(service);
 +        }
++        // Each window shows its own space.
++        base::DictValue state = loka::ToValue(service->state());
++        self->sent_space_ = service->SpaceOf(self->GetBrowser());
++        state.Set("activeSpaceId", self->sent_space_);
 +        base::DictValue reply;
-+        reply.Set("state", loka::ToValue(service->state()));
++        reply.Set("state", std::move(state));
 +        reply.Set("links", self->LinkPairs());
 +        self->ResolveJavascriptCallback(callback, reply);
 +      },
@@ -2082,7 +2086,7 @@
 +      LokaSpacesService::Get(Profile::FromWebUI(web_ui()));
 +  acking_ = args[0].GetInt();
 +  acked_ = false;
-+  if (!service->Apply(args[1].GetDict())) {
++  if (!service->Apply(args[1].GetDict(), GetBrowser())) {
 +    LOG(ERROR) << "Loka: the sidebar sent an intent the browser doesn't know";
 +  }
 +  // Nothing changed (a refused move): the page still hears its intent is
@@ -2101,9 +2105,22 @@
 +    return;
 +  }
 +  base::DictValue delta = loka::ToDelta(before, after);
++  // The saved active space is the one last used; this page shows its
++  // window's.
++  delta.Remove("activeSpaceId");
++  const std::string& space =
++      LokaSpacesService::Get(Profile::FromWebUI(web_ui()))
++          ->SpaceOf(GetBrowser());
++  if (space != sent_space_) {
++    sent_space_ = space;
++    delta.Set("activeSpaceId", space);
++  }
 +  if (acking_ && !acked_) {
 +    delta.Set("ack", *acking_);
 +    acked_ = true;
++  }
++  if (delta.empty()) {
++    return;
 +  }
 +  FireWebUIListener("spaces-changed", delta);
 +}
@@ -2323,7 +2340,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h
-@@ -0,0 +1,300 @@
+@@ -0,0 +1,302 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2569,6 +2586,8 @@
 +  raw_ptr<TabStripModel> observed_ = nullptr;
 +  // The page asked for the spaces and hears their changes.
 +  bool watching_spaces_ = false;
++  // The active space the page was last told: its window's.
++  std::string sent_space_;
 +  // The page's intent being applied, and whether a change has carried its
 +  // number back yet.
 +  std::optional<int> acking_;
@@ -3939,7 +3958,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_UI_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_spaces_service.cc
-@@ -0,0 +1,798 @@
+@@ -0,0 +1,870 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -4192,11 +4211,23 @@
 +}
 +
 +void LokaSpacesService::Commit(loka::State next) {
-+  if (next == state_) {
++  bool moved = false;
++  for (const std::unique_ptr<Window>& window : windows_) {
++    if (!loka::FindSpace(next, window->space)) {
++      window->space = next.active_space_id;
++    }
++    if (window->space != window->told_space) {
++      window->told_space = window->space;
++      moved = true;
++    }
++  }
++  if (next == state_ && !moved) {
 +    return;
 +  }
 +  loka::State before = std::exchange(state_, std::move(next));
-+  spaces_writer_->ScheduleWrite(this);
++  if (!(before == state_)) {
++    spaces_writer_->ScheduleWrite(this);
++  }
 +  if (before.archive != state_.archive) {
 +    SaveArchive();
 +  }
@@ -4205,11 +4236,41 @@
 +  }
 +}
 +
-+bool LokaSpacesService::Apply(const base::DictValue& intent) {
++loka::State LokaSpacesService::ViewOf(const Window& window) const {
++  loka::State view = state_;
++  view.active_space_id = window.space;
++  return view;
++}
++
++loka::State LokaSpacesService::TakeView(Window& window,
++                                        loka::State view,
++                                        bool used) {
++  const bool switched = view.active_space_id != window.space;
++  window.space = view.active_space_id;
++  if (!used && !switched && loka::FindSpace(view, state_.active_space_id)) {
++    view.active_space_id = state_.active_space_id;
++  }
++  return view;
++}
++
++const std::string& LokaSpacesService::SpaceOf(
++    BrowserWindowInterface* browser) const {
++  for (const std::unique_ptr<Window>& window : windows_) {
++    if (window->browser == browser) {
++      return window->space;
++    }
++  }
++  return state_.active_space_id;
++}
++
++bool LokaSpacesService::Apply(const base::DictValue& intent,
++                              BrowserWindowInterface* from) {
 +  if (!ready_) {
 +    return false;
 +  }
-+  std::optional<loka::State> next = loka::ApplyIntent(state_, intent);
++  Window* window = FindWindow(from);
++  std::optional<loka::State> next =
++      loka::ApplyIntent(window ? ViewOf(*window) : state_, intent);
 +  if (!next) {
 +    return false;
 +  }
@@ -4218,18 +4279,22 @@
 +    // New spaces (an import, another device's): the old links mean nothing
 +    // in them, so the open tabs are matched again by address, as at startup.
 +    // Without this, every tab not in the new spaces would close.
-+    for (const std::unique_ptr<Window>& window : windows_) {
-+      window->live = loka::LiveMap();
-+      window->groups.clear();
++    for (const std::unique_ptr<Window>& each : windows_) {
++      each->live = loka::LiveMap();
++      each->groups.clear();
 +    }
 +    AdoptAll(std::move(*next), /*keep_unloaded=*/true);
 +    return true;
 +  }
++  if (window) {
++    next = TakeView(*window, std::move(*next), /*used=*/true);
++  }
 +  Commit(std::move(*next));
-+  // Every window follows what the sidebar asked for, as each window's sync
-+  // did when another window changed the spaces.
-+  for (const std::unique_ptr<Window>& window : windows_) {
-+    Schedule(*window, Pass::kUi);
++  // The window that asked follows the intent. Others only close and regroup
++  // tabs: they keep their own space and the tab on screen.
++  for (const std::unique_ptr<Window>& each : windows_) {
++    Schedule(*each, !window || each.get() == window ? Pass::kUi
++                                                    : Pass::kBrowser);
 +  }
 +  return true;
 +}
@@ -4252,7 +4317,10 @@
 +    window->browser = each;
 +    window->tab_strip = each->GetTabStripModel();
 +    window->number = next_window_number_++;
-+    window->shown_space = state_.active_space_id;
++    // A new window opens on the space last used.
++    window->space = state_.active_space_id;
++    window->told_space = window->space;
++    window->shown_space = window->space;
 +    each->GetTabStripModel()->AddObserver(this);
 +    windows_.push_back(std::move(window));
 +  };
@@ -4295,9 +4363,31 @@
 +      }
 +    }
 +  }
++  // Each window shows the space of the tab on screen, so windows restored
++  // after a restart keep their spaces; a window on an Essential or an empty
++  // tab shows the space last used.
++  const std::string last_used = next.active_space_id;
++  for (const std::unique_ptr<Window>& window : windows_) {
++    window->space = last_used;
++    auto shown = std::ranges::find_if(window->seen, [](const auto& entry) {
++      return entry.second.active;
++    });
++    std::optional<loka::TabId> id =
++        shown == window->seen.end() ? std::nullopt
++                                    : window->live.TabIdOf(shown->first);
++    std::optional<std::string> home =
++        id ? loka::HomeOf(next, *id) : std::nullopt;
++    if (home && *home != "essentials") {
++      loka::State view = std::move(next);
++      view.active_space_id = *home;
++      next = loka::TabActivated(view, window->live, shown->first, Now());
++      window->space = next.active_space_id;
++      next.active_space_id = last_used;
++    }
++    window->shown_space = window->space;
++  }
 +  Commit(std::move(next));
 +  for (const std::unique_ptr<Window>& window : windows_) {
-+    window->shown_space = state_.active_space_id;
 +    for (Observer& observer : observers_) {
 +      observer.OnLinksChanged(window->browser);
 +    }
@@ -4466,7 +4556,7 @@
 +  for (const loka::BrowserTab& tab : tabs) {
 +    window.seen[tab.id] = tab;
 +  }
-+  loka::State next = state_;
++  loka::State next = ViewOf(window);
 +  const loka::LiveMap links = window.live;
 +  for (const loka::BrowserTab& tab : tabs) {
 +    auto old = before.find(tab.id);
@@ -4511,6 +4601,7 @@
 +    }
 +    std::tie(next, window.live) = loka::TabRemoved(next, window.live, id);
 +  }
++  next = TakeView(window, std::move(next), /*used=*/false);
 +  const bool changed = !(next == state_);
 +  Commit(std::move(next));
 +  if (!(links == window.live)) {
@@ -4518,11 +4609,11 @@
 +      observer.OnLinksChanged(window.browser);
 +    }
 +  }
-+  // Other windows follow, as each window's sync followed another's writes.
++  // Other windows close and regroup tabs to match, keeping their focus.
 +  if (changed) {
 +    for (const std::unique_ptr<Window>& other : windows_) {
 +      if (other.get() != &window) {
-+        Schedule(*other, Pass::kUi);
++        Schedule(*other, Pass::kBrowser);
 +      }
 +    }
 +  }
@@ -4551,15 +4642,15 @@
 +                              : window.live.TabIdOf(on_screen->id);
 +  std::optional<std::string> home =
 +      on_screen_loka ? loka::HomeOf(state_, *on_screen_loka) : std::nullopt;
-+  const bool elsewhere = home && *home != "essentials" &&
-+                         *home != state_.active_space_id;
++  const bool elsewhere =
++      home && *home != "essentials" && *home != window.space;
 +  const bool switched =
-+      pass == Pass::kUi &&
-+      (window.shown_space != state_.active_space_id || elsewhere);
-+  window.shown_space = state_.active_space_id;
++      pass == Pass::kUi && (window.shown_space != window.space || elsewhere);
++  window.shown_space = window.space;
 +  const loka::LiveMap links = window.live;
-+  for (const loka::Op& op :
-+       loka::PlanReconcile(state_, window.live, tabs, window.groups, switched)) {
++  for (const loka::Op& op : loka::PlanReconcile(ViewOf(window), window.live,
++                                                tabs, window.groups,
++                                                switched)) {
 +    const bool moves_focus = op.kind == loka::Op::Kind::kActivate ||
 +                             op.kind == loka::Op::Kind::kCreate ||
 +                             op.kind == loka::Op::Kind::kEmptyTab;
@@ -4740,7 +4831,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_spaces_service.h
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,196 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -4786,11 +4877,15 @@
 +// in the loka.store pref, and leaves the pref as it was, so going back to an
 +// older build loses nothing.
 +//
-+// Each window keeps its own links (which browser tab shows which Loka tab)
-+// and tab groups (one per space shown in it), as the page's sync did. The same
-+// two rules hold: only Loka moves a window's focus (a pass after an intent may
-+// activate and open tabs; a pass after the browser's own events never does),
-+// and every change starts from the current spaces, so nothing is written over.
++// Each window keeps its own links (which browser tab shows which Loka tab),
++// tab groups (one per space shown in it) and space: two windows can show two
++// spaces. The model knows one active space, so each window's events and
++// intents run on the spaces with its own space made the active one; the saved
++// active space is the one last used, which a new window opens on. The same
++// two rules as the page's sync hold: only Loka moves a window's focus (a pass
++// after that window's intent may activate and open tabs; a pass after the
++// browser's own events, or another window's intent, never does), and every
++// change starts from the current spaces, so nothing is written over.
 +class LokaSpacesService : public base::SupportsUserData::Data,
 +                          public ProfileObserver,
 +                          public TabStripModelObserver,
@@ -4798,7 +4893,8 @@
 + public:
 +  class Observer : public base::CheckedObserver {
 +   public:
-+    // The spaces changed from `before` to `after`.
++    // The spaces changed from `before` to `after`, or a window's space did
++    // (SpaceOf).
 +    virtual void OnSpacesChanged(const loka::State& before,
 +                                 const loka::State& after) {}
 +    // The links of `window`'s tabs to Loka's changed.
@@ -4818,12 +4914,16 @@
 +  bool ready() const { return ready_; }
 +  const loka::State& state() const { return state_; }
 +
-+  // Applies the page's intent. False when it isn't one; true otherwise, also
-+  // when the rules refused it and nothing changed.
-+  bool Apply(const base::DictValue& intent);
++  // Applies the intent of a page in `from` (null: a page in no window). False
++  // when it isn't one; true otherwise, also when the rules refused it and
++  // nothing changed.
++  bool Apply(const base::DictValue& intent, BrowserWindowInterface* from);
 +
 +  // Starts keeping `window`'s tabs in step. Its sidebar calls this once loaded.
 +  void AttachWindow(BrowserWindowInterface* window);
++  // The space `window` shows; the one last used for a window Loka doesn't
++  // keep.
++  const std::string& SpaceOf(BrowserWindowInterface* window) const;
 +  // Which browser tab (by TabHandle) shows each loaded Loka tab in `window`.
 +  const loka::LiveMap& LinksIn(BrowserWindowInterface* window) const;
 +
@@ -4860,6 +4960,10 @@
 +    int number = 0;
 +    loka::LiveMap live;
 +    loka::Groups groups;
++    // The space the window shows.
++    std::string space;
++    // The space observers last heard it shows.
++    std::string told_space;
 +    // The space the window was last made to show, to notice a switch.
 +    std::string shown_space;
 +    // Each tab as last seen, to turn the next look into events.
@@ -4874,8 +4978,16 @@
 +
 +  void OnLoaded(std::optional<std::string> spaces,
 +                std::optional<std::string> archive);
-+  // Makes `next` the spaces: saves, tells observers.
++  // Makes `next` the spaces: saves, tells observers, also when only a
++  // window's space changed. A window whose space is gone shows the one last
++  // used.
 +  void Commit(loka::State next);
++  // The spaces as `window` sees them: its space is the active one.
++  loka::State ViewOf(const Window& window) const;
++  // Takes `window`'s space from `view` (ViewOf after a change) and gives
++  // `view` back as the spaces, its active space the one last used: this
++  // window's when `used`, or when its space changed.
++  loka::State TakeView(Window& window, loka::State view, bool used);
 +  // Writes the archive's own file now: it changes at most once a minute.
 +  void SaveArchive();
 +

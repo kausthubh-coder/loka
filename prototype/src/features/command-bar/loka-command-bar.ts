@@ -364,7 +364,7 @@ export class LokaCommandBar extends LitElement {
 			color: var(--loka-ink-3);
 		}
 		input::selection {
-			background: color-mix(in srgb, var(--loka-accent) 35%, transparent);
+			background: var(--loka-text-selection);
 		}
 		.mode,
 		kbd {

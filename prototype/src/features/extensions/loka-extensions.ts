@@ -1,15 +1,16 @@
 import { css, html, LitElement, nothing } from "lit";
 import type { Browser, NativeExtension } from "../../../../webui/src/bridge";
-import { badgeText } from "./extensions.logic";
+import { badgeBackground, badgeInk, badgeText } from "./extensions.logic";
 
 const STORE_URL = "https://chromewebstore.google.com/";
 
 /** An extension's icon with its badge, as its toolbar button draws it. Shared by the toolbar and the panel. */
 export function extensionIcon(x: NativeExtension, size: number) {
 	const badge = badgeText(x.badge);
+	const background = badgeBackground(x.badgeColor);
 	return html`<span class="ext-icon" style="--size: ${size}px" aria-hidden="true">
 		${x.icon ? html`<img src=${x.icon} alt="" draggable="false" />` : html`<span class="letter">${x.name.slice(0, 1)}</span>`}
-		${badge ? html`<b class="badge" style="--badge: ${x.badgeColor || "#5f6368"}">${badge}</b>` : nothing}
+		${badge ? html`<b class="badge" style="--badge: ${background}; --badge-ink: ${badgeInk(background)}">${badge}</b>` : nothing}
 	</span>`;
 }
 
@@ -37,7 +38,7 @@ export const extensionIconStyles = css`
 		font-weight: 700;
 		font-size: calc(var(--size) * 0.6);
 	}
-	/* Chrome's badge: bottom right, over the icon, white on the extension's own color. */
+	/* Chrome's badge: bottom right, over the icon, on the extension's own color, in white or black (badgeInk). */
 	.badge {
 		position: absolute;
 		right: -5px;
@@ -47,7 +48,7 @@ export const extensionIconStyles = css`
 		padding: 0 2.5px;
 		border-radius: 6px;
 		background: var(--badge);
-		color: #fff;
+		color: var(--badge-ink);
 		font: 600 9px/12px system-ui, "Segoe UI", sans-serif;
 		text-align: center;
 		font-variant-numeric: tabular-nums;

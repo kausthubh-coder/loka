@@ -1,4 +1,5 @@
 import type { NativeExtension } from "../../../../webui/src/bridge";
+import { contrast, parseRgb } from "../../app/theme.logic";
 
 /** How many pinned extensions fit in the toolbar beside its own buttons; the rest stay in the Extensions panel. */
 export const TOOLBAR_EXTENSIONS = 3;
@@ -26,6 +27,24 @@ export function extensionMenuItems(x: NativeExtension): { action: ExtensionMenuA
 		{ action: "manage", label: "Manage extension" },
 		{ action: "remove", label: "Remove from Loka…" },
 	];
+}
+
+/** Chrome's badge color when the extension sets none. */
+const BADGE_DEFAULT = "#5f6368";
+
+/** The badge's background: the extension's own color, or Chrome's grey. */
+export function badgeBackground(color: string): string {
+	return color || BADGE_DEFAULT;
+}
+
+/**
+ * The badge's text: white, unless black stands out more on the extension's color (GitHub's green is 3.2:1 under
+ * white and 6.5:1 under black). One of the two always reaches 4.5:1.
+ */
+export function badgeInk(background: string): "#fff" | "#000" {
+	const rgb = parseRgb(background);
+	if (!rgb) return "#fff";
+	return contrast(rgb, [255, 255, 255]) >= contrast(rgb, [0, 0, 0]) ? "#fff" : "#000";
 }
 
 /** A badge as Chrome draws it: at most four characters. */

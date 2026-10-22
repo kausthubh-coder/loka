@@ -28,6 +28,9 @@ export const themeTokens = css`
 		--loka-line: hsl(var(--hue) 30% 85% / 0.12);
 		--loka-accent: hsl(var(--hue) 85% 72%);
 		--loka-accent-ink: hsl(var(--hue) 85% 76%);
+		/* Selected text, such as the command bar's completion: light enough to see, dark enough that the ink on it
+		   keeps 4.5:1 (at 35% a green or teal space's fell to 4.0:1). */
+		--loka-text-selection: color-mix(in srgb, var(--loka-accent) 25%, transparent);
 		--loka-on-accent: hsl(var(--hue) 45% 10%);
 		--loka-surface: hsl(var(--hue) 22% 13% / 0.97);
 		--loka-surface-edge: 0 0 0 1px hsl(var(--hue) 30% 85% / 0.12), 0 16px 40px #0009;
@@ -53,6 +56,7 @@ export const themeTokens = css`
 		--loka-line: hsl(var(--hue) 40% 20% / 0.13);
 		--loka-accent: oklch(from hsl(var(--hue) 80% 50%) 0.52 0.15 h);
 		--loka-accent-ink: oklch(from hsl(var(--hue) 80% 50%) 0.45 0.14 h);
+		--loka-text-selection: color-mix(in srgb, var(--loka-accent) 35%, transparent);
 		--loka-on-accent: #fff;
 		--loka-surface: hsl(var(--hue) 45% 98.5% / 0.97);
 		--loka-surface-edge: 0 0 0 1px hsl(var(--hue) 40% 20% / 0.1), 0 14px 36px hsl(var(--hue) 50% 20% / 0.18);

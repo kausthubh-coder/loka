@@ -61,7 +61,8 @@ disagree, or a recipe or flow it names doesn't exist.
   the floating `command.html`.
 - [Space editor](./space-editor.md): create or change a space's name, color, planet and light or dark.
 - [Light and dark](./theme.md): each space's scheme, the crossfade, and `setColorScheme`; text colors that keep
-  4.5:1 on the sky for every hue, and the `contrast` recipe that measures it.
+  4.5:1 on the sky for every hue, and the `contrast` and `contrast-pages` recipes that measure it in the sidebar and
+  on the pages, command bar, panels and toast.
 - [Window layout and pages](./layout.md): resize, side, hide and pin back, peek, the window buttons, real input;
   Settings, Downloads.
 - [Extensions](./extensions.md): pinned ones in the address field, running them, pinning, the empty state.

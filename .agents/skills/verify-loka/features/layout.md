@@ -52,6 +52,8 @@ Preconditions: seed data.
 - **Downloads.** Click `Downloads` in `.bottom` (the address field has none); in `getByRole("dialog", { name: "Downloads" })` there are two progress bars
   (running, paused); `Try again lofi-cover.png` makes three. Escape closes it.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs layout`.
+- **Contrast.** `run.mjs contrast-pages` measures every screen of Settings, the Downloads panel and the download
+  toast, for 8 hues in both schemes (theme.md).
 - **In the browser.** `bun run verify -- --ux layout` runs it, verify:browser ("setSidebarPinned(false) reads
   back", "the sidebar answers Windows' hit test as page, not title bar", "a real click (posted WM_LBUTTONDOWN/UP) on
   a tab's row switches to it") and verify:flows `states` (hover, press, focus). `settings` checks "Keep the sidebar

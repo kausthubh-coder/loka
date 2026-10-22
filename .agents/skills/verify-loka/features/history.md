@@ -44,6 +44,8 @@ runs on one site, redirect links and a page with no title mixed in.
 - **Search.** Fill the `searchbox` "Search history" with `lit:`: every row is a Lit page or lit.dev folded.
 - **Delete.** Click the first row's checkbox, Shift-click the third: "N selected"; click `Delete`.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs history`.
+- **Contrast.** `run.mjs contrast-pages` measures History's first three screens as the Library's section, for 8
+  hues in both schemes (theme.md).
 - **In the browser.** `bun run verify -- --ux history` runs it and verify:flows `settings`: "Ctrl+H opens
   chrome://history", "History search finds a visited page", "Remove from history deletes it", "Clear history: today
   empties it". Not checked in the browser: picking rows, the last hour and everything, Cancel on the confirm,

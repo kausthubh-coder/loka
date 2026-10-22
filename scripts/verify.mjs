@@ -35,10 +35,10 @@ export const UX = {
 	"command-bar": { prototype: ["command-bar"], browser: true, flows: ["tabs", "spaces", "new-tab"] },
 	"space-editor": { prototype: ["space-editor"], flows: ["spaces"] },
 	theme: {
-		prototype: ["theme", "contrast"],
+		prototype: ["theme", "contrast", "contrast-pages"],
 		browser: true,
 		flows: ["spaces"],
-		gap: "text contrast is measured in the prototype only, on the same components and CSS the browser's pages use",
+		gap: "text contrast (sidebar, pages, command bar, panels) is measured in the prototype only, on the same components and CSS the browser's pages use",
 	},
 	layout: { prototype: ["layout"], browser: true, flows: ["states", "settings"] },
 	extensions: { prototype: ["extensions"], browser: true, flows: ["extensions"] },

@@ -26,6 +26,8 @@ Preconditions: seed data.
 - **Tree.** Focus `loka.row("Loka")`, ArrowLeft: `0:Loka (closed)`. ArrowRight, ArrowDown, Enter: `activeTab` is
   `imputnet/helium-windows`.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs search-and-keys`.
+- **Contrast.** `run.mjs contrast-pages` measures the search panel with "lit" typed, for 8 hues in both schemes
+  (theme.md).
 - **In the browser.** `bun run verify -- --ux search-and-keys` runs it and verify:flows `panels` ("Search the
   sidebar finds a tab") and `tabs`; `states` checks "Tab moves focus with a visible ring". Not checked in the
   browser: going to a result, Ctrl+Shift+F itself, Ctrl+Alt+arrows, and the tree and menu keys.

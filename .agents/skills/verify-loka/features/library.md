@@ -48,6 +48,8 @@ failed and cancelled, over three days); the fake history.
 - **Downloads.** `Pause <file>`, `Resume <file>`, `Show in folder <file>`, `Try again <file>`; a finished file's row
   is a button named by the file; `searchbox` "Search downloads". The fake records `downloadAction` calls.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs library`.
+- **Contrast.** `run.mjs contrast-pages` measures the first three screens of each section, for 8 hues in both
+  schemes (theme.md). The chosen archive filter's count is `--loka-ink-2` on its lighter fill.
 - **In the browser.** `bun run verify -- --ux library` runs it and verify:flows `settings`: "the Library's Spaces
   (chrome://history/#spaces) lists every space", "the Library's switcher shows Downloads, with the browser's list",
   "the Library's Archived tabs shows the archive", "... > Library opens chrome://history/#spaces". Not checked in the

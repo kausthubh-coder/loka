@@ -8,6 +8,7 @@ import {
 	type InkRole,
 	inkRgb,
 	oklchToRgb,
+	parseRgb,
 	type Rgb,
 	resolveScheme,
 	rgbToOklch,
@@ -26,6 +27,14 @@ test("contrast is WCAG's: 21:1 black on white, 1:1 a color on itself, #767676 on
 	expect(contrast([120, 40, 200], [120, 40, 200])).toBe(1);
 	expect(contrast([0x76, 0x76, 0x76], [255, 255, 255])).toBeCloseTo(4.54, 2);
 	expect(contrast([0x77, 0x77, 0x77], [255, 255, 255])).toBeCloseTo(4.48, 2);
+});
+
+test("parseRgb reads the hex and rgb() colors the browser and the demo send", () => {
+	expect(parseRgb("#2da44e")).toEqual([45, 164, 78]);
+	expect(parseRgb("#0F0")).toEqual([0, 255, 0]);
+	expect(parseRgb("rgb(45 164 78)")).toEqual([45, 164, 78]);
+	expect(parseRgb("rgba(1, 2, 3, 0.5)")).toEqual([1, 2, 3]);
+	expect([parseRgb(""), parseRgb("red"), parseRgb("#12345")]).toEqual([null, null, null]);
 });
 
 test("hsl and OKLCH convert the way the browser draws them", () => {

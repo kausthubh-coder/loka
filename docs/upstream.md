@@ -25,5 +25,8 @@ Then:
 2. Commit the merge, `bun run browser:setup`, delete `C:\src\loka\build\src` (keep `build\download_cache`) and
    `bun run browser:build`. That is a first build, several hours, so agents ask before starting it. Loka patches
    that no longer apply fail here with the file name.
-3. Refresh the failing patches with quilt (see `docs/browser-build.md`, step 4) and commit them.
+3. Refresh the failing patches with quilt (see `docs/browser-build.md`, step 4) and commit them. The product's
+   strings (`loka_brand.BRANDED_STRINGS`: `chromium_strings.grd`, `settings_chromium_strings.grdp`,
+   `components_chromium_strings.grd`) are no patch: `loka_brand.py apply --no-names` renames the new files to Loka
+   during setup, so a Chromium change there never conflicts.
 4. Run the browser, check spaces and folders still work, and open a PR titled `Helium <tag>`.

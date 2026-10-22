@@ -11,6 +11,7 @@ import {
 	sectionTitle,
 	sectionUrl,
 	spaceCounts,
+	spaceDropIndex,
 	treeRows,
 } from "./library.logic";
 
@@ -76,6 +77,18 @@ test("a space's counts take pinned tabs in folders, open tabs and folders, and r
 	]);
 	expect(state.spaces.map((s) => countsLabel(spaceCounts(s)))).toEqual(["3 pinned, 3 open", "3 pinned", "1 open"]);
 	expect(countsLabel({ pinned: 0, open: 0 })).toBe("Empty");
+});
+
+test("a space dragged in the rail lands after every other row whose middle the pointer has passed", () => {
+	// Three rows 36 px tall: middles at 18, 54 and 90.
+	const centers = [18, 54, 90];
+	expect(spaceDropIndex(centers, 0, 10)).toBe(0);
+	expect(spaceDropIndex(centers, 0, 60)).toBe(1);
+	expect(spaceDropIndex(centers, 0, 200)).toBe(2);
+	expect(spaceDropIndex(centers, 2, 50)).toBe(1);
+	expect(spaceDropIndex(centers, 2, -40)).toBe(0);
+	expect(spaceDropIndex(centers, 1, 80)).toBe(1);
+	expect(spaceDropIndex(centers, 1, 95)).toBe(2);
 });
 
 /** The seed after the archive has run 8 hours on: Arc (17 h unseen) and Zen (13 h) are archived from Build. */

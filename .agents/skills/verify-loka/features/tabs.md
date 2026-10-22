@@ -16,6 +16,9 @@ so it stays in the sidebar, with its icon faded, and opens again at the address 
 - `tab-reorder` drags a row before or after another; dropping under a pinned row pins it.
 - `tab-pin` uses right-click > `Pin to space`; `Unpin` moves it back to the top of the open tabs.
 - `tab-unload` uses right-click > `Unload tab` on a pinned tab. It stays pinned, with no active tab.
+- `tab-unload-history`: in the real browser a pinned tab or Essential whose browser tab closes (Unload tab, Ctrl+W, x)
+  keeps its Back history in `LokaSpacesService` until the browser quits. Opened again, it opens at its pinned address
+  with that history behind it, so Back goes to where it was. After a restart it opens with no history, as before.
 - `tab-unloaded-look`: in the real browser a row or Essential with no page in memory (never opened, closed, or
   unloaded by the browser) has a faded, greyed icon and a dimmer title (`.unloaded`, from `live[id].unloaded`). The
   prototype has no notion of loaded, so it never shows it.
@@ -31,12 +34,22 @@ so it stays in the sidebar, with its icon faded, and opens again at the address 
   pointer, the row under it shows the drop line (or folder highlight), the list scrolls near its edges, hovering a
   neighbour planet switches space, and Escape cancels. Dropping on the divider or just above it pins the tab.
 - `tab-clear` closes every open tab in the space with `Clear`.
+- `tab-multi-select`: Ctrl+click (Cmd+click on a Mac) picks or unpicks a tab's row without switching to it;
+  Shift+click picks the run from the last one picked (or the tab shown) within one list, the pinned tree or the open
+  tabs, passing over folders. Picked rows are tinted and ringed (`.selected`, `aria-checked="true"`), apart from the
+  shown tab (`.active`, `aria-selected`). Escape, a plain click, switching space or any menu action lets go.
+  Right-click on one of several picked rows opens their menu, titled `<n> tabs selected`: `Pin to space` (the open
+  ones), `Unpin` (the pinned ones), `Add to Essentials`, `Move to space` > `<space>`, `New folder with these tabs`,
+  `Close <n> tabs` (open ones go to the archive, pinned ones unload). They move in sidebar order, as one change
+  (the `moveItems` intent; Close is `closeTabs`). Folders and Essentials aren't picked. Dragging several at once
+  isn't built: a drag moves the row under the pointer.
 
 ## How to get to it (user POV)
 
 - Ctrl+K, the URL pill at the top of the sidebar, `+ New tab`, or right-click empty space > `New tab`.
 - Click a row. Hover an open tab's row for its `x`; pinned rows have none (their menu has `Unload tab`).
 - Right-click a row for pin, unpin, Essentials, move and close.
+- Ctrl+click or Shift+click rows to pick several (or Shift+Up/Down, see search-and-keys), then right-click one of them.
 - `Clear`, on the divider line above the open tabs. It only shows while the space has open tabs.
 
 ## Driving it with loka.mjs
@@ -51,6 +64,11 @@ Preconditions: seed data, `Build` space active.
   `0:Arc: what we learned`.
 - **Unload pinned.** Right-click `imputnet/helium-windows`, then `Unload tab`. It is still in `pinned`.
 - **Clear.** Click `Clear`. `open` is `[]`.
+- **Several.** After `...` > `Reset demo data`: `row.click({ modifiers: ["ControlOrMeta"] })` on `Hacker News`, then
+  `{ modifiers: ["Shift"] }` on `Zen Browser`; `getByRole("treeitem", { checked: true })` gives all three open tabs.
+  Right-click one, `Move to space`, `School`: School's `open` is the three in order and Build's is `[]`. In School,
+  pick them again, `Pin to space`, `Unpin`, `Close 2 tabs` (pinned ones stay; open ones reach `archive`) and
+  `New folder with these tabs`.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs tabs`.
 - **In the browser.** `bun run verify -- --ux tabs` runs it, verify:browser ("sidebar lists real tabs", "a real
   click (posted WM_LBUTTONDOWN/UP) on a tab's row switches to it") and verify:flows `tabs`: "pages opened from the
@@ -58,15 +76,23 @@ Preconditions: seed data, `Build` space active.
   browser", "a middle click closes a tab", "closed tabs go to the top of the archive, so they can come back", "Move
   to Play moves the tab there", "Ctrl+L opens the bar on the shown address"; `pinning`: "and looks unloaded: its icon
   faded", "and looks loaded again", "closing a pinned tab's browser tab after it went elsewhere keeps its row", "and
-  opening it again goes to the address it was pinned with"; and `restart`: "after the restart, Research's QA Twin
+  opening it again goes to the address it was pinned with", "and Back goes to the page it was on before it closed";
+  and `restart`: "after the restart, Research's QA Twin
   row opens the tab that was Research's" (and Play's), two tabs at one address told apart by the id each saved.
   `tabs` also has "Reopen closed tab brings its row back out of the archive", through the QA extension's
   `chrome.sessions.restore()`, Chromium's own restore behind Ctrl+Shift+T.
-  Not checked in the browser: `Clear`, `Close tab` from the menu, and the real Ctrl+T, Ctrl+W and Ctrl+Shift+T keys.
+  `shortcuts` presses the browser's own keys on a page: "Ctrl+PgDn on a page steps to the space's next row", "Ctrl+PgUp
+  steps back", "Ctrl+Tab on a page steps to the space's next row", "Ctrl+Shift+Tab steps back", "Ctrl+W on a page closes it the way its x does: into the archive, and the window stays".
+  Not checked in the browser: `Clear`, `Close tab` from the menu, and the real Ctrl+Shift+T key.
+  Multi-select is proven in the prototype only: the browser check waits for the C++ model to answer `moveItems`
+  (until then the browser refuses the selection menu's moves and the sidebar shows them undone).
 
 ## Gotchas
 
 - Ctrl+W and Ctrl+T can't be caught by a web page, so the prototype uses Ctrl+E to close and Ctrl+K to open. In the
-  real browser Ctrl+T reaches the command bar through the browser's own command, which CDP keys can't press.
+  real browser Ctrl+T reaches the command bar through the browser's own command; CDP keys press it only with a native
+  key code (see `native-sidebar.md`).
 - In the prototype a tab's title is its host (`lit.dev`); real tabs take the page's title.
 - The `x` only shows on an open tab's row, on hover or when active. Playwright's click still finds it by name.
+- A row's text includes its favicon's letter: read a picked row's name from its `.label`, not `textContent`.
+- On a Mac, Ctrl+click is a right-click, so picking is Cmd+click there; `ControlOrMeta` covers both.

@@ -14,6 +14,11 @@ switcher, and a list. The page takes the current space's color and light or dark
   pinned tree (folders open here, whatever the sidebar has; closing one here doesn't touch the sidebar) and its open
   tabs, "Showing" on each space's shown tab. A tab's row (`Go to <title>`) sends `revealTab`; `Switch to <space>`
   sends `switchSpace`. The rail's space names scroll to that space. Spaces off screen aren't laid out.
+- `library-spaces-reorder`: the rail's space rows reorder the spaces. Drag a row (pointer events, 5 px to start):
+  the rail shows the order the drop would make, the dragged row lit; letting go sends `moveSpace`, Escape cancels.
+  In a narrow window the rail is a row of pills and the drag goes sideways. Or focus a row and press Alt+ArrowUp or
+  Alt+ArrowDown: the space moves one place (nothing at the ends), the row keeps the focus, and a status line says
+  "<space> moved to <n> of <count>". The list below follows the new order.
 - `library-archive`: the archive (`state.archive`) by the day each tab left, newest first, each row with its site,
   the space it left (or "Deleted space") and the time. Search by title or address; filter by space ("Every space"
   and each space that has archived tabs, with counts). A row (`Bring back <title>`) sends `restoreArchived`. "Clear
@@ -42,17 +47,26 @@ failed and cancelled, over three days); the fake history.
   `aria-current="page"`.
 - **Spaces.** `region` per space by its name; `Go to <title>` buttons; folder buttons named `<folder> <n> tabs` with
   `aria-expanded`; `Switch to <space>`.
+- **Reorder.** The rail is `group` "Go to a space"; its rows are buttons named by the space (the current one
+  `<space> Current space`). Drag with `page.mouse` (down on Home's middle, move in steps to Build's top edge, up):
+  mid-drag the row has class `dragging` and the rail reads Home, Build, School while the saved order hasn't changed;
+  after the drop `state().spaces` is Home, Build, School and the list's headings follow. `focus()` a row and press
+  `Alt+ArrowDown`/`Alt+ArrowUp`; `getByRole("status")` holds the announcement.
 - **Archive.** Fill it the way the archive recipe does (clock 8 hours on: Arc and Zen leave Build). Buttons
   `Bring back <title>`; `searchbox` "Search archived tabs"; filters by space name; "Clear archive…" opens an
   `alertdialog` "Clear N archived tab(s)?".
 - **Downloads.** `Pause <file>`, `Resume <file>`, `Show in folder <file>`, `Try again <file>`; a finished file's row
   is a button named by the file; `searchbox` "Search downloads". The fake records `downloadAction` calls.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs library`.
+- **Contrast.** `run.mjs contrast-pages` measures the first three screens of each section, for 8 hues in both
+  schemes (theme.md). The chosen archive filter's count is `--loka-ink-2` on its lighter fill.
 - **In the browser.** `bun run verify -- --ux library` runs it and verify:flows `settings`: "the Library's Spaces
   (chrome://history/#spaces) lists every space", "the Library's switcher shows Downloads, with the browser's list",
   "the Library's Archived tabs shows the archive", "... > Library opens chrome://history/#spaces". Not checked in the
   browser: going to a tab or switching space from the Library, restoring or clearing the archive there, download
   actions from the Library, the narrow layout.
+  Reordering spaces (`library-spaces-reorder`) is proven in the prototype only: the browser check is pending the C++
+  port of `moveSpace`. Until a build has it, the browser refuses the intent and the order springs back.
 
 ## Gotchas
 

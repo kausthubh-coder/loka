@@ -1,4 +1,5 @@
-import { css } from "lit";
+import { css, unsafeCSS } from "lit";
+import { inkCss } from "./theme.logic";
 
 // Loka's two themes as role tokens. A window shell (the prototype's loka-app, the browser's sidebar and command bar
 // pages) puts `theme-dark` or `theme-light` on its root element next to `--hue`; custom properties inherit into
@@ -6,14 +7,15 @@ import { css } from "lit";
 //
 // Dark is the night sky the sidebar was designed in. Light is a day sky: the same hue as a pale atmosphere, white
 // glass surfaces, ink tinted by the space, and the active row raised like a card instead of lit up. The space's hue
-// stays the identity in both; light's accent is set by perceptual lightness (OKLCH) so every hue keeps its contrast.
+// stays the identity in both. Text (inkCss, theme.logic.ts) and light's accent are set by perceptual lightness
+// (OKLCH), so every hue keeps its contrast.
 
 export const themeTokens = css`
 	.theme-dark {
 		color-scheme: dark;
-		--loka-ink: #ececf1;
-		--loka-ink-2: #b0b1bc;
-		--loka-ink-3: #9294a2;
+		--loka-ink: ${unsafeCSS(inkCss("dark", "ink"))};
+		--loka-ink-2: ${unsafeCSS(inkCss("dark", "ink-2"))};
+		--loka-ink-3: ${unsafeCSS(inkCss("dark", "ink-3"))};
 		--loka-hover: hsl(var(--hue) 30% 80% / 0.08);
 		--loka-selected: hsl(var(--hue) 40% 85% / 0.16);
 		--loka-selected-edge: 0 0 0 0 transparent;
@@ -26,6 +28,9 @@ export const themeTokens = css`
 		--loka-line: hsl(var(--hue) 30% 85% / 0.12);
 		--loka-accent: hsl(var(--hue) 85% 72%);
 		--loka-accent-ink: hsl(var(--hue) 85% 76%);
+		/* Selected text, such as the command bar's completion: light enough to see, dark enough that the ink on it
+		   keeps 4.5:1 (at 35% a green or teal space's fell to 4.0:1). */
+		--loka-text-selection: color-mix(in srgb, var(--loka-accent) 25%, transparent);
 		--loka-on-accent: hsl(var(--hue) 45% 10%);
 		--loka-surface: hsl(var(--hue) 22% 13% / 0.97);
 		--loka-surface-edge: 0 0 0 1px hsl(var(--hue) 30% 85% / 0.12), 0 16px 40px #0009;
@@ -38,9 +43,9 @@ export const themeTokens = css`
 	}
 	.theme-light {
 		color-scheme: light;
-		--loka-ink: hsl(var(--hue) 35% 12%);
-		--loka-ink-2: hsl(var(--hue) 16% 28%);
-		--loka-ink-3: hsl(var(--hue) 12% 36%);
+		--loka-ink: ${unsafeCSS(inkCss("light", "ink"))};
+		--loka-ink-2: ${unsafeCSS(inkCss("light", "ink-2"))};
+		--loka-ink-3: ${unsafeCSS(inkCss("light", "ink-3"))};
 		--loka-hover: hsl(var(--hue) 50% 25% / 0.07);
 		--loka-selected: hsl(0 0% 100% / 0.8);
 		--loka-selected-edge: 0 1px 2px hsl(var(--hue) 50% 20% / 0.14), 0 0 0 0.5px hsl(var(--hue) 40% 20% / 0.1);
@@ -51,6 +56,7 @@ export const themeTokens = css`
 		--loka-line: hsl(var(--hue) 40% 20% / 0.13);
 		--loka-accent: oklch(from hsl(var(--hue) 80% 50%) 0.52 0.15 h);
 		--loka-accent-ink: oklch(from hsl(var(--hue) 80% 50%) 0.45 0.14 h);
+		--loka-text-selection: color-mix(in srgb, var(--loka-accent) 35%, transparent);
 		--loka-on-accent: #fff;
 		--loka-surface: hsl(var(--hue) 45% 98.5% / 0.97);
 		--loka-surface-edge: 0 0 0 1px hsl(var(--hue) 40% 20% / 0.1), 0 14px 36px hsl(var(--hue) 50% 20% / 0.18);
@@ -64,6 +70,15 @@ export const themeTokens = css`
 	.theme-dark,
 	.theme-light {
 		color: var(--loka-ink);
+	}
+	/* More contrast asked for: quiet text reads as plain text and hairlines become lines. */
+	@media (prefers-contrast: more) {
+		.theme-dark,
+		.theme-light {
+			--loka-ink-2: var(--loka-ink);
+			--loka-ink-3: var(--loka-ink);
+			--loka-line: color-mix(in srgb, var(--loka-ink) 55%, transparent);
+		}
 	}
 `;
 

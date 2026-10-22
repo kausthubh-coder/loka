@@ -9,8 +9,12 @@ the previous and next spaces are small planets on the left and right.
 
 - `space-orbit`: a switch turns the orbit (`orbit.logic.ts`, from the v1 mockup): the planet you were on shrinks
   into the neighbour place it now belongs in, and the one you picked grows out of its place into the horizon, 380 ms
-  (200 ms within 250 ms of the last switch). Stand-ins in an `.orbit` layer make the trip over the hidden real
-  planets, moving only by transform and opacity; reduced motion skips it.
+  (200 ms within 250 ms of the last switch). Stand-ins in an `.orbit` layer make the trip over the real planets,
+  which turn transparent (not hidden, so they still take clicks), moving only by transform and opacity; reduced
+  motion skips it.
+- `space-theme-follow`: in the real browser the window's frame colour and the pages' light/dark follow the space
+  700 ms after the last switch (`FOLLOW_AFTER_SWITCH_MS` in `webui/src/main.ts`), not in the switch's own frames:
+  telling the browser re-themes the whole window and every tab. Other changes (the space editor) follow at once.
 - `space-switch-click` switches by clicking a neighbouring planet.
 - `space-switch-keys` switches with Ctrl+1 to Ctrl+9, in space order.
 - `space-switch-swipe` switches with a sideways two-finger swipe anywhere on the sidebar (next on a leftward swipe).
@@ -22,6 +26,11 @@ the previous and next spaces are small planets on the left and right.
 - `space-tab-group`: in the real browser each space's tabs are one tab group named and colored after it, and the
   other spaces' groups are folded away.
 - `space-new` opens the space editor with `Space N` and the next color; creating switches to it.
+- `space-reorder`: the spaces' order (`state.spaces`) is Ctrl+1..9's, the horizon's neighbours' and the spaces
+  menu's. The current planet's menu (click it or right-click it) has `Move left` and `Move right` for the current
+  space; at either end the item that would wrap is left out. The Library's Spaces reorders any space (see
+  [library.md](./library.md)). Both send the `moveSpace` intent (`{ op: "moveSpace", spaceId, toIndex }`, `toIndex`
+  counted after the move, clamped); the space showing stays showing.
 - `space-per-window`: in the real browser each window shows its own space. A new window opens on the space last
   used (the saved `activeSpaceId`); switching one window leaves the others' spaces and tabs on screen alone. After a
   restart each window shows the space of the tab it had on screen. The browser keeps the space per window
@@ -35,6 +44,8 @@ the previous and next spaces are small planets on the left and right.
 - Drag a tab and hold it over a small planet.
 - Click the big planet, or the space's name at the top of the list, for the list of spaces and `New space`; the `+`
   (`New`) button > `New space`; or `...` > `New space`.
+- Click or right-click the big planet > `Move left` / `Move right`; or reorder in the Library's Spaces (`...` >
+  `Library`).
 
 ## Driving it with loka.mjs
 
@@ -47,9 +58,15 @@ Preconditions: seed data (Build, School, Home).
 - **Swipe.** Hover a sidebar row, then `page.mouse.wheel(120, 0)`. From School, `space` is `Home`.
 - **New.** Click the `Spaces: <current>` button, `loka.menuItem("New space")`, then `Create space` in the editor
   (see [space-editor.md](./space-editor.md)). `space` is `Space 4`, with empty `pinned` and `open`.
+- **Reorder.** From School, click `Spaces: School` > `Move left`. `state().spaces` names read School, Build, Home;
+  `space` stays School; Ctrl+2 shows Build and Ctrl+1 School. On the first space the menu has no `Move left`.
+  Right-click the big planet > `Move right` puts it back.
 - **Tint.** Compare `proof()` screenshots of Build (blue) and School (amber). The sky, the big planet and the accents
   change hue.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs spaces`.
+- **Long names.** The name on the big planet stays on one line between the + and Downloads buttons and ends in "…"
+  when it doesn't fit; `run.mjs contrast-pages` measures a 31-letter name on each planet at 300 and 220 px
+  (theme.md).
 - **In the browser.** `bun run verify -- --ux spaces` runs it and verify:flows `spaces`: "clicking Play's planet
   shows Play", "the browser follows to Play", "Ctrl+3 shows Code Lab", "picking Code Lab in the command bar shows
   it", "the browser shows Work's tab group, the rest folded", "switching to the empty space opens a new tab in it";
@@ -57,6 +74,9 @@ Preconditions: seed data (Build, School, Home).
   still shows Research, on the same tab", "switching the first window leaves the new one on Play".
   Not checked in the browser: the swipe, drag-hover switching, each space keeping its own active tab, and windows
   keeping their spaces through a restart.
+  Reordering (`space-reorder`) is proven in the prototype only: the browser check is pending the C++ port of
+  `moveSpace` (components/loka/core, against the `moveSpace` cases in `model-cases.json`). Until a build has it, the
+  browser refuses the intent and the order springs back.
 
 ## Gotchas
 

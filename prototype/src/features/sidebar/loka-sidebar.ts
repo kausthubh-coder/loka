@@ -3047,10 +3047,10 @@ export class LokaSidebar extends LitElement {
 			filter: brightness(0.92);
 		}
 		/* While the orbit turns, its stand-ins take the place of the big planet and of the neighbour the old planet lands
-		   in (animateHorizon). */
+		   in (animateHorizon). Transparent, not hidden: they still take clicks, so a switch never blocks the planet. */
 		.horizon.orbiting > .world,
 		.horizon.orbiting > .neighbour.landing {
-			visibility: hidden;
+			opacity: 0;
 		}
 		.orbit {
 			position: absolute;

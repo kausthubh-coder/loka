@@ -9,8 +9,12 @@ the previous and next spaces are small planets on the left and right.
 
 - `space-orbit`: a switch turns the orbit (`orbit.logic.ts`, from the v1 mockup): the planet you were on shrinks
   into the neighbour place it now belongs in, and the one you picked grows out of its place into the horizon, 380 ms
-  (200 ms within 250 ms of the last switch). Stand-ins in an `.orbit` layer make the trip over the hidden real
-  planets, moving only by transform and opacity; reduced motion skips it.
+  (200 ms within 250 ms of the last switch). Stand-ins in an `.orbit` layer make the trip over the real planets,
+  which turn transparent (not hidden, so they still take clicks), moving only by transform and opacity; reduced
+  motion skips it.
+- `space-theme-follow`: in the real browser the window's frame colour and the pages' light/dark follow the space
+  700 ms after the last switch (`FOLLOW_AFTER_SWITCH_MS` in `webui/src/main.ts`), not in the switch's own frames:
+  telling the browser re-themes the whole window and every tab. Other changes (the space editor) follow at once.
 - `space-switch-click` switches by clicking a neighbouring planet.
 - `space-switch-keys` switches with Ctrl+1 to Ctrl+9, in space order.
 - `space-switch-swipe` switches with a sideways two-finger swipe anywhere on the sidebar (next on a leftward swipe).

@@ -29,7 +29,19 @@ from inside the address field; Downloads is a button in the bottom row beside th
   progress, a progress ring on the bottom row's Downloads button, a dot on it when a file finished while the panel
   was closed (opening the panel clears it), and a 4 s toast above the bottom row naming the file
   (`newlyFinished` in downloads.logic.ts). Escape closes any panel.
+- `sidebar-live-region`: the sidebar has one polite live region (`.said`, `role="status"`, never drawn) that says
+  "<file> downloaded" when a download finishes (panel open or not) and the space's name on every switch, then clears
+  after 7 s. The toast is not a live region, so a download is said once. Nothing else in the sidebar is live.
 - `pages-once`: opening Settings again goes to the existing tab, even from another space.
+- `more-menu`: the top row's `...` has New window (Ctrl+N), New private window (Ctrl+Shift+N), New space,
+  `This page` (Find on page, Print, Zoom in, Zoom out, Reset zoom), then the sidebar's panels and pages, Settings,
+  Clear browsing data and About Loka. The browser's own entries go to the handler as `browserCommand`,
+  which runs the matching IDC_ command; in the prototype they only log.
+- `private-window`: a private window's sidebar has one dark space named `Private`. Its spaces live in memory only:
+  `LokaSpacesService` for an off-the-record profile never reads or writes `Loka Spaces.json` (that profile's
+  `GetPath()` is the normal profile's folder) and is gone when the window closes.
+- `restore-session`: Loka opens the last session by default and doesn't show Chromium's "Restore pages?" infobar
+  (`kSessionRestoreInfobar` off, `loka-restore-session.patch`).
 
 ## How to get to it (user POV)
 
@@ -51,16 +63,25 @@ Preconditions: seed data.
   `Keep sidebar open` to pin it back.
 - **Downloads.** Click `Downloads` in `.bottom` (the address field has none); in `getByRole("dialog", { name: "Downloads" })` there are two progress bars
   (running, paused); `Try again lofi-cover.png` makes three. Escape closes it.
+- **Said to screen readers.** `sidebar.locator("[aria-live], [role=status], [role=alert]")` is one element. About
+  30 s after Try again, its text is `lofi-cover.png downloaded` and the toast names the file (`06-download-said`).
+  The theme recipe checks it says `School` and `Home` on Ctrl+2 and Ctrl+3.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs layout`.
+- **Contrast.** `run.mjs contrast-pages` measures every screen of Settings, the Downloads panel and the download
+  toast, for 8 hues in both schemes (theme.md).
 - **In the browser.** `bun run verify -- --ux layout` runs it, verify:browser ("setSidebarPinned(false) reads
   back", "the sidebar answers Windows' hit test as page, not title bar", "a real click (posted WM_LBUTTONDOWN/UP) on
   a tab's row switches to it") and verify:flows `states` (hover, press, focus). `settings` checks "Keep the sidebar
   open off unpins the sidebar in the browser" and the rail (its rows, a click on Sound, the "autoplay" search, the
   chips at 640 px), with pictures in light and dark; `panels` checks Downloads with a real download: "Downloads is in
   the bottom row, not the address field", "the finished download shows briefly and leaves a dot on Downloads",
-  "opening it clears the dot and the toast". Not checked in the browser: the
-  top row's Hide button, edge peek, Minimize, Maximize, Close, dragging the window by the top row, Reload, and
-  download actions.
+  "opening it clears the dot and the toast". `browser-menu` checks "... > New window opens a window with its own
+  sidebar", "... > About Loka opens the About page", "... > New private window opens one dark space named Private",
+  "a page opened there is a row in Private" and "the private tab never reaches the saved spaces or the normal
+  window" (it reads `Loka Spaces.json` from disk). Not checked in the browser: Find, Print, Zoom and Clear browsing
+  data from the menu, the restore infobar, and the
+  top row's Hide button, edge peek, Minimize, Maximize, Close, dragging the window by the top row, Reload,
+  download actions, and what a real screen reader says (no suite runs one; the recipes read the live region's text).
 - **Real input by hand.** To check a point the way Windows does: `powershell -NoProfile -File
   scripts/window-hittest.ps1 -ProcId <pid> -Points "x,y"` in physical client px (1 page, 2 title bar). To click or
   drag like a mouse: `powershell -NoProfile -File scripts/window-input.ps1 -ProcId <pid> -Kind click -X <x> -Y <y>`

@@ -36,6 +36,8 @@ hours ago, all inside the 12-hour default.
   (17 h) and Zen (13 h); Hacker News (10 h) stays. `state().archive` holds them, newest first.
 - **Restore.** `...` > `Archived tabs (2)`, click the `Zen Browser` row. `open[0]` and `activeTab` are `Zen Browser`.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs archive`.
+- **Contrast.** `run.mjs contrast-pages` measures the Archived tabs panel and the Library's section with three
+  archived tabs, for 8 hues in both schemes (theme.md).
 - **In the browser.** `bun run verify -- --ux archive` runs it and verify:flows `panels` ("the Archive panel opens"),
   `settings` (both settings' defaults and that each saves) and `sleep` (a QA page in Research unloads while Play
   shows, keeps its row, and loads again in the same tab when clicked; the setting is set to 0.05 minutes there), and

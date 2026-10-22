@@ -12,6 +12,7 @@ import {
 	keepAnswer,
 	type ResultContext,
 	type SuggestionAnswer,
+	spaceShortcut,
 	toUrl,
 } from "./command-bar.logic";
 
@@ -67,7 +68,7 @@ test("an empty bar lists this space's open tabs and every command, with nothing 
 		"tab:Zen Browser (Build)",
 	]);
 	expect(empty.filter((l) => l.startsWith("go:"))).toEqual([]);
-	expect(empty.filter((l) => l.startsWith("action:")).length).toBe(13);
+	expect(empty.filter((l) => l.startsWith("action:")).length).toBe(22);
 });
 
 test("the Library is a command, found by what it holds", () => {
@@ -166,6 +167,22 @@ test("Loka's own search remembers the words, so the browser can search with the 
 test("other spaces are found by name", () => {
 	expect(lines("scho").filter((l) => l.startsWith("space:"))).toEqual(["space:School"]);
 	expect(lines("build").filter((l) => l.startsWith("space:"))).toEqual([]);
+});
+
+test("every row with a key that works in the browser shows it, and no other row does", () => {
+	const shortcuts = commandResults(seedState(), "")
+		.filter((r) => r.shortcut !== undefined)
+		.map((r) => `${r.label}: ${r.shortcut}`);
+	expect(shortcuts).toEqual(["History: Ctrl+H", "Search the sidebar: Ctrl+Shift+F"]);
+	const school = commandResults(seedState(), "scho").find((r) => r.kind === "space");
+	expect([school?.label, school?.shortcut, school?.detail]).toEqual(["School", "Ctrl+2", "Switch to this space"]);
+});
+
+test("Ctrl+1 to 8 name the first eight spaces; Ctrl+9 only a ninth that is also the last", () => {
+	expect([0, 7].map((i) => spaceShortcut(i, 12))).toEqual(["Ctrl+1", "Ctrl+8"]);
+	expect(spaceShortcut(8, 9)).toBe("Ctrl+9");
+	// With ten spaces Ctrl+9 is the tenth from the page and the ninth from the sidebar: neither is named.
+	expect([spaceShortcut(8, 10), spaceShortcut(9, 10)]).toEqual([undefined, undefined]);
 });
 
 test("the sidebar command says hide while pinned and keep open while it isn't", () => {

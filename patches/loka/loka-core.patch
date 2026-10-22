@@ -35,7 +35,7 @@
 +}
 --- /dev/null
 +++ b/components/loka/core/intents.cc
-@@ -0,0 +1,228 @@
+@@ -0,0 +1,253 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -131,6 +131,21 @@
 +    }
 +    return MoveItem(state, *id, *to);
 +  }
++  if (*op == "moveItems") {
++    std::optional<Place> to = ToPlace(intent.FindDict("to"));
++    const base::ListValue* item_ids = intent.FindList("itemIds");
++    if (!to || !item_ids) {
++      return std::nullopt;
++    }
++    std::vector<std::string> ids;
++    for (const base::Value& each : *item_ids) {
++      if (!each.is_string()) {
++        return std::nullopt;
++      }
++      ids.push_back(each.GetString());
++    }
++    return MoveItems(state, ids, *to);
++  }
 +  if (*op == "openTab" || *op == "focusOrOpen") {
 +    if (!url || !title || !now || !id) {
 +      return std::nullopt;
@@ -180,6 +195,16 @@
 +    }
 +    return *op == "switchSpace" ? SwitchSpace(state, *space_id)
 +                                : DeleteSpace(state, *space_id);
++  }
++  if (*op == "moveSpace") {
++    // JSON has no Infinity: the page's "past the end" arrives as null.
++    const base::Value* to_index = intent.Find("toIndex");
++    if (!space_id || !to_index || !(to_index->is_none() || to_index->is_int() ||
++                                    to_index->is_double())) {
++      return std::nullopt;
++    }
++    return MoveSpace(state, *space_id,
++                     to_index->is_none() ? kEnd : to_index->GetDouble());
 +  }
 +  if (*op == "createSpace" || *op == "updateSpace") {
 +    std::optional<SpaceLook> look = Look(intent);
@@ -675,7 +700,7 @@
 +#endif  // COMPONENTS_LOKA_CORE_SPACES_DELTA_H_
 --- /dev/null
 +++ b/components/loka/core/spaces_model.cc
-@@ -0,0 +1,1076 @@
+@@ -0,0 +1,1156 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1188,20 +1213,35 @@
 +  return ids;
 +}
 +
-+State MoveItem(const State& state, std::string_view id, const Place& to) {
++namespace {
++
++// MoveItem, or nothing when the move isn't allowed (MoveItems skips those).
++std::optional<State> TryMoveItem(const State& state,
++                                 std::string_view id,
++                                 const Place& to) {
 +  std::optional<Detached> detached = Detach(state, id);
 +  if (!detached) {
-+    return state;
++    return std::nullopt;
 +  }
 +  const PinnedNode& node = detached->node;
 +  const Place& from = detached->from;
 +  if (node.is_folder()) {
 +    if (to.area != Place::Area::kPinned) {
-+      return state;
++      return std::nullopt;
 +    }
 +    if (to.parent_id && ContainsFolder(node, *to.parent_id)) {
-+      return state;
++      return std::nullopt;
 +    }
++  }
++  if (to.area == Place::Area::kEssentials &&
++      from.area != Place::Area::kEssentials &&
++      state.essentials.size() >= kEssentialsLimit) {
++    return std::nullopt;
++  }
++  // A space deleted meanwhile (another window's menu still offered it): the
++  // item stays where it was.
++  if (to.area != Place::Area::kEssentials && !FindSpace(state, to.space_id)) {
++    return std::nullopt;
 +  }
 +  // Indexes are given against the list before the move, so moving down the
 +  // same list shifts by one.
@@ -1234,7 +1274,55 @@
 +    return next;
 +  }
 +  if (!space || !InsertPinned(space->pinned, to.parent_id, index, node)) {
-+    return state;
++    return std::nullopt;
++  }
++  return next;
++}
++
++// Where `id` sits in the list `place` names: Essentials, a space's open tabs,
++// or one level of a pinned tree. -1 when it isn't there.
++int IndexIn(const State& state, const Place& place, std::string_view id) {
++  auto at = [&](const auto& list, auto matches) {
++    auto it = std::ranges::find_if(list, matches);
++    return it == list.end() ? -1 : static_cast<int>(it - list.begin());
++  };
++  if (place.area == Place::Area::kEssentials) {
++    return at(state.essentials, [&](const TabId& each) { return each == id; });
++  }
++  const Space* space = FindSpace(state, place.space_id);
++  if (!space) {
++    return -1;
++  }
++  if (place.area == Place::Area::kOpen) {
++    return at(space->open, [&](const TabId& each) { return each == id; });
++  }
++  const PinnedNode* folder =
++      place.parent_id ? FindFolder(space->pinned, *place.parent_id) : nullptr;
++  if (place.parent_id && !folder) {
++    return -1;
++  }
++  return at(folder ? folder->children : space->pinned,
++            [&](const PinnedNode& each) { return each.id == id; });
++}
++
++}  // namespace
++
++State MoveItem(const State& state, std::string_view id, const Place& to) {
++  return TryMoveItem(state, id, to).value_or(state);
++}
++
++State MoveItems(const State& state,
++                const std::vector<std::string>& ids,
++                const Place& to) {
++  State next = state;
++  Place place = to;
++  for (const std::string& id : ids) {
++    std::optional<State> moved = TryMoveItem(next, id, place);
++    if (!moved) {
++      continue;
++    }
++    next = std::move(*moved);
++    place.index = IndexIn(next, to, id) + 1;
 +  }
 +  return next;
 +}
@@ -1358,6 +1446,23 @@
 +      space->scheme = *look.scheme;
 +    }
 +  }
++  return next;
++}
++
++State MoveSpace(const State& state, std::string_view space_id, double to_index) {
++  auto it = std::ranges::find(state.spaces, space_id, &Space::id);
++  if (it == state.spaces.end()) {
++    return state;
++  }
++  const size_t from = static_cast<size_t>(it - state.spaces.begin());
++  const size_t to = Clamp(to_index, state.spaces.size() - 1);
++  if (to == from) {
++    return state;
++  }
++  State next = state;
++  Space space = std::move(next.spaces[from]);
++  next.spaces.erase(next.spaces.begin() + from);
++  next.spaces.insert(next.spaces.begin() + to, std::move(space));
 +  return next;
 +}
 +
@@ -1754,7 +1859,7 @@
 +}  // namespace loka
 --- /dev/null
 +++ b/components/loka/core/spaces_model.h
-@@ -0,0 +1,204 @@
+@@ -0,0 +1,217 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1869,6 +1974,9 @@
 +
 +inline constexpr double kEnd = std::numeric_limits<double>::infinity();
 +inline constexpr size_t kArchiveLimit = 200;
++// The most Essentials there can be: a move that would make one more changes
++// nothing; reordering them still works.
++inline constexpr size_t kEssentialsLimit = 12;
 +
 +// How a space looks. `scheme` is left out by looks that don't choose one: a
 +// new space follows the system, an edit keeps it.
@@ -1891,6 +1999,12 @@
 +
 +// Each returns the state unchanged when the change isn't allowed.
 +State MoveItem(const State& state, std::string_view id, const Place& to);
++// Several items to one place as one change, in order: the first lands at
++// `to.index` (counted before the move, as MoveItem counts it), each next right
++// after the one before. An item MoveItem refuses is skipped and the rest move.
++State MoveItems(const State& state,
++                const std::vector<std::string>& ids,
++                const Place& to);
 +State OpenTab(const State& state,
 +              std::string_view url,
 +              std::string_view title,
@@ -1915,6 +2029,10 @@
 +                  std::string_view space_id,
 +                  const SpaceLook& look);
 +State DeleteSpace(const State& state, std::string_view space_id);
++// Moves a space so it ends up at `to_index` (counted after the move), clamped
++// to the list: the order of Ctrl+1..9 and the horizon. The space showing stays
++// showing; an unknown id or its own place changes nothing.
++State MoveSpace(const State& state, std::string_view space_id, double to_index);
 +State FocusOrOpen(const State& state,
 +                  std::string_view url,
 +                  std::string_view title,

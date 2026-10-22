@@ -166,6 +166,29 @@ export class LokaSidebarSearch extends LitElement {
 			color: var(--loka-ink-2);
 			font-size: 13px;
 		}
+		/* Windows High Contrast drops the field's edge and the lit match's tint. */
+		@media (forced-colors: active) {
+			.fav {
+				forced-color-adjust: none;
+			}
+			input {
+				outline: 1px solid CanvasText;
+				outline-offset: -1px;
+			}
+			input:focus {
+				outline-width: 2px;
+				outline-offset: -2px;
+			}
+			/* Not adjusted, or the text would sit on its Canvas backplate inside the Highlight. */
+			.match.on {
+				forced-color-adjust: none;
+				background: Highlight;
+				color: HighlightText;
+			}
+			.match.on small {
+				color: HighlightText;
+			}
+		}
 		@media (prefers-reduced-motion: no-preference) {
 			.match {
 				transition: background-color 120ms;

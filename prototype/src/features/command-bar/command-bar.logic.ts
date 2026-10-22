@@ -42,16 +42,39 @@ export type ActionId =
 	| "search-sidebar"
 	| "archive"
 	| "onboarding"
-	| "toggle-sound";
+	| "toggle-sound"
+	| ChromeMenuCommand;
+
+/**
+ * The browser's own commands, which Chrome reaches from its toolbar menu. Loka has no toolbar menu, so they're in the
+ * sidebar's ... menu and the command bar; the browser runs each as Chrome's menu would (handler: browserCommand).
+ */
+export const CHROME_MENU_COMMANDS = [
+	"new-window",
+	"new-private-window",
+	"find",
+	"print",
+	"zoom-in",
+	"zoom-out",
+	"zoom-reset",
+	"clear-data",
+	"about",
+] as const;
+export type ChromeMenuCommand = (typeof CHROME_MENU_COMMANDS)[number];
+
+export function isChromeMenuCommand(action: string): action is ChromeMenuCommand {
+	return (CHROME_MENU_COMMANDS as readonly string[]).includes(action);
+}
 
 export type ResultGroup = "" | "Tabs" | "History" | "Bookmarks" | "Spaces" | "Commands";
 
 /**
  * One row of the bar. `go` opens an address; its `search` is the words when it's a search Loka made up itself (the
  * real browser runs those with the user's own engine). `browser-tab` is an open tab the browser suggested that the
- * sidebar doesn't hold.
+ * sidebar doesn't hold. `shortcut` is the key that does the same thing outside the bar, written the Windows way
+ * ("Ctrl+H"); only rows with a key that works in the browser have one.
  */
-export type CommandResult = { label: string; detail: string; group: ResultGroup } & (
+export type CommandResult = { label: string; detail: string; group: ResultGroup; shortcut?: string } & (
 	| { kind: "go"; url: string; icon: "search" | "globe" | "history" | "bookmark"; search?: string }
 	| { kind: "tab"; tabId: TabId; spaceId: string }
 	| { kind: "browser-tab"; tabId: number; url: string }
@@ -59,7 +82,12 @@ export type CommandResult = { label: string; detail: string; group: ResultGroup 
 	| { kind: "action"; action: ActionId }
 );
 
-const ACTIONS: { action: ActionId; label: string; detail: string; words: string }[] = [
+/**
+ * The commands, and the shortcut of each that has one in the browser: Ctrl+H is the browser's History, which is the
+ * Library's History section; Ctrl+Shift+F is the sidebar's own, while it has focus (webui/src/main.ts). Ctrl+S hides
+ * the sidebar only in the prototype (in the browser it saves the page), so it isn't listed.
+ */
+const ACTIONS: { action: ActionId; label: string; detail: string; words: string; shortcut?: string }[] = [
 	{ action: "new-space", label: "New space", detail: "Name it, pick a color and a planet", words: "create add world" },
 	{
 		action: "edit-space",
@@ -75,7 +103,13 @@ const ACTIONS: { action: ActionId; label: string; detail: string; words: string 
 		words: "toggle collapse show pin unpin",
 	},
 	{ action: "settings", label: "Settings", detail: "Loka's settings", words: "preferences options" },
-	{ action: "history", label: "History", detail: "Ctrl+H", words: "visited past pages recent" },
+	{
+		action: "history",
+		label: "History",
+		detail: "Pages you visited",
+		words: "visited past pages recent",
+		shortcut: "Ctrl+H",
+	},
 	{
 		action: "library",
 		label: "Library",
@@ -84,7 +118,13 @@ const ACTIONS: { action: ActionId; label: string; detail: string; words: string 
 	},
 	{ action: "downloads", label: "Downloads", detail: "Recent files", words: "files" },
 	{ action: "extensions", label: "Extensions", detail: "Run, pin or manage them", words: "addons plugins" },
-	{ action: "search-sidebar", label: "Search the sidebar", detail: "Ctrl+Shift+F", words: "find tabs everywhere" },
+	{
+		action: "search-sidebar",
+		label: "Search the sidebar",
+		detail: "Find a tab in any space",
+		words: "find tabs everywhere",
+		shortcut: "Ctrl+Shift+F",
+	},
 	{ action: "archive", label: "Archived tabs", detail: "Bring back an archived tab", words: "old closed restore" },
 	{ action: "onboarding", label: "Show the welcome tour", detail: "Onboarding", words: "intro welcome tour" },
 	{
@@ -93,6 +133,25 @@ const ACTIONS: { action: ActionId; label: string; detail: string; words: string 
 		detail: "Loka's interface sounds",
 		words: "sound effects audio quiet silence mute unmute volume",
 	},
+	{ action: "new-window", label: "New window", detail: "Ctrl+N", words: "open another window" },
+	{
+		action: "new-private-window",
+		label: "New private window",
+		detail: "Ctrl+Shift+N, nothing saved",
+		words: "incognito private secret window",
+	},
+	{ action: "find", label: "Find on page", detail: "Ctrl+F", words: "search text in page" },
+	{ action: "print", label: "Print", detail: "Ctrl+P", words: "pdf save paper" },
+	{ action: "zoom-in", label: "Zoom in", detail: "Ctrl+Plus", words: "bigger larger magnify" },
+	{ action: "zoom-out", label: "Zoom out", detail: "Ctrl+Minus", words: "smaller" },
+	{ action: "zoom-reset", label: "Reset zoom", detail: "Ctrl+0", words: "actual size 100" },
+	{
+		action: "clear-data",
+		label: "Clear browsing data",
+		detail: "Ctrl+Shift+Delete",
+		words: "delete history cookies cache privacy",
+	},
+	{ action: "about", label: "About Loka", detail: "Version and updates", words: "version help update" },
 ];
 
 /** Where a tab lives, for the result's label. Essentials belong to every space, so they go to the current one. */
@@ -465,7 +524,9 @@ export function commandResults(state: BrowserState, query: string, context: Resu
 	if (q) {
 		for (const [i, space] of state.spaces.entries()) {
 			if (space.id === state.activeSpaceId || !space.name.toLowerCase().includes(q)) continue;
-			results.push({ kind: "space", spaceId: space.id, label: space.name, detail: `Ctrl+${i + 1}`, group: "Spaces" });
+			const shortcut = spaceShortcut(i, state.spaces.length);
+			const detail = "Switch to this space";
+			results.push({ kind: "space", spaceId: space.id, label: space.name, detail, group: "Spaces", shortcut });
 		}
 	}
 
@@ -475,10 +536,21 @@ export function commandResults(state: BrowserState, query: string, context: Resu
 		const label = unpinned ? "Keep the sidebar open" : muted ? "Unmute sounds" : a.label;
 		const detail = unpinned ? "Pin it back in place" : a.detail;
 		if (!q || `${label} ${a.label} ${a.words}`.toLowerCase().includes(q)) {
-			results.push({ kind: "action", action: a.action, label, detail, group: "Commands" });
+			results.push({ kind: "action", action: a.action, label, detail, group: "Commands", shortcut: a.shortcut });
 		}
 	}
 	return results;
+}
+
+/**
+ * The key that shows the space at `index` of `count`, written the Windows way. Ctrl+1..8 are the first eight. Ctrl+9
+ * is the last space when the page has focus (the browser's "last tab" key) but the ninth when the sidebar has it, so
+ * it's named only when those are the same space. Spaces past that have no key.
+ */
+export function spaceShortcut(index: number, count: number): string | undefined {
+	if (index < 8) return `Ctrl+${index + 1}`;
+	if (index === 8 && count === 9) return "Ctrl+9";
+	return undefined;
 }
 
 /** Whether a string the browser relayed is one of the bar's commands. */

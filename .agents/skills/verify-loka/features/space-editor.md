@@ -30,6 +30,8 @@ Preconditions: seed data.
 - **Edit.** `Spaces: <name>` > `Edit this space`. The dialog is named `Edit <old name>`. Change and click `Save`.
 - **Delete.** `Spaces: <name>` > `Edit this space` > `Delete space` > `Delete it and its tabs`.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs space-editor`.
+- **Contrast.** `run.mjs contrast-pages` measures the editor opened from Settings, for 8 hues in both schemes
+  (theme.md).
 - **In the browser.** `bun run verify -- --ux space-editor` runs it and verify:flows `spaces`: "New space makes
   Work, with its look, and shows it", "pages in a dark space are dark", "Edit this space renames, recolors, changes
   the planet and the scheme", "its tab group takes the new name", "deleting it removes the space and closes its

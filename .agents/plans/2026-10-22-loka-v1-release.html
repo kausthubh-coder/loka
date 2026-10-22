@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Four answers and a build runner from release</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f8f9fa; --text: #17191c; --muted: #50555c; --line: #d5d9de; --surface: #eceff2;
+  --accent: #1a6491; --accent-soft: #e2eff7; --good: #1d6b3a; --wait: #8a5a00;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #111418; --text: #e6e9ec; --muted: #a2a9b1; --line: #2e343b; --surface: #1b2026; --accent: #78cdf5; --accent-soft: #15242f; --good: #7fd49b; --wait: #f0c060; }
+}
+html { background: var(--bg); color: var(--text); }
+body { margin: 0; font: 1.0625rem/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 48rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+h1 { font-size: 2.1rem; line-height: 1.15; margin: 0 0 0.6rem; text-wrap: balance; }
+h2 { font-size: 1.35rem; line-height: 1.25; margin: 2.6rem 0 0.7rem; text-wrap: balance; }
+p, li { max-width: 62ch; text-wrap: pretty; }
+p { margin: 0 0 0.8rem; }
+.lede { font-size: 1.1875rem; color: var(--muted); margin-bottom: 1.5rem; }
+code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.875em; }
+a { color: var(--accent); }
+::selection { background: var(--accent-soft); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.muted { color: var(--muted); }
+.asks { background: var(--accent-soft); border-radius: 10px; padding: 1rem 1.25rem 0.5rem; margin: 0 0 2rem; }
+.asks h2 { margin: 0 0 0.5rem; font-size: 1.0625rem; color: var(--accent); }
+.asks ol { margin: 0; padding-left: 1.3rem; }
+.asks li { margin-bottom: 0.6rem; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9375rem; margin: 0.3rem 0 0.8rem; }
+th, td { text-align: left; vertical-align: top; padding: 0.5rem 0.75rem 0.5rem 0; border-bottom: 1px solid var(--line); }
+th { font-weight: 600; }
+th[scope="row"] { font-weight: 600; }
+.ok { color: var(--good); font-weight: 600; }
+.wait { color: var(--wait); font-weight: 600; }
+.steps { padding-left: 1.3rem; }
+.steps li { margin-bottom: 0.35rem; }
+details { border-top: 1px solid var(--line); }
+details:last-of-type { border-bottom: 1px solid var(--line); }
+summary { padding-block: 0.7rem; cursor: pointer; font-weight: 500; }
+details[open] { padding-bottom: 0.8rem; }
+details ul, details ol { padding-left: 1.3rem; }
+@media print {
+  :root { color-scheme: light; --bg: #fff; --text: #000; --muted: #333; --line: #bbb; --surface: #eee; --accent: #1a6491; --accent-soft: #eef5fa; --good: #1d6b3a; --wait: #6b4600; }
+  details { display: block; } table { break-inside: avoid; } h2 { break-after: avoid; }
+}
+</style>
+</head>
+<body>
+<main>
+<h1>Four answers and a build runner from release</h1>
+<p class="lede">Everything that didn’t wait on you is in PRs with green CI. The rest needs four decisions, a runner, then eight steps of mine.</p>
+
+<section class="asks">
+<h2>Needs you</h2>
+<ol>
+<li><b>Merge, in this order:</b> #28 → #33 → #37 → #40; #29 → #38; #30; #32 → #35 → #39; #34 → #41; #36. Leave #31 as a draft.</li>
+<li><b>Crash reports (a):</b> off by default for v1, my pick. Helium’s server isn’t ours; our own can come later without a patch.</li>
+<li><b>Signing (b):</b> Azure Artifact Signing if you have a US or Canadian ID ($9.99 a month, unattended). Otherwise SignPath: free, but you approve every release by hand.</li>
+<li><b>Helium’s services (c):</b> email imput LLC asking if Loka may use them. Their policy excludes forks today.</li>
+<li><b>Version (d):</b> one four-part Loka number from 1.0.0.0 for the exe, About, update feed and tag; About adds “based on Helium”.</li>
+<li><b>A build runner</b> (Depot or similar, 64 GB). The release build can’t run on this 16 GB machine.</li>
+</ol>
+</section>
+
+<h2>Eight release blockers, one done</h2>
+<div class="scroll">
+<table>
+<thead><tr><th scope="col">Blocker</th><th scope="col">State</th><th scope="col">Waits on</th></tr></thead>
+<tbody>
+<tr><th scope="row">Licenses in the download</th><td><span class="ok">Done</span>, #36</td><td>Merge</td></tr>
+<tr><th scope="row">Installer, own install identity</th><td>Designed; about 100 files rebuild</td><td>Runner, a test VM</td></tr>
+<tr><th scope="row">Updates</th><td>Planned in #31; the alpha’s feed URL returns 404</td><td>(d), a signing key in GitHub secrets</td></tr>
+<tr><th scope="row">Signed binaries</th><td>Not started</td><td>(b)</td></tr>
+<tr><th scope="row">Release build</th><td>Only the dev build exists</td><td>Runner</td></tr>
+<tr><th scope="row">Helium 0.20.1.1</th><td>On 0.19.2.1</td><td>Runner (full rebuild)</td></tr>
+<tr><th scope="row">Privacy policy, terms</th><td>Drafted</td><td>(a), (c)</td></tr>
+<tr><th scope="row">Crash reports</th><td>Go to Helium in release builds</td><td>(a)</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2>The audit’s UX gaps, mostly closed</h2>
+<div class="scroll">
+<table>
+<thead><tr><th scope="col">Gap</th><th scope="col">Now</th></tr></thead>
+<tbody>
+<tr><th scope="row">Private window</th><td><span class="ok">Fixed</span>, #37. Its tabs were being saved to the real profile’s spaces file.</td></tr>
+<tr><th scope="row">New window, find, print, zoom only by key</th><td><span class="ok">In the … menu</span> and command bar, #37</td></tr>
+<tr><th scope="row">Ctrl+Tab order</th><td><span class="ok">Follows the sidebar</span>, #37</td></tr>
+<tr><th scope="row">Setup’s imported bookmarks vanish</th><td><span class="ok">Arrive once</span> as a pinned folder, #40</td></tr>
+<tr><th scope="row">“About Chromium” on Settings</th><td><span class="ok">Says Loka</span>, #38. Two of the four audit examples were hidden text.</td></tr>
+<tr><th scope="row">High Contrast, screen readers</th><td><span class="ok">Done</span>, #39, in emulated forced colors only</td></tr>
+<tr><th scope="row">Passwords</th><td><span class="ok">Setup says how to move them</span>, #41</td></tr>
+<tr><th scope="row">Split view</th><td><span class="wait">After v1.</span> Loka’s tab sync pulls the pair apart; it needs a joined row.</td></tr>
+<tr><th scope="row">Editable shortcuts</th><td><span class="wait">After v1</span></td></tr>
+<tr><th scope="row">Space switch speed</th><td><span class="wait">Measure on the release build</span></td></tr>
+</tbody>
+</table>
+</div>
+
+<details>
+<summary>My eight steps after your answers, in order</summary>
+<ol class="steps">
+<li>Install identity and installer: Loka’s own folder, registry keys and uninstall entry, side by side with Helium.</li>
+<li>Version scheme, update feed and signing key wired into the build.</li>
+<li>Crash setting and the final policy text in setup.</li>
+<li>Merge Helium 0.20.1.1 and rebuild on the runner.</li>
+<li>Release build on the runner, signed.</li>
+<li>Clean-VM test: install, update to the next build, uninstall, Helium beside it untouched.</li>
+<li>Measure space switching on the release build.</li>
+<li>Release candidate for you to try before it goes public.</li>
+</ol>
+</details>
+
+<details>
+<summary>Why each recommendation</summary>
+<ul>
+<li><b>Crash reports.</b> Helium uploads to <code>crash.helium.computer</code> only in official builds, after asking. Its policy covers Helium, not forks. Off by default keeps Loka’s privacy line simple: nothing leaves the machine. Helium honors <code>--custom-crash-server-url</code>, so a Loka server later needs no patch.</li>
+<li><b>Signing.</b> Unsigned builds trip SmartScreen on every download. Azure is cheapest in time; SignPath is cheapest in money but adds a human step to every release, including fixes.</li>
+<li><b>Services.</b> Six features use Helium’s servers after setup consent: extension downloads, Web Store snippets, bangs, uBlock lists, spelling dictionaries and component updates. Running our own means hosting a proxy for each.</li>
+<li><b>Version.</b> WinSparkle compares the exe’s version with the feed’s. Two numbers (Loka’s tag and Helium’s file version) would make every update check wrong.</li>
+</ul>
+</details>
+
+<details>
+<summary>What I re-checked from the audit, and what I found on the way</summary>
+<ul>
+<li>The bookmarks page’s Google promo and the extensions page’s “managed by your administrator” aren’t on screen; the audit read hidden text. Screenshots in <code>.agents/verify-runs/20261022-195140-browser/</code>.</li>
+<li>Split view: wired up, Shift+Alt+N opens Chrome’s split, then Loka’s tab sync moves the empty half out of the space’s tab group and Chrome dissolves the split (<code>live.logic.ts</code>, the empty-tab ungroup). Dropped rather than shipped half-working.</li>
+<li>Keys typed in the first second after Ctrl+N in a new window are lost: the command bar’s page is still loading. A pre-loaded bar would fix it; small, after v1.</li>
+<li>Two flaky browser checks were timing races in the tests, now fixed: Escape in a new window’s bar (#37) and the QA extension’s sleeping worker (#40).</li>
+</ul>
+</details>
+
+<details>
+<summary>Drafts ready for you to read</summary>
+<ul>
+<li>Install identity design: <code>C:\src\loka-reports\install-identity-design.md</code>.</li>
+<li>Privacy policy and terms, with the (a) and (c) options marked: <code>C:\src\loka-reports\policy\</code>.</li>
+</ul>
+</details>
+</main>
+</body>
+</html>

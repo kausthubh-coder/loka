@@ -36,7 +36,7 @@ change). `bun run build:status` names it. Off Windows, or with no binary, they a
 | Command | What it drives | Time |
 |---|---|---|
 | `bun run verify:browser` | a fresh profile: setup, rows, icons, sound, media, extensions, downloads, scheme, pinning, suggestions, window identity, the WM_NCHITTEST hit test, a real posted click, the alpha's import | ~30 s |
-| `bun run verify:flows` | what a user does, 9 flows on one profile (`-- --only <flow>[,<flow>]` for some) | minutes |
+| `bun run verify:flows` | what a user does, 13 flows on one profile (`-- --only <flow>[,<flow>]` for some) | minutes |
 | `bun run verify:perf` | CPU, frames and memory of the real sidebar, against budgets (on branches that have it) | minutes |
 
 Each starts the browser on its own throwaway profile and CDP port, stops only its own process tree, deletes its
@@ -62,8 +62,10 @@ and data is per origin). Drive only a server you started.
 Loka prototype and its listener was started from this checkout. Run it first, and again when a recipe fails oddly.
 
 **Drive.** `node .agents/skills/verify-loka/scripts/run.mjs <recipe|all>` (recipes: the feature ids, plus
-`make-folders`). Each opens a fresh browser, resets to the seed data, drives the UI as a user would, asserts the
-saved state, and prints `PASS` or `FAIL` with its evidence folder. For a change no recipe covers, write a short
+`make-folders`, `contrast`, which measures every sidebar text against the pixels behind it for 8 hues in both
+schemes, about 5 minutes, and `contrast-pages`, the same on Settings, the Library, the command bar, the sidebar's
+panels and toast and a long space name, about 20 minutes: theme.md). Each opens a fresh browser, resets to the seed data, drives the UI as a user
+would, asserts the saved state, and prints `PASS` or `FAIL` with its evidence folder. For a change no recipe covers, write a short
 script that imports the driver:
 
 ```js

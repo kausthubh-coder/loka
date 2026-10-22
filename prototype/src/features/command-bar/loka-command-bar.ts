@@ -246,9 +246,10 @@ export class LokaCommandBar extends LitElement {
 								<span class="icon" aria-hidden="true">${this.icon(r)}</span>
 								<span class="label">${r.label}</span>
 								<span class="detail">
-									${space ? html`${planet(space.planet, space.hue, 14)}` : nothing}<span class="detail-text">${keys(r.detail)}</span>
+									${space ? html`${planet(space.planet, space.hue, 14)}` : nothing}<span class="detail-text">${r.detail}</span>
 								</span>
-								<kbd aria-hidden="true">↵</kbd>
+								${r.shortcut ? html`<kbd class="shortcut">${keys(r.shortcut)}</kbd>` : nothing}
+								<kbd class="enter" aria-hidden="true">↵</kbd>
 							</div>`;
 					})}
 				</div>
@@ -364,7 +365,7 @@ export class LokaCommandBar extends LitElement {
 			color: var(--loka-ink-3);
 		}
 		input::selection {
-			background: color-mix(in srgb, var(--loka-accent) 35%, transparent);
+			background: var(--loka-text-selection);
 		}
 		.mode,
 		kbd {
@@ -383,10 +384,22 @@ export class LokaCommandBar extends LitElement {
 		kbd {
 			padding: 1px 6px;
 			color: var(--loka-ink);
+		}
+		kbd.enter {
 			visibility: hidden;
 		}
-		.result.on kbd {
+		.result.on kbd.enter {
 			visibility: visible;
+		}
+		/* A command's own key, on every row that has one, so the bar teaches the shortcut. */
+		kbd.shortcut {
+			color: var(--loka-ink-2);
+			background: none;
+			box-shadow: inset 0 0 0 1px var(--loka-line);
+			white-space: nowrap;
+		}
+		.result.on kbd.shortcut {
+			color: var(--loka-ink);
 		}
 		/* The list fades at an edge while there's more to scroll past it. */
 		.results {
@@ -506,6 +519,46 @@ export class LokaCommandBar extends LitElement {
 		@media (max-width: 420px) {
 			.detail {
 				display: none;
+			}
+		}
+		/* Windows High Contrast drops the glass, the field's glow and the lit row's tint: edges and Highlight instead.
+		   Favicons and planets keep their colors. */
+		@media (forced-colors: active) {
+			.fav,
+			.planet {
+				forced-color-adjust: none;
+			}
+			.panel {
+				background: Canvas;
+				outline: 1px solid CanvasText;
+				outline-offset: -1px;
+			}
+			.input {
+				outline: 1px solid CanvasText;
+				outline-offset: -1px;
+			}
+			/* Not adjusted, or the text would sit on its Canvas backplate inside the Highlight. */
+			.result.on {
+				forced-color-adjust: none;
+				background: Highlight;
+				color: HighlightText;
+			}
+			.result.on .icon,
+			.result.on .detail,
+			.result.on kbd {
+				color: HighlightText;
+				background: none;
+				box-shadow: none;
+			}
+			.mode,
+			kbd {
+				outline: 1px solid currentColor;
+				outline-offset: -1px;
+			}
+		}
+		@media (prefers-contrast: more) {
+			.result.on {
+				box-shadow: inset 0 0 0 1.5px var(--loka-ink);
 			}
 		}
 		@media (prefers-reduced-motion: no-preference) {

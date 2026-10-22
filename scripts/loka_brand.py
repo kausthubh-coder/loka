@@ -6,22 +6,28 @@ Loka's name and icons in the browser, on top of Helium's branding.
   python scripts/loka_brand.py apply    in the build checkout, after `first`: rename to Loka, copy the images,
                                         then rebuild with `loka_build.py incremental`
   python scripts/loka_brand.py apply --no-names
-                                        BRANDING and images only. The name substitution rewrites thousands of
-                                        source files (a near-full rebuild); the product's strings already say
-                                        Loka through patches/loka/loka-name.patch
+                                        BRANDING, images and the product's strings (BRANDED_STRINGS) only. The
+                                        full name substitution rewrites thousands of source files (a near-full
+                                        rebuild); the product's own strings are the ones a user reads
 
 Helium's release builds run a name substitution ("Chrome"/"Chromium" -> "Helium") that dev builds skip. `apply` runs
 the same substitution with "Loka", rewrites BRANDING, and copies Loka's images over every place Helium's go, using
 Helium's own resource lists so nothing is missed when Helium adds one.
 """
+from __future__ import annotations
+
 import argparse
 import os
 import re
 import shutil
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+# Pillow only draws the images (`assets`, `apply`): patches_check.py imports the strings renaming from here on
+# machines without it, such as CI.
+if TYPE_CHECKING:
+    from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE_TREE = Path(os.environ.get("LOKA_SOURCE_TREE", ROOT / "build" / "src"))
@@ -35,6 +41,8 @@ SHADE, LIT = (34, 72, 89), (120, 205, 245)
 
 def mark(size: int, tile: bool = True) -> Image.Image:
     """The mark at `size` px, drawn at 4x and scaled down so edges stay smooth."""
+    from PIL import Image, ImageDraw, ImageFilter
+
     s = size * 4
     img = Image.new('RGBA', (s, s), (0, 0, 0, 0))
     u = s / 64  # the mark is designed on a 64-unit grid
@@ -62,6 +70,8 @@ def mark(size: int, tile: bool = True) -> Image.Image:
 
 def mono(size: int) -> Image.Image:
     """A one-color mark for monochrome spots (the 22 px menu glyph): the planet and moon as white shapes."""
+    from PIL import Image
+
     full = mark(size * 4, tile=False)
     alpha = full.getchannel('A')
     white = Image.new('RGBA', full.size, (255, 255, 255, 0))
@@ -71,6 +81,8 @@ def mono(size: int) -> Image.Image:
 
 def wordmark(width: int, height: int, color: tuple[int, int, int]) -> Image.Image:
     """The mark followed by "loka", sized like Helium's product_logo images (140x32 and 280x64)."""
+    from PIL import Image, ImageDraw, ImageFont
+
     img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     img.paste(mark(height, tile=False), (0, 0), mark(height, tile=False))
     font_path = Path('C:/Windows/Fonts/seguisb.ttf')
@@ -126,19 +138,52 @@ def rewrite_branding():
     path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
 
-def substitute_names():
-    """Helium's own name substitution, pointed at "Loka". Its chrome:// -> helium:// rule is Helium's to keep."""
+# The strings files the product's name comes from, renamed on every apply (also with --no-names). Generated rather
+# than kept as a patch: a saved copy of a renamed file conflicts with every Chromium or Helium change to it, while
+# renaming the file as it is never does. patches_check.py compares them with this renaming of their original.
+BRANDED_STRINGS = ['chrome/app/chromium_strings.grd']
+
+
+def loka_substitution(tree: Path = SOURCE_TREE):
+    """Helium's name substitution utilities, pointed at "Loka". Its chrome:// -> helium:// rule is Helium's to keep.
+    `tree` is a Chromium tree, for its grit."""
     sys.path.insert(0, str(ROOT / 'helium-chromium' / 'utils'))
-    import name_substitution  # noqa: E402
     import name_substitution_utils as nsu  # noqa: E402
     nsu.REPLACEMENT_REGEXES = [
-        (re.compile(pattern), replacement)
+        (re.compile(pattern), 'Loka' if replacement == 'Helium' else replacement)
         for pattern, replacement in nsu.REPLACEMENT_REGEXES_STR
         if 'chrome://' not in pattern
     ]
-    nsu.REPLACEMENT_REGEXES = [
-        (regex, 'Loka' if replacement == 'Helium' else replacement) for regex, replacement in nsu.REPLACEMENT_REGEXES
-    ]
+    nsu.add_grit_to_path(tree)
+    return nsu
+
+
+def branded_strings(text: str, tree: Path = SOURCE_TREE) -> str:
+    """A grit strings file's text with the product named Loka. Renaming it again changes nothing. Translations
+    (.xtb) aren't renamed: a renamed message's fingerprint changes, so other languages show it in English, as they
+    did under the old patch."""
+    renamed, _fingerprints = loka_substitution(tree).replace_grit_tree(text)
+    return renamed
+
+
+def brand_strings():
+    # The first rename keeps the file as it came in patch-orig (export_patch.py's originals), so patches_check.py can
+    # tell this renaming from a hand edit on any machine, not only where someone saved an original by hand.
+    orig_dir = SOURCE_TREE.parent.parent / 'patch-orig'
+    for rel in BRANDED_STRINGS:
+        path = SOURCE_TREE / rel
+        text = path.read_text(encoding='utf-8')
+        orig = orig_dir / rel
+        if not orig.exists():
+            orig.parent.mkdir(parents=True, exist_ok=True)
+            orig.write_text(text, encoding='utf-8', newline='\n')
+        path.write_text(branded_strings(text), encoding='utf-8', newline='\n')
+
+
+def substitute_names():
+    """Helium's own name substitution over the whole tree, pointed at "Loka"."""
+    loka_substitution()
+    import name_substitution  # noqa: E402
     name_substitution.do_substitution(SOURCE_TREE, tarpath=None, workers=4, dry_run=False)
 
 
@@ -173,6 +218,8 @@ def apply(names: bool = True):
     copy_images()
     if names:
         substitute_names()
+    else:
+        brand_strings()
     print('Loka branding applied. Rebuild: python scripts/loka_build.py incremental')
 
 

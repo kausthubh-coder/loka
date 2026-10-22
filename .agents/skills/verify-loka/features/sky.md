@@ -18,6 +18,9 @@ tab, History, Settings) never move.
   browser, shared by every window); the sidebar follows on its next render.
 - `sky-still-pages`: `skyLayer(hue, scheme, "still")` on the new tab, History and Settings, and on the sidebar with
   Off: no drift animation, so no compositor layers for it.
+- `sky-text`: the sidebar's text stays readable on the sky (theme.md's `theme-contrast`). The nebula's brightest
+  glow is centred above the top edge (`at 10% -4%` in `.nebula`), so it lights the top row and fades out before the
+  address field; the fainter glows stay behind the list.
 
 ## How to get to it (user POV)
 
@@ -35,11 +38,17 @@ Preconditions: seed data.
 - **Hidden and reduced motion.** Redefine `document.visibilityState` and fire `visibilitychange`; `emulateMedia({
   reducedMotion: "reduce" })` removes the drift entirely.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs sky`.
-- **In the browser.** `bun run verify -- --ux sky` runs it and verify:flows `settings`: "Moving stars: Always saves
+- **Text on the sky.** `node .agents/skills/verify-loka/scripts/run.mjs contrast` measures every sidebar text
+  against the pixels behind it, nebula, clouds and planet included, for the 8 hues in both schemes, at a window as
+  wide as the browser's sidebar sky (330 px) and at 1280 px. theme.md says how. It holds the stars still (Moving
+  stars Off) and the nebula where it starts breathing (full opacity, its brightest); a 5x5 median drops single stars.
+- **In the browser.** `bun run verify -- --ux sky` runs both recipes and verify:flows `settings`: "Moving stars: Always saves
   and the sidebar's stars are running", "Moving stars: Off saves and the sidebar's stars are paused", "Moving stars:
   While I'm using Loka saves". Its cost: `bun run verify:perf -- --stars=<mode>` (idle CPU and GPU per mode;
-  `sky.runningAtStart` and `sky.runningAtEnd` count the sky's running animations). Not checked in the browser: the
-  15 s rest, a hidden or minimised window, reduced motion, and that the still pages stay still.
+  `sky.runningAtStart` and `sky.runningAtEnd` count the sky's running animations). The browser's pages draw the same
+  `skyLayer()` and `skyStyles`, so the nebula's place is the same CSS there. Not checked in the browser: the 15 s
+  rest, a hidden or minimised window, reduced motion, that the still pages stay still, and text contrast on the real
+  sidebar's sky.
 
 ## Gotchas
 
@@ -49,5 +58,8 @@ Preconditions: seed data.
 - Running or paused, an animation keeps its compositor layer (CDP `LayerTree`: the prototype's window held 19 drawing
   layers, about 8.4 M px, moving and resting alike; 6 layers, 1.1 M px, with no sky animation). Resting saves the
   frames, not the GPU memory; only Off and the still pages give the memory back.
+- The nebula's glows are placed in percent of the sky. The browser's sidebar sky is as narrow as the sidebar, so a
+  glow that sits beside the list in the prototype's wide window sits behind it there. Moving a glow means rerunning
+  the contrast recipe, which looks at both widths.
 - CDP input to another page (Settings) is not input to the sidebar: in the flows the sidebar may already rest under
   the default mode, so only Always and Off have a fixed expected state.

@@ -1851,7 +1851,7 @@ export class LokaSidebar extends LitElement {
 							>
 								${planet(space.planet, space.hue, 360, true)}
 							</button>
-							<span class="world-name" aria-hidden="true">${space.name}</span>`,
+							<span class="world-name" aria-hidden="true"><span>${space.name}</span></span>`,
 					)}
 					${keyed(`right-${this.neighbourAt(1)?.id}`, this.neighbour(this.neighbourAt(1), "right"))}
 					<button class="new" aria-label="New" title="New tab, folder or space" @click=${(e: MouseEvent) => this.newMenu(e)}>
@@ -2763,6 +2763,22 @@ export class LokaSidebar extends LitElement {
 			color: #fff;
 			text-shadow: var(--loka-label-shadow);
 			pointer-events: none;
+		}
+		/* A soft shade on the planet under the name, so the white reads on every planet in every color (its lit cap is
+		   too bright for white alone). Blurred, so it reads as shadow rather than a chip, and no taller than the
+		   letters, so it stays on the planet rather than spilling over its edge onto the sky. */
+		.world-name > span {
+			position: relative;
+			padding: 0 8px;
+		}
+		.world-name > span::before {
+			content: "";
+			position: absolute;
+			inset: 1px 0 0;
+			z-index: -1;
+			border-radius: 999px;
+			background: hsl(var(--hue) 55% 12% / 0.6);
+			filter: blur(3px);
 		}
 		.neighbour {
 			position: absolute;

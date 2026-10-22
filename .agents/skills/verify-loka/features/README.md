@@ -60,7 +60,8 @@ disagree, or a recipe or flow it names doesn't exist.
   browser's suggestions, going to an open tab or known site with the address completed, tabs, spaces and commands;
   the floating `command.html`.
 - [Space editor](./space-editor.md): create or change a space's name, color, planet and light or dark.
-- [Light and dark](./theme.md): each space's scheme, the crossfade, and `setColorScheme`.
+- [Light and dark](./theme.md): each space's scheme, the crossfade, and `setColorScheme`; text colors that keep
+  4.5:1 on the sky for every hue, and the `contrast` recipe that measures it.
 - [Window layout and pages](./layout.md): resize, side, hide and pin back, peek, the window buttons, real input;
   Settings, Downloads.
 - [Extensions](./extensions.md): pinned ones in the address field, running them, pinning, the empty state.

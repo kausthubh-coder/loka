@@ -1,12 +1,12 @@
 // Runs the mapped feature recipes against the running prototype and saves evidence.
-//   node .agents/skills/verify-loka/scripts/run.mjs <folders|spaces|tabs|essentials|export-import|command-bar|space-editor|layout|make-folders|archive|search-and-keys|import|media|theme|extensions|history|library|sound|sky|onboarding|all>
+//   node .agents/skills/verify-loka/scripts/run.mjs <folders|spaces|tabs|essentials|export-import|command-bar|space-editor|layout|make-folders|archive|search-and-keys|import|media|theme|contrast|extensions|history|library|sound|sky|onboarding|all>
 // Each recipe starts from fresh seed data, drives the UI the way a user does, asserts the saved state,
 // and writes screenshots, ARIA snapshots and outlines to .agents/verify-runs/<time>-<feature>/.
 
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { openLoka } from "./loka.mjs";
+import { openLoka, ROOT } from "./loka.mjs";
 
 /** @typedef {Awaited<ReturnType<typeof openLoka>>} Loka */
 
@@ -567,6 +567,81 @@ const recipes = {
 		assert.deepEqual((await demoCalls(loka, "setColorScheme")).at(-1), ["dark"]);
 	},
 
+	async contrast(loka) {
+		// Every text the sidebar draws, against the pixels behind it, for each space color in both schemes and on each
+		// kind of planet (the space's name sits on it). Every space gets the hue, scheme and planet in the saved state,
+		// with Moving stars off so the stars stay where they are between the two screenshots. Two window widths: the
+		// real browser's sky is the sidebar page's own, as wide as the sidebar, which a window just wider than the
+		// sidebar draws the same way (the nebula's glows land behind the list); the prototype's sky spans its whole
+		// window. The planet doesn't change with the width, so it's looked at on every kind only in the narrow one.
+		const hues = sourceList("prototype/src/features/sidebar/planet.ts", "SPACE_HUES").map(Number);
+		const planets = sourceList("prototype/src/features/sidebar/sidebar.logic.ts", "PLANET_KINDS");
+		assert.equal(hues.length, 8, "the eight space colors");
+		/** @type {Measured[]} */
+		const all = [];
+		for (const width of [330, 1280]) {
+			await loka.page.setViewportSize({ width, height: 800 });
+			const away = { x: width - 8, y: 400 };
+			for (const scheme of ["dark", "light"]) {
+				for (const hue of hues) {
+					for (const planet of width === 330 ? planets : planets.slice(0, 1)) {
+						await showSpace(loka, { hue, scheme, planet }, away);
+						const at = { width, hue, scheme, planet };
+						all.push(...(await measureText(loka, { ...at, state: "Build" })));
+						if (width === 330) {
+							// The planet turns under the name: look at it a quarter turn at a time.
+							for (const phase of [0.25, 0.5, 0.75]) {
+								await turnPlanet(loka, phase);
+								all.push(...(await measureText(loka, { ...at, state: `turn ${phase}` }, ".world-name")));
+							}
+						}
+						if (planet !== planets[0]) continue;
+						await sidebarShot(loka, `${width}-${scheme}-${hue}-build`);
+						await loka.row("Hacker News").hover();
+						all.push(...(await measureText(loka, { ...at, state: "hover" })));
+						await loka.row("Lit docs").click({ button: "right" });
+						await loka.sidebar.getByRole("menuitem").first().waitFor();
+						await loka.page.waitForTimeout(250);
+						all.push(...(await measureText(loka, { ...at, state: "menu" })));
+						await sidebarShot(loka, `${width}-${scheme}-${hue}-menu`);
+						await loka.page.keyboard.press("Escape");
+						// School has a closed folder; Home has no pinned tabs and no tab showing, so the address field is
+						// empty and the divider sits high, on the nebula.
+						for (const [key, space, row] of /** @type {[string, string, string][]} */ ([
+							["Control+2", "School", "Canvas: CSC 281"],
+							["Control+3", "Home", "Lo-fi beats"],
+						])) {
+							await loka.page.keyboard.press(key);
+							await loka.row(row).waitFor();
+							await loka.page.mouse.move(away.x, away.y);
+							await loka.page.waitForTimeout(1000);
+							await turnPlanet(loka, 0);
+							all.push(...(await measureText(loka, { ...at, state: space })));
+						}
+						await sidebarShot(loka, `${width}-${scheme}-${hue}-home`);
+					}
+				}
+			}
+		}
+		writeFileSync(join(loka.dir, "contrast.json"), JSON.stringify(all, null, 1));
+		const failing = worstPerText(all.filter((m) => !m.excluded && m.ratio < m.needs));
+		const counts = ["dark", "light"].map((s) => `${s} ${failing.filter((m) => m.scheme === s).length}`).join(", ");
+		const measured = all.filter((m) => !m.excluded);
+		const lowest = Math.min(...measured.map((m) => m.ratio)).toFixed(2);
+		const table = [
+			`${measured.length} text boxes measured (${hues.length} hues x 2 schemes x ${planets.length} planets, windows 330 and 1280 px wide; Build, a hovered row, a menu, School, Home, the planet turning); lowest ${lowest}:1`,
+			`${failing.length} texts below their minimum (${counts})`,
+			"",
+			["scheme", "hue", "element", "text", "ratio", "needs", "raw", "where"].join("\t"),
+			...failing.map((m) =>
+				[m.scheme, m.hue, m.element, m.text, m.ratio.toFixed(2), m.needs, m.raw.toFixed(2), m.where].join("\t"),
+			),
+		].join("\n");
+		writeFileSync(join(loka.dir, "contrast.txt"), `${table}\n`);
+		console.log(table);
+		assert.equal(failing.length, 0, `${failing.length} texts below 4.5:1 (3:1 large); table in contrast.txt`);
+	},
+
 	async extensions(loka) {
 		// The fake browser has five extensions; uBlock Origin and Bitwarden are pinned into the address field.
 		const ublock = loka.sidebar.getByRole("button", { name: "uBlock Origin", exact: true });
@@ -1027,6 +1102,294 @@ async function settled(loka) {
 		const tour = document.querySelector("loka-app")?.shadowRoot?.querySelector("loka-onboarding");
 		return tour?.shadowRoot?.getAnimations().length === 0;
 	});
+}
+
+/** The items of an exported array literal in a source file, so the recipe can't drift from it. */
+function sourceList(/** @type {string} */ file, /** @type {string} */ name) {
+	const match = readFileSync(join(ROOT, file), "utf8").match(new RegExp(`${name}\\b[^=]*= \\[([^\\]]+)\\]`));
+	if (!match?.[1]) throw new Error(`no ${name} in ${file}`);
+	return match[1].split(",").map((s) => s.trim().replace(/"/g, ""));
+}
+
+/** Gives every space this hue, scheme and planet and shows Build, from a reload, with the stars still. */
+async function showSpace(
+	/** @type {Loka} */ loka,
+	/** @type {{ hue: number, scheme: string, planet: string }} */ look,
+	/** @type {{ x: number, y: number }} */ away,
+) {
+	await loka.page.evaluate((look) => {
+		const state = JSON.parse(localStorage.getItem("loka.state.v1") ?? "null");
+		for (const space of state.spaces) Object.assign(space, look);
+		state.activeSpaceId = state.spaces[0].id;
+		localStorage.setItem("loka.state.v1", JSON.stringify(state));
+		localStorage.setItem("loka.ui.v1", JSON.stringify({ onboarded: true, starMotion: "off" }));
+	}, look);
+	await loka.page.reload({ waitUntil: "networkidle" });
+	await loka.sidebar.getByRole("tree").first().waitFor();
+	await loka.page.mouse.move(away.x, away.y);
+	await loka.page.waitForTimeout(400);
+	await turnPlanet(loka, 0);
+}
+
+/** Holds the big planet's turn at this fraction of a full turn. */
+async function turnPlanet(/** @type {Loka} */ loka, /** @type {number} */ phase) {
+	await loka.page.evaluate((phase) => {
+		const root = document.querySelector("loka-app")?.shadowRoot?.querySelector("loka-sidebar")?.shadowRoot;
+		for (const a of root?.getAnimations() ?? []) {
+			if (!(a instanceof CSSAnimation) || a.animationName !== "turn") continue;
+			a.pause();
+			a.currentTime = phase * 270_000;
+		}
+	}, phase);
+}
+
+/** The sidebar (and a menu reaching past it) as <name>.png in the evidence folder. */
+async function sidebarShot(/** @type {Loka} */ loka, /** @type {string} */ name) {
+	const box = await loka.sidebar.boundingBox();
+	if (!box) throw new Error("the sidebar isn't showing");
+	await loka.page.screenshot({
+		path: join(loka.dir, `${name}.png`),
+		clip: { x: 0, y: 0, width: Math.ceil(box.x + box.width) + 40, height: Math.ceil(box.height) },
+	});
+}
+
+/**
+ * @typedef {{ width: number, hue: number, scheme: string, planet: string, state: string, element: string,
+ *   text: string, ratio: number, raw: number, needs: number, where: string, excluded?: string }} Measured
+ */
+
+/**
+ * WCAG contrast of every text in the sidebar against what's drawn behind it. It reads each text's color and box,
+ * screenshots the window, hides all text (color: transparent; a text-shadow stays, as it's drawn to sit behind the
+ * letters, the way a halo is the background in WCAG's terms) and screenshots it again. The pixels that changed are the
+ * letters; the rectangle around them inside the text's box is where it looks, so a line box's padding or a badge's
+ * rounded ends don't count. In there it takes the worst background pixel: the lowest ratio of the text's color,
+ * blended by its own and its ancestors' opacity, against that pixel. Before that each pixel is the median of the 5x5
+ * around it, which keeps the sky's gradients, the nebula, the clouds and the planet but drops specks under 2 px
+ * across: a single star under a light label would fail any color there is (`raw` is the ratio without it). Large text
+ * (24 px, or 18.66 px bold) needs 3:1, the rest 4.5:1. Text in the list that has slid under the planet's fade is
+ * excluded, as it's meant to dissolve there. `only` limits it to the elements matching a selector.
+ * @returns {Promise<Measured[]>}
+ */
+async function measureText(
+	/** @type {Loka} */ loka,
+	/** @type {{ width: number, hue: number, scheme: string, planet: string, state: string }} */ at,
+	only = "",
+) {
+	const texts = await loka.page.evaluate((only) => {
+		const sidebar = document.querySelector("loka-app")?.shadowRoot?.querySelector("loka-sidebar");
+		if (!sidebar?.shadowRoot) throw new Error("no sidebar");
+		const paint = new OffscreenCanvas(1, 1).getContext("2d", { willReadFrequently: true });
+		if (!paint) throw new Error("no canvas");
+		/** A CSS color as sRGB 0-255 and alpha 0-1, however it's written (hsl, oklch, color-mix). */
+		const rgba = (/** @type {string} */ color) => {
+			paint.clearRect(0, 0, 1, 1);
+			paint.fillStyle = color;
+			paint.fillRect(0, 0, 1, 1);
+			const [r = 0, g = 0, b = 0, a = 0] = paint.getImageData(0, 0, 1, 1).data;
+			return [r, g, b, a / 255];
+		};
+		const up = (/** @type {Element} */ el) => {
+			const root = el.getRootNode();
+			return el.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
+		};
+		const fade = sidebar.shadowRoot.querySelector(".bottom")?.getBoundingClientRect();
+		/**
+		 * @type {{ element: string, text: string, color: number[], opacity: number, needs: number, excluded?: string,
+		 *   boxes: { x: number, y: number, right: number, bottom: number }[] }[]}
+		 */
+		const out = [];
+		const visit = (/** @type {Node} */ node) => {
+			if (node instanceof Text) {
+				const el = node.parentElement;
+				const text = node.data.replace(/\s+/g, " ").trim();
+				// .fav is a favicon stand-in: a letter drawn as the site's icon, on its own color.
+				if (!el || !text || el.closest("svg, style, .fav")) return;
+				if (only && !el.closest(only)) return;
+				if (!el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return;
+				const style = getComputedStyle(el);
+				let opacity = 1;
+				const clips = [new DOMRect(0, 0, innerWidth, innerHeight)];
+				for (let a = /** @type {Element | null} */ (el); a; a = up(a)) {
+					const s = getComputedStyle(a);
+					opacity *= Number(s.opacity);
+					if (s.overflowX !== "visible" || s.overflowY !== "visible") clips.push(a.getBoundingClientRect());
+				}
+				if (opacity < 0.05) return;
+				const range = document.createRange();
+				range.selectNodeContents(node);
+				const boxes = [...range.getClientRects()].flatMap((r) => {
+					const x = Math.max(r.left, ...clips.map((c) => c.left));
+					const y = Math.max(r.top, ...clips.map((c) => c.top));
+					const right = Math.min(r.right, ...clips.map((c) => c.right));
+					const bottom = Math.min(r.bottom, ...clips.map((c) => c.bottom));
+					return right - x >= 2 && bottom - y >= 2 ? [{ x, y, right, bottom }] : [];
+				});
+				if (!boxes.length) return;
+				const size = Number.parseFloat(style.fontSize);
+				const weight = Number(style.fontWeight);
+				const host = /** @type {ShadowRoot} */ (el.getRootNode()).host?.localName ?? "";
+				const under = fade && el.closest(".scroll") && boxes.every((b) => b.bottom > fade.top + 24);
+				const tag = (/** @type {Element} */ e) => `${e.localName}${[...e.classList].map((c) => `.${c}`).join("")}`;
+				// An element with no class of its own is named by its parent too: span.world-name > span.
+				const name = el.classList.length || !el.parentElement ? tag(el) : `${tag(el.parentElement)} > ${tag(el)}`;
+				out.push({
+					element: `${host} ${name}`.trim(),
+					text: text.slice(0, 40),
+					color: rgba(style.color),
+					opacity,
+					boxes,
+					needs: size >= 24 || (size >= 18.66 && weight >= 700) ? 3 : 4.5,
+					excluded: under ? "under the planet's fade" : undefined,
+				});
+				return;
+			}
+			if (node instanceof Element && node.shadowRoot) visit(node.shadowRoot);
+			for (const child of node.childNodes) visit(child);
+		};
+		visit(sidebar);
+		return out;
+	}, only);
+
+	// The same window with every letter gone.
+	const hide = (/** @type {boolean} */ on) =>
+		loka.page.evaluate(async (on) => {
+			const w = /** @type {Window & { contrastHide?: CSSStyleSheet }} */ (window);
+			if (!w.contrastHide) {
+				w.contrastHide = new CSSStyleSheet();
+				w.contrastHide.replaceSync(
+					"*, *::before, *::after { color: transparent !important; -webkit-text-fill-color: transparent !important; text-decoration-color: transparent !important; caret-color: transparent !important; transition: none !important; }",
+				);
+			}
+			const sheet = w.contrastHide;
+			const roots = /** @type {(Document | ShadowRoot)[]} */ ([document]);
+			const walk = (/** @type {ParentNode} */ n) => {
+				for (const el of n.querySelectorAll("*")) {
+					if (el.shadowRoot) {
+						roots.push(el.shadowRoot);
+						walk(el.shadowRoot);
+					}
+				}
+			};
+			walk(document);
+			for (const root of roots) {
+				const rest = root.adoptedStyleSheets.filter((s) => s !== sheet);
+				root.adoptedStyleSheets = on ? [...rest, sheet] : rest;
+			}
+			await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+		}, on);
+	const shown = (await loka.page.screenshot()).toString("base64");
+	await hide(true);
+	const hidden = (await loka.page.screenshot()).toString("base64");
+	await hide(false);
+
+	const ratios = await loka.page.evaluate(
+		async ({ shown, hidden, texts }) => {
+			const pixels = async (/** @type {string} */ png) => {
+				const image = await createImageBitmap(await (await fetch(`data:image/png;base64,${png}`)).blob());
+				const ctx = new OffscreenCanvas(image.width, image.height).getContext("2d", { willReadFrequently: true });
+				if (!ctx) throw new Error("no canvas");
+				ctx.drawImage(image, 0, 0);
+				return ctx.getImageData(0, 0, image.width, image.height);
+			};
+			const { width, height, data: px } = await pixels(hidden);
+			const letters = (await pixels(shown)).data;
+			/** The rectangle around the pixels the text drew inside a box, or the box when it drew none. */
+			const ink = (/** @type {{ x: number, y: number, right: number, bottom: number }} */ b) => {
+				const found = { x: Number.POSITIVE_INFINITY, y: Number.POSITIVE_INFINITY, right: 0, bottom: 0, n: 0 };
+				for (let y = Math.ceil(b.y); y < Math.floor(b.bottom); y++) {
+					for (let x = Math.ceil(b.x); x < Math.floor(b.right); x++) {
+						const i = (y * width + x) * 4;
+						let change = 0;
+						for (let c = 0; c < 3; c++) change += Math.abs((letters[i + c] ?? 0) - (px[i + c] ?? 0));
+						if (change < 24) continue;
+						found.n++;
+						found.x = Math.min(found.x, x);
+						found.y = Math.min(found.y, y);
+						found.right = Math.max(found.right, x + 1);
+						found.bottom = Math.max(found.bottom, y + 1);
+					}
+				}
+				return found.n >= 3 ? found : b;
+			};
+			const linear = (/** @type {number} */ c) => {
+				const v = c / 255;
+				return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+			};
+			const luminance = (/** @type {number[]} */ [r = 0, g = 0, b = 0]) =>
+				0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+			const at = (/** @type {number} */ x, /** @type {number} */ y) => {
+				const i = (Math.min(height - 1, Math.max(0, y)) * width + Math.min(width - 1, Math.max(0, x))) * 4;
+				return [px[i] ?? 0, px[i + 1] ?? 0, px[i + 2] ?? 0];
+			};
+			const median = (/** @type {number} */ x, /** @type {number} */ y) => {
+				/** @type {number[][]} */
+				const channels = [[], [], []];
+				for (let dy = -2; dy <= 2; dy++) {
+					for (let dx = -2; dx <= 2; dx++) {
+						const [r = 0, g = 0, b = 0] = at(x + dx, y + dy);
+						channels[0]?.push(r);
+						channels[1]?.push(g);
+						channels[2]?.push(b);
+					}
+				}
+				return channels.map((c) => c.sort((a, b) => a - b)[12] ?? 0);
+			};
+			return texts.map((t) => {
+				const [tr = 0, tg = 0, tb = 0, ta = 1] = t.color;
+				const alpha = ta * t.opacity;
+				const ratio = (/** @type {number[]} */ bg) => {
+					const ink = [tr, tg, tb].map((v, c) => alpha * v + (1 - alpha) * (bg[c] ?? 0));
+					const [a, b] = [luminance(ink), luminance(bg)];
+					return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+				};
+				let worst = Number.POSITIVE_INFINITY;
+				let raw = Number.POSITIVE_INFINITY;
+				let where = "";
+				for (const b of t.boxes.map(ink)) {
+					for (let y = Math.ceil(b.y); y < Math.floor(b.bottom); y++) {
+						for (let x = Math.ceil(b.x); x < Math.floor(b.right); x++) {
+							const bg = median(x, y);
+							const r = ratio(bg);
+							raw = Math.min(raw, ratio(at(x, y)));
+							if (r < worst) {
+								worst = r;
+								where = `${x},${y} on rgb(${bg.join(" ")}) ink rgba(${t.color.join(" ")}) x${t.opacity.toFixed(2)}`;
+							}
+						}
+					}
+				}
+				return { ratio: worst, raw, where };
+			});
+		},
+		{ shown, hidden, texts },
+	);
+	return texts.map((t, i) => ({
+		...at,
+		element: t.element,
+		text: t.text,
+		needs: t.needs,
+		...(ratios[i] ?? { ratio: 0, raw: 0, where: "" }),
+		...(t.excluded ? { excluded: t.excluded } : {}),
+	}));
+}
+
+/** One line per text that fails, at its worst over every state and planet it was measured in. @param {Measured[]} failing */
+function worstPerText(failing) {
+	/** @type {Map<string, Measured & { states: Set<string> }>} */
+	const worst = new Map();
+	for (const m of failing) {
+		const key = `${m.scheme} ${m.hue} ${m.element} ${m.text}`;
+		const seen = worst.get(key);
+		const states = seen?.states ?? new Set();
+		states.add(
+			`${m.width}px ${m.state === "Build" || m.state.startsWith("turn") ? `${m.state} on ${m.planet}` : m.state}`,
+		);
+		if (!seen || m.ratio < seen.ratio) worst.set(key, { ...m, states });
+	}
+	return [...worst.values()]
+		.map((m) => ({ ...m, where: `${[...m.states].join(" ")}; ${m.where}` }))
+		.sort((a, b) => a.scheme.localeCompare(b.scheme) || a.hue - b.hue || a.ratio - b.ratio);
 }
 
 const FIXTURES = join(import.meta.dirname, "..", "fixtures");

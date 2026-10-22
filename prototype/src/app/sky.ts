@@ -228,12 +228,14 @@ export const skyStyles = css`
 		.sky-was .nebula {
 			animation: none;
 		}
-		/* Painted once, then only scaled and faded. Its glows follow the space's hue as it changes. */
+		/* Painted once, then only scaled and faded. Its glows follow the space's hue as it changes. The brightest sits
+		   above the top edge, so it lights the window's top row and fades out before the address field: behind text
+		   it was bright enough to sink the quieter text below 4.5:1 (the verify-loka contrast recipe). */
 		.nebula {
 			position: absolute;
 			inset: -10%;
 			background:
-				radial-gradient(48% 40% at 10% 6%, hsl(var(--hue) 62% 38% / 0.55), transparent 70%),
+				radial-gradient(48% 30% at 10% -4%, hsl(var(--hue) 62% 38% / 0.55), transparent 70%),
 				radial-gradient(30% 22% at 32% 30%, hsl(calc(var(--hue) + 40) 60% 45% / 0.16), transparent 70%),
 				radial-gradient(34% 28% at 30% 60%, hsl(calc(var(--hue) + 40) 45% 32% / 0.22), transparent 70%),
 				radial-gradient(26% 40% at 72% 38%, hsl(calc(var(--hue) - 50) 50% 40% / 0.15), transparent 70%),

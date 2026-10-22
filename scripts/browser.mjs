@@ -104,7 +104,9 @@ export function testBinary() {
 export function browsersHoldingBuild() {
 	if (process.platform !== "win32") return [];
 	const dir = join(BUILD_DIR, "build", "src", "out", "Default");
-	const query = `Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | Where-Object { $_.ExecutablePath -like '${dir}\\*' -and $_.CommandLine -notmatch '--type=' } | ForEach-Object { "$($_.ProcessId)|$($_.CommandLine)" }`;
+	// A browser that has exited can still be listed while something holds a handle to it (after a crash); it holds no
+	// file, so it doesn't count.
+	const query = `Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | Where-Object { $_.ExecutablePath -like '${dir}\\*' -and $_.CommandLine -notmatch '--type=' -and -not (Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue).HasExited } | ForEach-Object { "$($_.ProcessId)|$($_.CommandLine)" }`;
 	return spawnSync("powershell", ["-NoProfile", "-Command", query], { encoding: "utf8" })
 		.stdout.split(/\r?\n/)
 		.filter(Boolean)

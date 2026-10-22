@@ -6,10 +6,13 @@ import {
 	downloadActions,
 	downloadProgress,
 	downloadStatus,
+	fileExt,
+	fileHue,
 	sortDownloads,
 } from "./downloads.logic";
 
-const ICONS: Record<DownloadAction, TemplateResult> = {
+/** Each action's icon, shared with the Library's Downloads. */
+export const DOWNLOAD_ICONS: Record<DownloadAction, TemplateResult> = {
 	pause: html`<svg viewBox="0 0 16 16"><path d="M5.5 3.5v9M10.5 3.5v9" /></svg>`,
 	resume: html`<svg viewBox="0 0 16 16"><path class="fill" d="M5 3.5v9l7.5-4.5z" /></svg>`,
 	cancel: html`<svg viewBox="0 0 16 16"><path d="m4.5 4.5 7 7m0-7-7 7" /></svg>`,
@@ -19,7 +22,8 @@ const ICONS: Record<DownloadAction, TemplateResult> = {
 	open: html``,
 };
 
-const LABELS: Record<DownloadAction, string> = {
+/** Each action's name, for its button's label and tooltip. */
+export const DOWNLOAD_LABELS: Record<DownloadAction, string> = {
 	pause: "Pause",
 	resume: "Resume",
 	cancel: "Cancel",
@@ -28,16 +32,6 @@ const LABELS: Record<DownloadAction, string> = {
 	remove: "Remove from list",
 	open: "Open",
 };
-
-/** A file type's tile color, by extension, so a list of files can be told apart at a glance. */
-function fileHue(name: string): number {
-	const ext = name.split(".").pop()?.toLowerCase() ?? "";
-	const known: Record<string, number> = { exe: 205, msi: 205, pdf: 0, png: 150, jpg: 150, zip: 40, json: 45, mp4: 280 };
-	if (ext in known) return known[ext] ?? 220;
-	let hash = 0;
-	for (const c of ext) hash = (hash * 31 + c.charCodeAt(0)) % 360;
-	return hash;
-}
 
 /**
  * The sidebar's Downloads panel: newest first, with live progress and each state's actions (open a finished file,
@@ -65,9 +59,8 @@ export class LokaDownloads extends LitElement {
 	private row(d: NativeDownload, now: number): TemplateResult {
 		const { open, buttons } = downloadActions(d);
 		const progress = downloadProgress(d);
-		const ext = d.name.includes(".") ? (d.name.split(".").pop() ?? "") : "";
 		const inProgress = d.state === "running" || d.state === "paused";
-		const text = html`<span class="file" style="--f: ${fileHue(d.name)}" aria-hidden="true">${ext.toUpperCase().slice(0, 4)}</span>
+		const text = html`<span class="file" style="--f: ${fileHue(d.name)}" aria-hidden="true">${fileExt(d.name)}</span>
 			<span class="text">
 				<span class="name">${d.name}</span>
 				${
@@ -94,11 +87,11 @@ export class LokaDownloads extends LitElement {
 				${buttons.map(
 					(action) => html`<button
 						class="act ${action === "remove" ? "secondary" : ""}"
-						aria-label="${LABELS[action]} ${d.name}"
-						title=${LABELS[action]}
+						aria-label="${DOWNLOAD_LABELS[action]} ${d.name}"
+						title=${DOWNLOAD_LABELS[action]}
 						@click=${() => this.act(d.id, action)}
 					>
-						${ICONS[action]}
+						${DOWNLOAD_ICONS[action]}
 					</button>`,
 				)}
 			</span>
@@ -126,7 +119,7 @@ export class LokaDownloads extends LitElement {
 							(d) => this.row(d, now),
 						)}</ul>`
 			}
-			<button class="all" @click=${() => this.browser.openPage("chrome://downloads/")}>See all downloads</button>
+			<button class="all" @click=${() => this.browser.openPage("chrome://history/#downloads")}>See all downloads</button>
 		`;
 	}
 

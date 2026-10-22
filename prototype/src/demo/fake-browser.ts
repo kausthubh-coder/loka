@@ -15,7 +15,10 @@ import type {
 	NativeMedia,
 	NativeSuggestion,
 	NativeTab,
+	ShownMenu,
 } from "../../../webui/src/bridge";
+import { seedState } from "../features/sidebar/sidebar.seed";
+import type { SpacesDelta } from "../features/sidebar/spaces-delta.logic";
 import { DEMO_DOWNLOADS, DEMO_EXTENSIONS, DEMO_HISTORY, DEMO_PLAYLIST, MUSIC_TAB } from "./demo-data";
 
 type Listener = (...args: unknown[]) => void;
@@ -135,9 +138,13 @@ function suggestionsFor(query: string): NativeSuggestion[] {
 }
 
 export const fakeBrowser: Browser = {
+	// The prototype keeps its spaces in loka-app (localStorage); nothing here asks the browser for them.
+	getSpaces: async () => ({ state: seedState(), links: [] }),
+	spacesDo: (seq, intent) => log("spacesDo", seq, intent),
+	onSpacesChanged: (listener) => on("spaces-changed", (d) => listener(d as SpacesDelta)),
+	onLinksChanged: (listener) => on("links-changed", (l) => listener(l as [string, number][])),
 	tabs: async () => tabs(),
-	groups: async () => [],
-	syncTabs: async () => ({ tabs: tabs(), groups: [] }),
+	syncTabs: async () => tabs(),
 	createTab: async (url, active) => {
 		log("createTab", url, active);
 		return null;
@@ -155,12 +162,6 @@ export const fakeBrowser: Browser = {
 			emit("tabs-changed", tabs());
 		}
 	},
-	groupTabs: async (ids, groupId) => {
-		log("groupTabs", ids, groupId);
-		return null;
-	},
-	updateGroup: (groupId, look) => log("updateGroup", groupId, look),
-	ungroupTabs: (ids) => log("ungroupTabs", ids),
 	search: (query, newTab) => log("search", query, newTab),
 	openPage: (url) => log("openPage", url),
 	windowAction: (action) => log("windowAction", action),
@@ -266,6 +267,14 @@ export const fakeBrowser: Browser = {
 		emit("command-picked", pick);
 	},
 	onCommandPicked: (listener) => on("command-picked", (p) => listener(p as CommandPick)),
+	// The prototype draws menus in the sidebar itself; it has no menu window.
+	showMenu: (menu, x, y) => log("showMenu", menu, x, y),
+	onMenuPicked: (listener) => on("menu-picked", (p) => listener(p as number[])),
+	onMenuClosed: (listener) => on("menu-closed", () => listener()),
+	onMenuShow: (listener) => on("menu-show", (m) => listener(m as ShownMenu)),
+	menuReady: (width, height) => log("menuReady", width, height),
+	menuPicked: (path) => log("menuPicked", path),
+	closeMenu: () => log("closeMenu"),
 };
 
 /** The prototype draws a stand-in popup where an extension's real one would open. */

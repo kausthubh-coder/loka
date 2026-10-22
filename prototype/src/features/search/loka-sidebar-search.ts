@@ -1,8 +1,8 @@
 import { css, html, LitElement } from "lit";
-import type { Update } from "../../app/loka-app";
+import type { Act } from "../../app/loka-app";
 import { faviconBackground, faviconInner } from "../sidebar/favicon";
 import { planet } from "../sidebar/planet";
-import { type BrowserState, revealTab, searchSidebar } from "../sidebar/sidebar.logic";
+import { type BrowserState, searchSidebar } from "../sidebar/sidebar.logic";
 
 /**
  * Search across the sidebar (Ctrl+Shift+F): every pinned, open and Essential tab in every space, with where it sits.
@@ -17,7 +17,7 @@ export class LokaSidebarSearch extends LitElement {
 	};
 
 	declare state: BrowserState;
-	declare apply: Update;
+	declare apply: Act;
 	query = "";
 	selected = 0;
 
@@ -27,7 +27,7 @@ export class LokaSidebarSearch extends LitElement {
 
 	private go(tabId: string | undefined) {
 		if (!tabId) return;
-		this.apply((s) => revealTab(s, tabId));
+		this.apply({ op: "revealTab", tabId, now: Date.now() });
 		this.done();
 	}
 

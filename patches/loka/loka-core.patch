@@ -1,0 +1,2651 @@
+--- /dev/null
++++ b/components/loka/core/BUILD.gn
+@@ -0,0 +1,32 @@
++# Copyright 2026 The Loka Authors
++# You can use, redistribute, and/or modify this source code under
++# the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++import("//testing/test.gni")
++
++# Loka's model of spaces and tab links: only //base, so its tests build in
++# minutes, not the hours chrome takes.
++static_library("core") {
++  sources = [
++    "intents.cc",
++    "intents.h",
++    "spaces_delta.cc",
++    "spaces_delta.h",
++    "spaces_model.cc",
++    "spaces_model.h",
++    "tab_links.cc",
++    "tab_links.h",
++  ]
++  public_deps = [ "//base" ]
++}
++
++test("loka_core_unittests") {
++  sources = [ "model_cases_unittest.cc" ]
++  deps = [
++    ":core",
++    "//base",
++    "//base/test:run_all_unittests",
++    "//base/test:test_support",
++    "//testing/gtest",
++  ]
++}
+--- /dev/null
++++ b/components/loka/core/intents.cc
+@@ -0,0 +1,228 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#include "components/loka/core/intents.h"
++
++#include <set>
++#include <string>
++
++namespace loka {
++
++namespace {
++
++const std::string* Text(const base::DictValue& intent, std::string_view key) {
++  return intent.FindString(key);
++}
++
++std::optional<double> Number(const base::DictValue& intent,
++                             std::string_view key) {
++  const base::Value* value = intent.Find(key);
++  return value ? value->GetIfDouble() : std::nullopt;
++}
++
++std::optional<SpaceLook> Look(const base::DictValue& intent) {
++  const base::DictValue* look = intent.FindDict("look");
++  if (!look) {
++    return std::nullopt;
++  }
++  const std::string* name = look->FindString("name");
++  std::optional<double> hue = Number(*look, "hue");
++  const std::string* planet = look->FindString("planet");
++  if (!name || !hue || !planet) {
++    return std::nullopt;
++  }
++  const std::string* scheme = look->FindString("scheme");
++  return SpaceLook{*name, *hue, *planet,
++                   scheme ? std::optional<std::string>(*scheme) : std::nullopt};
++}
++
++// A drop's place. A missing or null index (Infinity, once it's JSON) is the
++// end.
++std::optional<Place> ToPlace(const base::DictValue* to) {
++  if (!to) {
++    return std::nullopt;
++  }
++  const std::string* area = to->FindString("area");
++  std::optional<double> number = Number(*to, "index");
++  const double index = number.value_or(kEnd);
++  if (!area) {
++    return std::nullopt;
++  }
++  if (*area == "essentials") {
++    return Place::Essentials(index);
++  }
++  const std::string* space_id = to->FindString("spaceId");
++  if (!space_id) {
++    return std::nullopt;
++  }
++  if (*area == "open") {
++    return Place::Open(*space_id, index);
++  }
++  if (*area != "pinned") {
++    return std::nullopt;
++  }
++  const std::string* parent_id = to->FindString("parentId");
++  return Place::Pinned(
++      *space_id,
++      parent_id ? std::optional<std::string>(*parent_id) : std::nullopt,
++      index);
++}
++
++}  // namespace
++
++std::optional<State> ApplyIntent(const State& state,
++                                 const base::DictValue& intent) {
++  const std::string* op = Text(intent, "op");
++  if (!op) {
++    return std::nullopt;
++  }
++  const std::string* id = Text(intent, "id");
++  const std::string* tab_id = Text(intent, "tabId");
++  const std::string* space_id = Text(intent, "spaceId");
++  const std::string* folder_id = Text(intent, "folderId");
++  const std::string* url = Text(intent, "url");
++  const std::string* title = Text(intent, "title");
++  const std::string* name = Text(intent, "name");
++  std::optional<double> now = Number(intent, "now");
++
++  if (*op == "moveItem") {
++    std::optional<Place> to = ToPlace(intent.FindDict("to"));
++    if (!id || !to) {
++      return std::nullopt;
++    }
++    return MoveItem(state, *id, *to);
++  }
++  if (*op == "openTab" || *op == "focusOrOpen") {
++    if (!url || !title || !now || !id) {
++      return std::nullopt;
++    }
++    return *op == "openTab" ? OpenTab(state, *url, *title, *now, *id)
++                            : FocusOrOpen(state, *url, *title, *now, *id);
++  }
++  if (*op == "navigateTab") {
++    if (!tab_id || !url || !title) {
++      return std::nullopt;
++    }
++    return NavigateTab(state, *tab_id, *url, *title);
++  }
++  if (*op == "activateTab" || *op == "restoreArchived" || *op == "revealTab") {
++    if (!tab_id || !now) {
++      return std::nullopt;
++    }
++    if (*op == "activateTab") {
++      return ActivateTab(state, *tab_id, *now);
++    }
++    return *op == "restoreArchived" ? RestoreArchived(state, *tab_id, *now)
++                                    : RevealTab(state, *tab_id, *now);
++  }
++  if (*op == "closeTab") {
++    if (!tab_id) {
++      return std::nullopt;
++    }
++    return CloseTab(state, *tab_id);
++  }
++  if (*op == "closeTabs") {
++    const base::ListValue* ids = intent.FindList("tabIds");
++    if (!ids) {
++      return std::nullopt;
++    }
++    State next = state;
++    for (const base::Value& each : *ids) {
++      if (!each.is_string()) {
++        return std::nullopt;
++      }
++      next = CloseTab(next, each.GetString());
++    }
++    return next;
++  }
++  if (*op == "switchSpace" || *op == "deleteSpace") {
++    if (!space_id) {
++      return std::nullopt;
++    }
++    return *op == "switchSpace" ? SwitchSpace(state, *space_id)
++                                : DeleteSpace(state, *space_id);
++  }
++  if (*op == "createSpace" || *op == "updateSpace") {
++    std::optional<SpaceLook> look = Look(intent);
++    if (!look) {
++      return std::nullopt;
++    }
++    if (*op == "createSpace") {
++      return id ? std::optional<State>(CreateSpace(state, *look, *id))
++                : std::nullopt;
++    }
++    return space_id ? std::optional<State>(UpdateSpace(state, *space_id, *look))
++                    : std::nullopt;
++  }
++  if (*op == "createFolder") {
++    const base::Value* parent = intent.Find("parentId");
++    if (!space_id || !name || !id || !parent ||
++        !(parent->is_none() || parent->is_string())) {
++      return std::nullopt;
++    }
++    return CreateFolder(
++        state, *space_id,
++        parent->is_string() ? std::optional<std::string>(parent->GetString())
++                            : std::nullopt,
++        *name, *id);
++  }
++  if (*op == "renameFolder") {
++    if (!folder_id || !name) {
++      return std::nullopt;
++    }
++    return RenameFolder(state, *folder_id, *name);
++  }
++  if (*op == "toggleFolder" || *op == "ungroupFolder") {
++    if (!folder_id) {
++      return std::nullopt;
++    }
++    return *op == "toggleFolder" ? ToggleFolder(state, *folder_id)
++                                 : UngroupFolder(state, *folder_id);
++  }
++  if (*op == "groupIntoFolder") {
++    const std::string* target = Text(intent, "targetId");
++    const std::string* dragged = Text(intent, "draggedId");
++    if (!target || !dragged || !name || !id) {
++      return std::nullopt;
++    }
++    return GroupIntoFolder(state, *target, *dragged, *name, *id)
++        .value_or(state);
++  }
++  if (*op == "archiveStale") {
++    std::optional<double> max_age = Number(intent, "maxAgeMs");
++    const base::ListValue* keep_list = intent.FindList("keep");
++    if (!now || !max_age || !keep_list) {
++      return std::nullopt;
++    }
++    std::set<TabId> keep;
++    for (const base::Value& each : *keep_list) {
++      if (each.is_string()) {
++        keep.insert(each.GetString());
++      }
++    }
++    return ArchiveStale(state, *now, *max_age, keep);
++  }
++  if (*op == "clearArchive") {
++    State next = state;
++    next.archive.clear();
++    return next;
++  }
++  if (*op == "stepTab") {
++    std::optional<int> step = intent.FindInt("step");
++    if (!step || !now || (*step != 1 && *step != -1)) {
++      return std::nullopt;
++    }
++    return StepTab(state, *step, *now);
++  }
++  if (*op == "replaceState") {
++    const base::Value* replacement = intent.Find("state");
++    if (!replacement) {
++      return std::nullopt;
++    }
++    return ImportState(*replacement).value_or(state);
++  }
++  return std::nullopt;
++}
++
++}  // namespace loka
+--- /dev/null
++++ b/components/loka/core/intents.h
+@@ -0,0 +1,24 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#ifndef COMPONENTS_LOKA_CORE_INTENTS_H_
++#define COMPONENTS_LOKA_CORE_INTENTS_H_
++
++#include <optional>
++
++#include "base/values.h"
++#include "components/loka/core/spaces_model.h"
++
++namespace loka {
++
++// Applies what the sidebar asked for, `{op, ...arguments}`, the same way the
++// page's applyIntent (prototype/src/features/sidebar/intents.logic.ts) does.
++// The state comes back unchanged when the rule refuses. Nullopt when the
++// intent isn't one this knows or its arguments are malformed.
++std::optional<State> ApplyIntent(const State& state,
++                                 const base::DictValue& intent);
++
++}  // namespace loka
++
++#endif  // COMPONENTS_LOKA_CORE_INTENTS_H_
+--- /dev/null
++++ b/components/loka/core/model_cases_unittest.cc
+@@ -0,0 +1,270 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++// Runs the cases the prototype's model wrote (prototype/src/features/sidebar/
++// model-cases.json, made by `bun run model:cases`) through the C++ model and
++// expects the same results, so the two models can't drift apart. The file's
++// path comes in LOKA_MODEL_CASES (scripts/model-cases.mjs sets it).
++
++#include <optional>
++#include <set>
++#include <string>
++#include <vector>
++
++#include "base/environment.h"
++#include "base/files/file_path.h"
++#include "base/files/file_util.h"
++#include "base/json/json_reader.h"
++#include "base/json/json_writer.h"
++#include "base/strings/utf_string_conversions.h"
++#include "base/values.h"
++#include "components/loka/core/intents.h"
++#include "components/loka/core/spaces_delta.h"
++#include "components/loka/core/spaces_model.h"
++#include "components/loka/core/tab_links.h"
++#include "testing/gtest/include/gtest/gtest.h"
++
++namespace loka {
++namespace {
++
++// Numbers compare as numbers: JSON gives small ones as ints, the model writes
++// doubles.
++base::Value Normalize(const base::Value& value) {
++  if (value.is_int()) {
++    return base::Value(static_cast<double>(value.GetInt()));
++  }
++  if (value.is_list()) {
++    base::ListValue list;
++    for (const base::Value& item : value.GetList()) {
++      list.Append(Normalize(item));
++    }
++    return base::Value(std::move(list));
++  }
++  if (value.is_dict()) {
++    base::DictValue dict;
++    for (const auto [key, item] : value.GetDict()) {
++      dict.Set(key, Normalize(item));
++    }
++    return base::Value(std::move(dict));
++  }
++  return value.Clone();
++}
++
++std::string Json(const base::Value& value) {
++  return base::WriteJsonWithOptions(value, base::JSONWriter::OPTIONS_PRETTY_PRINT)
++      .value_or("<unwritable>");
++}
++
++void ExpectSame(const base::Value& expected, const base::Value& actual) {
++  base::Value want = Normalize(expected);
++  base::Value got = Normalize(actual);
++  EXPECT_EQ(want, got) << "expected:\n" << Json(want) << "\nactual:\n" << Json(got);
++}
++
++// A case's starting state: always a valid one (the seed, or what an earlier
++// op made from it).
++State ReadState(const base::Value& value) {
++  std::optional<State> state = ImportState(value);
++  if (state) {
++    return *state;
++  }
++  ADD_FAILURE() << "a case's starting state doesn't import:\n" << Json(value);
++  return State();
++}
++
++std::optional<std::string> OptionalString(const base::DictValue& args,
++                                          std::string_view key) {
++  const std::string* value = args.FindString(key);
++  return value ? std::optional<std::string>(*value) : std::nullopt;
++}
++
++std::string String(const base::DictValue& args, std::string_view key) {
++  const std::string* value = args.FindString(key);
++  return value ? *value : std::string();
++}
++
++BrowserTab ReadTab(const base::DictValue& t) {
++  BrowserTab tab;
++  tab.id = t.FindInt("id").value_or(0);
++  tab.url = String(t, "url");
++  tab.title = String(t, "title");
++  tab.active = t.FindBool("active").value_or(false);
++  tab.group_id = t.FindInt("groupId").value_or(-1);
++  tab.window_id = t.FindInt("windowId").value_or(0);
++  tab.opener_tab_id = t.FindInt("openerTabId");
++  tab.last_accessed = t.FindDouble("lastAccessed");
++  return tab;
++}
++
++std::vector<BrowserTab> ReadTabs(const base::DictValue& args) {
++  std::vector<BrowserTab> tabs;
++  for (const base::Value& t : *args.FindList("tabs")) {
++    tabs.push_back(ReadTab(t.GetDict()));
++  }
++  return tabs;
++}
++
++// Pairs, to keep their order: [[lokaId, browserId], ...].
++LiveMap ReadLive(const base::DictValue& args) {
++  LiveMap live;
++  if (const base::ListValue* pairs = args.FindList("live")) {
++    for (const base::Value& pair : *pairs) {
++      live.Set(pair.GetList()[0].GetString(), pair.GetList()[1].GetInt());
++    }
++  }
++  return live;
++}
++
++base::ListValue LivePairs(const LiveMap& live) {
++  base::ListValue pairs;
++  for (const auto& [id, browser_id] : live.entries()) {
++    base::ListValue pair;
++    pair.Append(id);
++    pair.Append(browser_id);
++    pairs.Append(std::move(pair));
++  }
++  return pairs;
++}
++
++Groups ReadGroups(const base::DictValue& args) {
++  Groups groups;
++  for (const base::Value& pair : *args.FindList("groups")) {
++    const base::DictValue& r = pair.GetList()[1].GetDict();
++    groups.emplace_back(pair.GetList()[0].GetString(),
++                        GroupRecord{r.FindInt("id").value_or(0),
++                                    r.FindBool("collapsed").value_or(false),
++                                    OptionalString(r, "title"),
++                                    OptionalString(r, "color")});
++  }
++  return groups;
++}
++
++// What one case's op gives, in the shape its "expect" has.
++std::optional<base::DictValue> RunCase(const base::DictValue& c,
++                                   const base::DictValue& states) {
++  const std::string op = String(c, "op");
++  const base::DictValue& args = *c.FindDict("args");
++  State state;
++  if (const base::Value* start = c.Find("state")) {
++    state = ReadState(start->is_string() ? *states.Find(start->GetString())
++                                         : *start);
++  }
++  std::vector<std::string> ids;
++  if (const base::ListValue* list = args.FindList("ids")) {
++    for (const base::Value& id : *list) {
++      ids.push_back(id.GetString());
++    }
++  }
++  size_t next_id = 0;
++  auto make_id = [&]() -> TabId {
++    if (next_id < ids.size()) {
++      return ids[next_id++];
++    }
++    ADD_FAILURE() << "the case gave too few ids";
++    return "missing-id";
++  };
++  const double now = args.FindDouble("now").value_or(0);
++  base::DictValue result;
++  auto with_state = [&](const State& s) {
++    result.Set("state", ToValue(s));
++    return std::move(result);
++  };
++  auto with_links = [&](const std::pair<State, LiveMap>& pair) {
++    result.Set("state", ToValue(pair.first));
++    result.Set("live", LivePairs(pair.second));
++    return std::move(result);
++  };
++
++  // The sidebar's own changes go through ApplyIntent, as they do from the
++  // page: the case's op and arguments are the intent.
++  if (op != "importState" && op != "planReconcile" && op != "groupColor" &&
++      op != "firstState" && !op.starts_with("tab") && op != "adoptTabs") {
++    base::DictValue intent = args.Clone();
++    intent.Set("op", op);
++    std::optional<State> next = ApplyIntent(state, intent);
++    if (!next) {
++      return std::nullopt;
++    }
++    // And what the sidebar hears of it.
++    result.Set("delta", ToDelta(state, *next));
++    return with_state(*next);
++  }
++  if (op == "importState") {
++    std::optional<State> imported = ImportState(*args.Find("json"));
++    if (!imported) {
++      result.Set("refused", true);
++      return std::move(result);
++    }
++    return with_state(*imported);
++  }
++  if (op == "adoptTabs") {
++    return with_links(AdoptTabs(state, ReadTabs(args), now, make_id,
++                                args.FindBool("keepUnloaded").value_or(false)));
++  }
++  if (op == "tabCreated") {
++    return with_links(TabCreated(state, ReadLive(args),
++                                 ReadTab(*args.FindDict("tab")), now,
++                                 OptionalString(args, "forTabId"), make_id));
++  }
++  if (op == "tabRemoved") {
++    return with_links(TabRemoved(state, ReadLive(args),
++                                 args.FindInt("browserId").value_or(0)));
++  }
++  if (op == "tabUpdated") {
++    return with_links(TabUpdated(state, ReadLive(args),
++                                 ReadTab(*args.FindDict("tab")), now, make_id));
++  }
++  if (op == "tabActivated") {
++    return with_state(TabActivated(state, ReadLive(args),
++                                   args.FindInt("browserId").value_or(0), now));
++  }
++  if (op == "planReconcile") {
++    base::ListValue ops;
++    for (const Op& planned :
++         PlanReconcile(state, ReadLive(args), ReadTabs(args), ReadGroups(args),
++                       args.FindBool("switched").value_or(false))) {
++      ops.Append(ToValue(planned));
++    }
++    result.Set("ops", std::move(ops));
++    return std::move(result);
++  }
++  if (op == "groupColor") {
++    result.Set("color", GroupColor(args.FindDouble("hue").value_or(0)));
++    return std::move(result);
++  }
++  if (op == "firstState") {
++    return with_state(FirstState(String(args, "id")));
++  }
++  return std::nullopt;
++}
++
++TEST(LokaModelCases, MatchThePrototype) {
++  std::optional<std::string> path =
++      base::Environment::Create()->GetVar("LOKA_MODEL_CASES");
++  ASSERT_TRUE(path) << "Set LOKA_MODEL_CASES to model-cases.json "
++                       "(bun run model:cases -- --cpp does).";
++  std::string json;
++  ASSERT_TRUE(base::ReadFileToString(
++      base::FilePath(base::UTF8ToWide(*path)), &json))
++      << *path;
++  std::optional<base::Value> file =
++      base::JSONReader::Read(json, base::JSON_PARSE_RFC);
++  ASSERT_TRUE(file && file->is_dict());
++  const base::DictValue& states = *file->GetDict().FindDict("states");
++  const base::ListValue& cases = *file->GetDict().FindList("cases");
++  ASSERT_FALSE(cases.empty());
++  for (const base::Value& c : cases) {
++    const base::DictValue& one = c.GetDict();
++    SCOPED_TRACE(String(one, "name"));
++    std::optional<base::DictValue> got = RunCase(one, states);
++    if (!got) {
++      ADD_FAILURE() << "no C++ for op " << String(one, "op");
++      continue;
++    }
++    ExpectSame(*one.Find("expect"), base::Value(std::move(*got)));
++  }
++}
++
++}  // namespace
++}  // namespace loka
+--- /dev/null
++++ b/components/loka/core/spaces_delta.cc
+@@ -0,0 +1,78 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#include "components/loka/core/spaces_delta.h"
++
++#include <string>
++#include <vector>
++
++namespace loka {
++
++namespace {
++
++base::ListValue Strings(const std::vector<std::string>& strings) {
++  base::ListValue list;
++  for (const std::string& s : strings) {
++    list.Append(s);
++  }
++  return list;
++}
++
++std::vector<std::string> SpaceIds(const State& state) {
++  std::vector<std::string> ids;
++  for (const Space& space : state.spaces) {
++    ids.push_back(space.id);
++  }
++  return ids;
++}
++
++}  // namespace
++
++base::DictValue ToDelta(const State& before, const State& after) {
++  base::DictValue delta;
++  base::DictValue tabs;
++  for (const auto& [id, tab] : after.tabs) {
++    auto old = before.tabs.find(id);
++    if (old == before.tabs.end() || !(old->second == tab)) {
++      tabs.Set(id, TabToValue(tab));
++    }
++  }
++  for (const auto& [id, tab] : before.tabs) {
++    if (!after.tabs.contains(id)) {
++      tabs.Set(id, base::Value());
++    }
++  }
++  if (!tabs.empty()) {
++    delta.Set("tabs", std::move(tabs));
++  }
++  if (before.essentials != after.essentials) {
++    delta.Set("essentials", Strings(after.essentials));
++  }
++  base::ListValue spaces;
++  for (const Space& space : after.spaces) {
++    const Space* old = FindSpace(before, space.id);
++    if (!old || !(*old == space)) {
++      spaces.Append(SpaceToValue(space));
++    }
++  }
++  if (!spaces.empty()) {
++    delta.Set("spaces", std::move(spaces));
++  }
++  if (SpaceIds(before) != SpaceIds(after)) {
++    delta.Set("spaceOrder", Strings(SpaceIds(after)));
++  }
++  if (before.active_space_id != after.active_space_id) {
++    delta.Set("activeSpaceId", after.active_space_id);
++  }
++  if (before.archive != after.archive) {
++    base::ListValue archive;
++    for (const ArchivedTab& archived : after.archive) {
++      archive.Append(ArchivedToValue(archived));
++    }
++    delta.Set("archive", std::move(archive));
++  }
++  return delta;
++}
++
++}  // namespace loka
+--- /dev/null
++++ b/components/loka/core/spaces_delta.h
+@@ -0,0 +1,22 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#ifndef COMPONENTS_LOKA_CORE_SPACES_DELTA_H_
++#define COMPONENTS_LOKA_CORE_SPACES_DELTA_H_
++
++#include "base/values.h"
++#include "components/loka/core/spaces_model.h"
++
++namespace loka {
++
++// What changed from `before` to `after`, as the sidebar hears it
++// ("spaces-changed"): changed tabs (null for one that's gone), essentials,
++// changed spaces whole, the spaces' order when it changed, the active space,
++// the archive. The page's applyDelta (spaces-delta.logic.ts) applies it; the
++// shared cases hold this to the page's toDelta.
++base::DictValue ToDelta(const State& before, const State& after);
++
++}  // namespace loka
++
++#endif  // COMPONENTS_LOKA_CORE_SPACES_DELTA_H_
+--- /dev/null
++++ b/components/loka/core/spaces_model.cc
+@@ -0,0 +1,1066 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#include "components/loka/core/spaces_model.h"
++
++#include <algorithm>
++#include <cmath>
++#include <functional>
++#include <utility>
++
++#include "base/check.h"
++#include "base/json/json_reader.h"
++#include "base/strings/string_util.h"
++
++namespace loka {
++
++namespace {
++
++constexpr std::string_view kPlanets[] = {"banded", "ringed", "cratered",
++                                         "ocean"};
++constexpr std::string_view kSchemes[] = {"light", "dark", "system"};
++// The 0.1.0 alpha's sidebar was an extension with this id.
++constexpr std::string_view kAlphaExtensionId =
++    "kklllonkklkjgekkpeboddibgbjadkej";
++
++// Math.max(0, Math.min(index, length)).
++size_t Clamp(double index, size_t length) {
++  if (!(index > 0)) {
++    return 0;
++  }
++  if (index >= static_cast<double>(length)) {
++    return length;
++  }
++  return static_cast<size_t>(index);
++}
++
++Space* MutableSpace(State& state, std::string_view space_id) {
++  for (Space& space : state.spaces) {
++    if (space.id == space_id) {
++      return &space;
++    }
++  }
++  return nullptr;
++}
++
++template <typename T>
++std::optional<size_t> IndexOf(const std::vector<T>& list,
++                              std::string_view value) {
++  auto it = std::ranges::find(list, value);
++  if (it == list.end()) {
++    return std::nullopt;
++  }
++  return static_cast<size_t>(it - list.begin());
++}
++
++// Applies `update` to every folder, inside out, as mapFolders does.
++void ForEachFolder(std::vector<PinnedNode>& nodes,
++                   const std::function<void(PinnedNode&)>& update) {
++  for (PinnedNode& node : nodes) {
++    if (!node.is_folder()) {
++      continue;
++    }
++    ForEachFolder(node.children, update);
++    update(node);
++  }
++}
++
++bool ContainsFolder(const PinnedNode& folder, std::string_view folder_id) {
++  return FindFolder(std::vector<PinnedNode>{folder}, folder_id) != nullptr;
++}
++
++struct DetachedPinned {
++  PinnedNode node;
++  std::optional<std::string> parent_id;
++  size_t index = 0;
++};
++
++std::optional<DetachedPinned> DetachPinned(
++    std::vector<PinnedNode>& nodes,
++    std::string_view id,
++    const std::optional<std::string>& parent_id) {
++  for (size_t i = 0; i < nodes.size(); ++i) {
++    if (nodes[i].id == id) {
++      PinnedNode node = std::move(nodes[i]);
++      nodes.erase(nodes.begin() + i);
++      return DetachedPinned{std::move(node), parent_id, i};
++    }
++  }
++  for (PinnedNode& node : nodes) {
++    if (!node.is_folder()) {
++      continue;
++    }
++    if (auto found = DetachPinned(node.children, id, node.id)) {
++      return found;
++    }
++  }
++  return std::nullopt;
++}
++
++// Inserts `node` at `index` of the folder `parent_id` (the top when nullopt),
++// opening that folder. False when there's no such folder.
++bool InsertPinned(std::vector<PinnedNode>& nodes,
++                  const std::optional<std::string>& parent_id,
++                  double index,
++                  PinnedNode node) {
++  if (!parent_id) {
++    nodes.insert(nodes.begin() + Clamp(index, nodes.size()), std::move(node));
++    return true;
++  }
++  bool inserted = false;
++  ForEachFolder(nodes, [&](PinnedNode& folder) {
++    if (folder.id != *parent_id) {
++      return;
++    }
++    inserted = true;
++    folder.open = true;
++    folder.children.insert(
++        folder.children.begin() + Clamp(index, folder.children.size()),
++        node);
++  });
++  return inserted;
++}
++
++struct Detached {
++  State state;
++  PinnedNode node;
++  Place from;
++};
++
++std::optional<Detached> Detach(const State& state, std::string_view id) {
++  if (auto at = IndexOf(state.essentials, id)) {
++    Detached detached{state, PinnedNode::TabNode(std::string(id)),
++                      Place::Essentials(*at)};
++    detached.state.essentials.erase(detached.state.essentials.begin() + *at);
++    return detached;
++  }
++  for (size_t s = 0; s < state.spaces.size(); ++s) {
++    const Space& space = state.spaces[s];
++    if (auto at = IndexOf(space.open, id)) {
++      Detached detached{state, PinnedNode::TabNode(std::string(id)),
++                        Place::Open(space.id, *at)};
++      std::vector<TabId>& open = detached.state.spaces[s].open;
++      open.erase(open.begin() + *at);
++      return detached;
++    }
++    State next = state;
++    if (auto found = DetachPinned(next.spaces[s].pinned, id, std::nullopt)) {
++      Place from = Place::Pinned(space.id, found->parent_id, found->index);
++      return Detached{std::move(next), std::move(found->node), from};
++    }
++  }
++  return std::nullopt;
++}
++
++bool SameContainer(const Place& a, const Place& b) {
++  if (a.area != b.area) {
++    return false;
++  }
++  switch (a.area) {
++    case Place::Area::kEssentials:
++      return true;
++    case Place::Area::kOpen:
++      return a.space_id == b.space_id;
++    case Place::Area::kPinned:
++      return a.space_id == b.space_id && a.parent_id == b.parent_id;
++  }
++}
++
++void AppendPinnedTabIds(const std::vector<PinnedNode>& nodes,
++                        std::vector<TabId>& out) {
++  for (const PinnedNode& node : nodes) {
++    if (node.is_folder()) {
++      AppendPinnedTabIds(node.children, out);
++    } else {
++      out.push_back(node.id);
++    }
++  }
++}
++
++// The pinned tree's tabs in rendering order, skipping closed folders.
++void AppendVisiblePinned(const std::vector<PinnedNode>& nodes,
++                         std::vector<TabId>& out) {
++  for (const PinnedNode& node : nodes) {
++    if (!node.is_folder()) {
++      out.push_back(node.id);
++    } else if (node.open) {
++      AppendVisiblePinned(node.children, out);
++    }
++  }
++}
++
++// The folders above a tab, outermost first.
++void AppendHolding(const std::vector<PinnedNode>& nodes,
++                   std::string_view tab_id,
++                   std::set<std::string>& out) {
++  for (const PinnedNode& node : nodes) {
++    if (node.is_folder() && FolderHolds(node, tab_id)) {
++      out.insert(node.id);
++      AppendHolding(node.children, tab_id, out);
++    }
++  }
++}
++
++bool IsAlphaPage(std::string_view url) {
++  constexpr std::string_view kScheme = "chrome-extension://";
++  if (url.size() < kScheme.size() ||
++      !base::EqualsCaseInsensitiveASCII(url.substr(0, kScheme.size()),
++                                        kScheme)) {
++    return false;
++  }
++  std::string_view rest = url.substr(kScheme.size());
++  size_t end = rest.find_first_of("/?#");
++  std::string_view host = rest.substr(0, end);
++  return base::EqualsCaseInsensitiveASCII(host, kAlphaExtensionId);
++}
++
++void PruneDead(std::vector<PinnedNode>& nodes, const std::set<TabId>& dead) {
++  std::erase_if(nodes, [&](const PinnedNode& node) {
++    return !node.is_folder() && dead.contains(node.id);
++  });
++  for (PinnedNode& node : nodes) {
++    if (node.is_folder()) {
++      PruneDead(node.children, dead);
++    }
++  }
++}
++
++State WithoutAlphaPages(State state) {
++  std::set<TabId> dead;
++  for (const auto& [id, tab] : state.tabs) {
++    if (IsAlphaPage(tab.url)) {
++      dead.insert(id);
++    }
++  }
++  if (dead.empty()) {
++    return state;
++  }
++  std::erase_if(state.tabs,
++                [&](const auto& entry) { return dead.contains(entry.first); });
++  std::erase_if(state.essentials,
++                [&](const TabId& id) { return dead.contains(id); });
++  for (Space& space : state.spaces) {
++    PruneDead(space.pinned, dead);
++    std::erase_if(space.open, [&](const TabId& id) { return dead.contains(id); });
++    if (space.active_tab_id && dead.contains(*space.active_tab_id)) {
++      space.active_tab_id.reset();
++    }
++  }
++  std::erase_if(state.archive, [](const ArchivedTab& archived) {
++    return IsAlphaPage(archived.tab.url);
++  });
++  return state;
++}
++
++// ---- JSON -------------------------------------------------------------------
++
++base::DictValue WriteTab(const Tab& tab) {
++  base::DictValue value;
++  value.Set("id", tab.id);
++  value.Set("title", tab.title);
++  value.Set("url", tab.url);
++  if (tab.last_active_at) {
++    value.Set("lastActiveAt", *tab.last_active_at);
++  }
++  return value;
++}
++
++base::DictValue NodeToValue(const PinnedNode& node) {
++  base::DictValue value;
++  if (!node.is_folder()) {
++    value.Set("kind", "tab");
++    value.Set("id", node.id);
++    return value;
++  }
++  value.Set("kind", "folder");
++  value.Set("id", node.id);
++  value.Set("name", node.name);
++  value.Set("open", node.open);
++  base::ListValue children;
++  for (const PinnedNode& child : node.children) {
++    children.Append(NodeToValue(child));
++  }
++  value.Set("children", std::move(children));
++  return value;
++}
++
++base::ListValue StringsToValue(const std::vector<std::string>& strings) {
++  base::ListValue list;
++  for (const std::string& s : strings) {
++    list.Append(s);
++  }
++  return list;
++}
++
++std::optional<std::vector<std::string>> ParseStrings(const base::Value* value) {
++  if (!value || !value->is_list()) {
++    return std::nullopt;
++  }
++  std::vector<std::string> out;
++  for (const base::Value& item : value->GetList()) {
++    if (!item.is_string()) {
++      return std::nullopt;
++    }
++    out.push_back(item.GetString());
++  }
++  return out;
++}
++
++// isTab: an id (equal to `key` when given), a title and a URL; lastActiveAt
++// a number when present.
++std::optional<Tab> ParseTab(const base::Value& value,
++                            std::optional<std::string_view> key) {
++  if (!value.is_dict()) {
++    return std::nullopt;
++  }
++  const base::DictValue& dict = value.GetDict();
++  const std::string* id = dict.FindString("id");
++  const std::string* title = dict.FindString("title");
++  const std::string* url = dict.FindString("url");
++  if (!id || !title || !url || (key && *id != *key)) {
++    return std::nullopt;
++  }
++  Tab tab{*id, *title, *url, std::nullopt};
++  if (const base::Value* last = dict.Find("lastActiveAt")) {
++    std::optional<double> number = last->GetIfDouble();
++    if (!number) {
++      return std::nullopt;
++    }
++    tab.last_active_at = number;
++  }
++  return tab;
++}
++
++std::optional<PinnedNode> ParseNode(const base::Value& value) {
++  if (!value.is_dict()) {
++    return std::nullopt;
++  }
++  const base::DictValue& dict = value.GetDict();
++  const std::string* id = dict.FindString("id");
++  const std::string* kind = dict.FindString("kind");
++  if (!id) {
++    return std::nullopt;
++  }
++  if (kind && *kind == "tab") {
++    return PinnedNode::TabNode(*id);
++  }
++  const std::string* name = dict.FindString("name");
++  std::optional<bool> open = dict.FindBool("open");
++  const base::ListValue* children = dict.FindList("children");
++  if (!kind || *kind != "folder" || !name || !open || !children) {
++    return std::nullopt;
++  }
++  std::vector<PinnedNode> nodes;
++  for (const base::Value& child : *children) {
++    std::optional<PinnedNode> node = ParseNode(child);
++    if (!node) {
++      return std::nullopt;
++    }
++    nodes.push_back(std::move(*node));
++  }
++  return PinnedNode::Folder(*id, *name, *open, std::move(nodes));
++}
++
++std::optional<Space> ParseSpace(const base::Value& value) {
++  if (!value.is_dict()) {
++    return std::nullopt;
++  }
++  const base::DictValue& dict = value.GetDict();
++  const std::string* id = dict.FindString("id");
++  const std::string* name = dict.FindString("name");
++  const base::Value* hue = dict.Find("hue");
++  std::optional<double> hue_number = hue ? hue->GetIfDouble() : std::nullopt;
++  if (!id || !name || !hue_number) {
++    return std::nullopt;
++  }
++  Space space;
++  space.id = *id;
++  space.name = *name;
++  space.hue = *hue_number;
++  // Spaces from before planets and schemes have neither.
++  if (const base::Value* planet = dict.Find("planet")) {
++    if (!planet->is_string() ||
++        !std::ranges::contains(kPlanets, std::string_view(planet->GetString()))) {
++      return std::nullopt;
++    }
++    space.planet = planet->GetString();
++  }
++  if (const base::Value* scheme = dict.Find("scheme")) {
++    if (!scheme->is_string() ||
++        !std::ranges::contains(kSchemes, std::string_view(scheme->GetString()))) {
++      return std::nullopt;
++    }
++    space.scheme = scheme->GetString();
++  }
++  std::optional<std::vector<std::string>> open = ParseStrings(dict.Find("open"));
++  const base::ListValue* pinned = dict.FindList("pinned");
++  const base::Value* active = dict.Find("activeTabId");
++  if (!open || !pinned || !active || !(active->is_none() || active->is_string())) {
++    return std::nullopt;
++  }
++  space.open = std::move(*open);
++  for (const base::Value& item : *pinned) {
++    std::optional<PinnedNode> node = ParseNode(item);
++    if (!node) {
++      return std::nullopt;
++    }
++    space.pinned.push_back(std::move(*node));
++  }
++  if (active->is_string()) {
++    space.active_tab_id = active->GetString();
++  }
++  return space;
++}
++
++}  // namespace
++
++// static
++PinnedNode PinnedNode::TabNode(TabId id) {
++  PinnedNode node;
++  node.kind = Kind::kTab;
++  node.id = std::move(id);
++  return node;
++}
++
++// static
++PinnedNode PinnedNode::Folder(std::string id,
++                              std::string name,
++                              bool open,
++                              std::vector<PinnedNode> children) {
++  PinnedNode node;
++  node.kind = Kind::kFolder;
++  node.id = std::move(id);
++  node.name = std::move(name);
++  node.open = open;
++  node.children = std::move(children);
++  return node;
++}
++
++// static
++Place Place::Essentials(double index) {
++  Place place;
++  place.area = Area::kEssentials;
++  place.index = index;
++  return place;
++}
++
++// static
++Place Place::Pinned(std::string space_id,
++                    std::optional<std::string> parent_id,
++                    double index) {
++  Place place;
++  place.area = Area::kPinned;
++  place.space_id = std::move(space_id);
++  place.parent_id = std::move(parent_id);
++  place.index = index;
++  return place;
++}
++
++// static
++Place Place::Open(std::string space_id, double index) {
++  Place place;
++  place.area = Area::kOpen;
++  place.space_id = std::move(space_id);
++  place.index = index;
++  return place;
++}
++
++const Space& ActiveSpace(const State& state) {
++  const Space* space = FindSpace(state, state.active_space_id);
++  CHECK(space) << "active space " << state.active_space_id
++               << " does not exist";
++  return *space;
++}
++
++const Space* FindSpace(const State& state, std::string_view space_id) {
++  for (const Space& space : state.spaces) {
++    if (space.id == space_id) {
++      return &space;
++    }
++  }
++  return nullptr;
++}
++
++const PinnedNode* FindFolder(const std::vector<PinnedNode>& nodes,
++                             std::string_view folder_id) {
++  for (const PinnedNode& node : nodes) {
++    if (!node.is_folder()) {
++      continue;
++    }
++    if (node.id == folder_id) {
++      return &node;
++    }
++    if (const PinnedNode* inside = FindFolder(node.children, folder_id)) {
++      return inside;
++    }
++  }
++  return nullptr;
++}
++
++bool FolderHolds(const PinnedNode& folder, std::string_view tab_id) {
++  return std::ranges::any_of(folder.children, [&](const PinnedNode& child) {
++    return child.is_folder() ? FolderHolds(child, tab_id) : child.id == tab_id;
++  });
++}
++
++std::vector<TabId> PinnedTabIds(const std::vector<PinnedNode>& nodes) {
++  std::vector<TabId> ids;
++  AppendPinnedTabIds(nodes, ids);
++  return ids;
++}
++
++State MoveItem(const State& state, std::string_view id, const Place& to) {
++  std::optional<Detached> detached = Detach(state, id);
++  if (!detached) {
++    return state;
++  }
++  const PinnedNode& node = detached->node;
++  const Place& from = detached->from;
++  if (node.is_folder()) {
++    if (to.area != Place::Area::kPinned) {
++      return state;
++    }
++    if (to.parent_id && ContainsFolder(node, *to.parent_id)) {
++      return state;
++    }
++  }
++  // Indexes are given against the list before the move, so moving down the
++  // same list shifts by one.
++  const double index = SameContainer(from, to) &&
++                               static_cast<double>(from.index) < to.index
++                           ? to.index - 1
++                           : to.index;
++  State next = std::move(detached->state);
++  // A tab sent to another space stops being the one its old space shows.
++  // Essentials belong to every space.
++  if (from.area != Place::Area::kEssentials &&
++      to.area != Place::Area::kEssentials && from.space_id != to.space_id) {
++    Space* old = MutableSpace(next, from.space_id);
++    if (old && old->active_tab_id == id) {
++      old->active_tab_id.reset();
++    }
++  }
++  if (to.area == Place::Area::kEssentials) {
++    next.essentials.insert(
++        next.essentials.begin() + Clamp(index, next.essentials.size()),
++        node.id);
++    return next;
++  }
++  Space* space = MutableSpace(next, to.space_id);
++  if (to.area == Place::Area::kOpen) {
++    if (space) {
++      space->open.insert(space->open.begin() + Clamp(index, space->open.size()),
++                         node.id);
++    }
++    return next;
++  }
++  if (!space || !InsertPinned(space->pinned, to.parent_id, index, node)) {
++    return state;
++  }
++  return next;
++}
++
++State OpenTab(const State& state,
++              std::string_view url,
++              std::string_view title,
++              double now,
++              const TabId& id) {
++  State next = state;
++  next.tabs[id] = Tab{id, std::string(title), std::string(url), now};
++  Space* space = MutableSpace(next, next.active_space_id);
++  if (space) {
++    space->open.insert(space->open.begin(), id);
++    space->active_tab_id = id;
++  }
++  return next;
++}
++
++State NavigateTab(const State& state,
++                  std::string_view tab_id,
++                  std::string_view url,
++                  std::string_view title) {
++  auto it = state.tabs.find(std::string(tab_id));
++  if (it == state.tabs.end()) {
++    return state;
++  }
++  State next = state;
++  Tab& tab = next.tabs[it->first];
++  tab.url = url;
++  tab.title = title;
++  return next;
++}
++
++State ActivateTab(const State& state, std::string_view tab_id, double now) {
++  auto it = state.tabs.find(std::string(tab_id));
++  if (it == state.tabs.end()) {
++    return state;
++  }
++  State next = state;
++  next.tabs[it->first].last_active_at = now;
++  if (Space* space = MutableSpace(next, next.active_space_id)) {
++    space->active_tab_id = std::string(tab_id);
++  }
++  return next;
++}
++
++State CloseTab(const State& state, std::string_view tab_id) {
++  State next = state;
++  for (Space& owner : next.spaces) {
++    std::optional<size_t> at = IndexOf(owner.open, tab_id);
++    if (!at) {
++      continue;
++    }
++    next.tabs.erase(std::string(tab_id));
++    owner.open.erase(owner.open.begin() + *at);
++    if (owner.active_tab_id == tab_id) {
++      if (owner.open.empty()) {
++        owner.active_tab_id.reset();
++      } else {
++        owner.active_tab_id = owner.open[std::min(*at, owner.open.size() - 1)];
++      }
++    }
++    break;
++  }
++  for (Space& space : next.spaces) {
++    if (space.active_tab_id == tab_id) {
++      space.active_tab_id.reset();
++    }
++  }
++  return next;
++}
++
++State SwitchSpace(const State& state, std::string_view space_id) {
++  if (!FindSpace(state, space_id)) {
++    return state;
++  }
++  State next = state;
++  next.active_space_id = std::string(space_id);
++  return next;
++}
++
++State CreateSpace(const State& state,
++                  const SpaceLook& look,
++                  const std::string& id) {
++  State next = state;
++  Space space;
++  space.id = id;
++  space.name = look.name;
++  space.hue = look.hue;
++  space.planet = look.planet;
++  space.scheme = look.scheme.value_or("system");
++  next.spaces.push_back(std::move(space));
++  next.active_space_id = id;
++  return next;
++}
++
++State UpdateSpace(const State& state,
++                  std::string_view space_id,
++                  const SpaceLook& look) {
++  std::string name(base::TrimWhitespaceASCII(look.name, base::TRIM_ALL));
++  if (name.empty()) {
++    return state;
++  }
++  State next = state;
++  if (Space* space = MutableSpace(next, space_id)) {
++    space->name = name;
++    space->hue = look.hue;
++    space->planet = look.planet;
++    if (look.scheme) {
++      space->scheme = *look.scheme;
++    }
++  }
++  return next;
++}
++
++State DeleteSpace(const State& state, std::string_view space_id) {
++  auto it = std::ranges::find(state.spaces, space_id, &Space::id);
++  if (it == state.spaces.end() || state.spaces.size() < 2) {
++    return state;
++  }
++  const size_t index = static_cast<size_t>(it - state.spaces.begin());
++  std::set<TabId> gone(it->open.begin(), it->open.end());
++  for (TabId& id : PinnedTabIds(it->pinned)) {
++    gone.insert(std::move(id));
++  }
++  State next = state;
++  next.spaces.erase(next.spaces.begin() + index);
++  std::erase_if(next.tabs,
++                [&](const auto& entry) { return gone.contains(entry.first); });
++  if (state.active_space_id == space_id) {
++    next.active_space_id =
++        next.spaces[std::min(index, next.spaces.size() - 1)].id;
++  }
++  return next;
++}
++
++State FocusOrOpen(const State& state,
++                  std::string_view url,
++                  std::string_view title,
++                  double now,
++                  const TabId& id) {
++  auto has_url = [&](const TabId& tab_id) {
++    auto tab = state.tabs.find(tab_id);
++    return tab != state.tabs.end() && tab->second.url == url;
++  };
++  for (const Space& space : state.spaces) {
++    std::vector<TabId> ids = space.open;
++    AppendPinnedTabIds(space.pinned, ids);
++    auto found = std::ranges::find_if(ids, has_url);
++    if (found != ids.end()) {
++      return ActivateTab(SwitchSpace(state, space.id), *found, now);
++    }
++  }
++  auto essential = std::ranges::find_if(state.essentials, has_url);
++  if (essential != state.essentials.end()) {
++    return ActivateTab(state, *essential, now);
++  }
++  return OpenTab(state, url, title, now, id);
++}
++
++State CreateFolder(const State& state,
++                   std::string_view space_id,
++                   const std::optional<std::string>& parent_id,
++                   std::string_view name,
++                   const std::string& id) {
++  State next = state;
++  Space* space = MutableSpace(next, space_id);
++  if (!space ||
++      !InsertPinned(space->pinned, parent_id, kEnd,
++                    PinnedNode::Folder(id, std::string(name), true, {}))) {
++    return state;
++  }
++  return next;
++}
++
++State RenameFolder(const State& state,
++                   std::string_view folder_id,
++                   std::string_view name) {
++  State next = state;
++  for (Space& space : next.spaces) {
++    ForEachFolder(space.pinned, [&](PinnedNode& folder) {
++      if (folder.id == folder_id) {
++        folder.name = name;
++      }
++    });
++  }
++  return next;
++}
++
++State ToggleFolder(const State& state, std::string_view folder_id) {
++  State next = state;
++  for (Space& space : next.spaces) {
++    ForEachFolder(space.pinned, [&](PinnedNode& folder) {
++      if (folder.id == folder_id) {
++        folder.open = !folder.open;
++      }
++    });
++  }
++  return next;
++}
++
++State UngroupFolder(const State& state, std::string_view folder_id) {
++  std::optional<Detached> detached = Detach(state, folder_id);
++  if (!detached || !detached->node.is_folder() ||
++      detached->from.area != Place::Area::kPinned) {
++    return state;
++  }
++  const Place& from = detached->from;
++  State next = std::move(detached->state);
++  Space* space = MutableSpace(next, from.space_id);
++  if (!space) {
++    return state;
++  }
++  for (size_t offset = 0; offset < detached->node.children.size(); ++offset) {
++    if (!InsertPinned(space->pinned, from.parent_id, from.index + offset,
++                      detached->node.children[offset])) {
++      return state;
++    }
++  }
++  return next;
++}
++
++std::optional<State> GroupIntoFolder(const State& state,
++                                     std::string_view target_id,
++                                     std::string_view dragged_id,
++                                     std::string_view name,
++                                     const std::string& id) {
++  if (target_id == dragged_id ||
++      !state.tabs.contains(std::string(target_id)) ||
++      !state.tabs.contains(std::string(dragged_id)) ||
++      std::ranges::contains(state.essentials, target_id)) {
++    return std::nullopt;
++  }
++  std::optional<Detached> dragged = Detach(state, dragged_id);
++  std::optional<Detached> target =
++      dragged ? Detach(dragged->state, target_id) : std::nullopt;
++  if (!target || target->from.area == Place::Area::kEssentials) {
++    return std::nullopt;
++  }
++  const Place& from = target->from;
++  State next = std::move(target->state);
++  Space* space = MutableSpace(next, from.space_id);
++  if (!space) {
++    return std::nullopt;
++  }
++  PinnedNode folder = PinnedNode::Folder(
++      id, std::string(name), true,
++      {std::move(target->node), std::move(dragged->node)});
++  const bool inserted =
++      from.area == Place::Area::kPinned
++          ? InsertPinned(space->pinned, from.parent_id, from.index,
++                         std::move(folder))
++          : InsertPinned(space->pinned, std::nullopt,
++                         static_cast<double>(space->pinned.size()),
++                         std::move(folder));
++  if (!inserted) {
++    return std::nullopt;
++  }
++  return next;
++}
++
++State ArchiveStale(const State& state,
++                   double now,
++                   double max_age_ms,
++                   const std::set<TabId>& keep) {
++  std::vector<ArchivedTab> archived;
++  State next = state;
++  for (Space& space : next.spaces) {
++    std::erase_if(space.open, [&](const TabId& id) {
++      if (space.active_tab_id == id || keep.contains(id)) {
++        return false;
++      }
++      auto tab = state.tabs.find(id);
++      if (tab == state.tabs.end() || !tab->second.last_active_at ||
++          !(now - *tab->second.last_active_at > max_age_ms)) {
++        return false;
++      }
++      archived.push_back(ArchivedTab{tab->second, space.id, now});
++      return true;
++    });
++  }
++  if (archived.empty()) {
++    return state;
++  }
++  for (const ArchivedTab& gone : archived) {
++    next.tabs.erase(gone.tab.id);
++  }
++  archived.insert(archived.end(), state.archive.begin(), state.archive.end());
++  if (archived.size() > kArchiveLimit) {
++    archived.resize(kArchiveLimit);
++  }
++  next.archive = std::move(archived);
++  return next;
++}
++
++State RestoreArchived(const State& state, std::string_view tab_id, double now) {
++  auto entry = std::ranges::find_if(state.archive, [&](const ArchivedTab& a) {
++    return a.tab.id == tab_id;
++  });
++  if (entry == state.archive.end()) {
++    return state;
++  }
++  const std::string space_id =
++      FindSpace(state, entry->space_id) ? entry->space_id
++                                        : state.active_space_id;
++  State next = state;
++  Tab tab = entry->tab;
++  tab.last_active_at = now;
++  next.tabs[tab.id] = tab;
++  std::erase_if(next.archive,
++                [&](const ArchivedTab& a) { return a.tab.id == tab_id; });
++  next.active_space_id = space_id;
++  if (Space* space = MutableSpace(next, space_id)) {
++    space->open.insert(space->open.begin(), tab.id);
++    space->active_tab_id = tab.id;
++  }
++  return next;
++}
++
++State RevealTab(const State& state, std::string_view tab_id, double now) {
++  if (!state.tabs.contains(std::string(tab_id))) {
++    return state;
++  }
++  if (std::ranges::contains(state.essentials, tab_id)) {
++    return ActivateTab(state, tab_id, now);
++  }
++  const Space* space = nullptr;
++  for (const Space& candidate : state.spaces) {
++    if (std::ranges::contains(candidate.open, tab_id) ||
++        std::ranges::contains(PinnedTabIds(candidate.pinned), tab_id)) {
++      space = &candidate;
++      break;
++    }
++  }
++  if (!space) {
++    return state;
++  }
++  std::set<std::string> to_open;
++  AppendHolding(space->pinned, tab_id, to_open);
++  const std::string space_id = space->id;
++  State opened = state;
++  ForEachFolder(MutableSpace(opened, space_id)->pinned,
++                [&](PinnedNode& folder) {
++                  if (to_open.contains(folder.id)) {
++                    folder.open = true;
++                  }
++                });
++  return ActivateTab(SwitchSpace(opened, space_id), tab_id, now);
++}
++
++std::vector<TabId> VisibleTabOrder(const State& state) {
++  const Space& space = ActiveSpace(state);
++  std::vector<TabId> order = state.essentials;
++  AppendVisiblePinned(space.pinned, order);
++  order.insert(order.end(), space.open.begin(), space.open.end());
++  return order;
++}
++
++State StepTab(const State& state, int step, double now) {
++  std::vector<TabId> order = VisibleTabOrder(state);
++  if (order.empty()) {
++    return state;
++  }
++  const int count = static_cast<int>(order.size());
++  const std::optional<TabId>& active = ActiveSpace(state).active_tab_id;
++  std::optional<size_t> current =
++      active ? IndexOf(order, *active) : std::nullopt;
++  const int next = !current ? (step == 1 ? 0 : count - 1)
++                            : (static_cast<int>(*current) + step + count) % count;
++  return ActivateTab(state, order[static_cast<size_t>(next)], now);
++}
++
++base::DictValue SpaceToValue(const Space& space) {
++  base::DictValue s;
++  s.Set("id", space.id);
++  s.Set("name", space.name);
++  s.Set("hue", space.hue);
++  s.Set("planet", space.planet);
++  s.Set("scheme", space.scheme);
++  base::ListValue pinned;
++  for (const PinnedNode& node : space.pinned) {
++    pinned.Append(NodeToValue(node));
++  }
++  s.Set("pinned", std::move(pinned));
++  s.Set("open", StringsToValue(space.open));
++  if (space.active_tab_id) {
++    s.Set("activeTabId", *space.active_tab_id);
++  } else {
++    s.Set("activeTabId", base::Value());
++  }
++  return s;
++}
++
++base::DictValue TabToValue(const Tab& tab) {
++  return WriteTab(tab);
++}
++
++base::DictValue ArchivedToValue(const ArchivedTab& archived) {
++  base::DictValue a;
++  a.Set("tab", WriteTab(archived.tab));
++  a.Set("spaceId", archived.space_id);
++  a.Set("archivedAt", archived.archived_at);
++  return a;
++}
++
++base::DictValue ToValue(const State& state) {
++  base::DictValue value;
++  value.Set("version", 1);
++  base::DictValue tabs;
++  for (const auto& [id, tab] : state.tabs) {
++    tabs.Set(id, WriteTab(tab));
++  }
++  value.Set("tabs", std::move(tabs));
++  value.Set("essentials", StringsToValue(state.essentials));
++  base::ListValue spaces;
++  for (const Space& space : state.spaces) {
++    spaces.Append(SpaceToValue(space));
++  }
++  value.Set("spaces", std::move(spaces));
++  value.Set("activeSpaceId", state.active_space_id);
++  base::ListValue archive;
++  for (const ArchivedTab& archived : state.archive) {
++    archive.Append(ArchivedToValue(archived));
++  }
++  value.Set("archive", std::move(archive));
++  return value;
++}
++
++std::optional<State> ImportState(const base::Value& value) {
++  if (!value.is_dict()) {
++    return std::nullopt;
++  }
++  const base::DictValue& dict = value.GetDict();
++  std::optional<int> version = dict.FindInt("version");
++  const std::string* active = dict.FindString("activeSpaceId");
++  std::optional<std::vector<std::string>> essentials =
++      ParseStrings(dict.Find("essentials"));
++  const base::DictValue* tabs = dict.FindDict("tabs");
++  const base::ListValue* spaces = dict.FindList("spaces");
++  if (version != 1 || !active || !essentials || !tabs || !spaces) {
++    return std::nullopt;
++  }
++  State state;
++  state.active_space_id = *active;
++  state.essentials = std::move(*essentials);
++  if (const base::Value* archive = dict.Find("archive")) {
++    if (!archive->is_list()) {
++      return std::nullopt;
++    }
++    for (const base::Value& item : archive->GetList()) {
++      const base::DictValue* a = item.GetIfDict();
++      const base::Value* tab_value = a ? a->Find("tab") : nullptr;
++      std::optional<Tab> tab =
++          tab_value ? ParseTab(*tab_value, std::nullopt) : std::nullopt;
++      const std::string* space_id = a ? a->FindString("spaceId") : nullptr;
++      const base::Value* at = a ? a->Find("archivedAt") : nullptr;
++      std::optional<double> archived_at = at ? at->GetIfDouble() : std::nullopt;
++      if (!tab || !space_id || !archived_at) {
++        return std::nullopt;
++      }
++      state.archive.push_back(ArchivedTab{*tab, *space_id, *archived_at});
++    }
++  }
++  for (const auto [id, tab_value] : *tabs) {
++    std::optional<Tab> tab = ParseTab(tab_value, id);
++    if (!tab) {
++      return std::nullopt;
++    }
++    state.tabs[id] = std::move(*tab);
++  }
++  for (const base::Value& item : *spaces) {
++    std::optional<Space> space = ParseSpace(item);
++    if (!space) {
++      return std::nullopt;
++    }
++    state.spaces.push_back(std::move(*space));
++  }
++  // Every tab in exactly one place, and every place a tab.
++  std::vector<TabId> placed = state.essentials;
++  for (const Space& space : state.spaces) {
++    placed.insert(placed.end(), space.open.begin(), space.open.end());
++    AppendPinnedTabIds(space.pinned, placed);
++  }
++  std::set<TabId> unique(placed.begin(), placed.end());
++  if (unique.size() != placed.size() || placed.size() != state.tabs.size() ||
++      !std::ranges::all_of(placed, [&](const TabId& id) {
++        return state.tabs.contains(id);
++      })) {
++    return std::nullopt;
++  }
++  if (!FindSpace(state, state.active_space_id)) {
++    return std::nullopt;
++  }
++  return WithoutAlphaPages(std::move(state));
++}
++
++std::optional<State> ImportStateJson(std::string_view json) {
++  std::optional<base::Value> value =
++      base::JSONReader::Read(json, base::JSON_PARSE_RFC);
++  if (!value) {
++    return std::nullopt;
++  }
++  return ImportState(*value);
++}
++
++}  // namespace loka
+--- /dev/null
++++ b/components/loka/core/spaces_model.h
+@@ -0,0 +1,201 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#ifndef COMPONENTS_LOKA_CORE_SPACES_MODEL_H_
++#define COMPONENTS_LOKA_CORE_SPACES_MODEL_H_
++
++#include <limits>
++#include <map>
++#include <optional>
++#include <set>
++#include <string>
++#include <string_view>
++#include <utility>
++#include <vector>
++
++#include "base/values.h"
++
++// Loka's spaces: essentials, each space's pinned tree (folders hold folders)
++// and open tabs, and the archive. A port of the prototype's
++// prototype/src/features/sidebar/sidebar.logic.ts, rule for rule; the two are
++// held equal by the shared cases in sidebar/model-cases.json
++// (model_cases_unittest.cc). Pure functions of their arguments: ids and times
++// come in from the caller. Every tab lives in exactly one place.
++namespace loka {
++
++using TabId = std::string;
++
++struct Tab {
++  TabId id;
++  std::string title;
++  std::string url;
++  // When the tab was last shown, in ms since 1970. Open tabs without one are
++  // never archived.
++  std::optional<double> last_active_at;
++
++  bool operator==(const Tab&) const = default;
++};
++
++// An open tab the archive took away, kept so it can be found and restored.
++struct ArchivedTab {
++  Tab tab;
++  std::string space_id;
++  double archived_at = 0;
++
++  bool operator==(const ArchivedTab&) const = default;
++};
++
++struct PinnedNode {
++  enum class Kind { kTab, kFolder };
++
++  static PinnedNode TabNode(TabId id);
++  static PinnedNode Folder(std::string id,
++                           std::string name,
++                           bool open,
++                           std::vector<PinnedNode> children);
++
++  bool is_folder() const { return kind == Kind::kFolder; }
++  bool operator==(const PinnedNode&) const = default;
++
++  Kind kind = Kind::kTab;
++  std::string id;
++  // Folders only.
++  std::string name;
++  bool open = true;
++  std::vector<PinnedNode> children;
++};
++
++struct Space {
++  std::string id;
++  std::string name;
++  // Hue (0-360) that tints the window while this space shows.
++  double hue = 0;
++  // "banded", "ringed", "cratered" or "ocean".
++  std::string planet = "banded";
++  // "light", "dark" or "system".
++  std::string scheme = "system";
++  std::vector<PinnedNode> pinned;
++  std::vector<TabId> open;
++  std::optional<TabId> active_tab_id;
++
++  bool operator==(const Space&) const = default;
++};
++
++struct State {
++  std::map<TabId, Tab> tabs;
++  std::vector<TabId> essentials;
++  std::vector<Space> spaces;
++  std::string active_space_id;
++  // Newest first. Only open tabs are archived.
++  std::vector<ArchivedTab> archive;
++
++  bool operator==(const State&) const = default;
++};
++
++// Where a dragged tab or folder lands. `index` counts positions before the
++// move; past the end (infinity) means the end.
++struct Place {
++  enum class Area { kEssentials, kPinned, kOpen };
++
++  static Place Essentials(double index);
++  static Place Pinned(std::string space_id,
++                      std::optional<std::string> parent_id,
++                      double index);
++  static Place Open(std::string space_id, double index);
++
++  Area area = Area::kOpen;
++  std::string space_id;
++  std::optional<std::string> parent_id;
++  double index = 0;
++};
++
++inline constexpr double kEnd = std::numeric_limits<double>::infinity();
++inline constexpr size_t kArchiveLimit = 200;
++
++// How a space looks. `scheme` is left out by looks that don't choose one: a
++// new space follows the system, an edit keeps it.
++struct SpaceLook {
++  std::string name;
++  double hue = 0;
++  std::string planet;
++  std::optional<std::string> scheme;
++};
++
++// The space showing. The state always has it.
++const Space& ActiveSpace(const State& state);
++const Space* FindSpace(const State& state, std::string_view space_id);
++const PinnedNode* FindFolder(const std::vector<PinnedNode>& nodes,
++                             std::string_view folder_id);
++// True when the tab sits anywhere inside the folder, at any depth.
++bool FolderHolds(const PinnedNode& folder, std::string_view tab_id);
++// Every tab in a pinned tree, depth first.
++std::vector<TabId> PinnedTabIds(const std::vector<PinnedNode>& nodes);
++
++// Each returns the state unchanged when the change isn't allowed.
++State MoveItem(const State& state, std::string_view id, const Place& to);
++State OpenTab(const State& state,
++              std::string_view url,
++              std::string_view title,
++              double now,
++              const TabId& id);
++State NavigateTab(const State& state,
++                  std::string_view tab_id,
++                  std::string_view url,
++                  std::string_view title);
++State ActivateTab(const State& state, std::string_view tab_id, double now);
++// Closing an open tab deletes it; closing a pinned tab or Essential only
++// unloads it, so the model keeps it.
++State CloseTab(const State& state, std::string_view tab_id);
++State SwitchSpace(const State& state, std::string_view space_id);
++State CreateSpace(const State& state,
++                  const SpaceLook& look,
++                  const std::string& id);
++State UpdateSpace(const State& state,
++                  std::string_view space_id,
++                  const SpaceLook& look);
++State DeleteSpace(const State& state, std::string_view space_id);
++State FocusOrOpen(const State& state,
++                  std::string_view url,
++                  std::string_view title,
++                  double now,
++                  const TabId& id);
++State CreateFolder(const State& state,
++                   std::string_view space_id,
++                   const std::optional<std::string>& parent_id,
++                   std::string_view name,
++                   const std::string& id);
++State RenameFolder(const State& state,
++                   std::string_view folder_id,
++                   std::string_view name);
++State ToggleFolder(const State& state, std::string_view folder_id);
++State UngroupFolder(const State& state, std::string_view folder_id);
++// Nullopt when refused.
++std::optional<State> GroupIntoFolder(const State& state,
++                                     std::string_view target_id,
++                                     std::string_view dragged_id,
++                                     std::string_view name,
++                                     const std::string& id);
++State ArchiveStale(const State& state,
++                   double now,
++                   double max_age_ms,
++                   const std::set<TabId>& keep);
++State RestoreArchived(const State& state, std::string_view tab_id, double now);
++State RevealTab(const State& state, std::string_view tab_id, double now);
++std::vector<TabId> VisibleTabOrder(const State& state);
++State StepTab(const State& state, int step, double now);
++
++// The saved form, the same JSON the prototype writes (exportState).
++base::DictValue ToValue(const State& state);
++base::DictValue TabToValue(const Tab& tab);
++base::DictValue SpaceToValue(const Space& space);
++base::DictValue ArchivedToValue(const ArchivedTab& archived);
++// Parses saved or exported spaces. Nullopt unless every tab exists and sits in
++// exactly one place. Fills in what older files lack and drops the 0.1.0
++// alpha's own pages.
++std::optional<State> ImportState(const base::Value& value);
++std::optional<State> ImportStateJson(std::string_view json);
++
++}  // namespace loka
++
++#endif  // COMPONENTS_LOKA_CORE_SPACES_MODEL_H_
+--- /dev/null
++++ b/components/loka/core/tab_links.cc
+@@ -0,0 +1,546 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#include "components/loka/core/tab_links.h"
++
++#include <algorithm>
++#include <cmath>
++#include <limits>
++#include <set>
++#include <tuple>
++
++#include "base/strings/string_number_conversions.h"
++
++namespace loka {
++
++namespace {
++
++constexpr char kEssentials[] = "essentials";
++
++// A tab still on its way to its first page: about:blank until one commits.
++bool IsBlank(std::string_view url) {
++  return url.empty() || url == "about:blank";
++}
++
++Space* MutableSpace(State& state, std::string_view space_id) {
++  for (Space& space : state.spaces) {
++    if (space.id == space_id) {
++      return &space;
++    }
++  }
++  return nullptr;
++}
++
++// Adds a browser tab to a space's open tabs as a new Loka tab, at the top,
++// and links them.
++std::pair<State, LiveMap> AddOpenTab(const State& state,
++                                     const LiveMap& live,
++                                     const BrowserTab& tab,
++                                     std::string_view space_id,
++                                     double now,
++                                     const TabId& id) {
++  State next = state;
++  next.tabs[id] = Tab{id, tab.title.empty() ? tab.url : tab.title, tab.url,
++                      tab.last_accessed.value_or(now)};
++  if (Space* space = MutableSpace(next, space_id)) {
++    space->open.insert(space->open.begin(), id);
++    if (tab.active) {
++      space->active_tab_id = id;
++    }
++  }
++  LiveMap linked = live;
++  linked.Set(id, tab.id);
++  return {std::move(next), std::move(linked)};
++}
++
++// Makes a tab the shown one: switches to its space if it has one, then
++// activates it.
++State ShowTab(const State& state, std::string_view tab_id, double now) {
++  std::optional<std::string> home = HomeOf(state, tab_id);
++  const State& in_space = home && *home != kEssentials
++                              ? SwitchSpace(state, *home)
++                              : state;
++  return ActivateTab(in_space, tab_id, now);
++}
++
++const BrowserTab* FindTab(const std::vector<BrowserTab>& tabs, int id) {
++  auto it = std::ranges::find(tabs, id, &BrowserTab::id);
++  return it == tabs.end() ? nullptr : &*it;
++}
++
++}  // namespace
++
++LiveMap::LiveMap() = default;
++LiveMap::LiveMap(const LiveMap&) = default;
++LiveMap& LiveMap::operator=(const LiveMap&) = default;
++LiveMap::~LiveMap() = default;
++
++std::optional<int> LiveMap::BrowserIdOf(std::string_view tab_id) const {
++  for (const auto& [id, browser_id] : entries_) {
++    if (id == tab_id) {
++      return browser_id;
++    }
++  }
++  return std::nullopt;
++}
++
++std::optional<TabId> LiveMap::TabIdOf(int browser_id) const {
++  for (const auto& [id, linked] : entries_) {
++    if (linked == browser_id) {
++      return id;
++    }
++  }
++  return std::nullopt;
++}
++
++void LiveMap::Set(const TabId& tab_id, int browser_id) {
++  for (auto& [id, linked] : entries_) {
++    if (id == tab_id) {
++      linked = browser_id;
++      return;
++    }
++  }
++  entries_.emplace_back(tab_id, browser_id);
++}
++
++void LiveMap::Erase(std::string_view tab_id) {
++  std::erase_if(entries_, [&](const auto& entry) { return entry.first == tab_id; });
++}
++
++std::optional<std::string> HomeOf(const State& state, std::string_view tab_id) {
++  if (std::ranges::contains(state.essentials, tab_id)) {
++    return kEssentials;
++  }
++  for (const Space& space : state.spaces) {
++    if (std::ranges::contains(space.open, tab_id) ||
++        std::ranges::contains(PinnedTabIds(space.pinned), tab_id)) {
++      return space.id;
++    }
++  }
++  return std::nullopt;
++}
++
++bool IsEmptyTab(std::string_view url) {
++  // ^chrome://(loka-newtab|newtab|new-tab-page)(/|$)
++  constexpr std::string_view kScheme = "chrome://";
++  if (!url.starts_with(kScheme)) {
++    return false;
++  }
++  std::string_view rest = url.substr(kScheme.size());
++  for (std::string_view host : {"loka-newtab", "newtab", "new-tab-page"}) {
++    if (rest.starts_with(host) &&
++        (rest.size() == host.size() || rest[host.size()] == '/')) {
++      return true;
++    }
++  }
++  return false;
++}
++
++std::pair<State, LiveMap> AdoptTabs(const State& state,
++                                    const std::vector<BrowserTab>& tabs,
++                                    double now,
++                                    MakeId make_id,
++                                    bool keep_unloaded) {
++  LiveMap live;
++  State next = state;
++  std::set<TabId> taken;
++  auto candidates = [&next]() {
++    const Space& space = ActiveSpace(next);
++    std::vector<TabId> ids = space.open;
++    for (TabId& id : PinnedTabIds(space.pinned)) {
++      ids.push_back(std::move(id));
++    }
++    ids.insert(ids.end(), next.essentials.begin(), next.essentials.end());
++    for (const Space& other : next.spaces) {
++      if (other.id == space.id) {
++        continue;
++      }
++      ids.insert(ids.end(), other.open.begin(), other.open.end());
++      for (TabId& id : PinnedTabIds(other.pinned)) {
++        ids.push_back(std::move(id));
++      }
++    }
++    return ids;
++  };
++  for (const BrowserTab& tab : tabs) {
++    // A tab still on its way joins once it has a page (TabUpdated).
++    if (IsEmptyTab(tab.url) || IsBlank(tab.url)) {
++      continue;
++    }
++    std::optional<TabId> match;
++    for (const TabId& id : candidates()) {
++      auto found = next.tabs.find(id);
++      if (!taken.contains(id) && found != next.tabs.end() &&
++          found->second.url == tab.url) {
++        match = id;
++        break;
++      }
++    }
++    if (match) {
++      taken.insert(*match);
++      live.Set(*match, tab.id);
++      continue;
++    }
++    std::tie(next, live) = AddOpenTab(next, live, tab, next.active_space_id,
++                                      now, make_id());
++    taken.insert(live.TabIdOf(tab.id).value_or(""));
++  }
++  // Open tabs that no browser tab took are gone: closed while Loka wasn't
++  // running.
++  const std::vector<Space> spaces = next.spaces;
++  for (const Space& space : keep_unloaded ? std::vector<Space>() : spaces) {
++    for (const TabId& id : space.open) {
++      if (!live.BrowserIdOf(id)) {
++        next = CloseTab(next, id);
++      }
++    }
++  }
++  auto active = std::ranges::find_if(tabs, &BrowserTab::active);
++  if (active != tabs.end()) {
++    if (std::optional<TabId> active_id = live.TabIdOf(active->id)) {
++      next = ShowTab(next, *active_id, now);
++    }
++  }
++  return {std::move(next), std::move(live)};
++}
++
++std::pair<State, LiveMap> TabCreated(const State& state,
++                                     const LiveMap& live,
++                                     const BrowserTab& tab,
++                                     double now,
++                                     const std::optional<TabId>& for_tab_id,
++                                     MakeId make_id) {
++  if (for_tab_id && state.tabs.contains(*for_tab_id)) {
++    LiveMap linked = live;
++    linked.Set(*for_tab_id, tab.id);
++    return {state, std::move(linked)};
++  }
++  // A tab still on its way to its first page joins once it has one
++  // (TabUpdated), not as an "about:blank" row.
++  if (live.TabIdOf(tab.id) || IsEmptyTab(tab.url) || IsBlank(tab.url)) {
++    return {state, live};
++  }
++  std::optional<TabId> opener =
++      tab.opener_tab_id ? live.TabIdOf(*tab.opener_tab_id) : std::nullopt;
++  std::optional<std::string> opener_home =
++      opener ? HomeOf(state, *opener) : std::nullopt;
++  const std::string space_id = opener_home && *opener_home != kEssentials
++                                   ? *opener_home
++                                   : state.active_space_id;
++  return AddOpenTab(state, live, tab, space_id, now, make_id());
++}
++
++std::pair<State, LiveMap> TabRemoved(const State& state,
++                                     const LiveMap& live,
++                                     int browser_id) {
++  std::optional<TabId> id = live.TabIdOf(browser_id);
++  if (!id) {
++    return {state, live};
++  }
++  LiveMap rest = live;
++  rest.Erase(*id);
++  return {CloseTab(state, *id), std::move(rest)};
++}
++
++std::pair<State, LiveMap> TabUpdated(const State& state,
++                                     const LiveMap& live,
++                                     const BrowserTab& tab,
++                                     double now,
++                                     MakeId make_id) {
++  std::optional<TabId> id = live.TabIdOf(tab.id);
++  if (!id) {
++    if (IsEmptyTab(tab.url) || IsBlank(tab.url)) {
++      return {state, live};
++    }
++    return TabCreated(state, live, tab, now, std::nullopt, make_id);
++  }
++  auto current = state.tabs.find(*id);
++  if (current == state.tabs.end()) {
++    return {state, live};
++  }
++  const bool is_open = std::ranges::any_of(state.spaces, [&](const Space& s) {
++    return std::ranges::contains(s.open, *id);
++  });
++  if (is_open && IsEmptyTab(tab.url)) {
++    return TabRemoved(state, live, tab.id);
++  }
++  Tab next = current->second;
++  if (is_open) {
++    next.url = tab.url;
++    next.title = tab.title.empty() ? tab.url : tab.title;
++  } else if (tab.url == current->second.url && !tab.title.empty()) {
++    // A pinned tab or Essential keeps the address it was pinned with, and
++    // only takes the title while it's on that address.
++    next.title = tab.title;
++  }
++  if (next.url == current->second.url && next.title == current->second.title) {
++    return {state, live};
++  }
++  State updated = state;
++  updated.tabs[*id] = std::move(next);
++  return {std::move(updated), live};
++}
++
++State TabActivated(const State& state,
++                   const LiveMap& live,
++                   int browser_id,
++                   double now) {
++  std::optional<TabId> id = live.TabIdOf(browser_id);
++  if (!id) {
++    return state;
++  }
++  if (ActiveSpace(state).active_tab_id == *id && HomeOf(state, *id)) {
++    return state;
++  }
++  return ShowTab(state, *id, now);
++}
++
++std::vector<Op> PlanReconcile(const State& state,
++                              const LiveMap& live,
++                              const std::vector<BrowserTab>& tabs,
++                              const Groups& groups,
++                              bool switched) {
++  std::vector<Op> ops;
++  std::set<int> linked;
++  for (const auto& [id, browser_id] : live.entries()) {
++    linked.insert(browser_id);
++  }
++  std::vector<Op> removes;
++  auto remove = [&removes](int browser_id) {
++    Op op{Op::Kind::kRemove};
++    op.browser_id = browser_id;
++    removes.push_back(std::move(op));
++  };
++  for (const auto& [id, browser_id] : live.entries()) {
++    if (!state.tabs.contains(id) && FindTab(tabs, browser_id)) {
++      remove(browser_id);
++    }
++  }
++  for (const BrowserTab& t : tabs) {
++    if (!t.active && !linked.contains(t.id) && IsEmptyTab(t.url)) {
++      remove(t.id);
++    }
++  }
++  auto on_screen_it = std::ranges::find_if(tabs, &BrowserTab::active);
++  const BrowserTab* on_screen =
++      on_screen_it == tabs.end() ? nullptr : &*on_screen_it;
++  const bool leaving =
++      on_screen && std::ranges::any_of(removes, [&](const Op& op) {
++        return op.browser_id == on_screen->id;
++      });
++  const bool on_empty_tab = on_screen && !linked.contains(on_screen->id) &&
++                            IsEmptyTab(on_screen->url);
++  const Space& space = ActiveSpace(state);
++  const std::optional<TabId>& shown = space.active_tab_id;
++  if (shown && state.tabs.contains(*shown)) {
++    std::optional<int> browser_id = live.BrowserIdOf(*shown);
++    const BrowserTab* tab = browser_id ? FindTab(tabs, *browser_id) : nullptr;
++    if (!tab) {
++      Op op{Op::Kind::kCreate};
++      op.tab_id = *shown;
++      op.url = state.tabs.at(*shown).url;
++      ops.push_back(std::move(op));
++    } else if (!tab->active) {
++      Op op{Op::Kind::kActivate};
++      op.browser_id = tab->id;
++      ops.push_back(std::move(op));
++    }
++  } else if (switched || leaving) {
++    std::vector<TabId> ids = space.open;
++    for (TabId& id : PinnedTabIds(space.pinned)) {
++      ids.push_back(std::move(id));
++    }
++    std::optional<int> first;
++    for (const TabId& id : ids) {
++      std::optional<int> browser_id = live.BrowserIdOf(id);
++      if (browser_id && FindTab(tabs, *browser_id)) {
++        first = browser_id;
++        break;
++      }
++    }
++    if (first) {
++      Op op{Op::Kind::kActivate};
++      op.browser_id = *first;
++      ops.push_back(std::move(op));
++    } else if (!on_empty_tab) {
++      // Already on an empty tab, from one empty space to another: it stays.
++      ops.push_back(Op{Op::Kind::kEmptyTab});
++    }
++  }
++  ops.insert(ops.end(), removes.begin(), removes.end());
++  for (const Space& s : state.spaces) {
++    std::vector<std::pair<int, std::vector<int>>> by_window;
++    for (const auto& [id, browser_id] : live.entries()) {
++      const BrowserTab* tab = FindTab(tabs, browser_id);
++      if (!tab || !state.tabs.contains(id) || HomeOf(state, id) != s.id) {
++        continue;
++      }
++      auto window = std::ranges::find(
++          by_window, tab->window_id,
++          &std::pair<int, std::vector<int>>::first);
++      if (window == by_window.end()) {
++        by_window.emplace_back(tab->window_id, std::vector<int>{browser_id});
++      } else {
++        window->second.push_back(browser_id);
++      }
++    }
++    for (const auto& [window_id, members] : by_window) {
++      const std::string key = GroupKey(s.id, window_id);
++      auto record = std::ranges::find(groups, key,
++                                      &std::pair<std::string, GroupRecord>::first);
++      const GroupRecord* group =
++          record == groups.end() ? nullptr : &record->second;
++      const std::string color = GroupColor(s.hue);
++      std::vector<int> strays;
++      for (int browser_id : members) {
++        const BrowserTab* tab = FindTab(tabs, browser_id);
++        if (!group || !tab || tab->group_id != group->id) {
++          strays.push_back(browser_id);
++        }
++      }
++      if (!strays.empty()) {
++        Op op{Op::Kind::kGroup};
++        op.key = key;
++        op.browser_ids = std::move(strays);
++        op.title = s.name;
++        op.color = color;
++        ops.push_back(std::move(op));
++      } else if (group && group->title &&
++                 (*group->title != s.name || group->color != color)) {
++        // The space was renamed or recolored since its group was made.
++        Op op{Op::Kind::kLook};
++        op.key = key;
++        op.group_id = group->id;
++        op.title = s.name;
++        op.color = color;
++        ops.push_back(std::move(op));
++      }
++    }
++  }
++  std::vector<int> ungroup;
++  for (const auto& [id, browser_id] : live.entries()) {
++    const BrowserTab* tab = FindTab(tabs, browser_id);
++    if (tab && tab->group_id != -1 && HomeOf(state, id) == kEssentials) {
++      ungroup.push_back(browser_id);
++    }
++  }
++  // An empty tab is in no space, so in no space's group.
++  if (on_screen && on_empty_tab && on_screen->group_id != -1) {
++    ungroup.push_back(on_screen->id);
++  }
++  if (!ungroup.empty()) {
++    Op op{Op::Kind::kUngroup};
++    op.browser_ids = std::move(ungroup);
++    ops.push_back(std::move(op));
++  }
++  for (const auto& [key, group] : groups) {
++    const bool collapsed = key.substr(0, key.find('@')) != space.id;
++    if (group.collapsed != collapsed) {
++      Op op{Op::Kind::kCollapse};
++      op.group_id = group.id;
++      op.collapsed = collapsed;
++      ops.push_back(std::move(op));
++    }
++  }
++  return ops;
++}
++
++std::string GroupKey(std::string_view space_id, int window_id) {
++  return std::string(space_id) + "@" + base::NumberToString(window_id);
++}
++
++std::string GroupColor(double hue) {
++  static constexpr std::pair<std::string_view, double> kGroupHues[] = {
++      {"red", 0},     {"orange", 30}, {"yellow", 55}, {"green", 140},
++      {"cyan", 180},  {"blue", 215},  {"purple", 270}, {"pink", 320},
++  };
++  std::string_view best = "grey";
++  double best_gap = std::numeric_limits<double>::infinity();
++  for (const auto& [color, h] : kGroupHues) {
++    const double raw =
++        std::abs(std::fmod(std::fmod(hue - h, 360.0) + 360.0, 360.0));
++    const double gap = std::min(raw, 360.0 - raw);
++    if (gap < best_gap) {
++      best = color;
++      best_gap = gap;
++    }
++  }
++  return std::string(best);
++}
++
++State FirstState(const std::string& space_id) {
++  Space space;
++  space.id = space_id;
++  space.name = "Personal";
++  space.hue = 200;
++  space.planet = "ringed";
++  space.scheme = "system";
++  State state;
++  state.spaces.push_back(std::move(space));
++  state.active_space_id = space_id;
++  return state;
++}
++
++base::DictValue ToValue(const LiveMap& live) {
++  base::DictValue value;
++  for (const auto& [id, browser_id] : live.entries()) {
++    value.Set(id, browser_id);
++  }
++  return value;
++}
++
++base::DictValue ToValue(const Op& op) {
++  base::DictValue value;
++  auto ids = [](const std::vector<int>& browser_ids) {
++    base::ListValue list;
++    for (int id : browser_ids) {
++      list.Append(id);
++    }
++    return list;
++  };
++  switch (op.kind) {
++    case Op::Kind::kCreate:
++      value.Set("op", "create");
++      value.Set("tabId", op.tab_id);
++      value.Set("url", op.url);
++      break;
++    case Op::Kind::kEmptyTab:
++      value.Set("op", "empty-tab");
++      break;
++    case Op::Kind::kActivate:
++      value.Set("op", "activate");
++      value.Set("browserId", op.browser_id);
++      break;
++    case Op::Kind::kRemove:
++      value.Set("op", "remove");
++      value.Set("browserId", op.browser_id);
++      break;
++    case Op::Kind::kGroup:
++      value.Set("op", "group");
++      value.Set("key", op.key);
++      value.Set("browserIds", ids(op.browser_ids));
++      value.Set("title", op.title);
++      value.Set("color", op.color);
++      break;
++    case Op::Kind::kLook:
++      value.Set("op", "look");
++      value.Set("key", op.key);
++      value.Set("groupId", op.group_id);
++      value.Set("title", op.title);
++      value.Set("color", op.color);
++      break;
++    case Op::Kind::kUngroup:
++      value.Set("op", "ungroup");
++      value.Set("browserIds", ids(op.browser_ids));
++      break;
++    case Op::Kind::kCollapse:
++      value.Set("op", "collapse");
++      value.Set("groupId", op.group_id);
++      value.Set("collapsed", op.collapsed);
++      break;
++  }
++  return value;
++}
++
++}  // namespace loka
+--- /dev/null
++++ b/components/loka/core/tab_links.h
+@@ -0,0 +1,154 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#ifndef COMPONENTS_LOKA_CORE_TAB_LINKS_H_
++#define COMPONENTS_LOKA_CORE_TAB_LINKS_H_
++
++#include <optional>
++#include <string>
++#include <string_view>
++#include <utility>
++#include <vector>
++
++#include "base/functional/function_ref.h"
++#include "base/values.h"
++#include "components/loka/core/spaces_model.h"
++
++// Keeps Loka's spaces and a window's real tabs in step, both ways. A port of
++// prototype/src/features/tabs/live.logic.ts, held equal to it by the shared
++// cases (model_cases_unittest.cc):
++//   browser -> Loka: a tab opened, closed, changed or picked updates the spaces
++//   Loka -> browser: PlanReconcile lists what the browser must do so its tabs
++//   match the spaces.
++namespace loka {
++
++// The parts of a browser tab Loka reads.
++struct BrowserTab {
++  int id = 0;
++  std::string url;
++  std::string title;
++  bool active = false;
++  // -1 when the tab isn't in a group.
++  int group_id = -1;
++  int window_id = 0;
++  std::optional<int> opener_tab_id;
++  std::optional<double> last_accessed;
++};
++
++// Which browser tab shows each loaded Loka tab, in the order the links were
++// made: the order PlanReconcile walks them in.
++class LiveMap {
++ public:
++  LiveMap();
++  LiveMap(const LiveMap&);
++  LiveMap& operator=(const LiveMap&);
++  ~LiveMap();
++
++  std::optional<int> BrowserIdOf(std::string_view tab_id) const;
++  std::optional<TabId> TabIdOf(int browser_id) const;
++  // Links `tab_id` to `browser_id`, keeping its place if it was linked.
++  void Set(const TabId& tab_id, int browser_id);
++  void Erase(std::string_view tab_id);
++  const std::vector<std::pair<TabId, int>>& entries() const {
++    return entries_;
++  }
++  bool operator==(const LiveMap&) const = default;
++
++ private:
++  std::vector<std::pair<TabId, int>> entries_;
++};
++
++// A space's tab group in one window, as the sync last set it. Title and color
++// are unknown for older records.
++struct GroupRecord {
++  int id = 0;
++  bool collapsed = false;
++  std::optional<std::string> title;
++  std::optional<std::string> color;
++};
++
++// Group records by GroupKey, in the order they were made.
++using Groups = std::vector<std::pair<std::string, GroupRecord>>;
++
++struct Op {
++  enum class Kind {
++    kCreate,
++    kEmptyTab,
++    kActivate,
++    kRemove,
++    kGroup,
++    kLook,
++    kUngroup,
++    kCollapse,
++  };
++
++  Kind kind;
++  // kCreate.
++  TabId tab_id;
++  std::string url;
++  // kActivate, kRemove.
++  int browser_id = 0;
++  // kGroup, kLook.
++  std::string key;
++  std::string title;
++  std::string color;
++  // kGroup, kUngroup.
++  std::vector<int> browser_ids;
++  // kLook, kCollapse.
++  int group_id = 0;
++  // kCollapse.
++  bool collapsed = false;
++};
++
++using MakeId = base::FunctionRef<TabId()>;
++
++// Which space a tab belongs to, "essentials" for an Essential, or nullopt.
++std::optional<std::string> HomeOf(const State& state, std::string_view tab_id);
++// chrome://newtab and Loka's empty page: never one of Loka's tabs.
++bool IsEmptyTab(std::string_view url);
++
++// Links the browser's tabs to Loka's by address, as when Loka starts. Open
++// tabs no browser tab took are dropped, unless `keep_unloaded` (after an
++// import, whose open tabs were never loaded here).
++std::pair<State, LiveMap> AdoptTabs(const State& state,
++                                    const std::vector<BrowserTab>& tabs,
++                                    double now,
++                                    MakeId make_id,
++                                    bool keep_unloaded = false);
++std::pair<State, LiveMap> TabCreated(const State& state,
++                                     const LiveMap& live,
++                                     const BrowserTab& tab,
++                                     double now,
++                                     const std::optional<TabId>& for_tab_id,
++                                     MakeId make_id);
++std::pair<State, LiveMap> TabRemoved(const State& state,
++                                     const LiveMap& live,
++                                     int browser_id);
++std::pair<State, LiveMap> TabUpdated(const State& state,
++                                     const LiveMap& live,
++                                     const BrowserTab& tab,
++                                     double now,
++                                     MakeId make_id);
++State TabActivated(const State& state,
++                   const LiveMap& live,
++                   int browser_id,
++                   double now);
++std::vector<Op> PlanReconcile(const State& state,
++                              const LiveMap& live,
++                              const std::vector<BrowserTab>& tabs,
++                              const Groups& groups,
++                              bool switched);
++
++std::string GroupKey(std::string_view space_id, int window_id);
++// The tab group color nearest a space's hue, going round the color wheel.
++std::string GroupColor(double hue);
++// One space, nothing pinned: for a profile with no saved spaces.
++State FirstState(const std::string& space_id);
++
++base::DictValue ToValue(const LiveMap& live);
++base::DictValue ToValue(const Op& op);
++
++}  // namespace loka
++
++#endif  // COMPONENTS_LOKA_CORE_TAB_LINKS_H_

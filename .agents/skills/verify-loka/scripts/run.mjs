@@ -1,5 +1,5 @@
 // Runs the mapped feature recipes against the running prototype and saves evidence.
-//   node .agents/skills/verify-loka/scripts/run.mjs <folders|spaces|tabs|essentials|export-import|command-bar|space-editor|layout|make-folders|archive|search-and-keys|import|media|theme|extensions|history|sound|sky|onboarding|all>
+//   node .agents/skills/verify-loka/scripts/run.mjs <folders|spaces|tabs|essentials|export-import|command-bar|space-editor|layout|make-folders|archive|search-and-keys|import|media|theme|extensions|history|library|sound|sky|onboarding|all>
 // Each recipe starts from fresh seed data, drives the UI the way a user does, asserts the saved state,
 // and writes screenshots, ARIA snapshots and outlines to .agents/verify-runs/<time>-<feature>/.
 
@@ -331,7 +331,7 @@ const recipes = {
 		assert.deepEqual(await rail.getByRole("button").allInnerTexts(), ["Media"], "the search leaves only Media");
 		await loka.proof("02-settings-search");
 		await loka.page.keyboard.press("Escape");
-		assert.equal((await rail.getByRole("button").allInnerTexts()).length, 12, "Escape brings every section back");
+		assert.equal((await rail.getByRole("button").allInnerTexts()).length, 13, "Escape brings every section back");
 
 		// The top row's button hides the sidebar: the browser (here the fake) unpins it and slides it away.
 		await loka.sidebar.getByRole("button", { name: "Hide sidebar" }).click();
@@ -408,14 +408,17 @@ const recipes = {
 	},
 
 	async archive(loka) {
-		assert.ok((await loka.outline()).open.includes("Arc: what we learned"), "archiving is off by default");
+		// Seed: Arc was last shown 9 hours ago, Zen 5 hours ago, Hacker News 2 hours ago: all inside the 12-hour default.
+		assert.ok((await loka.outline()).open.includes("Arc: what we learned"), "recent open tabs stay");
 		await loka.sidebar.getByRole("button", { name: "More" }).click();
 		await loka.menuItem("Settings").click();
-		await loka.page
-			.locator("loka-settings")
-			.getByRole("combobox", { name: "Archive open tabs" })
-			.selectOption({ label: "After a day" });
-		// Seed: Arc was last shown 3 days ago and Zen 26 hours ago; Hacker News 2 hours ago.
+		const setting = loka.page.locator("loka-settings").getByRole("combobox", { name: "Archive open tabs" });
+		assert.equal(await setting.inputValue(), "12", "archiving is on after 12 hours by default");
+		// Eight hours later Arc (17 h) and Zen (13 h) are past it; Hacker News (10 h) isn't. The archive runs every minute.
+		await loka.page.clock.install();
+		await loka.page.reload({ waitUntil: "networkidle" });
+		await loka.sidebar.getByRole("tree").first().waitFor();
+		await loka.page.clock.fastForward("08:00:00");
 		const o = await loka.outline();
 		assert.ok(!o.open.includes("Arc: what we learned") && !o.open.includes("Zen Browser"), "old open tabs archived");
 		assert.ok(o.open.includes("Hacker News"), "a recent one stays");
@@ -712,6 +715,160 @@ const recipes = {
 		assert.ok((await visitCount()) <= before - picked, "the picked visits are gone (every visit to their pages)");
 		assert.equal(await history.getByText(/\d+ selected/).count(), 0, "and nothing is picked any more");
 		await loka.proof("04-deleted");
+	},
+
+	async library(loka) {
+		const lib = loka.page.locator("loka-library");
+		/** The Library's tab: the one tab at loka://history, wherever it is. */
+		const libraryTab = async () =>
+			Object.values((await loka.state()).tabs).find((/** @type {any} */ t) => t.url.startsWith("loka://history"));
+		const openLibrary = async () => {
+			await loka.page.getByRole("button", { name: "More" }).click();
+			await loka.menuItem("Library").click();
+		};
+		const section = (/** @type {string} */ name) => lib.getByRole("link", { name, exact: true });
+
+		// "..." > Library opens it at Spaces: every space with its planet, counts, whole pinned tree and open tabs.
+		await openLibrary();
+		const spaces = lib.locator("loka-library-spaces");
+		await spaces.getByRole("heading", { name: "Build", exact: true }).waitFor();
+		assert.equal((await libraryTab())?.url, "loka://history#spaces", "the Library opens at #spaces");
+		assert.equal(await section("Spaces").getAttribute("aria-current"), "page", "the switcher marks Spaces");
+		assert.deepEqual(
+			(await spaces.getByRole("heading", { level: 2 }).allTextContents()).map((t) => t.trim()),
+			["Essentials", "Build", "School", "Home"],
+		);
+		const school = spaces.getByRole("region", { name: "School" });
+		assert.match((await school.textContent()) ?? "", /3 pinned, 2 folders/, "a space says what it holds");
+		// The sidebar has Game project closed; the Library shows the whole tree.
+		assert.equal(await school.getByRole("button", { name: /^Game project/ }).getAttribute("aria-expanded"), "true");
+		await school.getByRole("button", { name: "Go to Game design doc" }).waitFor();
+		await loka.proof("01-spaces");
+
+		// A folder closes here only: the sidebar's folders stay as they were.
+		await school.getByRole("button", { name: /^CSC 281/ }).click();
+		assert.equal(await school.getByRole("button", { name: "Go to Game design doc" }).count(), 0, "closed here");
+		const folderOpen = (/** @type {any} */ st, /** @type {string} */ id) =>
+			st.spaces[1].pinned.find((/** @type {any} */ n) => n.id === id)?.open;
+		assert.equal(folderOpen(await loka.state(), "f-csc281"), true, "and still open in the sidebar");
+		await school.getByRole("button", { name: /^CSC 281/ }).click();
+
+		// Clicking a tab goes to it: its space, the folders above it opened, the tab shown.
+		await school.getByRole("button", { name: "Go to Game design doc" }).click();
+		let st = await loka.state();
+		const schoolNow = st.spaces.find((/** @type {any} */ s) => s.id === "s-school");
+		assert.deepEqual([st.activeSpaceId, schoolNow.activeTabId], ["s-school", "t-gdd"], "the tab is shown");
+		assert.equal(
+			schoolNow.pinned[1].children[0].open,
+			true,
+			"Game project opened in the sidebar so the tab can be seen",
+		);
+		// Back to the Library (it's in Build), then "Switch to" Home.
+		await openLibrary();
+		await spaces.getByRole("button", { name: "Switch to Home" }).click();
+		assert.equal((await loka.state()).activeSpaceId, "s-home", "Switch to goes to the space");
+		await loka.page.keyboard.press("Control+1");
+
+		// Eight hours on, the archive takes Arc (17 h) and Zen (13 h) from Build.
+		await loka.page.clock.install();
+		await loka.page.reload({ waitUntil: "networkidle" });
+		await loka.sidebar.getByRole("tree").first().waitFor();
+		await loka.page.clock.fastForward("08:00:00");
+		assert.deepEqual(
+			(await loka.state()).archive.map((/** @type {any} */ a) => a.tab.title),
+			["Arc: what we learned", "Zen Browser"],
+		);
+
+		await openLibrary();
+		await section("Archive").click();
+		const archive = lib.locator("loka-library-archive");
+		await archive.getByRole("heading", { name: "Archived tabs" }).waitFor();
+		assert.equal((await libraryTab())?.url, "loka://history#archive", "the switcher changes the address");
+		assert.deepEqual(
+			(await archive.locator("section h2").allTextContents()).map((t) => t.trim()),
+			["Today"],
+		);
+		const arcRow = archive.getByRole("button", { name: "Bring back Arc: what we learned" });
+		assert.match((await arcRow.textContent()) ?? "", /Build/, "a row names the space it left");
+		await archive.getByRole("button", { name: /^Build/ }).click();
+		assert.equal(await archive.getByRole("button", { name: /^Bring back/ }).count(), 2, "Build's filter keeps both");
+		await archive.getByRole("searchbox", { name: "Search archived tabs" }).fill("zen");
+		assert.deepEqual(
+			await archive.getByRole("button", { name: /^Bring back/ }).evaluateAll((els) => els.map((e) => e.ariaLabel)),
+			["Bring back Zen Browser"],
+			"search narrows to Zen",
+		);
+		await loka.proof("02-archive-search");
+		await archive.getByRole("button", { name: "Bring back Zen Browser" }).click();
+		st = await loka.state();
+		const build = st.spaces.find((/** @type {any} */ s) => s.id === "s-build");
+		assert.deepEqual(
+			[st.activeSpaceId, build.open[0], build.activeTabId],
+			["s-build", "t-zen", "t-zen"],
+			"Zen is back at the top of Build's open tabs, shown",
+		);
+		assert.deepEqual(
+			st.archive.map((/** @type {any} */ a) => a.tab.title),
+			["Arc: what we learned"],
+		);
+
+		// Clear asks first; Cancel keeps it, Clear archive empties it.
+		await openLibrary();
+		await section("Archive").click();
+		await archive.getByRole("button", { name: "Clear archive…" }).click();
+		const confirm = archive.getByRole("alertdialog", { name: "Clear 1 archived tab?" });
+		await confirm.waitFor();
+		// It fades in; the picture waits for that.
+		await loka.page.waitForTimeout(300);
+		await loka.proof("03-archive-confirm");
+		await confirm.getByRole("button", { name: "Cancel" }).click();
+		assert.equal((await loka.state()).archive.length, 1, "Cancel keeps the archive");
+		await archive.getByRole("button", { name: "Clear archive…" }).click();
+		await confirm.getByRole("button", { name: "Clear archive" }).click();
+		assert.deepEqual((await loka.state()).archive, [], "Clear archive empties it");
+		await archive.getByText("Nothing archived").waitFor();
+
+		// Downloads: the browser's list by day, with each state's actions.
+		await section("Downloads").click();
+		const downloads = lib.locator("loka-library-downloads");
+		await downloads.getByRole("heading", { name: "Downloads" }).waitFor();
+		assert.equal((await libraryTab())?.url, "loka://history#downloads");
+		await downloads.getByRole("button", { name: "Pause helium_0.19.2.1_x64-installer.exe" }).click();
+		await downloads.getByRole("button", { name: "Resume helium_0.19.2.1_x64-installer.exe" }).waitFor();
+		await downloads.getByRole("button", { name: "Show in folder CSC281-GDD-v3.pdf" }).click();
+		// A finished file's row is its Open button, named by the file.
+		await downloads.getByRole("button", { name: /^CSC281-GDD-v3\.pdf/ }).click();
+		assert.deepEqual(await demoCalls(loka, "downloadAction"), [
+			[6, "pause"],
+			[4, "show"],
+			[4, "open"],
+		]);
+		await downloads.getByRole("searchbox", { name: "Search downloads" }).fill("nodejs");
+		assert.deepEqual(
+			await downloads.getByRole("button", { name: /^Try again/ }).evaluateAll((els) => els.map((e) => e.ariaLabel)),
+			["Try again node-v24.4.0-x64.msi"],
+			"search finds a file by the site it came from",
+		);
+		await downloads.getByRole("searchbox", { name: "Search downloads" }).fill("");
+		await loka.proof("04-downloads");
+
+		// History is the existing page, and Ctrl+H from any section goes back to it.
+		await section("Spaces").click();
+		await spaces.getByRole("heading", { name: "Build", exact: true }).waitFor();
+		await loka.page.keyboard.press("Control+h");
+		// The clock is 8 hours on, so the fake's visits may read Yesterday: wait for the section, not a day.
+		await lib.locator("loka-history").getByRole("heading", { name: "History", level: 1 }).waitFor();
+		await lib.locator("loka-history").getByRole("treeitem").first().waitFor();
+		assert.equal((await libraryTab())?.url, "loka://history", "Ctrl+H is the bare address");
+		assert.equal(await section("History").getAttribute("aria-current"), "page");
+
+		// A narrow window: the rail is a header, the sections one row across it.
+		await loka.page.setViewportSize({ width: 760, height: 800 });
+		await section("Spaces").click();
+		await spaces.getByRole("heading", { name: "Build", exact: true }).waitFor();
+		const [first, last] = await Promise.all([section("Spaces").boundingBox(), section("Downloads").boundingBox()]);
+		assert.equal(first?.y, last?.y, "the four sections sit in one row");
+		await loka.proof("05-narrow");
 	},
 
 	async sound(loka) {

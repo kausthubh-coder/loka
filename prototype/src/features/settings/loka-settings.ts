@@ -1,7 +1,7 @@
 import { css, html, LitElement, nothing, type PropertyValues, svg, type TemplateResult } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import type { Browser, NativeExtension } from "../../../../webui/src/bridge";
-import type { Update } from "../../app/loka-app";
+import type { Act } from "../../app/loka-app";
 import { reducedMotion } from "../../app/theme";
 import {
 	AUTOPLAY_MODES,
@@ -12,7 +12,7 @@ import {
 	type StarMotion,
 	type UiPrefs,
 } from "../../app/ui-prefs.logic";
-import { ARCHIVE_CHOICES } from "../archive/archive.logic";
+import { ARCHIVE_CHOICES, SLEEP_CHOICES } from "../archive/archive.logic";
 import { withPinned } from "../extensions/extensions.logic";
 import "../extensions/loka-extensions";
 import {
@@ -24,14 +24,7 @@ import {
 } from "../import/import.logic";
 import { IMPORT_SOURCES, type ImportSource, pickFile } from "../import/pick-file";
 import { planet, SPACE_HUES } from "../sidebar/planet";
-import {
-	type BrowserState,
-	countTabs,
-	SPACE_SCHEMES,
-	type Space,
-	type SpaceScheme,
-	updateSpace,
-} from "../sidebar/sidebar.logic";
+import { type BrowserState, countTabs, SPACE_SCHEMES, type Space, type SpaceScheme } from "../sidebar/sidebar.logic";
 import { playCue, setSoundPrefs } from "../sound/sound";
 import "../sync/loka-sync-settings";
 import { keys as shortcutKeys } from "../../app/platform";
@@ -170,7 +163,7 @@ export class LokaSettings extends LitElement {
 	};
 
 	declare state: BrowserState;
-	declare apply: Update;
+	declare apply: Act;
 	declare ui: UiPrefs;
 	/** The last import's result, shown under the buttons. */
 	imported = "";
@@ -253,7 +246,7 @@ export class LokaSettings extends LitElement {
 				this.imported = `That isn't ${name}'s ${file} file.`;
 				return;
 			}
-			this.apply((s) => addArcSpaces(s, arc, SPACE_HUES));
+			this.apply({ op: "replaceState", state: addArcSpaces(this.state, arc, SPACE_HUES) });
 			const tabs = arc.spaces.reduce((n, s) => n + countImported(s.pinned), 0);
 			this.imported = `Added ${arc.spaces.length} spaces with ${tabs} pinned tabs, and ${arc.favorites.length} Favorites.`;
 			return;
@@ -263,7 +256,10 @@ export class LokaSettings extends LitElement {
 			this.imported = `That isn't ${name}'s ${file} file.`;
 			return;
 		}
-		this.apply((s) => addImportedFolder(s, s.activeSpaceId, `${name} bookmarks`, nodes));
+		this.apply({
+			op: "replaceState",
+			state: addImportedFolder(this.state, this.state.activeSpaceId, `${name} bookmarks`, nodes),
+		});
 		this.imported = `Added ${countImported(nodes)} bookmarks as a folder in this space.`;
 	}
 
@@ -276,7 +272,11 @@ export class LokaSettings extends LitElement {
 	}
 
 	private setScheme(space: Space, scheme: SpaceScheme) {
-		this.apply((s) => updateSpace(s, space.id, { name: space.name, hue: space.hue, planet: space.planet, scheme }));
+		this.apply({
+			op: "updateSpace",
+			spaceId: space.id,
+			look: { name: space.name, hue: space.hue, planet: space.planet, scheme },
+		});
 	}
 
 	private toggle(label: string, on: boolean, change: (on: boolean) => void, disabled = false) {
@@ -413,13 +413,26 @@ export class LokaSettings extends LitElement {
 				control: html`<select
 					aria-label="Archive open tabs"
 					@change=${(e: Event) => {
-						const value = (e.target as HTMLSelectElement).value;
-						this.setUi({ archiveAfterHours: value ? Number(value) : null });
+						this.setUi({ archiveAfterHours: Number((e.target as HTMLSelectElement).value) });
 					}}
 				>
 					${ARCHIVE_CHOICES.map(
-						(c) =>
-							html`<option value=${c.hours ?? ""} ?selected=${c.hours === ui.archiveAfterHours}>${c.label}</option>`,
+						(c) => html`<option value=${c.hours} ?selected=${c.hours === ui.archiveAfterHours}>${c.label}</option>`,
+					)}
+				</select>`,
+			},
+			{
+				label: "Unload other spaces' tabs",
+				detail:
+					"Tabs in a space you aren't looking at stop using memory. They keep their place and history and load again when you open them. Tabs playing sound or holding typed text stay loaded.",
+				control: html`<select
+					aria-label="Unload other spaces' tabs"
+					@change=${(e: Event) => {
+						this.setUi({ sleepAfterMinutes: Number((e.target as HTMLSelectElement).value) });
+					}}
+				>
+					${SLEEP_CHOICES.map(
+						(c) => html`<option value=${c.minutes} ?selected=${c.minutes === ui.sleepAfterMinutes}>${c.label}</option>`,
 					)}
 				</select>`,
 			},
@@ -614,7 +627,7 @@ export class LokaSettings extends LitElement {
 				more: this.sync
 					? html`<loka-sync-settings
 							.hooks=${this.sync}
-							@loka-take-spaces=${(e: CustomEvent<BrowserState>) => this.apply((s) => takeSpaces(s, e.detail))}
+							@loka-take-spaces=${(e: CustomEvent<BrowserState>) => this.apply({ op: "replaceState", state: takeSpaces(this.state, e.detail) })}
 						></loka-sync-settings>`
 					: nothing,
 			},

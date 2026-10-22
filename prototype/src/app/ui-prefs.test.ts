@@ -31,10 +31,20 @@ describe("window preferences", () => {
 		expect(parseUiPrefs('{"soundVolume": "loud"}').soundVolume).toBe(0.5);
 	});
 
-	test("archiving is off unless a positive number of hours was saved", () => {
-		expect(parseUiPrefs(null).archiveAfterHours).toBeNull();
+	test("archiving runs after 12 hours unless changed; 0 turns it off", () => {
+		expect(parseUiPrefs(null).archiveAfterHours).toBe(12);
 		expect(parseUiPrefs('{"archiveAfterHours": 24}').archiveAfterHours).toBe(24);
-		expect(parseUiPrefs('{"archiveAfterHours": -5}').archiveAfterHours).toBeNull();
+		expect(parseUiPrefs('{"archiveAfterHours": 0}').archiveAfterHours).toBe(0);
+		expect(parseUiPrefs('{"archiveAfterHours": -5}').archiveAfterHours).toBe(12);
+		// Off used to be saved as null, back when archiving was off by default.
+		expect(parseUiPrefs('{"archiveAfterHours": null}').archiveAfterHours).toBe(12);
+	});
+
+	test("other spaces' tabs unload after 30 minutes out of sight unless changed; 0 never", () => {
+		expect(parseUiPrefs(null).sleepAfterMinutes).toBe(30);
+		expect(parseUiPrefs('{"sleepAfterMinutes": 120}').sleepAfterMinutes).toBe(120);
+		expect(parseUiPrefs('{"sleepAfterMinutes": 0}').sleepAfterMinutes).toBe(0);
+		expect(parseUiPrefs('{"sleepAfterMinutes": "soon"}').sleepAfterMinutes).toBe(30);
 	});
 
 	test("autoplay keeps a known mode and falls back to blocking until a click", () => {

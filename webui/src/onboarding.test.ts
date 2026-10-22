@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
+import { applyIntent } from "../../prototype/src/features/sidebar/intents.logic";
+import type { BrowserState, SpaceLook } from "../../prototype/src/features/sidebar/sidebar.logic";
 import { firstState } from "../../prototype/src/features/tabs/live.logic";
-import { applyOnboarding, onboardingSpaces } from "./onboarding.logic";
+import { onboardingIntents, onboardingSpaces } from "./onboarding.logic";
+
+const applyOnboarding = (state: BrowserState, spaces: SpaceLook[]) =>
+	onboardingIntents(state, spaces).reduce(applyIntent, state);
 
 const saved = JSON.stringify({
 	version: 1,

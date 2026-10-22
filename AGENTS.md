@@ -25,11 +25,11 @@ TypeScript). The browser build is Helium's Python build plus Loka's patches.
 
 | Where | What lives there |
 |---|---|
-| `webui/src/` | Loka's pages in the real browser, one bundle: the sidebar (`main.ts`), the floating command bar (`command.ts`), History (`history.ts`, `history-bridge.ts`), Settings (`settings.ts`), the empty tab at chrome://newtab (`newtab.ts`); `bridge.ts` (chrome.send to the C++ handler), `messages.ts` (every message name), `store.ts`, `sync.ts` |
-| `prototype/src/features/<feature>/` | one folder per feature: its Lit component, `*.logic.ts`, tests. `sidebar/` holds the model (`sidebar.logic.ts`), seed data and `<loka-sidebar>`; `tabs/live.logic.ts` maps browser tabs to spaces and back |
+| `webui/src/` | Loka's pages in the real browser, one bundle: the sidebar (`main.ts`), the floating command bar (`command.ts`), the Library at chrome://history (`history.ts`, `history-bridge.ts`), Settings (`settings.ts`), the empty tab at chrome://newtab (`newtab.ts`); `channel.ts` (chrome.send and the browser's answers, once per page), `bridge.ts` (the sidebar handler's messages), `messages.ts` (every message name), `store.ts` (the spaces from the browser, and intents to change them) |
+| `prototype/src/features/<feature>/` | one folder per feature: its Lit component, `*.logic.ts`, tests. `sidebar/` holds the model (`sidebar.logic.ts`), the intents that change it (`intents.logic.ts`), what changed (`spaces-delta.logic.ts`), the cases the C++ model must match (`model-cases.ts`), seed data and `<loka-sidebar>`; `tabs/live.logic.ts` maps browser tabs to spaces and back |
 | `prototype/src/app/` | the window shell (`loka-app.ts`: state, saving, shortcuts, theme) |
 | `prototype/src/demo/` | the fake browser behind `bun run dev`, the same shape as `bridge.ts`. Sample data lives only here |
-| `patches/loka/` + end of `patches/series` | Loka's Chromium patches, after Helium's: name, native sidebar and handler, sidebar-only layout, setup window, onboarding |
+| `patches/loka/` + end of `patches/series` | Loka's Chromium patches, after Helium's: name, native sidebar and handler, the spaces service (`LokaSpacesService`: owns, saves and follows the spaces), sidebar-only layout, setup window, onboarding; `loka-core.patch` is the C++ model (`components/loka/core`) |
 | `scripts/` | `setup`, `doctor`, `remove-worktree`, `cloud.mjs`; `browser.mjs` (build checkout, `testBinary`, `build:status`); `loka_build.py` + `build_log.py` (builds, `build.lock`, timings); `verify.mjs` and the suites `verify-browser.mjs`, `verify-flows.mjs`, `browser-session.mjs`, `window*.ps1`; `alpha/` (package and release); `export_patch.py`, `patches_check.py`, `webui.mjs`, `loka_brand.py`, `lint/` |
 | `.agents/skills/` | `worktree-loka`, `verify-loka` (with the feature map), `ship-loka`. `.claude/skills` links here |
 | `.agents/plans/` | plans as HTML; `2026-10-15-optimize.html` has the restructure checklist |
@@ -51,6 +51,10 @@ model, so keep it pure and keep its rules tested.
   building, how long builds take, and which binary tests drive. After editing `webui/`: `bun run webui:build`.
 - C++: edit in `C:\src\loka\build\src`, export with `python scripts/export_patch.py`, check with
   `bun run patches:check`.
+- Model: the C++ model (`components/loka/core`, `patches/loka/loka-core.patch`) must answer the cases in
+  `prototype/src/features/sidebar/model-cases.json` as the TypeScript model does. After changing either model:
+  `bun run model:cases` (rewrites the file), then `bun run model:cases -- --cpp` (builds and runs the C++ tests,
+  minutes).
 - Alpha: `LOKA_VERSION=<v> bun run browser:package`, then `bun run release:alpha -- --version <v>` (dry run).
 
 ## Start and ship
@@ -117,6 +121,7 @@ makes sure Playwright has a browser; outside the cloud it exits at once. Its las
 | Strict types, checked index access | `tsconfig.json` |
 | A tab sits in exactly one place; a folder never goes inside itself | `sidebar.test.ts`, `importState` |
 | Every message the page sends is one the handler answers | `webui/src/messages.test.ts` |
+| The TypeScript and C++ models give the same results | `model-cases.test.ts` (the case file is current); `bun run model:cases -- --cpp` (C++ against it) |
 | Every C++ edit in `build\src` is in a `patches/loka` patch | `bun run patches:check`; `browser:setup` and `release:alpha` refuse until it passes |
 | One build at a time; no browser runs from `out\Default` during a build | `build.lock` (`build_log.py`); `browser:build` and `browser:run` refuse; tests switch to the snapshot |
 | A real mouse reaches the sidebar (the column is page, not title bar) | verify:browser's hit-test and real-click checks |

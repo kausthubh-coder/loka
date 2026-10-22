@@ -81,6 +81,7 @@ const evidence = join(repo, ".agents", "verify-runs", `${stamp}-flows`);
 const profile = join(BUILD_DIR, `profile-qa-${stamp}`);
 const extensionDir = join(BUILD_DIR, `profile-qa-${stamp}-extension`);
 const SIDEBAR_URL = "chrome://loka-sidebar.top-chrome/";
+const MENU_URL = "chrome://loka-sidebar.top-chrome/menu.html";
 /** In the sidebar page: the sidebar component's shadow root. */
 const SIDEBAR_ROOT = `document.querySelector("loka-panel")?.shadowRoot?.querySelector("loka-sidebar")?.shadowRoot`;
 const UBLOCK = "blockjmkbacgjkknlgpkjjiijinjdanf";
@@ -504,12 +505,54 @@ async function attachSidebar(b, pick = () => true) {
 	/** @param {string} message @param {unknown[]} args */
 	const ask = (message, ...args) => evaluate(s, askExpression(message, args));
 	/** @returns {Promise<BrowserState>} */
-	const state = async () => {
-		const store = await ask("getStore");
-		return JSON.parse(store["state.v1"] ?? "null");
+	const state = async () => (await ask("getSpaces"))?.state ?? null;
+	/**
+	 * The sidebar's menus open in the browser's menu window (menu.html, one kept loaded per window), not in the sidebar
+	 * page. Whatever asks for a menu item goes to the menu page showing one; nothing else changes for the checks.
+	 */
+	/** @type {Map<string, ReturnType<typeof driver>>} */
+	const menuPages = new Map();
+	const shownMenu = async () => {
+		for (const t of await b.targets()) {
+			if (!t.url.startsWith(MENU_URL)) continue;
+			let page = menuPages.get(t.id);
+			if (!page) {
+				const ms = await connect(t.webSocketDebuggerUrl);
+				await ms.call("Runtime.enable");
+				page = driver(ms);
+				menuPages.set(t.id, page);
+			}
+			const visible = await page.run(`document.visibilityState === "visible"`).catch(() => false);
+			if (visible && (await page.names("[role=menuitem]").catch(() => [])).length) return page;
+		}
+		return null;
 	};
+	/** @param {string} [role] */
+	const isMenu = (role = "") => role.includes("role=menu");
 	return {
 		...d,
+		/** @param {Label} label @param {{ role?: string, button?: "left" | "middle" | "right", at?: number }} [opts] */
+		async click(label, opts = {}) {
+			if (!isMenu(opts.role)) return d.click(label, opts);
+			const menu = await until(async () => {
+				const page = await shownMenu();
+				return page && (await page.has(label, opts.role)) ? page : null;
+			}, 6000);
+			if (!menu) throw new Error(`no menu window shows ${show(label)}`);
+			return menu.click(label, opts);
+		},
+		/** @param {string} role @returns {Promise<string[]>} */
+		async names(role) {
+			if (!isMenu(role)) return d.names(role);
+			const menu = await until(shownMenu, 3000);
+			return menu ? menu.names(role) : [];
+		},
+		/** @param {Label} label @param {string} [role] */
+		async has(label, role = "") {
+			if (!isMenu(role)) return d.has(label, role);
+			const menu = await shownMenu();
+			return menu ? menu.has(label, role) : false;
+		},
 		ask,
 		/** @param {string} message @param {unknown[]} args */
 		tell: (message, ...args) => evaluate(s, `(chrome.send(${JSON.stringify(message)}, ${JSON.stringify(args)}), true)`),
@@ -1964,12 +2007,30 @@ async function settings() {
 	}
 	await page.click("System", { role: `[role=radio]` }).catch(() => {});
 
-	// Archive hours.
-	await page.run(
-		`(() => { const s = window.__qa.find("Archive open tabs", "select"); s.value = s.options[1].value; s.dispatchEvent(new Event("change", { bubbles: true })); return s.value; })()`,
+	// Archive hours (12 by default) and when other spaces' tabs unload (30 minutes by default).
+	/** @param {string} label @param {string} value */
+	const choose = (label, value) =>
+		page.run(
+			`(() => { const s = window.__qa.find(${JSON.stringify(label)}, "select"); s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event("change", { bubbles: true })); return s.value; })()`,
+		);
+	const defaults = await page.run(
+		`[window.__qa.find("Archive open tabs", "select")?.value, window.__qa.find("Unload other spaces' tabs", "select")?.value]`,
 	);
-	const hours = await until(async () => (await sb.ui()).archiveAfterHours, 4000);
-	check("Archive open tabs saves its hours", typeof hours === "number" && hours > 0, `archiveAfterHours=${hours}`);
+	check(
+		"Settings shows archiving after 12 hours and unloading after 30 minutes",
+		show(defaults) === show(["12", "30"]),
+		show(defaults),
+	);
+	await choose("Archive open tabs", "24");
+	const hours = await until(async () => (await sb.ui()).archiveAfterHours === 24, 4000);
+	check("Archive open tabs saves its hours", hours, `archiveAfterHours=${(await sb.ui()).archiveAfterHours}`);
+	await choose("Unload other spaces' tabs", "120");
+	const minutes = await until(async () => (await sb.ui()).sleepAfterMinutes === 120, 4000);
+	check(
+		"Unload other spaces' tabs saves its minutes",
+		minutes,
+		`sleepAfterMinutes=${(await sb.ui()).sleepAfterMinutes}`,
+	);
 
 	// Extension pins in Settings and in the sidebar are the same. The extensions flow leaves uBlock unpinned; run
 	// without it (--only settings), a fresh profile has it pinned, so it's unpinned here first.
@@ -2020,6 +2081,50 @@ async function settings() {
 	const cleared = await until(async () => (await history.names("[role=checkbox]")).length === 0, 6000);
 	check("Clear history: today empties it", cleared, `${(await history.names("[role=checkbox]")).length} left`);
 	await history.picture(join(dir, "04-history-cleared.png"));
+
+	// The Library is the same page: its other sections need the sidebar's handler here too (getSpaces, getDownloads).
+	await history.run(`(location.hash = "spaces", true)`);
+	const libraryNames = await until(async () => {
+		const names = await history.names("h2");
+		return SETUP_SPACES.every((x) => names.includes(x.name)) ? names : null;
+	}, 8000);
+	check(
+		"the Library's Spaces (chrome://history/#spaces) lists every space",
+		libraryNames,
+		show(libraryNames ?? (await history.names("h2"))),
+	);
+	await history.picture(join(dir, "05-library-spaces.png"));
+	await history.click("Downloads", { role: "a" });
+	const downloadsShown = await until(
+		async () =>
+			(await history.run(`location.hash`)) === "#downloads" &&
+			(await history.has("Downloads", "h1")) &&
+			!(await history.has("Loading downloads", "ul")),
+		6000,
+	);
+	check(
+		"the Library's switcher shows Downloads, with the browser's list",
+		downloadsShown,
+		`${await history.run("location.hash")} ${show(await history.names("h1"))}`,
+	);
+	await history.click("Archive", { role: "a" });
+	const archiveShown = await until(
+		async () => (await history.has("Archived tabs", "h1")) && !(await history.has("Loading archived tabs", "ul")),
+		6000,
+	);
+	check("the Library's Archived tabs shows the archive", archiveShown, show(await history.names("h1")));
+	// "..." > Library takes the Library tab to Spaces, though it's open at another section.
+	await sb.click("More");
+	await sb.click("Library", { role: "[role=menuitem]" });
+	const atSpaces = await until(async () => {
+		const target = (await ctx.browser.targets()).find((t) => t.url === "chrome://history/#spaces");
+		return target ?? ((await history.run("location.hash")) === "#spaces" ? "this tab" : null);
+	}, 6000);
+	check(
+		"... > Library opens chrome://history/#spaces",
+		atSpaces,
+		show((await ctx.browser.targets()).map((t) => t.url).filter((u) => u.startsWith("chrome://history"))),
+	);
 	history.s.close();
 }
 
@@ -2280,7 +2385,51 @@ async function newTabs() {
 // ---- main ---------------------------------------------------------------------------------------------------------
 
 /** What a flow needs from earlier ones besides first run's spaces: the QA pages that tabs opens. */
-const NEEDS = { "4-states": ["3-tabs"], "5-pinning": ["3-tabs"], "7-panels": ["3-tabs"], "8-settings": ["3-tabs"] };
+/**
+ * A loaded tab in a space no window shows unloads once it has been out of sight for the setting's time
+ * (LokaTabSleeper), keeps its row, and loads again when opened. Seconds instead of minutes: the saved setting takes
+ * fractions, and the browser looks again as soon as it changes.
+ */
+async function sleeping() {
+	const sb = ctx.sidebar;
+	await inResearch();
+	const sleepy = await openSite("sleepy");
+	await sb.key("2", { ctrl: true });
+	const folded = await until(async () => {
+		const f = await browserFollows(sb);
+		return f.ok ? f : null;
+	}, 6000);
+	check("showing Play folds Research's tabs away", folded, folded?.detail ?? (await browserFollows(sb)).detail);
+	const before = await sb.ui();
+	await sleep(4000);
+	await sb.tell("setStore", "ui.v1", JSON.stringify({ ...before, sleepAfterMinutes: 0.05 }));
+	const slept = await until(async () => (await sb.tabs()).find((t) => t.id === sleepy.id)?.discarded, 15000);
+	check(
+		"a loaded tab in a folded space unloads once out of sight longer than the setting",
+		slept,
+		show((await sb.tabs()).find((t) => t.id === sleepy.id)),
+	);
+	const kept = openTitles(await sb.state(), "Research").includes("QA Sleepy");
+	check("it keeps its row in Research", kept, show(openTitles(await sb.state(), "Research")));
+	await sb.tell("setStore", "ui.v1", JSON.stringify(before));
+	await sb.key("1", { ctrl: true });
+	await until(async () => shownSpace(await sb.state())?.name === "Research", 5000);
+	await sb.click("QA Sleepy", { role: "[role=treeitem]" });
+	const back = await until(async () => {
+		const tab = (await sb.tabs()).find((t) => t.id === sleepy.id);
+		return tab?.active && !tab.discarded && !tab.loading && tab.title === "QA Sleepy" ? tab : null;
+	}, 10000);
+	check("opening it loads it again, in the same tab", back, show((await sb.tabs()).find((t) => t.id === sleepy.id)));
+	await step("slept-and-back");
+}
+
+const NEEDS = {
+	"4-states": ["3-tabs"],
+	"5-pinning": ["3-tabs"],
+	// Search the sidebar looks for QA Golf, which pinning opens.
+	"7-panels": ["3-tabs", "5-pinning"],
+	"8-settings": ["3-tabs"],
+};
 
 async function main() {
 	/** @type {[string, () => Promise<unknown>][]} */
@@ -2295,6 +2444,7 @@ async function main() {
 		["8-settings", settings],
 		["9-restart", restart],
 		["10-new-tab", newTabs],
+		["11-sleep", sleeping],
 	];
 	// --only <flow>[,<flow>] runs those flows after the ones they build on (first run always; restart needs them all).
 	const onlyAt = process.argv.indexOf("--only");

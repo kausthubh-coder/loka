@@ -244,8 +244,7 @@ export function moveItem(state: BrowserState, id: string, to: Place): BrowserSta
 	return replaceSpace(next, to.spaceId, (s) => ({ ...s, pinned }));
 }
 
-export function openTab(state: BrowserState, url: string, title = url, now = Date.now()): BrowserState {
-	const id = newId();
+export function openTab(state: BrowserState, url: string, title = url, now = Date.now(), id = newId()): BrowserState {
 	const spaceId = state.activeSpaceId;
 	const withTab = { ...state, tabs: { ...state.tabs, [id]: { id, url, title, lastActiveAt: now } } };
 	return replaceSpace(withTab, spaceId, (s) => ({ ...s, open: [id, ...s.open], activeTabId: id }));
@@ -314,8 +313,7 @@ export interface SpaceLook {
 	scheme?: SpaceScheme;
 }
 
-export function createSpace(state: BrowserState, look: SpaceLook): [BrowserState, string] {
-	const id = newId();
+export function createSpace(state: BrowserState, look: SpaceLook, id = newId()): [BrowserState, string] {
 	const space: Space = { id, ...look, scheme: look.scheme ?? "system", pinned: [], open: [], activeTabId: null };
 	return [{ ...state, spaces: [...state.spaces, space], activeSpaceId: id }, id];
 }
@@ -348,15 +346,21 @@ export function deleteSpace(state: BrowserState, spaceId: string): BrowserState 
 }
 
 /** Opens a tab, or goes to it if a tab with that URL is already open anywhere (used for Settings and Downloads). */
-export function focusOrOpen(state: BrowserState, url: string, title: string): BrowserState {
+export function focusOrOpen(
+	state: BrowserState,
+	url: string,
+	title: string,
+	now = Date.now(),
+	id = newId(),
+): BrowserState {
 	for (const space of state.spaces) {
 		const ids = [...space.open, ...pinnedTabIds(space.pinned)];
-		const found = ids.find((id) => state.tabs[id]?.url === url);
-		if (found) return activateTab(switchSpace(state, space.id), found);
+		const found = ids.find((tabId) => state.tabs[tabId]?.url === url);
+		if (found) return activateTab(switchSpace(state, space.id), found, now);
 	}
-	const found = state.essentials.find((id) => state.tabs[id]?.url === url);
-	if (found) return activateTab(state, found);
-	return openTab(state, url, title);
+	const found = state.essentials.find((tabId) => state.tabs[tabId]?.url === url);
+	if (found) return activateTab(state, found, now);
+	return openTab(state, url, title, now, id);
 }
 
 export function createFolder(
@@ -364,8 +368,8 @@ export function createFolder(
 	spaceId: string,
 	parentId: string | null,
 	name: string,
+	id = newId(),
 ): [BrowserState, string] {
-	const id = newId();
 	const folder: FolderNode = { kind: "folder", id, name, open: true, children: [] };
 	const space = state.spaces.find((s) => s.id === spaceId);
 	if (!space) return [state, id];
@@ -419,13 +423,13 @@ export function groupIntoFolder(
 	targetId: TabId,
 	draggedId: TabId,
 	name: string,
+	id = newId(),
 ): [BrowserState, string | null] {
 	if (targetId === draggedId || !state.tabs[targetId] || !state.tabs[draggedId]) return [state, null];
 	if (state.essentials.includes(targetId)) return [state, null];
 	const dragged = detach(state, draggedId);
 	const target = dragged && detach(dragged.state, targetId);
 	if (!dragged || !target || target.from.area === "essentials") return [state, null];
-	const id = newId();
 	const folder: FolderNode = { kind: "folder", id, name, open: true, children: [target.node, dragged.node] };
 	const from = target.from;
 	const space = target.state.spaces.find((s) => s.id === from.spaceId);
@@ -442,14 +446,21 @@ export const ARCHIVE_LIMIT = 200;
 
 /**
  * Archives open tabs not shown for longer than `maxAgeMs`. The tab a space is showing is never archived, nor is any
- * pinned tab or Essential. Archived tabs leave the space and go to the front of `archive`.
+ * pinned tab or Essential, nor a tab in `keep` (the browser's tabs playing sound). Archived tabs leave the space and go
+ * to the front of `archive`.
  */
-export function archiveStale(state: BrowserState, now: number, maxAgeMs: number): BrowserState {
+export function archiveStale(
+	state: BrowserState,
+	now: number,
+	maxAgeMs: number,
+	keep: ReadonlySet<TabId> = new Set(),
+): BrowserState {
 	const archived: ArchivedTab[] = [];
 	const spaces = state.spaces.map((space) => {
 		const stale = space.open.filter((id) => {
 			const tab = state.tabs[id];
-			return id !== space.activeTabId && tab?.lastActiveAt !== undefined && now - tab.lastActiveAt > maxAgeMs;
+			if (id === space.activeTabId || keep.has(id)) return false;
+			return tab?.lastActiveAt !== undefined && now - tab.lastActiveAt > maxAgeMs;
 		});
 		for (const id of stale) {
 			const tab = state.tabs[id];

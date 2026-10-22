@@ -1,11 +1,12 @@
 import { css, html, LitElement } from "lit";
 import type { Browser } from "../../../../webui/src/bridge";
 import type { HistoryBridge } from "../../../../webui/src/history-bridge";
-import type { Update } from "../../app/loka-app";
+import type { Act } from "../../app/loka-app";
 import type { UiPrefs } from "../../app/ui-prefs.logic";
-import "../history/loka-history";
+import "../library/loka-library";
 import "../settings/loka-settings";
 import { keys } from "../../app/platform";
+import { type Section, sectionFromHash, sectionTitle, sectionUrl } from "../library/library.logic";
 import type { SetUi } from "../settings/loka-settings";
 import { faviconBackground, faviconInner, hostOf } from "../sidebar/favicon";
 import type { BrowserState, Tab } from "../sidebar/sidebar.logic";
@@ -28,11 +29,11 @@ export class LokaPage extends LitElement {
 	declare tab: Tab | null;
 	declare spaceName: string;
 	declare state: BrowserState;
-	declare apply: Update;
+	declare apply: Act;
 	declare ui: UiPrefs;
 	declare setUi: SetUi;
 	declare pinned: boolean;
-	/** Where the stand-in History page (loka://history) gets its visits: the prototype's fake. */
+	/** Where the stand-in Library's History (loka://history) gets its visits: the prototype's fake. */
 	declare historyBridge: HistoryBridge;
 	/** The browser the stand-in Settings page talks to: the prototype's fake. */
 	declare browser: Browser;
@@ -54,9 +55,23 @@ export class LokaPage extends LitElement {
 			</section>`;
 		}
 
-		if (tab?.url === "loka://history") {
+		// The Library: the address's hash picks the section, and the switcher changes the address, as in the browser.
+		if (tab?.url.startsWith("loka://history")) {
 			return html`<section class="frame inside glass">
-				<loka-history .bridge=${this.historyBridge}></loka-history>
+				<loka-library
+					.section=${sectionFromHash(new URL(tab.url).hash)}
+					.state=${this.state}
+					.act=${this.apply}
+					.historyBridge=${this.historyBridge}
+					.browser=${this.browser}
+					@loka-library-section=${(e: CustomEvent<Section>) =>
+						this.apply({
+							op: "navigateTab",
+							tabId: tab.id,
+							url: sectionUrl("loka://history", e.detail),
+							title: sectionTitle(e.detail),
+						})}
+				></loka-library>
 			</section>`;
 		}
 

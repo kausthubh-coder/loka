@@ -36,6 +36,7 @@ export type ActionId =
 	| "toggle-sidebar"
 	| "settings"
 	| "history"
+	| "library"
 	| "downloads"
 	| "extensions"
 	| "search-sidebar"
@@ -75,6 +76,12 @@ const ACTIONS: { action: ActionId; label: string; detail: string; words: string 
 	},
 	{ action: "settings", label: "Settings", detail: "Loka's settings", words: "preferences options" },
 	{ action: "history", label: "History", detail: "Ctrl+H", words: "visited past pages recent" },
+	{
+		action: "library",
+		label: "Library",
+		detail: "Every space, archived tabs, history and downloads",
+		words: "spaces overview all tabs archive",
+	},
 	{ action: "downloads", label: "Downloads", detail: "Recent files", words: "files" },
 	{ action: "extensions", label: "Extensions", detail: "Run, pin or manage them", words: "addons plugins" },
 	{ action: "search-sidebar", label: "Search the sidebar", detail: "Ctrl+Shift+F", words: "find tabs everywhere" },

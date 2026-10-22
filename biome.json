@@ -10,6 +10,7 @@
 			"prototype/**",
 			"webui/**",
 			"!webui/dist",
+			"!prototype/src/features/sidebar/model-cases.json",
 			"scripts/**",
 			".agents/skills/*/scripts/**",
 			"package.json",

@@ -2,8 +2,10 @@
 
 The built browser's left column is a built-in page, `chrome://loka-sidebar.top-chrome`, built from `webui/` and
 answered by `LokaSidebarHandler` (C++ in `patches/loka/loka-native-sidebar.patch`). It shows the window's real tabs
-with their own icons and sound, keeps spaces in the profile (`state.v1` and `ui.v1` in the `loka.store` pref, shared
-by every window), and is the window's title bar. A first run opens Loka's setup (`chrome://setup`) in its own window
+with their own icons and sound, and is the window's title bar. The spaces belong to `LokaSpacesService` in the
+browser: it saves them in the profile ("Loka Spaces.json", the archive in "Loka Archive.json"; a first run takes them
+from the old `state.v1` in the `loka.store` pref) and keeps every window's tabs in step. Pages read them with
+`getSpaces` and change them with intents (`spacesDo`); settings stay in `ui.v1` in the `loka.store` pref. A first run opens Loka's setup (`chrome://setup`) in its own window
 before any browser window. The UI is never delivered as an extension.
 
 ## Sub-features
@@ -15,8 +17,11 @@ before any browser window. The UI is never delivered as an extension.
   answers WM_NCHITTEST as page, and its top edge still resizes. On macOS, and for setup opened in a tab, the page asks
   `getWindowFrame`, gets "system" and draws none of these.
 - `native-tabs`: every tab in the window is a row; tabs opened from outside the sidebar join the current space. The
-  sidebar calls `syncTabs`, then hears only what changed (`tabs-changed`: changed tabs, removed ids, the order and
-  the groups when they change), at most once a frame.
+  sidebar calls `syncTabs`, then hears only what changed (`tabs-changed`: changed tabs, removed ids, the order when it
+  changes), at most once a frame.
+- `native-spaces`: the sidebar gets the spaces and its window's links once (`getSpaces`), then only what changed
+  (`spaces-changed`, `links-changed`). A click is drawn at once and sent as an intent; the browser's answer carries the
+  intent's number (`ack`). `getSpaces().state` is what tests read for the saved spaces.
 - `native-favicon`: a loaded tab's row shows its page's own icon, an image the sidebar's own host serves
   (`chrome://loka-sidebar.top-chrome/tab-icon/<tab>-<version>@<scale>.png`, the `favicon` in `getTabs`); an unloaded
   one asks the favicon cache (`chrome://favicon2`), which answers the default globe when it knows nothing.

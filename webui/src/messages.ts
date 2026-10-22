@@ -4,6 +4,8 @@
 
 /** Requests the sidebar sends with chrome.send; the handler registers each in RegisterMessages. */
 export const MESSAGES = [
+	"getSpaces",
+	"spacesDo",
 	"syncTabs",
 	"getTabs",
 	"getGroups",
@@ -17,18 +19,30 @@ export const MESSAGES = [
 	"goForward",
 	"reload",
 	"setMuted",
-	"groupTabs",
-	"updateGroup",
-	"ungroupTabs",
 	"search",
 	"openPage",
 	"windowAction",
 	"startWindowDrag",
 	"extensionAction",
+	// The floating menu window (LokaMenu): the sidebar shows a menu; the menu page says its size, what was picked, or
+	// to close.
+	"showMenu",
+	"menuReady",
+	"menuPicked",
+	"closeMenu",
 ] as const;
 
 /** News the handler pushes with FireWebUIListener. */
-export const EVENTS = ["tabs-changed", "store-changed"] as const;
+export const EVENTS = [
+	"spaces-changed",
+	"links-changed",
+	"tabs-changed",
+	"store-changed",
+	// The menu window: the menu to draw (to menu.html); what was picked, or that it closed (to the sidebar).
+	"menu-show",
+	"menu-picked",
+	"menu-closed",
+] as const;
 
 /**
  * Requests the handler in patches/loka doesn't answer yet (the browser drops them). The build checkout may be ahead:
@@ -78,8 +92,9 @@ export type Message = (typeof MESSAGES)[number] | (typeof PLANNED_MESSAGES)[numb
 export type BrowserEvent = (typeof EVENTS)[number] | (typeof PLANNED_EVENTS)[number];
 
 /**
- * The History page's own messages (history.html at chrome://history). A different handler answers them, not
- * LokaSidebarHandler, so they're listed apart; history-bridge.ts may only use these.
+ * The Library's history messages (history.html at chrome://history). LokaHistoryHandler answers them, not
+ * LokaSidebarHandler, so they're listed apart; history-bridge.ts may only use these. The Library also has the
+ * sidebar's handler, for getSpaces, spacesDo, getDownloads and downloadAction (through bridge.ts).
  */
 export const HISTORY_MESSAGES = ["queryHistory", "deleteUrls", "deleteRange", "openUrl"] as const;
 export const HISTORY_EVENTS = ["history-changed"] as const;

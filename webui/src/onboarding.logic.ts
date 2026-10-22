@@ -1,12 +1,8 @@
 // The spaces the user made in Loka's setup page (chrome://setup) become the sidebar's spaces. Setup saves them as
 // {"version":1,"spaces":[{name, hue, planet}]}; the sidebar applies them once.
 
-import {
-	type BrowserState,
-	createSpace,
-	type SpaceLook,
-	updateSpace,
-} from "../../prototype/src/features/sidebar/sidebar.logic";
+import type { Intent } from "../../prototype/src/features/sidebar/intents.logic";
+import { type BrowserState, newId, type SpaceLook } from "../../prototype/src/features/sidebar/sidebar.logic";
 
 const PLANETS = new Set(["ringed", "banded", "ocean", "cratered"]);
 
@@ -28,14 +24,17 @@ export function onboardingSpaces(json: string): SpaceLook[] {
 }
 
 /**
- * Applies setup's spaces: the first one becomes the space the browser started in (keeping its tabs), the rest are
- * added after it. The first space ends up showing.
+ * What applying setup's spaces asks of the browser: the first one becomes the space the browser started in (keeping
+ * its tabs), the rest are added after it, and the first ends up showing. Intents, so a tab the browser takes in
+ * meanwhile isn't written over.
  */
-export function applyOnboarding(state: BrowserState, spaces: SpaceLook[]): BrowserState {
+export function onboardingIntents(state: BrowserState, spaces: SpaceLook[], makeId = newId): Intent[] {
 	const [first, ...rest] = spaces;
 	const start = state.spaces[0];
-	if (!first || !start) return state;
-	let next = updateSpace(state, start.id, first);
-	for (const look of rest) [next] = createSpace(next, look);
-	return { ...next, activeSpaceId: start.id };
+	if (!first || !start) return [];
+	return [
+		{ op: "updateSpace", spaceId: start.id, look: first },
+		...rest.map((look): Intent => ({ op: "createSpace", look, id: makeId() })),
+		{ op: "switchSpace", spaceId: start.id },
+	];
 }

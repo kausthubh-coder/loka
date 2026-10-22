@@ -149,6 +149,7 @@ export const MUSIC_TAB: NativeTab = {
 	loading: false,
 	audible: true,
 	muted: false,
+	discarded: false,
 	groupId: -1,
 	lastAccessed: 0,
 };

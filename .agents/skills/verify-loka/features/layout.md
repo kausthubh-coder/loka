@@ -17,7 +17,8 @@ from inside the address field; Downloads is a button in the bottom row beside th
 - `sidebar-narrow`: below 286 px the top row drops Reload, below 254 px Forward too.
 - `window-buttons`: `Minimize`, `Maximize` and `Close window` call `windowAction`; empty top-row space calls
   `startWindowDrag`, and a double-click maximizes.
-- `page-settings`: Sidebar, Spaces (each space's light or dark, edit, new), Sound, Tabs (archiving), Extensions,
+- `page-settings`: Sidebar, Spaces (each space's light or dark, edit, new), Appearance (Moving stars, see
+  `sky.md`), Sound, Tabs (archiving), Extensions,
   Sync, Import, Privacy and Search, shortcuts, about.
 - `settings-rail`: the `Settings sections` nav beside the page lists every section with an icon and marks the one in
   view (`aria-current`, from IntersectionObservers; `settings.logic.ts` picks it). A click scrolls to the section and

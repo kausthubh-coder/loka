@@ -1,10 +1,18 @@
 import { css, html, LitElement, nothing, type PropertyValues, svg, type TemplateResult } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import type { Browser, NativeExtension } from "../../../../webui/src/bridge";
-import type { Update } from "../../app/loka-app";
+import type { Act } from "../../app/loka-app";
 import { reducedMotion } from "../../app/theme";
-import { AUTOPLAY_MODES, type Autoplay, SIDEBAR_MAX, SIDEBAR_MIN, type UiPrefs } from "../../app/ui-prefs.logic";
-import { ARCHIVE_CHOICES } from "../archive/archive.logic";
+import {
+	AUTOPLAY_MODES,
+	type Autoplay,
+	SIDEBAR_MAX,
+	SIDEBAR_MIN,
+	STAR_MOTIONS,
+	type StarMotion,
+	type UiPrefs,
+} from "../../app/ui-prefs.logic";
+import { ARCHIVE_CHOICES, SLEEP_CHOICES } from "../archive/archive.logic";
 import { withPinned } from "../extensions/extensions.logic";
 import "../extensions/loka-extensions";
 import {
@@ -16,14 +24,7 @@ import {
 } from "../import/import.logic";
 import { IMPORT_SOURCES, type ImportSource, pickFile } from "../import/pick-file";
 import { planet, SPACE_HUES } from "../sidebar/planet";
-import {
-	type BrowserState,
-	countTabs,
-	SPACE_SCHEMES,
-	type Space,
-	type SpaceScheme,
-	updateSpace,
-} from "../sidebar/sidebar.logic";
+import { type BrowserState, countTabs, SPACE_SCHEMES, type Space, type SpaceScheme } from "../sidebar/sidebar.logic";
 import { playCue, setSoundPrefs } from "../sound/sound";
 import "../sync/loka-sync-settings";
 import { keys as shortcutKeys } from "../../app/platform";
@@ -51,6 +52,12 @@ const BROWSER_PAGES = {
 
 const SCHEME_NAMES: Record<SpaceScheme, string> = { light: "Light", dark: "Dark", system: "System" };
 
+const STAR_MOTION_NAMES: Record<StarMotion, string> = {
+	"while-using": "While I'm using Loka",
+	always: "Always",
+	off: "Off",
+};
+
 const AUTOPLAY_NAMES: Record<Autoplay, string> = {
 	block: "Block video and sound until I click",
 	"block-audible": "Block sound only",
@@ -64,6 +71,7 @@ const NARROW = 720;
 const ICONS = {
 	sidebar: svg`<rect x="3" y="4.5" width="18" height="15" rx="3" /><path d="M9 4.5v15" />`,
 	spaces: svg`<circle cx="12" cy="12" r="6.5" /><path d="M18.2 13.4c2.2 2 3.4 3.8 3 4.7-.7 1.4-5.6-.3-10.9-3.7S1.4 7 2.1 5.6c.5-.9 2.8-.5 5.6.7" />`,
+	appearance: svg`<path d="M10 3.5c.5 4.2 2.3 6 6.5 6.5-4.2.5-6 2.3-6.5 6.5-.5-4.2-2.3-6-6.5-6.5 4.2-.5 6-2.3 6.5-6.5z" /><path d="M17.5 14.5c.3 2 1 2.7 3 3-2 .3-2.7 1-3 3-.3-2-1-2.7-3-3 2-.3 2.7-1 3-3z" />`,
 	sound: svg`<path d="M4 9h3l4.5-4v14L7 15H4z" /><path d="M15.5 9a4 4 0 0 1 0 6M18.5 6a8 8 0 0 1 0 12" />`,
 	media: svg`<circle cx="12" cy="12" r="9" /><path d="M10 8.8v6.4c0 .5.5.8.9.5l5-3.2c.4-.2.4-.8 0-1l-5-3.2c-.4-.3-.9 0-.9.5z" />`,
 	tabs: svg`<rect x="3" y="8.5" width="13" height="11.5" rx="2.5" /><path d="M8 4.5h10.5A2.5 2.5 0 0 1 21 7v8.5" />`,
@@ -155,7 +163,7 @@ export class LokaSettings extends LitElement {
 	};
 
 	declare state: BrowserState;
-	declare apply: Update;
+	declare apply: Act;
 	declare ui: UiPrefs;
 	/** The last import's result, shown under the buttons. */
 	imported = "";
@@ -238,7 +246,7 @@ export class LokaSettings extends LitElement {
 				this.imported = `That isn't ${name}'s ${file} file.`;
 				return;
 			}
-			this.apply((s) => addArcSpaces(s, arc, SPACE_HUES));
+			this.apply({ op: "replaceState", state: addArcSpaces(this.state, arc, SPACE_HUES) });
 			const tabs = arc.spaces.reduce((n, s) => n + countImported(s.pinned), 0);
 			this.imported = `Added ${arc.spaces.length} spaces with ${tabs} pinned tabs, and ${arc.favorites.length} Favorites.`;
 			return;
@@ -248,7 +256,10 @@ export class LokaSettings extends LitElement {
 			this.imported = `That isn't ${name}'s ${file} file.`;
 			return;
 		}
-		this.apply((s) => addImportedFolder(s, s.activeSpaceId, `${name} bookmarks`, nodes));
+		this.apply({
+			op: "replaceState",
+			state: addImportedFolder(this.state, this.state.activeSpaceId, `${name} bookmarks`, nodes),
+		});
 		this.imported = `Added ${countImported(nodes)} bookmarks as a folder in this space.`;
 	}
 
@@ -261,7 +272,11 @@ export class LokaSettings extends LitElement {
 	}
 
 	private setScheme(space: Space, scheme: SpaceScheme) {
-		this.apply((s) => updateSpace(s, space.id, { name: space.name, hue: space.hue, planet: space.planet, scheme }));
+		this.apply({
+			op: "updateSpace",
+			spaceId: space.id,
+			look: { name: space.name, hue: space.hue, planet: space.planet, scheme },
+		});
 	}
 
 	private toggle(label: string, on: boolean, change: (on: boolean) => void, disabled = false) {
@@ -398,13 +413,26 @@ export class LokaSettings extends LitElement {
 				control: html`<select
 					aria-label="Archive open tabs"
 					@change=${(e: Event) => {
-						const value = (e.target as HTMLSelectElement).value;
-						this.setUi({ archiveAfterHours: value ? Number(value) : null });
+						this.setUi({ archiveAfterHours: Number((e.target as HTMLSelectElement).value) });
 					}}
 				>
 					${ARCHIVE_CHOICES.map(
-						(c) =>
-							html`<option value=${c.hours ?? ""} ?selected=${c.hours === ui.archiveAfterHours}>${c.label}</option>`,
+						(c) => html`<option value=${c.hours} ?selected=${c.hours === ui.archiveAfterHours}>${c.label}</option>`,
+					)}
+				</select>`,
+			},
+			{
+				label: "Unload other spaces' tabs",
+				detail:
+					"Tabs in a space you aren't looking at stop using memory. They keep their place and history and load again when you open them. Tabs playing sound or holding typed text stay loaded.",
+				control: html`<select
+					aria-label="Unload other spaces' tabs"
+					@change=${(e: Event) => {
+						this.setUi({ sleepAfterMinutes: Number((e.target as HTMLSelectElement).value) });
+					}}
+				>
+					${SLEEP_CHOICES.map(
+						(c) => html`<option value=${c.minutes} ?selected=${c.minutes === ui.sleepAfterMinutes}>${c.label}</option>`,
 					)}
 				</select>`,
 			},
@@ -517,6 +545,33 @@ export class LokaSettings extends LitElement {
 				rows: this.spaceRows(),
 				more: html`<button class="button add" @click=${() => this.action("new-space")}>New space</button>`,
 			},
+			{
+				id: "appearance",
+				title: "Appearance",
+				keywords: "sky animation motion battery",
+				rows: [
+					{
+						label: "Moving stars",
+						detail:
+							"The sidebar's stars drift slowly. While I'm using Loka stops them 15 seconds after you last touch the window.",
+						look: "column",
+						control: html`<div class="segmented" role="radiogroup" aria-label="Moving stars">
+							${STAR_MOTIONS.map(
+								(mode) => html`<button
+									role="radio"
+									aria-checked=${ui.starMotion === mode}
+									class=${ui.starMotion === mode ? "on" : ""}
+									@click=${() => {
+										if (ui.starMotion !== mode) this.setUi({ starMotion: mode });
+									}}
+								>
+									${STAR_MOTION_NAMES[mode]}
+								</button>`,
+							)}
+						</div>`,
+					},
+				],
+			},
 			{ id: "sound", title: "Sound", rows: this.soundRows() },
 			{
 				id: "media",
@@ -572,7 +627,7 @@ export class LokaSettings extends LitElement {
 				more: this.sync
 					? html`<loka-sync-settings
 							.hooks=${this.sync}
-							@loka-take-spaces=${(e: CustomEvent<BrowserState>) => this.apply((s) => takeSpaces(s, e.detail))}
+							@loka-take-spaces=${(e: CustomEvent<BrowserState>) => this.apply({ op: "replaceState", state: takeSpaces(this.state, e.detail) })}
 						></loka-sync-settings>`
 					: nothing,
 			},

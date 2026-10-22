@@ -38,8 +38,9 @@ export const UX = {
 	layout: { prototype: ["layout"], browser: true, flows: ["states", "settings"] },
 	extensions: { prototype: ["extensions"], browser: true, flows: ["extensions"] },
 	history: { prototype: ["history"], flows: ["settings"] },
+	library: { prototype: ["library"], flows: ["settings"] },
 	onboarding: { prototype: ["onboarding"], browser: true, flows: ["first-run"] },
-	archive: { prototype: ["archive"], flows: ["panels", "settings"] },
+	archive: { prototype: ["archive"], flows: ["panels", "settings", "sleep"] },
 	"search-and-keys": { prototype: ["search-and-keys"], flows: ["panels", "tabs"] },
 	import: {
 		prototype: ["import"],
@@ -47,6 +48,11 @@ export const UX = {
 	},
 	media: { prototype: ["media"], browser: true, flows: ["panels"] },
 	sound: { prototype: ["sound"], browser: true, flows: ["settings"] },
+	sky: {
+		prototype: ["sky"],
+		flows: ["settings"],
+		gap: "the 15 s rest, a hidden window and reduced motion are proven in the prototype only; verify:perf --stars measures the cost",
+	},
 	"native-sidebar": { browser: true, flows: ["restart"] },
 	"browser-build": { browser: true, patches: true },
 };

@@ -61,7 +61,8 @@ function visitsLabel(count: number): string {
  * Rows name the page and its site, never the raw address: redirects are named for where they went, and three or more
  * visits in a row to one site fold into one row that opens. Pick rows (their box, Shift for a run, Space on the
  * keyboard) and delete them. It loads a page at a time as you scroll, and days off screen aren't laid out, so a long
- * history stays smooth. Talks to the browser only through `bridge`.
+ * history stays smooth. Talks to the browser only through `bridge`. It's the Library's History section: the Library's
+ * switcher goes in the rail's `nav` slot, and the Library's other sections are drawn with these styles.
  */
 export class LokaHistory extends LitElement {
 	static override properties = {
@@ -601,6 +602,7 @@ export class LokaHistory extends LitElement {
 			<div class="scroller">
 				<div class="layout" ?inert=${layer} @click=${() => (this.clearMenu = false)}>
 					<aside class="rail card">
+						<slot name="nav"></slot>
 						<h1>History</h1>
 						<label class="search">
 							<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3 3" /></svg>
@@ -752,18 +754,22 @@ export class LokaHistory extends LitElement {
 			flex: none;
 		}
 
-		/* The rail: title, search, filters and clear, staying in view while the list scrolls. */
+		/* The rail: the Library's sections (slotted in by <loka-library>), title, search, filters and clear, staying in
+		   view while the list scrolls. */
 		.rail {
 			position: sticky;
 			top: 32px;
 			align-self: start;
 			display: grid;
-			grid-template-areas: "title" "search" "filters" "clear";
+			grid-template-areas: "nav" "title" "search" "filters" "clear";
 			/* The column is the card's width, not the search field's natural one. */
 			grid-template-columns: minmax(0, 1fr);
 			align-content: start;
 			gap: 16px;
 			padding: 22px 14px 14px;
+		}
+		::slotted([slot="nav"]) {
+			grid-area: nav;
 		}
 		h1 {
 			grid-area: title;
@@ -1252,7 +1258,7 @@ export class LokaHistory extends LitElement {
 			}
 			.rail {
 				position: static;
-				grid-template-areas: "title clear" "search search" "filters filters";
+				grid-template-areas: "nav nav" "title clear" "search search" "filters filters";
 				grid-template-columns: 1fr auto;
 				align-items: center;
 				gap: 12px;

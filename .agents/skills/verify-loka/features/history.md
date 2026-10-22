@@ -1,8 +1,9 @@
 # History
 
-Loka's own History page (chrome://history, `webui/history.html`, its own handler through `history-bridge.ts`):
-the sky with two glass cards on it. A rail on the left (a header over the list when the page is under 820px wide)
-has the title, search, the date filters and "Clear history…". The list card shows visits grouped by day under
+Loka's own History page (chrome://history, `webui/history.html`, its own handler through `history-bridge.ts`), the
+History section of the [Library](./library.md): the sky with two glass cards on it. A rail on the left (a header over
+the list when the page is under 820px wide) has the Library's switcher, the title, search, the date filters and
+"Clear history…". The list card shows visits grouped by day under
 headings that stay put while the day scrolls. It loads 100 visits at a time as you scroll.
 
 ## Sub-features
@@ -24,7 +25,8 @@ headings that stay put while the day scrolls. It loads 100 visits at a time as y
 - `history-keys`: arrows, Home and End, Enter (Ctrl for a new tab), Right/Left into and out of a site, Delete,
   Escape, `/` to search.
 - `history-look`: glass cards (blur only on the two cards, solid with reduced transparency); light and dark. The sky
-  is Loka blue (hue 200): the History handler can't read the profile store yet, so it can't follow the space.
+  takes the current space's color and scheme once the spaces load (the Library's `getSpaces`), Loka blue (hue 200)
+  until then or when the browser doesn't answer it.
 
 ## How to get to it (user POV)
 

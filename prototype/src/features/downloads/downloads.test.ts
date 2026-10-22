@@ -4,6 +4,8 @@ import {
 	downloadActions,
 	downloadProgress,
 	downloadStatus,
+	fileExt,
+	fileHue,
 	formatBytes,
 	newlyFinished,
 	overallProgress,
@@ -113,4 +115,16 @@ test("a download counts as just finished when it turns complete, or arrives comp
 	expect(ids(newlyFinished([running, old], [{ ...running, state: "complete" }, old]))).toEqual([1]);
 	expect(ids(newlyFinished([old], [download({ id: 3, state: "complete" }), old]))).toEqual([3]);
 	expect(ids(newlyFinished([running], [{ ...running, state: "failed" }]))).toEqual([]);
+});
+
+test("a file's tile names its type in at most four letters, and files of one type share a color", () => {
+	expect(["CSC281-GDD-v3.pdf", "lofi-cover.jpeg", "archive.tar.gz", "notes.markdown", "README"].map(fileExt)).toEqual([
+		"PDF",
+		"JPEG",
+		"GZ",
+		"MARK",
+		"",
+	]);
+	expect(fileHue("a.msi")).toBe(fileHue("b.exe"));
+	expect(fileHue("a.pdf")).not.toBe(fileHue("a.zip"));
 });

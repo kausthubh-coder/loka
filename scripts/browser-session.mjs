@@ -287,7 +287,8 @@ export async function launchBrowser({ name, chrome = chromePath(), args = [], ur
 		target,
 		/** The window's sidebar page. */
 		sidebar: async () => {
-			const t = await target((x) => x.url.startsWith("chrome://loka-sidebar.top-chrome"));
+			// The sidebar itself, not the command bar or menu pages on the same host (command.html, menu.html).
+			const t = await target((x) => /^chrome:\/\/loka-sidebar\.top-chrome\/(sidebar\.html)?$/.test(x.url));
 			const session = await connect(t.webSocketDebuggerUrl);
 			await until(() => evaluate(session, "Boolean(document.querySelector('loka-panel'))").catch(() => false), 10000);
 			return session;

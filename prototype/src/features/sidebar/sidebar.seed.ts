@@ -27,8 +27,9 @@ const tabs: Tab[] = [
 const tab = (id: string): PinnedNode => ({ kind: "tab", id });
 
 const HOUR = 60 * 60 * 1000;
-// How long ago some open tabs were last shown, so the archive has something to take when it's turned on.
-const LAST_SHOWN: Record<string, number> = { "t-arc": 3 * 24 * HOUR, "t-zen": 26 * HOUR, "t-hn": 2 * HOUR };
+// How long ago some open tabs were last shown: all inside the archive's 12-hour default, so a fresh start keeps them,
+// and Arc and Zen go first when time passes.
+const LAST_SHOWN: Record<string, number> = { "t-arc": 9 * HOUR, "t-zen": 5 * HOUR, "t-hn": 2 * HOUR };
 
 export function seedState(now = Date.now()): BrowserState {
 	return {

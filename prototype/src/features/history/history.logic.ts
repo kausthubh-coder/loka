@@ -5,11 +5,12 @@ export function itemKey(item: HistoryItem): string {
 	return `${item.time}|${item.url}`;
 }
 
-export interface Day {
+/** A day of something with a time: visits here, and the Library's archived tabs and downloads. */
+export interface Day<T extends { time: number } = HistoryItem> {
 	/** The local date, "2026-10-15", stable across re-renders. */
 	key: string;
 	label: string;
-	items: HistoryItem[];
+	items: T[];
 }
 
 function startOfDay(time: number): Date {
@@ -43,9 +44,9 @@ export function timeLabel(time: number): string {
 	return new Date(time).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
-/** Visits, newest first, cut into local days, each with its heading. */
-export function groupByDay(items: HistoryItem[], now: number): Day[] {
-	const days: Day[] = [];
+/** Visits (or anything with a time), newest first, cut into local days, each with its heading. */
+export function groupByDay<T extends { time: number }>(items: T[], now: number): Day<T>[] {
+	const days: Day<T>[] = [];
 	for (const item of items) {
 		const key = dateKey(startOfDay(item.time));
 		const last = days.at(-1);

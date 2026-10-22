@@ -9,11 +9,13 @@ import { DEMO_EXTENSIONS, DEMO_LINKS } from "../demo/demo-data";
 import { fakeBrowser, onDemoPopup, pressBrowserShortcut } from "../demo/fake-browser";
 import { fakeHistory } from "../demo/fake-history";
 import { type ActionId, isActionId } from "../features/command-bar/command-bar.logic";
+import { type Section, sectionTitle, sectionUrl } from "../features/library/library.logic";
 import type { MediaAction, NowPlaying } from "../features/media/loka-media-card";
 import { nowPlaying } from "../features/media/media.logic";
 import { applyTour, type TourResult } from "../features/onboarding/onboarding.logic";
 import type { LiveTabs } from "../features/sidebar/favicon";
 import { hostOf } from "../features/sidebar/favicon";
+import { applyIntent, type Intent } from "../features/sidebar/intents.logic";
 import type { LokaSidebar, Panel } from "../features/sidebar/loka-sidebar";
 import { SPACE_HUES } from "../features/sidebar/planet";
 import {
@@ -40,7 +42,7 @@ import {
 import { seedState } from "../features/sidebar/sidebar.seed";
 import { playCue, setSoundPrefs } from "../features/sound/sound";
 import type { LookPreview } from "../features/spaces/loka-space-editor";
-import { type NebulaNow, skyLayer, skyNow, skyStyles, skyTurn } from "./sky";
+import { type NebulaNow, setStarMotion, skyLayer, skyNow, skyStyles, skyTurn } from "./sky";
 import { reducedMotion, themeTokens } from "./theme";
 import { resolveScheme, type Scheme } from "./theme.logic";
 import { clampWidth, DEFAULT_UI, parseUiPrefs, type UiPrefs } from "./ui-prefs.logic";
@@ -53,7 +55,10 @@ function loadState(): BrowserState {
 	return (saved && importState(saved)) || seedState();
 }
 
-export type Update = (change: (state: BrowserState) => BrowserState) => void;
+/** How the prototype changes its own spaces. */
+type Update = (change: (state: BrowserState) => BrowserState) => void;
+/** How a component asks for a change: an intent, as the browser's sidebar sends it (intents.logic.ts). */
+export type Act = (intent: Intent) => void;
 
 type Editing = { mode: "create"; look: SpaceLook } | { mode: "edit"; spaceId: string; look: SpaceLook };
 
@@ -135,6 +140,9 @@ export class LokaApp extends LitElement {
 		} else this.state = next;
 	};
 
+	/** The prototype applies an intent to its own spaces, the way the browser applies one to the saved spaces. */
+	act: Act = (intent) => this.apply((s) => applyIntent(s, intent));
+
 	setUi = (change: Partial<UiPrefs>) => {
 		this.ui = { ...this.ui, ...change, sidebarWidth: clampWidth(change.sidebarWidth ?? this.ui.sidebarWidth) };
 		localStorage.setItem(UI_KEY, JSON.stringify(this.ui));
@@ -166,8 +174,8 @@ export class LokaApp extends LitElement {
 			fakeBrowser.setSidebarPinned(!this.pinned);
 		} else if (action === "settings") {
 			this.apply((s) => focusOrOpen(s, "loka://settings", "Settings"));
-		} else if (action === "history") {
-			this.apply((s) => focusOrOpen(s, "loka://history", "History"));
+		} else if (action === "history" || action === "library") {
+			this.openLibrary(action === "history" ? "history" : "spaces");
 		} else if (action === "downloads" || action === "extensions" || action === "archive") {
 			this.showPanel(action);
 		} else if (action === "search-sidebar") {
@@ -175,6 +183,19 @@ export class LokaApp extends LitElement {
 		} else if (action === "onboarding") {
 			this.tourOpen = true;
 		}
+	}
+
+	/**
+	 * Shows the Library at a section in its one tab, wherever that tab is, or opens it: the browser keeps one
+	 * chrome://history tab and takes it to the address asked for.
+	 */
+	private openLibrary(section: Section) {
+		const url = sectionUrl("loka://history", section);
+		const title = sectionTitle(section);
+		this.apply((s) => {
+			const shown = Object.values(s.tabs).find((t) => t.url.startsWith("loka://history"));
+			return shown ? revealTab(navigateTab(s, shown.id, url, title), shown.id) : openTab(s, url, title);
+		});
 	}
 
 	/** Opens a sidebar panel, sliding a hidden sidebar in first so the panel can be seen. */
@@ -232,11 +253,14 @@ export class LokaApp extends LitElement {
 		return { media, tab, muted: this.tabs.find((t) => t.id === media.tabId)?.muted ?? false };
 	}
 
-	/** Runs the opt-in archive now and every minute after, using the setting in Settings > Tabs. */
+	/** Runs the archive now and every minute after, using the setting in Settings > Tabs. */
 	private archiveNow = () => {
 		const hours = this.ui.archiveAfterHours;
 		if (!hours) return;
-		const next = archiveStale(this.state, Date.now(), hours * 60 * 60 * 1000);
+		const audible = new Set(
+			Object.keys(DEMO_LINKS).filter((id) => this.tabs.find((t) => t.id === DEMO_LINKS[id])?.audible),
+		);
+		const next = archiveStale(this.state, Date.now(), hours * 60 * 60 * 1000, audible);
 		if (next !== this.state) this.apply(() => next);
 	};
 
@@ -440,6 +464,7 @@ export class LokaApp extends LitElement {
 		const scheme = this.schemeOf(this.state);
 		const hue = this.preview?.hue ?? space.hue;
 		setSoundPrefs({ on: this.ui.sound, volume: this.ui.soundVolume });
+		setStarMotion(this.ui.starMotion);
 		document.documentElement.style.colorScheme = scheme;
 		const layout = `${side} ${hidden ? "hidden" : ""} ${hidden && this.peek ? "peek" : ""} ${this.tourOpen ? "touring" : ""}`;
 		// Each linked demo tab's page: its sound, as the browser's tab strip reports it.
@@ -462,7 +487,7 @@ export class LokaApp extends LitElement {
 					this.popup = null;
 				}}
 			>
-				${skyLayer(hue, scheme)}
+				${skyLayer(hue, scheme, this.ui.starMotion === "off" ? "still" : "drifts")}
 				${
 					hidden
 						? html`<div class="edge-zone" aria-hidden="true" @pointerenter=${() => (this.peek = true)}></div>`
@@ -479,7 +504,7 @@ export class LokaApp extends LitElement {
 				}
 				<loka-sidebar
 					.state=${this.state}
-					.apply=${this.apply}
+					.apply=${this.act}
 					.playing=${this.nowPlaying()}
 					.live=${live}
 					.browser=${fakeBrowser}
@@ -500,7 +525,7 @@ export class LokaApp extends LitElement {
 					.tab=${activeTab(this.state)}
 					.spaceName=${space.name}
 					.state=${this.state}
-					.apply=${this.apply}
+					.apply=${this.act}
 					.ui=${this.ui}
 					.setUi=${this.setUi}
 					.pinned=${this.pinned}

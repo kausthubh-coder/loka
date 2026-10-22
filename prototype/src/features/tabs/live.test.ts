@@ -94,16 +94,17 @@ describe("the browser's tab events update the spaces", () => {
 		expect(homeOf(state, lokaId)).toBe("s-home");
 	});
 
-	test("a new tab that turns out to be an empty tab leaves its space once its page commits", () => {
+	test("a new tab waits for its first page, so one that turns out to be an empty tab never joins a space", () => {
 		const [s0, live0] = start();
-		// Before its first page commits, the browser says about:blank, so the tab was taken in as an open tab.
+		// Before its first page commits, the browser says about:blank: no "about:blank" row.
 		const [withNew, live1] = tabCreated(s0, live0, tab(26, "about:blank", { active: true }), NOW);
-		const newId = Object.keys(live1).find((id) => live1[id] === 26) ?? "";
-		expect(homeOf(withNew, newId)).toBe("s-build");
+		expect([withNew, live1]).toEqual([s0, live0]);
 		const [state, live] = tabUpdated(withNew, live1, tab(26, "chrome://loka-newtab/", { active: true }), NOW);
-		expect(state.tabs[newId]).toBeUndefined();
-		expect(state.spaces.find((s) => s.id === "s-build")?.open).toEqual(s0.spaces.find((s) => s.id === "s-build")?.open);
-		expect(live).toEqual(live0);
+		expect([state, live]).toEqual([s0, live0]);
+		// One that gets a real page joins then.
+		const [joined, linked] = tabUpdated(withNew, live1, tab(26, "https://real.example/", { active: true }), NOW);
+		const newId = Object.keys(linked).find((id) => linked[id] === 26) ?? "";
+		expect(homeOf(joined, newId)).toBe("s-build");
 	});
 
 	test("an empty tab that goes to a page joins the space on screen; until then it stays out", () => {

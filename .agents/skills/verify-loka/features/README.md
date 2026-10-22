@@ -65,12 +65,16 @@ disagree, or a recipe or flow it names doesn't exist.
   Settings, Downloads.
 - [Extensions](./extensions.md): pinned ones in the address field, running them, pinning, the empty state.
 - [History](./history.md): Loka's History page, Ctrl+H.
+- [Library](./library.md): chrome://history as one page for spaces, archived tabs, history and downloads.
 - [Onboarding](./onboarding.md): the prototype's first-run tour and the browser's setup.
-- [Archive](./archive.md): opt-in archiving of old open tabs, and bringing them back.
+- [Archive](./archive.md): archiving old open tabs (after 12 hours by default) and bringing them back; unloading
+  the tabs of spaces out of sight.
 - [Sidebar search and keyboard](./search-and-keys.md): Ctrl+Shift+F, next/previous tab, arrow keys in the tree.
 - [Import](./import.md): Chrome and Edge bookmarks, Arc spaces and Favorites.
 - [Media controls](./media.md): the now-playing card.
 - [Sound](./sound.md): interface cues for sidebar actions, the throttle, and Settings > Sound.
+- [Moving stars](./sky.md): the sidebar sky's drift, Settings > Appearance > Moving stars, the 15 s rest, hidden
+  windows and reduced motion.
 - [The sidebar in the real browser](./native-sidebar.md): `chrome://loka-sidebar` on real tabs, first run, icons,
   sound, the hit test and real clicks, restart; `verify:browser` and `verify:flows`.
 - [Browser build](./browser-build.md): Helium plus Loka's patches: launch, `patches:check`, the shared build checkout,

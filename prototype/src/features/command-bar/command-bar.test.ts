@@ -67,7 +67,12 @@ test("an empty bar lists this space's open tabs and every command, with nothing 
 		"tab:Zen Browser (Build)",
 	]);
 	expect(empty.filter((l) => l.startsWith("go:"))).toEqual([]);
-	expect(empty.filter((l) => l.startsWith("action:")).length).toBe(12);
+	expect(empty.filter((l) => l.startsWith("action:")).length).toBe(13);
+});
+
+test("the Library is a command, found by what it holds", () => {
+	expect(lines("library")).toContain("action:Library");
+	expect(lines("archive")).toContain("action:Library");
 });
 
 test("the mute command says what it will do: mute while sounds are on, unmute once they're off", () => {

@@ -8,20 +8,19 @@ import { themeTokens } from "../../prototype/src/app/theme";
 import { resolveScheme } from "../../prototype/src/app/theme.logic";
 import { DEFAULT_UI, type UiPrefs } from "../../prototype/src/app/ui-prefs.logic";
 import "../../prototype/src/features/settings/loka-settings";
+import type { Act } from "../../prototype/src/app/loka-app";
 import { SPACE_HUES } from "../../prototype/src/features/sidebar/planet";
 import {
 	activeSpace,
 	type BrowserState,
-	createSpace,
-	deleteSpace,
+	newId,
 	type SpaceLook,
-	updateSpace,
 } from "../../prototype/src/features/sidebar/sidebar.logic";
 import { playCue, setSoundPrefs } from "../../prototype/src/features/sound/sound";
 import "../../prototype/src/features/spaces/loka-space-editor";
 import type { LookPreview } from "../../prototype/src/features/spaces/loka-space-editor";
 import { browser } from "./bridge";
-import { readState, readUi, watch, writeState, writeUi } from "./store";
+import { act, readState, readUi, watch, writeUi } from "./store";
 
 type Editing = { mode: "create"; look: SpaceLook } | { mode: "edit"; spaceId: string; look: SpaceLook };
 
@@ -44,10 +43,9 @@ export class LokaSettingsPage extends LitElement {
 	preview: LookPreview | null = null;
 	systemDark = darkSystem.matches;
 
-	private apply = (change: (state: BrowserState) => BrowserState) => {
-		if (!this.state) return;
-		this.state = change(this.state);
-		void writeState(this.state);
+	private apply: Act = (intent) => {
+		const next = act(intent);
+		if (next) this.state = next;
 	};
 
 	private setUi = (change: Partial<UiPrefs>) => {
@@ -101,8 +99,10 @@ export class LokaSettingsPage extends LitElement {
 		if (editing.mode === "create") {
 			playCue("space-new");
 			// A space made here joins the list; the sidebars keep showing the space they're in.
-			this.apply((s) => ({ ...createSpace(s, look)[0], activeSpaceId: s.activeSpaceId }));
-		} else this.apply((s) => updateSpace(s, editing.spaceId, look));
+			const showing = this.state?.activeSpaceId;
+			this.apply({ op: "createSpace", look, id: newId() });
+			if (showing) this.apply({ op: "switchSpace", spaceId: showing });
+		} else this.apply({ op: "updateSpace", spaceId: editing.spaceId, look });
 	}
 
 	private deleteEditedSpace() {
@@ -110,7 +110,7 @@ export class LokaSettingsPage extends LitElement {
 		if (editing?.mode !== "edit") return;
 		this.editing = null;
 		this.preview = null;
-		this.apply((s) => deleteSpace(s, editing.spaceId));
+		this.apply({ op: "deleteSpace", spaceId: editing.spaceId });
 	}
 
 	override render() {
@@ -130,7 +130,7 @@ export class LokaSettingsPage extends LitElement {
 				this.preview = e.detail;
 			}}
 		>
-			${skyLayer(hue, scheme)}
+			${skyLayer(hue, scheme, "still")}
 			<loka-settings
 				native
 				.state=${state}

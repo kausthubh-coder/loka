@@ -20,6 +20,8 @@
 //   bun run verify:perf -- --runs 5
 //   bun run verify:perf -- --trace              also a Chrome trace and the sidebar's JS profile per scenario
 //   bun run verify:perf -- --blame              after idle, pause each running animation in turn: what it costs
+//   bun run verify:perf -- --stars=always       Settings > Appearance > Moving stars for the run (while-using,
+//                                               always, off); sky.runningAtStart/End say whether the sky moved
 //   bun run verify:perf -- --heavy              300 tabs, 100 of them loaded pages spread over the three spaces,
 //                                               plus two scenarios:
 //     churn   20 s in which 20 loaded tabs (in every space) retitle once a second, as mail and chat pages do
@@ -85,7 +87,7 @@ const BUDGETS = [
 ];
 /** The numbers besides the budgets that the summary prints. */
 const SHOWN =
-	/^(sidebar|command)\.(styleRecalcsPerSec|layoutsPerSec|scriptMs|styleMs|longTasks|longTaskMaxMs|loafMaxMs|pageNodeGrowth|clickEventMaxMs|frames\.p95Ms)$|\.cpuPct$|^machine\.|frames\.(p50Ms|maxMs)$|^(scroll\.deepestPx|switch\.seen|churn\.retitles|click\.seen)$|^traffic\.|^loka\.(privateMB|processes)$/;
+	/^(sidebar|command)\.(styleRecalcsPerSec|layoutsPerSec|scriptMs|styleMs|longTasks|longTaskMaxMs|loafMaxMs|pageNodeGrowth|clickEventMaxMs|frames\.p95Ms)$|\.cpuPct$|^machine\.|frames\.(p50Ms|maxMs)$|^(scroll\.deepestPx|switch\.seen|churn\.retitles|click\.seen)$|^traffic\.|^loka\.(privateMB|processes)$|^sky\./;
 /** Other processes using more than this share of the machine (all cores) make a run noisy. */
 const BUSY_MACHINE_PCT = 15;
 
@@ -105,9 +107,16 @@ const runs = Number(option("runs") ?? 3);
 const tracing = argv.includes("--trace");
 const blaming = argv.includes("--blame");
 const heavy = argv.includes("--heavy");
-if (!["build", "checkout"].includes(webui) || !Number.isInteger(runs) || runs < 1) {
+/** Settings > Appearance > Moving stars for the run (the ui.v1 pref); unset leaves the profile's default. */
+const stars = option("stars");
+if (
+	!["build", "checkout"].includes(webui) ||
+	!Number.isInteger(runs) ||
+	runs < 1 ||
+	(stars !== undefined && !["while-using", "always", "off"].includes(stars))
+) {
 	console.error(
-		"Usage: bun scripts/verify-perf.mjs [--webui=build|checkout] [--runs N] [--trace] [--blame] [--heavy] [--bytes]",
+		"Usage: bun scripts/verify-perf.mjs [--webui=build|checkout] [--runs N] [--trace] [--blame] [--heavy] [--bytes] [--stars=while-using|always|off]",
 	);
 	process.exit(2);
 }
@@ -117,7 +126,7 @@ const evidence = join(
 	repo,
 	".agents",
 	"verify-runs",
-	`${stamp}-perf${heavy ? "-heavy" : ""}${webui === "checkout" ? "-checkout" : ""}`,
+	`${stamp}-perf${heavy ? "-heavy" : ""}${webui === "checkout" ? "-checkout" : ""}${stars ? `-stars-${stars}` : ""}`,
 );
 const CORES = cpus().length;
 
@@ -362,9 +371,9 @@ async function ctrlDigit(sidebar, digit) {
 	await sidebar.call("Input.dispatchKeyEvent", { type: "keyUp", ...key });
 }
 
-/** The spaces as the profile's store has them. @param {Session} sidebar @returns {Promise<BrowserState>} */
+/** The spaces as the browser has them. @param {Session} sidebar @returns {Promise<BrowserState>} */
 async function savedState(sidebar) {
-	return JSON.parse((await evaluate(sidebar, askExpression("getStore")))["state.v1"]);
+	return (await evaluate(sidebar, askExpression("getSpaces"))).state;
 }
 
 /**
@@ -711,6 +720,15 @@ function profileSummary(profile) {
  * In the sidebar: its running animations, grouped by name and target. document.getAnimations() leaves out shadow
  * trees, so every shadow root is asked too.
  */
+/**
+ * How many of the sidebar sky's animations (star drift, nebula, shooting stars) are running: 0 when it rests or
+ * Moving stars is off.
+ */
+const SKY_RUNNING = `(() => {
+	const sky = document.querySelector("loka-panel")?.shadowRoot?.querySelector(".sky");
+	return sky ? [...sky.querySelectorAll("*")].flatMap((el) => el.getAnimations()).filter((a) => a.playState === "running").length : -1;
+})()`;
+
 const ANIMATION_GROUPS = `(() => {
 	const describe = (el) => el ? el.tagName.toLowerCase() + (el.classList.length ? "." + [...el.classList].join(".") : "") : "?";
 	const animations = [...document.getAnimations()];
@@ -809,10 +827,14 @@ async function oneRun(run, host) {
 		const tabTarget = await b.target((t) => t.type === "page" && t.url === `http://${host}/tab`);
 		const tab = await connect(tabTarget.webSocketDebuggerUrl);
 
-		// The spaces go into the profile's store, then the sidebar reloads and reads them like at startup.
+		// The browser takes the spaces whole (as an import does), then the sidebar reloads and reads them like at startup.
 		await sleep(1500);
-		const json = JSON.stringify(perfState(host));
-		await evaluate(sidebar, `(chrome.send("setStore", ["state.v1", ${JSON.stringify(json)}]), true)`);
+		const intent = { op: "replaceState", state: perfState(host) };
+		await evaluate(sidebar, `(chrome.send("spacesDo", [0, ${JSON.stringify(intent)}]), true)`);
+		if (stars) {
+			const ui = JSON.stringify({ starMotion: stars });
+			await evaluate(sidebar, `(chrome.send("setStore", ["ui.v1", ${JSON.stringify(ui)}]), true)`);
+		}
 		await sleep(500);
 		await sidebar.call("Page.reload", {});
 		await sleep(500);
@@ -828,8 +850,7 @@ async function oneRun(run, host) {
 		const shownRows = await evaluate(sidebar, `${SIDEBAR_ROOT}?.querySelectorAll('[role="treeitem"]').length ?? 0`);
 		if (shownRows < BUILD_PINNED)
 			throw new Error(`the sidebar shows ${shownRows} rows, not ${BUILD_PINNED}+ (${rows})`);
-		const store = await evaluate(sidebar, askExpression("getStore"));
-		const saved = JSON.parse(store["state.v1"] ?? "null");
+		const saved = await savedState(sidebar);
 		if (saved?.spaces?.length !== 3) throw new Error("the profile doesn't have the three spaces");
 		details.rows = shownRows;
 		if (heavy) {
@@ -906,6 +927,7 @@ async function oneRun(run, host) {
 				await s.call("Profiler.start");
 			}
 			const visible = await evaluate(sidebar, "document.visibilityState");
+			const skyAtStart = await evaluate(sidebar, SKY_RUNNING);
 			const m0 = await Promise.all(how.pages.map(([, s]) => metrics(s)));
 			const load = machineLoad(30);
 			const cpu0 = await processInfo(b.browser);
@@ -913,6 +935,7 @@ async function oneRun(run, host) {
 			const t0 = performance.now();
 			const extra = await act();
 			const seconds = (performance.now() - t0) / 1000;
+			const skyAtEnd = await evaluate(sidebar, SKY_RUNNING);
 			const traffic = await evaluate(sidebar, TRAFFIC_TAKE);
 			const cpu1 = await processInfo(b.browser);
 			const loadSamples = load.stop();
@@ -935,7 +958,7 @@ async function oneRun(run, host) {
 				detail.traceFile = `${base}.trace.json`;
 			}
 			/** @type {Record<string, number>} */
-			const out = { seconds: round(seconds), ...extra };
+			const out = { seconds: round(seconds), ...extra, "sky.runningAtStart": skyAtStart, "sky.runningAtEnd": skyAtEnd };
 			/** @param {Record<string, number>} counts */
 			const sum = (counts) => Object.values(counts).reduce((a, x) => a + x, 0);
 			const sent = sum(traffic.out);
@@ -1219,7 +1242,7 @@ async function main() {
 	mkdirSync(evidence, { recursive: true });
 	const status = spawnSync("bun", ["scripts/browser.mjs", "status"], { cwd: repo, encoding: "utf8" });
 	console.log(
-		`verify:perf  ${chrome}\n  webui: ${webui}, runs: ${runs}${heavy ? ", heavy (300 tabs, 100 loaded)" : ""}${tracing ? ", traced" : ""}, ${CORES} cores`,
+		`verify:perf  ${chrome}\n  webui: ${webui}, runs: ${runs}${heavy ? ", heavy (300 tabs, 100 loaded)" : ""}${tracing ? ", traced" : ""}${stars ? `, moving stars: ${stars}` : ""}, ${CORES} cores`,
 	);
 	const { server, host } = await startPages();
 	/** @type {{ results: Record<string, Record<string, number>>, details: Record<string, any> }[]} */

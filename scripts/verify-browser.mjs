@@ -395,7 +395,11 @@ async function main() {
 		const { targetId: audioId } = await browserSession.call("Target.createTarget", { url: `${origin}/audio` });
 
 		// 3. The sidebar is the native page.
-		const sidebarTarget = await until(async () => (await targets()).find((t) => t.url.startsWith(SIDEBAR_URL)), 20000);
+		// The sidebar itself: the command bar and menu pages (command.html, menu.html) live on the same host.
+		const sidebarTarget = await until(
+			async () => (await targets()).find((t) => t.url === `${SIDEBAR_URL}/` || t.url === `${SIDEBAR_URL}/sidebar.html`),
+			20000,
+		);
 		check(
 			"sidebar target",
 			Boolean(sidebarTarget),
@@ -801,19 +805,25 @@ async function main() {
 		const chooser = new Promise((resolve) => sidebar.on("Page.fileChooserOpened", resolve));
 		await evaluate(sidebar, clickExpression("More"));
 		await sleep(400);
-		// A file input opens its picker only from a user gesture. The click's evaluate can wait until the picker is
-		// answered, so it isn't awaited before the chooser event.
-		const picking = evaluate(sidebar, clickExpression("Import spaces (JSON)"), true).catch(() => false);
+		// The menu opens in the browser's menu window (menu.html); the item runs back in the sidebar, which the
+		// browser gives the click's user gesture, so its file input can open a picker. The click's evaluate can wait
+		// until the picker is answered, so it isn't awaited before the chooser event.
+		const menuTarget = await until(
+			async () => (await targets()).find((t) => t.url === `${SIDEBAR_URL}/menu.html`),
+			5000,
+		);
+		const menuPage = menuTarget ? await connect(menuTarget.webSocketDebuggerUrl) : null;
+		const picking = menuPage
+			? evaluate(menuPage, clickExpression("Import spaces (JSON)"), true).catch(() => false)
+			: Promise.resolve("no menu window");
 		const opened = await Promise.race([chooser, sleep(5000).then(() => null)]);
 		if (opened)
 			await sidebar.call("DOM.setFileInputFiles", { files: [ALPHA_EXPORT], backendNodeId: opened.backendNodeId });
 		const picked = await Promise.race([picking, sleep(5000).then(() => "still waiting")]);
 		/** @type {{ spaces: { name: string }[], tabs: Record<string, { url: string }> } | null} */
 		const imported = await until(async () => {
-			/** @type {Record<string, string> | string} */
-			const store = await ask("getStore");
-			const saved = typeof store === "object" ? store["state.v1"] : undefined;
-			const state = saved ? JSON.parse(saved) : null;
+			const spaces = await ask("getSpaces");
+			const state = typeof spaces === "object" ? spaces.state : null;
 			const urls = state ? Object.values(state.tabs).map((/** @type {{ url: string }} */ t) => t.url) : [];
 			return urls.includes("https://example.com/") && urls.includes("https://www.wikipedia.org/") ? state : null;
 		}, 10000);
@@ -821,7 +831,7 @@ async function main() {
 			"Import spaces (JSON) takes the alpha's export",
 			Boolean(imported),
 			imported
-				? `state.v1 now has ${imported.spaces.map((x) => x.name).join(", ")} with the alpha's sites`
+				? `the spaces now have ${imported.spaces.map((x) => x.name).join(", ")} with the alpha's sites`
 				: `menu item ${picked}, file chooser ${opened ? "answered" : "never opened"}, alerts: ${alerts.join(" | ") || "none"}`,
 		);
 		const deadPages = imported ? Object.values(imported.tabs).filter((t) => t.url.includes(ALPHA_EXTENSION_ID)) : [];

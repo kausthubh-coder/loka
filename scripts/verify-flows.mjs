@@ -1139,7 +1139,9 @@ async function tabs() {
 		`restored ${reopened}; Research open ${show(openTitles(await sb.state(), "Research"))}; archive ${show((await sb.state()).archive.map((a) => a.tab.title))}`,
 	);
 
-	// Reorder: Alpha above Bravo.
+	// Reorder: Alpha above Bravo, once the rows have stopped moving down for QA Charlie's.
+	await sb.settled("QA Alpha", "[role=treeitem]");
+	await sb.settled("QA Bravo", "[role=treeitem]");
 	await sb.drag({ re: "^QA Alpha$" }, { re: "^QA Bravo$" }, 0.15, "[role=treeitem]");
 	st = await until(async () => {
 		const now = await sb.state();

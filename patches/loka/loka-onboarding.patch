@@ -1,371 +1,30 @@
---- a/components/helium_onboarding/helium_onboarding_strings.grdp
-+++ b/components/helium_onboarding/helium_onboarding_strings.grdp
-@@ -1,14 +1,14 @@
- <grit-part>
+--- a/chrome/app/generated_resources.grd
++++ b/chrome/app/generated_resources.grd
+@@ -297,6 +297,7 @@
  
--<message name="IDS_HELIUM_ONBOARDING_PAGE_TITLE" desc="The title of the Helium setup onboarding page.">
--  Helium Setup
-+<message name="IDS_HELIUM_ONBOARDING_PAGE_TITLE" desc="The title of the Loka setup onboarding page.">
-+  Welcome to Loka
- </message>
+       <!-- Helium onboarding strings -->
+       <part file="../../components/helium_onboarding/helium_onboarding_strings.grdp" />
++      <part file="../../components/helium_onboarding/loka_onboarding_strings.grdp" />
  
- <message name="IDS_HELIUM_ONBOARDING_BUTTON_USE_DEFAULTS" desc="Button label that skips detailed setup and applies the default onboarding choices.">
-   Use defaults
- </message>
- <message name="IDS_HELIUM_ONBOARDING_BUTTON_CONFIGURE" desc="Button label that starts the detailed onboarding setup flow.">
--  Configure
-+  Set up Loka
- </message>
- <message name="IDS_HELIUM_ONBOARDING_BUTTON_NEXT" desc="Button label to continue to the next onboarding step.">
-   Next
-@@ -17,96 +17,206 @@
-   Back
- </message>
- <message name="IDS_HELIUM_ONBOARDING_BUTTON_LETS_GO" desc="Button label that finishes onboarding and opens the browser.">
--  Let's go!
-+  Open Loka
- </message>
+       <!-- Media live preview specific strings -->
+       <part file="media_live_preview_strings.grdp" />
+--- a/chrome/app/generated_resources.grd.gritdeps
++++ b/chrome/app/generated_resources.grd.gritdeps
+@@ -109,3 +109,4 @@
+ chrome/app/vr_strings.grdp
+ chrome/app/whats_new_strings.grdp
+ components/helium_onboarding/helium_onboarding_strings.grdp
++components/helium_onboarding/loka_onboarding_strings.grdp
+--- a/components/helium_onboarding/BUILD.gn
++++ b/components/helium_onboarding/BUILD.gn
+@@ -8,6 +8,7 @@
  
- <message name="IDS_HELIUM_ONBOARDING_PARTNER_TITLE" desc="Badge title shown for partner services in onboarding.">
--  Helium Partner
--</message>
--<message name="IDS_HELIUM_ONBOARDING_PARTNER_TOOLTIP" desc="Tooltip explaining why a listed service is marked as a Helium partner.">
--  Paying for this service will support the development of Helium.
-+  Helium partner
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_PARTNER_TOOLTIP" desc="Tooltip explaining why a listed service is marked as a Helium partner. Loka is built on Helium.">
-+  Paying for this service supports Helium, the browser Loka is built on.
- </message>
- 
- <message name="IDS_HELIUM_ONBOARDING_WELCOME_GREETING" desc="Main greeting on the first onboarding screen.">
--  Meet Helium
-+  Welcome to Loka
- </message>
- <message name="IDS_HELIUM_ONBOARDING_WELCOME_BODY" desc="Introductory body text on the first onboarding screen.">
--  Configure Helium to match your taste and import data from other browsers. Make it feel like home or jump straight to browsing.
--</message>
--<message name="IDS_HELIUM_ONBOARDING_WELCOME_TERMS" desc="Legal note shown during onboarding. Keep each BEGIN/END placeholder pair around its corresponding link text, but move the pairs as needed for a natural translation.">
--  By continuing, you agree to the <ph name="BEGIN_LINK_PRIVACY">$1</ph>privacy policy<ph name="END_LINK_PRIVACY">$2</ph> and <ph name="BEGIN_LINK_TERMS">$3</ph>terms of use<ph name="END_LINK_TERMS">$4</ph>.
--</message>
--<message name="IDS_HELIUM_ONBOARDING_WELCOME_FOOTER" desc="Footer text explaining that setup can be skipped but Helium services require consent.">
--  If you use defaults, Helium services will be automatically enabled.
--</message>
--
--<message name="IDS_HELIUM_ONBOARDING_FINISH_TITLE" desc="Title on the final onboarding screen.">
--  Ready to browse?
--</message>
--<message name="IDS_HELIUM_ONBOARDING_FINISH_BODY" desc="Body text on the final onboarding screen.">
--  The setup is complete, thank you for choosing Helium. Time to enjoy the internet again.
--</message>
--
--<message name="IDS_HELIUM_ONBOARDING_SERVICES_TITLE" desc="Title of the onboarding screen for Helium services consent.">
-+  A calm browser where every space is its own world. Set it up in about a minute, or start browsing now.
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_WELCOME_TERMS" desc="Legal note shown during onboarding. Loka is built on Helium and uses Helium's services, so the policies are Helium's. Keep each BEGIN/END placeholder pair around its corresponding link text, but move the pairs as needed for a natural translation.">
-+  Loka is built on Helium and uses Helium's services. By continuing, you agree to Helium's <ph name="BEGIN_LINK_PRIVACY">$1</ph>privacy policy<ph name="END_LINK_PRIVACY">$2</ph> and <ph name="BEGIN_LINK_TERMS">$3</ph>terms of use<ph name="END_LINK_TERMS">$4</ph>.
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_WELCOME_FOOTER" desc="Footer text explaining that using defaults turns on Helium services without showing the consent page.">
-+  Use defaults turns Helium's services on for you.
-+</message>
-+
-+<message name="IDS_HELIUM_ONBOARDING_FINISH_TITLE" desc="Title on the final onboarding screen, shown when the user made at least one space.">
-+  Your worlds are ready
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_FINISH_BODY" desc="Body text on the final onboarding screen, shown when the user made at least one space.">
-+  Setup is done. Your spaces are waiting in the sidebar, each with its own color and sky.
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_FINISH_TITLE_NO_SPACES" desc="Title on the final onboarding screen, shown when the user made no spaces.">
-+  You're all set
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_FINISH_BODY_NO_SPACES" desc="Body text on the final onboarding screen, shown when the user made no spaces.">
-+  Setup is done. Make your first space from the sidebar whenever you like.
-+</message>
-+
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_TITLE" desc="Title of the onboarding screen where the user makes their first spaces. A space is a named set of tabs with its own color, drawn as a planet.">
-+  Make your first spaces
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_SUBTITLE" desc="Subtitle explaining what a space is.">
-+  Every space is its own world, with its own pinned tabs, folders and color. Start with two or three.
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_NAME_LABEL" desc="Label of the text field for a space's name.">
-+  Name
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_KIND_LABEL" desc="Label of the group of buttons that pick the kind of planet drawn for a space.">
-+  Planet
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_HUE_LABEL" desc="Label of the group of buttons that pick a space's color.">
-+  Color
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_SUGGESTIONS_LABEL" desc="Accessible label of a group of buttons with suggested space names.">
-+  Suggested names
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_CREATE" desc="Button label that creates the space the user is making.">
-+  Create space
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_SAVE" desc="Button label that saves changes to a space the user made earlier.">
-+  Save
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_REMOVE" desc="Button label that removes a space the user made earlier.">
-+  Remove
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_NAME_MISSING" desc="Hint shown when the user tries to create a space without a name.">
-+  Give this space a name first.
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_FULL" desc="Shown after the user has made the most starter spaces onboarding allows (three).">
-+  Three is a good start. You can add more from the sidebar any time.
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_EMPTY" desc="Hint inside the empty orbit diagram, before the user has made a space.">
-+  Your spaces will orbit here
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_CREATED" desc="Screen reader announcement after a space is created.">
-+  <ph name="NAME">$1<ex>Work</ex></ph> created
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_EDIT" desc="Accessible label of a button that opens a space the user made, to change it.">
-+  Edit <ph name="NAME">$1<ex>Work</ex></ph>
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_SUGGEST_WORK" desc="Suggested name for a space.">
-+  Work
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_SUGGEST_SCHOOL" desc="Suggested name for a space.">
-+  School
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_SUGGEST_HOME" desc="Suggested name for a space.">
-+  Home
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_SUGGEST_PERSONAL" desc="Suggested name for a space.">
-+  Personal
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_SUGGEST_PROJECTS" desc="Suggested name for a space.">
-+  Projects
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_KIND_RINGED" desc="Name of a planet style with a ring around it.">
-+  Ringed
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_KIND_BANDED" desc="Name of a planet style with horizontal cloud bands, like Jupiter.">
-+  Banded
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_KIND_OCEAN" desc="Name of a planet style covered in sea with a few islands.">
-+  Ocean
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_KIND_CRATERED" desc="Name of a planet style covered in craters, like the Moon.">
-+  Cratered
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_HUE_BLUE" desc="Name of a space color.">
-+  Blue
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_HUE_AMBER" desc="Name of a space color.">
-+  Amber
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_HUE_GREEN" desc="Name of a space color.">
-+  Green
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_HUE_PINK" desc="Name of a space color.">
-+  Pink
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_HUE_VIOLET" desc="Name of a space color.">
-+  Violet
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_HUE_TEAL" desc="Name of a space color.">
-+  Teal
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_HUE_RED" desc="Name of a space color.">
-+  Red
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SPACES_HUE_LIME" desc="Name of a space color.">
-+  Lime
-+</message>
-+
-+<message name="IDS_HELIUM_ONBOARDING_SOUND_MUTE" desc="Accessible label of the corner button that turns onboarding sounds off.">
-+  Mute sounds
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SOUND_UNMUTE" desc="Accessible label of the corner button that turns onboarding sounds back on.">
-+  Turn sounds on
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_STEPS_PROGRESS" desc="Accessible label of the onboarding progress indicator.">
-+  Step <ph name="CURRENT">$1<ex>2</ex></ph> of <ph name="TOTAL">$2<ex>6</ex></ph>
-+</message>
-+
-+<message name="IDS_HELIUM_ONBOARDING_SERVICES_TITLE" desc="Title of the onboarding screen for Helium services consent. Loka is built on Helium and uses Helium's services.">
-   Helium services
- </message>
--<message name="IDS_HELIUM_ONBOARDING_SERVICES_SUBTITLE" desc="Subtitle explaining when Helium services consent choices take effect.">
--  Services are not active until you consent to using them. Changes will be applied after you go to the next page.
-+<message name="IDS_HELIUM_ONBOARDING_SERVICES_SUBTITLE" desc="Subtitle explaining who runs the services and when consent choices take effect.">
-+  Loka is built on Helium. These services run on Helium's servers, not Loka's, and stay off until you go to the next page.
- </message>
- <message name="IDS_HELIUM_ONBOARDING_SERVICES_CONNECTION_TITLE" desc="Title of the global toggle for connecting to Helium services.">
-   Allow connecting to Helium services
- </message>
- <message name="IDS_HELIUM_ONBOARDING_SERVICES_CONNECTION_DESC" desc="Description of the global Helium services toggle.">
--  Helium services provide additional functionality, such as: extension downloads, native !bangs, filter list updates, and browser updates. When disabled, none of these features will work, but Helium will not make any web requests.
-+  Helium's services handle extension downloads, native !bangs, filter list updates and updates. When this is off, none of those work, and Loka makes no requests to Helium's servers.
- </message>
- <message name="IDS_HELIUM_ONBOARDING_SERVICES_BANGS_TITLE" desc="Title of the toggle for downloading the Helium bangs list.">
-   Allow downloading the !bangs list
- </message>
- <message name="IDS_HELIUM_ONBOARDING_SERVICES_BANGS_DESC" desc="Description of the toggle for downloading the Helium bangs list.">
--  Helium will fetch a list of bangs that help you browse the Internet faster, such as !w or !gh. When disabled, bangs will not work.
-+  Loka fetches Helium's list of bangs, shortcuts like !w or !gh that search a site directly. When this is off, bangs don't work.
- </message>
- <message name="IDS_HELIUM_ONBOARDING_SERVICES_EXTENSIONS_TITLE" desc="Title of the toggle for proxying extension downloads and updates.">
-   Proxy extension downloads and updates
- </message>
- <message name="IDS_HELIUM_ONBOARDING_SERVICES_EXTENSIONS_DESC" desc="Description of the toggle for proxying extension downloads and updates.">
--  When enabled, Helium will proxy extension downloads and updates to protect your privacy. When disabled, downloading and updating extensions will not work.
-+  Extension downloads and updates go through Helium's proxy to protect your privacy. When this is off, installing and updating extensions doesn't work.
- </message>
- <message name="IDS_HELIUM_ONBOARDING_SERVICES_UBLOCK_TITLE" desc="Title of the toggle for downloading uBlock Origin filter lists.">
-   Allow downloading filter lists for uBlock Origin
- </message>
- <message name="IDS_HELIUM_ONBOARDING_SERVICES_UBLOCK_DESC" desc="Description of the toggle for downloading uBlock Origin filter lists.">
--  Helium will fetch fresh filter lists for uBlock Origin. All requests to lists are proxied to protect your privacy. When disabled, default filter lists will be loaded from local storage, which are only updated along with Helium. Optional filter lists will be requested without proxying.
--</message>
--<message name="IDS_HELIUM_ONBOARDING_SERVICES_AUTOUPDATES_TITLE" desc="Title of the toggle for automatic browser updates on platforms where Helium updates the browser.">
--  Allow automatic browser updates
--</message>
--<message name="IDS_HELIUM_ONBOARDING_SERVICES_AUTOUPDATES_DESC" desc="Description of the toggle for automatic browser updates on platforms where Helium updates the browser.">
--  Helium will automatically check for updates and install them. This includes browser and component updates. We recommend keeping this setting enabled to ensure you get the latest features and security updates.
-+  Loka fetches fresh uBlock Origin filter lists through Helium's proxy. When this is off, the default lists load from disk and only update with the browser. Optional lists are requested without the proxy.
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SERVICES_AUTOUPDATES_TITLE" desc="Title of the toggle for automatic browser updates on platforms where the browser updates itself.">
-+  Allow automatic updates
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_SERVICES_AUTOUPDATES_DESC" desc="Description of the toggle for automatic browser updates on platforms where the browser updates itself.">
-+  Loka checks Helium's update service and installs updates, including browser components. Keep this on to get security fixes.
- </message>
- <message name="IDS_HELIUM_ONBOARDING_SERVICES_AUTOUPDATES_TITLE_LINUX" desc="Title of the toggle for automatic component updates on Linux.">
-   Allow automatic component updates
- </message>
- <message name="IDS_HELIUM_ONBOARDING_SERVICES_AUTOUPDATES_DESC_LINUX" desc="Description of the toggle for automatic component updates on Linux.">
--  Helium will automatically check for component updates and install them. We recommend keeping this setting enabled. On Linux, browser updates are handled by your distro's package manager. Please check for Helium package updates at least every week.
-+  Loka checks Helium's update service for component updates and installs them. On Linux, browser updates come from your distro's package manager, so check it at least once a week.
- </message>
- <message name="IDS_HELIUM_ONBOARDING_SERVICES_SPELLCHECK_TITLE" desc="Title of the toggle for downloading spell check dictionary files.">
--  Allow downloading dictionary files for spell checking
-+  Allow downloading dictionaries for spell check
- </message>
- <message name="IDS_HELIUM_ONBOARDING_SERVICES_SPELLCHECK_DESC" desc="Description of the toggle for downloading spell check dictionary files.">
--  Helium will fetch dictionary files used for spell checking when requested. When disabled, spell checking will not work.
-+  Loka fetches spell check dictionaries from Helium when you need them. When this is off, spell check doesn't work.
- </message>
- <message name="IDS_HELIUM_ONBOARDING_SERVICES_INSTANCE_TITLE" desc="Title of the option describing custom Helium services instances.">
--  Use your own instance of Helium services
-+  Use your own Helium services server
- </message>
- <message name="IDS_HELIUM_ONBOARDING_SERVICES_INSTANCE_DESC" desc="Description of the option describing custom Helium services instances.">
--  You can host your own instance of Helium services and use it in your browser instead of the pre-hosted server. If you have one, you can set it in Helium settings.
-+  You can host your own instance of Helium services and point Loka at it in Settings.
- </message>
- 
- <message name="IDS_HELIUM_ONBOARDING_SEARCH_TITLE" desc="Title of the onboarding screen for selecting a default search engine.">
-   Choose a search engine
- </message>
- <message name="IDS_HELIUM_ONBOARDING_SEARCH_SUBTITLE" desc="Subtitle for the onboarding screen for selecting a default search engine.">
--  You can change your choice later in Settings. Search engines are sorted by privacy.
-+  Sorted by privacy. You can change it later in Settings.
- </message>
- <message name="IDS_HELIUM_ONBOARDING_SEARCH_CATEGORIES_PRIVATE" desc="Description for privacy-first search engines in onboarding.">
-   A privacy-first search engine which doesn't profile or track you.
-@@ -117,8 +227,8 @@
- <message name="IDS_HELIUM_ONBOARDING_SEARCH_CATEGORIES_MAINSTREAM" desc="Description for mainstream search engines in onboarding.">
-   A mainstream search engine which collects extensive personal data.
- </message>
--<message name="IDS_HELIUM_ONBOARDING_SEARCH_CATEGORIES_CUSTOM" desc="Description for a custom search engine in onboarding.">
--  A custom search engine. Its privacy wasn't verified by Helium.
-+<message name="IDS_HELIUM_ONBOARDING_SEARCH_CATEGORIES_CUSTOM" desc="Description for a custom search engine in onboarding. The privacy ratings come from Helium, which Loka is built on.">
-+  A custom search engine. Helium hasn't checked its privacy.
- </message>
- <message name="IDS_HELIUM_ONBOARDING_SEARCH_ENGINES_DUCKDUCKGO" desc="Onboarding description of DuckDuckGo as a search engine option.">
-   Privacy-focused. Relies on Bing for results. Promises not to track or profile you.
-@@ -145,30 +255,45 @@
-   Privacy-focused. Doesn't use Google or Bing. Promises not to track or profile you. May show promotions related to Brave services.
- </message>
- 
--<message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_TITLE" desc="Title of the onboarding screen asking whether Helium should be the default browser.">
--  Ready to switch to Helium?
--</message>
--<message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_SUBTITLE" desc="Subtitle of the onboarding screen asking whether Helium should be the default browser.">
--  Better privacy, speed, and comfort. All in one click. Wanna make links open in Helium by default?
--</message>
--<message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_YES" desc="Label for the option to make Helium the default browser.">
-+<message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_TITLE" desc="Title of the onboarding screen asking whether Loka should be the default browser.">
-+  Make Loka your default browser?
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_SUBTITLE" desc="Subtitle of the onboarding screen asking whether Loka should be the default browser.">
-+  Links you open from other apps will open in Loka.
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_YES" desc="Label for the option to make Loka the default browser.">
-   Yes
- </message>
- <message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_NO" desc="Label for the option to keep the current default browser.">
--  No
--</message>
--<message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_YES_DESC" desc="Description for the option to make Helium the default browser.">
--  Make Helium my default browser.
-+  Not now
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_YES_DESC" desc="Description for the option to make Loka the default browser.">
-+  Make Loka my default browser.
- </message>
- <message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_NO_DESC" desc="Description for the option to keep the current default browser.">
--  Just trying Helium for now.
-+  I'm just trying Loka for now.
- </message>
- 
- <message name="IDS_HELIUM_ONBOARDING_DATA_IMPORT_TITLE" desc="Title of the onboarding screen for importing browser data.">
--  Take your stuff with you
-+  Bring your browser along
- </message>
- <message name="IDS_HELIUM_ONBOARDING_DATA_IMPORT_SUBTITLE" desc="Subtitle of the onboarding screen for importing browser data.">
--  Transfer your most important bookmarks, history, and extensions from other browsers.
-+  Copy bookmarks, history and extensions from other browsers on this computer. Nothing is removed from them.
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_DATA_IMPORT_ARC_TITLE" desc="Title of the highlighted import option for the Arc browser. Arc's spaces are brought over as bookmark folders.">
-+  Bring your spaces from Arc
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_DATA_IMPORT_ARC_DESC" desc="Explains exactly what importing from Arc brings over.">
-+  Each Arc space's pinned tabs and folders come over as a bookmarks folder, and your Favorites go in the bookmarks bar.
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_DATA_IMPORT_ZEN_TITLE" desc="Title of the highlighted import option for the Zen browser.">
-+  Coming from Zen?
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_DATA_IMPORT_ZEN_DESC" desc="Explains exactly what importing from Zen brings over, and that Zen workspaces are not imported.">
-+  Your bookmarks and history come over. Zen's workspaces stay in Zen, so make them as spaces in the sidebar.
-+</message>
-+<message name="IDS_HELIUM_ONBOARDING_DATA_IMPORT_OTHER_BROWSERS" desc="Heading above the list of other browsers that data can be imported from.">
-+  Other browsers
- </message>
- <message name="IDS_HELIUM_ONBOARDING_DATA_IMPORT_BOOKMARKS" desc="Label for bookmarks as an importable data type.">
-   Bookmarks
-@@ -184,7 +309,7 @@
-   Password manager
- </message>
- <message name="IDS_HELIUM_ONBOARDING_PASSWORD_SUBTITLE" desc="Subtitle of the onboarding screen for choosing a password manager.">
--  Helium doesn't have a built-in password manager. Would you like to install one from the Web Store?
-+  Loka doesn't have a built-in password manager. Want to install one from the Web Store?
- </message>
- <message name="IDS_HELIUM_ONBOARDING_PASSWORD_IMPORT_GUIDE" desc="Link label linking to a password manager import guide. Short title for a guide.">
-   Import
-@@ -201,8 +326,8 @@
- <message name="IDS_HELIUM_ONBOARDING_PASSWORD_INSTALLED" desc="Status label shown when a password manager extension is installed.">
-   Installed
- </message>
--<message name="IDS_HELIUM_ONBOARDING_PASSWORD_ERROR" desc="Prefix label shown before a password manager install error.">
--  Error:
-+<message name="IDS_HELIUM_ONBOARDING_PASSWORD_ERROR" desc="Shown under a password manager when installing its extension from the Chrome Web Store failed.">
-+  Couldn't install it from the Web Store. Check your connection, then try again.
- </message>
- 
- <message name="IDS_HELIUM_ONBOARDING_PASSWORD_MANAGERS_PROTON_PASS" desc="Onboarding description of Proton Pass as a password manager option.">
-@@ -212,7 +337,7 @@
-   Secure and the most popular open-source password manager. Offers data storage in Europe or US. Free with an optional paid plan. Can be self-hosted.
- </message>
- <message name="IDS_HELIUM_ONBOARDING_PASSWORD_MANAGERS_ONE_PASSWORD" desc="Onboarding description of 1Password as a password manager option.">
--  Popular, paid, and closed-source password manager. Offers data storage in Europe or US. May not work correctly with Helium without extra configuration.
-+  Popular, paid, and closed-source password manager. Offers data storage in Europe or US. May not work correctly with Loka without extra configuration.
- </message>
- <message name="IDS_HELIUM_ONBOARDING_PASSWORD_MANAGERS_DASHLANE" desc="Onboarding description of Dashlane as a password manager option.">
-   Popular, paid, and closed-source password manager. Stores data in Europe. Known for aggressive upselling tactics.
+     inputs = [
+         "helium_onboarding_strings.grdp",
++        "loka_onboarding_strings.grdp",
+         "util/generate-i18n.mts",
+         "util/localized-strings.h.in",
+         "util/strings.ts.in",
 --- a/components/helium_onboarding/index.html
 +++ b/components/helium_onboarding/index.html
 @@ -3,9 +3,14 @@
@@ -386,6 +45,248 @@
  
  <body>
 --- /dev/null
++++ b/components/helium_onboarding/loka_onboarding_strings.grdp
+@@ -0,0 +1,239 @@
++<!-- Loka's onboarding strings, beside Helium's helium_onboarding_strings.grdp (which stays Helium's).
++     util/generate-i18n.mts reads both. A name here with the same rest as one of Helium's
++     (IDS_LOKA_ONBOARDING_WELCOME_GREETING and IDS_HELIUM_ONBOARDING_WELCOME_GREETING) replaces Helium's on the page;
++     the rest are Loka's own. Included in chrome/app/generated_resources.grd after Helium's file. -->
++<grit-part>
++
++<!-- Loka's wording of Helium's strings. -->
++<message name="IDS_LOKA_ONBOARDING_PAGE_TITLE" desc="The title of the Loka setup onboarding page.">
++  Welcome to Loka
++</message>
++<message name="IDS_LOKA_ONBOARDING_BUTTON_CONFIGURE" desc="Button label that starts the detailed onboarding setup flow.">
++  Set up Loka
++</message>
++<message name="IDS_LOKA_ONBOARDING_BUTTON_LETS_GO" desc="Button label that finishes onboarding and opens the browser.">
++  Open Loka
++</message>
++<message name="IDS_LOKA_ONBOARDING_PARTNER_TITLE" desc="Badge title shown for partner services in onboarding.">
++  Helium partner
++</message>
++<message name="IDS_LOKA_ONBOARDING_PARTNER_TOOLTIP" desc="Tooltip explaining why a listed service is marked as a Helium partner. Loka is built on Helium.">
++  Paying for this service supports Helium, the browser Loka is built on.
++</message>
++<message name="IDS_LOKA_ONBOARDING_WELCOME_GREETING" desc="Main greeting on the first onboarding screen.">
++  Welcome to Loka
++</message>
++<message name="IDS_LOKA_ONBOARDING_WELCOME_BODY" desc="Introductory body text on the first onboarding screen.">
++  A calm browser where every space is its own world. Set it up in about a minute, or start browsing now.
++</message>
++<message name="IDS_LOKA_ONBOARDING_WELCOME_TERMS" desc="Legal note shown during onboarding. Loka is built on Helium and uses Helium's services, so the policies are Helium's. Keep each BEGIN/END placeholder pair around its corresponding link text, but move the pairs as needed for a natural translation.">
++  Loka is built on Helium and uses Helium's services. By continuing, you agree to Helium's <ph name="BEGIN_LINK_PRIVACY">$1</ph>privacy policy<ph name="END_LINK_PRIVACY">$2</ph> and <ph name="BEGIN_LINK_TERMS">$3</ph>terms of use<ph name="END_LINK_TERMS">$4</ph>.
++</message>
++<message name="IDS_LOKA_ONBOARDING_WELCOME_FOOTER" desc="Footer text explaining that using defaults turns on Helium services without showing the consent page.">
++  Use defaults turns Helium's services on for you.
++</message>
++<message name="IDS_LOKA_ONBOARDING_FINISH_TITLE" desc="Title on the final onboarding screen, shown when the user made at least one space.">
++  Your worlds are ready
++</message>
++<message name="IDS_LOKA_ONBOARDING_FINISH_BODY" desc="Body text on the final onboarding screen, shown when the user made at least one space.">
++  Setup is done. Your spaces are waiting in the sidebar, each with its own color and sky.
++</message>
++<message name="IDS_LOKA_ONBOARDING_SERVICES_SUBTITLE" desc="Subtitle explaining who runs the services and when consent choices take effect.">
++  Loka is built on Helium. These services run on Helium's servers, not Loka's, and stay off until you go to the next page.
++</message>
++<message name="IDS_LOKA_ONBOARDING_SERVICES_CONNECTION_DESC" desc="Description of the global Helium services toggle.">
++  Helium's services handle extension downloads, native !bangs, filter list updates and updates. When this is off, none of those work, and Loka makes no requests to Helium's servers.
++</message>
++<message name="IDS_LOKA_ONBOARDING_SERVICES_BANGS_DESC" desc="Description of the toggle for downloading the Helium bangs list.">
++  Loka fetches Helium's list of bangs, shortcuts like !w or !gh that search a site directly. When this is off, bangs don't work.
++</message>
++<message name="IDS_LOKA_ONBOARDING_SERVICES_EXTENSIONS_DESC" desc="Description of the toggle for proxying extension downloads and updates.">
++  Extension downloads and updates go through Helium's proxy to protect your privacy. When this is off, installing and updating extensions doesn't work.
++</message>
++<message name="IDS_LOKA_ONBOARDING_SERVICES_UBLOCK_DESC" desc="Description of the toggle for downloading uBlock Origin filter lists.">
++  Loka fetches fresh uBlock Origin filter lists through Helium's proxy. When this is off, the default lists load from disk and only update with the browser. Optional lists are requested without the proxy.
++</message>
++<message name="IDS_LOKA_ONBOARDING_SERVICES_AUTOUPDATES_TITLE" desc="Title of the toggle for automatic browser updates on platforms where the browser updates itself.">
++  Allow automatic updates
++</message>
++<message name="IDS_LOKA_ONBOARDING_SERVICES_AUTOUPDATES_DESC" desc="Description of the toggle for automatic browser updates on platforms where the browser updates itself.">
++  Loka checks Helium's update service and installs updates, including browser components. Keep this on to get security fixes.
++</message>
++<message name="IDS_LOKA_ONBOARDING_SERVICES_AUTOUPDATES_DESC_LINUX" desc="Description of the toggle for automatic component updates on Linux.">
++  Loka checks Helium's update service for component updates and installs them. On Linux, browser updates come from your distro's package manager, so check it at least once a week.
++</message>
++<message name="IDS_LOKA_ONBOARDING_SERVICES_SPELLCHECK_TITLE" desc="Title of the toggle for downloading spell check dictionary files.">
++  Allow downloading dictionaries for spell check
++</message>
++<message name="IDS_LOKA_ONBOARDING_SERVICES_SPELLCHECK_DESC" desc="Description of the toggle for downloading spell check dictionary files.">
++  Loka fetches spell check dictionaries from Helium when you need them. When this is off, spell check doesn't work.
++</message>
++<message name="IDS_LOKA_ONBOARDING_SERVICES_INSTANCE_TITLE" desc="Title of the option describing custom Helium services instances.">
++  Use your own Helium services server
++</message>
++<message name="IDS_LOKA_ONBOARDING_SERVICES_INSTANCE_DESC" desc="Description of the option describing custom Helium services instances.">
++  You can host your own instance of Helium services and point Loka at it in Settings.
++</message>
++<message name="IDS_LOKA_ONBOARDING_SEARCH_SUBTITLE" desc="Subtitle for the onboarding screen for selecting a default search engine.">
++  Sorted by privacy. You can change it later in Settings.
++</message>
++<message name="IDS_LOKA_ONBOARDING_SEARCH_CATEGORIES_CUSTOM" desc="Description for a custom search engine in onboarding. The privacy ratings come from Helium, which Loka is built on.">
++  A custom search engine. Helium hasn't checked its privacy.
++</message>
++<message name="IDS_LOKA_ONBOARDING_DEFAULT_BROWSER_TITLE" desc="Title of the onboarding screen asking whether Loka should be the default browser.">
++  Make Loka your default browser?
++</message>
++<message name="IDS_LOKA_ONBOARDING_DEFAULT_BROWSER_SUBTITLE" desc="Subtitle of the onboarding screen asking whether Loka should be the default browser.">
++  Links you open from other apps will open in Loka.
++</message>
++<message name="IDS_LOKA_ONBOARDING_DEFAULT_BROWSER_NO" desc="Label for the option to keep the current default browser.">
++  Not now
++</message>
++<message name="IDS_LOKA_ONBOARDING_DEFAULT_BROWSER_YES_DESC" desc="Description for the option to make Loka the default browser.">
++  Make Loka my default browser.
++</message>
++<message name="IDS_LOKA_ONBOARDING_DEFAULT_BROWSER_NO_DESC" desc="Description for the option to keep the current default browser.">
++  I'm just trying Loka for now.
++</message>
++<message name="IDS_LOKA_ONBOARDING_DATA_IMPORT_TITLE" desc="Title of the onboarding screen for importing browser data.">
++  Bring your browser along
++</message>
++<message name="IDS_LOKA_ONBOARDING_DATA_IMPORT_SUBTITLE" desc="Subtitle of the onboarding screen for importing browser data.">
++  Copy bookmarks, history and extensions from other browsers on this computer. Nothing is removed from them.
++</message>
++<message name="IDS_LOKA_ONBOARDING_PASSWORD_SUBTITLE" desc="Subtitle of the onboarding screen for choosing a password manager.">
++  Loka doesn't have a built-in password manager. Want to install one from the Web Store?
++</message>
++<message name="IDS_LOKA_ONBOARDING_PASSWORD_ERROR" desc="Shown under a password manager when installing its extension from the Chrome Web Store failed.">
++  Couldn't install it from the Web Store. Check your connection, then try again.
++</message>
++<message name="IDS_LOKA_ONBOARDING_PASSWORD_MANAGERS_ONE_PASSWORD" desc="Onboarding description of 1Password as a password manager option.">
++  Popular, paid, and closed-source password manager. Offers data storage in Europe or US. May not work correctly with Loka without extra configuration.
++</message>
++
++<!-- Loka's own strings: the Spaces step, the finish without spaces, sound, progress and the Arc and Zen import. -->
++<message name="IDS_LOKA_ONBOARDING_FINISH_TITLE_NO_SPACES" desc="Title on the final onboarding screen, shown when the user made no spaces.">
++  You're all set
++</message>
++<message name="IDS_LOKA_ONBOARDING_FINISH_BODY_NO_SPACES" desc="Body text on the final onboarding screen, shown when the user made no spaces.">
++  Setup is done. Make your first space from the sidebar whenever you like.
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_TITLE" desc="Title of the onboarding screen where the user makes their first spaces. A space is a named set of tabs with its own color, drawn as a planet.">
++  Make your first spaces
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_SUBTITLE" desc="Subtitle explaining what a space is.">
++  Every space is its own world, with its own pinned tabs, folders and color. Start with two or three.
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_NAME_LABEL" desc="Label of the text field for a space's name.">
++  Name
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_KIND_LABEL" desc="Label of the group of buttons that pick the kind of planet drawn for a space.">
++  Planet
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_HUE_LABEL" desc="Label of the group of buttons that pick a space's color.">
++  Color
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_SUGGESTIONS_LABEL" desc="Accessible label of a group of buttons with suggested space names.">
++  Suggested names
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_CREATE" desc="Button label that creates the space the user is making.">
++  Create space
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_SAVE" desc="Button label that saves changes to a space the user made earlier.">
++  Save
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_REMOVE" desc="Button label that removes a space the user made earlier.">
++  Remove
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_NAME_MISSING" desc="Hint shown when the user tries to create a space without a name.">
++  Give this space a name first.
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_FULL" desc="Shown after the user has made the most starter spaces onboarding allows (three).">
++  Three is a good start. You can add more from the sidebar any time.
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_EMPTY" desc="Hint inside the empty orbit diagram, before the user has made a space.">
++  Your spaces will orbit here
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_CREATED" desc="Screen reader announcement after a space is created.">
++  <ph name="NAME">$1<ex>Work</ex></ph> created
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_EDIT" desc="Accessible label of a button that opens a space the user made, to change it.">
++  Edit <ph name="NAME">$1<ex>Work</ex></ph>
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_SUGGEST_WORK" desc="Suggested name for a space.">
++  Work
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_SUGGEST_SCHOOL" desc="Suggested name for a space.">
++  School
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_SUGGEST_HOME" desc="Suggested name for a space.">
++  Home
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_SUGGEST_PERSONAL" desc="Suggested name for a space.">
++  Personal
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_SUGGEST_PROJECTS" desc="Suggested name for a space.">
++  Projects
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_KIND_RINGED" desc="Name of a planet style with a ring around it.">
++  Ringed
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_KIND_BANDED" desc="Name of a planet style with horizontal cloud bands, like Jupiter.">
++  Banded
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_KIND_OCEAN" desc="Name of a planet style covered in sea with a few islands.">
++  Ocean
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_KIND_CRATERED" desc="Name of a planet style covered in craters, like the Moon.">
++  Cratered
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_HUE_BLUE" desc="Name of a space color.">
++  Blue
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_HUE_AMBER" desc="Name of a space color.">
++  Amber
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_HUE_GREEN" desc="Name of a space color.">
++  Green
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_HUE_PINK" desc="Name of a space color.">
++  Pink
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_HUE_VIOLET" desc="Name of a space color.">
++  Violet
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_HUE_TEAL" desc="Name of a space color.">
++  Teal
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_HUE_RED" desc="Name of a space color.">
++  Red
++</message>
++<message name="IDS_LOKA_ONBOARDING_SPACES_HUE_LIME" desc="Name of a space color.">
++  Lime
++</message>
++<message name="IDS_LOKA_ONBOARDING_SOUND_MUTE" desc="Accessible label of the corner button that turns onboarding sounds off.">
++  Mute sounds
++</message>
++<message name="IDS_LOKA_ONBOARDING_SOUND_UNMUTE" desc="Accessible label of the corner button that turns onboarding sounds back on.">
++  Turn sounds on
++</message>
++<message name="IDS_LOKA_ONBOARDING_STEPS_PROGRESS" desc="Accessible label of the onboarding progress indicator.">
++  Step <ph name="CURRENT">$1<ex>2</ex></ph> of <ph name="TOTAL">$2<ex>6</ex></ph>
++</message>
++<message name="IDS_LOKA_ONBOARDING_DATA_IMPORT_ARC_TITLE" desc="Title of the highlighted import option for the Arc browser. Arc's spaces are brought over as bookmark folders.">
++  Bring your spaces from Arc
++</message>
++<message name="IDS_LOKA_ONBOARDING_DATA_IMPORT_ARC_DESC" desc="Explains exactly what importing from Arc brings over.">
++  Each Arc space's pinned tabs and folders come over as a bookmarks folder, and your Favorites go in the bookmarks bar.
++</message>
++<message name="IDS_LOKA_ONBOARDING_DATA_IMPORT_ZEN_TITLE" desc="Title of the highlighted import option for the Zen browser.">
++  Coming from Zen?
++</message>
++<message name="IDS_LOKA_ONBOARDING_DATA_IMPORT_ZEN_DESC" desc="Explains exactly what importing from Zen brings over, and that Zen workspaces are not imported.">
++  Your bookmarks and history come over. Zen's workspaces stay in Zen, so make them as spaces in the sidebar.
++</message>
++<message name="IDS_LOKA_ONBOARDING_DATA_IMPORT_OTHER_BROWSERS" desc="Heading above the list of other browsers that data can be imported from.">
++  Other browsers
++</message>
++
++</grit-part>
+--- /dev/null
 +++ b/components/helium_onboarding/public/favicon.svg
 @@ -0,0 +1,8 @@
 +<svg width="256" height="256" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -396,54 +297,49 @@
 +<circle cx="20" cy="25" r="27" fill="#78cdf5" clip-path="url(#b)"/>
 +<circle cx="51" cy="12.5" r="4.5" fill="#78cdf5"/>
 +</svg>
---- a/components/helium_onboarding/src/App.svelte
-+++ b/components/helium_onboarding/src/App.svelte
-@@ -1,32 +1,51 @@
- <script lang="ts">
--    import { onMount } from "svelte";
-     import { SvelteSet } from "svelte/reactivity";
--    import { GradientShimmer } from "@imput/helium-prism";
-     import * as pages from "./pages";
-     import * as Browser from "./lib/browser";
-+    import { startWindowDrag, windowFrame } from "./lib/browser";
-     import {
-         currentPage,
+--- /dev/null
++++ b/components/helium_onboarding/src/LokaApp.svelte
+@@ -0,0 +1,189 @@
++<script lang="ts">
++    // Loka's setup window: the sky, the top bar and Loka's pages. main.ts mounts this instead of Helium's App.svelte.
++    import { SvelteSet } from "svelte/reactivity";
++    import * as pages from "./pages";
++    import * as Browser from "./lib/browser";
++    import * as WindowFrame from "./lib/browser/window-frame";
++    import { startWindowDrag, windowFrame } from "./lib/browser/window-frame";
++    import {
++        currentPage,
 +        direction,
-         flow,
--        hasSeenIntro,
--        ONBOARDING_INTRO_DELAY_MS,
++        flow,
 +        pageIndex,
-+        type Page,
-     } from "./lib/onboarding-flow";
++    } from "./lib/onboarding-flow";
 +    import { skyHue, starterSpaces } from "./lib/spaces";
- 
-     import PageNavigation from "./components/PageNavigation.svelte";
++
++    import PageNavigation from "./components/PageNavigation.svelte";
 +    import Sky from "./components/Sky.svelte";
 +    import LokaMark from "./components/LokaMark.svelte";
 +    import SoundToggle from "./components/SoundToggle.svelte";
 +    import StepDots from "./components/StepDots.svelte";
 +    import WindowControls from "./components/WindowControls.svelte";
- 
-     const OUT_ANIMATION_DURATION = 200;
- 
--    type Page = typeof flow[number];
--
-     Browser.setup();
- 
--    let gradientShimmer = $state<{ emphasize: () => void }>();
--    let introStarted = $state($hasSeenIntro);
-     const mountedPages = new SvelteSet<Page>([$currentPage]);
-     let previousPage = $currentPage;
- 
--    const shimmerDimmed = $derived(
--        $currentPage !== "Welcome" && $currentPage !== "Finish"
++
++    const OUT_ANIMATION_DURATION = 200;
++
++    type Page = typeof flow[number];
++
++    Browser.setup();
++    // Loka's own browser call, after Helium's: who draws the window's controls.
++    WindowFrame.setup();
++
++    const mountedPages = new SvelteSet<Page>([$currentPage]);
++    let previousPage = $currentPage;
++
 +    // The Spaces step colors the sky with the space being made. After it, the rest of setup takes the color of
 +    // the first space, the way the browser takes the color of the space you're in.
 +    const hue = $derived(
 +        $currentPage === "Spaces"
 +            ? $skyHue
 +            : ($currentPage === "Welcome" ? 200 : $starterSpaces[0]?.hue ?? 200)
-     );
++    );
 +
 +    const horizon = $derived(
 +        $currentPage === "Welcome" || $currentPage === "Finish" ? "high" : "low"
@@ -457,58 +353,41 @@
 +    $effect(() => {
 +        document.documentElement.classList.toggle("going-back", $direction === -1);
 +    });
- 
-     $effect(() => {
-         const page = $currentPage;
-@@ -39,10 +58,6 @@
-         mountedPages.add(page);
-         previousPage = page;
- 
--        if (flow.indexOf(page) > flow.indexOf(leavingPage)) {
--            gradientShimmer?.emphasize();
--        }
--
-         window.setTimeout(() => {
-             if ($currentPage !== leavingPage) {
-                 mountedPages.delete(leavingPage);
-@@ -50,35 +65,49 @@
-         }, OUT_ANIMATION_DURATION);
-     });
- 
--    onMount(() => {
--        if (introStarted) {
--            return;
--        }
++
++    $effect(() => {
++        const page = $currentPage;
++
++        if (page === previousPage) {
++            return;
++        }
++
++        const leavingPage = previousPage;
++        mountedPages.add(page);
++        previousPage = page;
++
++        window.setTimeout(() => {
++            if ($currentPage !== leavingPage) {
++                mountedPages.delete(leavingPage);
++            }
++        }, OUT_ANIMATION_DURATION);
++    });
++
 +    // Without a title bar the top bar is one: pressing its empty space moves the window, as in the browser's sidebar.
 +    const onTopBarPress = (event: MouseEvent) => {
 +        const target = event.target as Element;
 +        if (event.button !== 0 || event.detail !== 1 || target.closest("button, a, input")) return;
 +        startWindowDrag();
 +    };
- 
--        const timer = window.setTimeout(() => {
--            introStarted = true;
--        }, ONBOARDING_INTRO_DELAY_MS);
--
--        return () => {
--            window.clearTimeout(timer);
--        };
++
 +    // The planet rises on the first frame after the page draws, so the welcome opens on it coming up.
 +    $effect(() => {
 +        const frame = requestAnimationFrame(() => {
 +            risen = true;
 +        });
 +        return () => cancelAnimationFrame(frame);
-     });
- </script>
- 
--<main
--    class:dimmed={shimmerDimmed}
--    style:--onboarding-intro-delay={`${ONBOARDING_INTRO_DELAY_MS}ms`}
-->
--    {#if introStarted}
--        <div class="shimmer-layer" class:dimmed={shimmerDimmed}>
--            <GradientShimmer bind:this={gradientShimmer} />
++    });
++</script>
++
 +<Sky travel={$pageIndex} horizon={risen ? horizon : "below"} />
 +
 +<main>
@@ -525,13 +404,7 @@
 +                    <LokaMark size={22} wordmark />
 +                </span>
 +            {/if}
-         </div>
--    {/if}
--
--    <!-- Keep navigation mounted on Finish so it can animate out. -->
--    {#if $currentPage !== "Welcome"}
--        <PageNavigation />
--    {/if}
++        </div>
 +        <div>
 +            <StepDots />
 +        </div>
@@ -542,50 +415,36 @@
 +            {/if}
 +        </div>
 +    </header>
- 
-     {#each flow as page (page)}
-         {#if mountedPages.has(page)}
-@@ -86,6 +115,12 @@
-             <Component />
-         {/if}
-     {/each}
++
++    {#each flow as page (page)}
++        {#if mountedPages.has(page)}
++            {@const Component = pages[page]}
++            <Component />
++        {/if}
++    {/each}
 +
 +    <!-- After the pages, so Tab reaches a page's own controls before Back and Next (it's fixed to the bottom, so
 +         this doesn't move it). Kept mounted on Finish so it can animate out. -->
 +    {#if $currentPage !== "Welcome"}
 +        <PageNavigation />
 +    {/if}
- </main>
- 
- <style>
-@@ -95,44 +130,55 @@
-         justify-content: center;
-         width: 100vw;
-         min-height: 100vh;
--        background: var(--bg-gradient-start);
--
--        &::before {
--            content: "";
--            position: fixed;
--            inset: 0;
--            z-index: 0;
--            background: var(--intro-gradient);
--            opacity: 0;
--            pointer-events: none;
--            transition: opacity 1s;
--        }
- 
-         & :global(.onboarding-page) {
-             z-index: 1;
-         }
-     }
- 
--    .shimmer-layer {
++</main>
++
++<style>
++    main {
++        position: relative;
++        display: flex;
++        justify-content: center;
++        width: 100vw;
++        min-height: 100vh;
++
++        & :global(.onboarding-page) {
++            z-index: 1;
++        }
++    }
++
 +    .top-bar {
-         position: fixed;
--        inset: 0;
--        z-index: 0;
--        opacity: 1;
++        position: fixed;
 +        z-index: 10;
 +        top: 0;
 +        left: 0;
@@ -595,11 +454,8 @@
 +        align-items: center;
 +        height: var(--top-bar);
 +        padding-inline: 24px;
-         pointer-events: none;
--        transition: opacity 1s;
- 
--        &.dimmed {
--            opacity: 0.5;
++        pointer-events: none;
++
 +        & > * {
 +            pointer-events: auto;
 +        }
@@ -608,12 +464,9 @@
 +        &.title-bar {
 +            pointer-events: auto;
 +            user-select: none;
-         }
-     }
- 
--    @media (prefers-color-scheme: dark) {
--        main.dimmed::before {
--            opacity: 1;
++        }
++    }
++
 +    .corner {
 +        display: flex;
 +        align-items: center;
@@ -622,11 +475,9 @@
 +        &.end {
 +            justify-content: flex-end;
 +            gap: var(--space-1);
-         }
++        }
 +    }
- 
--        .shimmer-layer.dimmed {
--            opacity: 0.3;
++
 +    .wordmark-in {
 +        display: inline-flex;
 +        animation: wordmark-in 400ms var(--ease-out) 200ms backwards;
@@ -635,440 +486,9 @@
 +    @keyframes wordmark-in {
 +        from {
 +            opacity: 0;
-         }
-     }
- </style>
---- a/components/helium_onboarding/src/app.css
-+++ b/components/helium_onboarding/src/app.css
-@@ -1,31 +1,235 @@
-+/* Loka's look over Helium's components (@imput/helium-prism): the night sky, one hue per space, the system face.
-+   Every color takes --hue, which the page sets to the space being shown (lib/spaces.ts skyHue).
-+   Values follow the site's direction note (site/.critly/direction.md). */
-+
-+/* Registered so the whole page can ease from one space's color to the next. */
-+@property --hue {
-+    syntax: "<number>";
-+    inherits: true;
-+    initial-value: 200;
-+}
-+
- :root {
--    --page-scroll-gradient-mask: linear-gradient(
--        to bottom,
--        rgba(0, 0, 0, 1) 90%,
--        rgba(0, 0, 0, 0) 100%
--    );
-+    --hue: 200;
-+    color-scheme: dark;
-+
-+    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-+    --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-+
-+    /* Type: one job per size. Display sizes (h1, h2) are fluid and set below. */
-+    --text-caption: 13px;
-+    --text-small: 15px;
-+    --text-body: 17px;
-+    --text-lead: 19px;
-+
-+    /* Space: 4, 8, 12, 16, 24, 32, 48. */
-+    --space-1: 4px;
-+    --space-2: 8px;
-+    --space-3: 12px;
-+    --space-4: 16px;
-+    --space-6: 24px;
-+    --space-8: 32px;
-+    --space-12: 48px;
-+
-+    /* Three curves. --ease for color and things already on screen, --ease-out for anything the user starts,
-+       --ease-in only for what is leaving. */
-+    --ease: cubic-bezier(0.2, 0, 0, 1);
-+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-+    --ease-in: cubic-bezier(0.4, 0, 1, 1);
-+
-+    /* Roles, mapped onto prism's names so its components follow. */
-+    --primary: #ececf1;
-+    --secondary: #a7a8b4;
-+    --tertiary: #9c9eab;
-+    /* prism draws text on its accent with --white: here that's the accent's dark ink. */
-+    --white: hsl(var(--hue) 50% 10%);
-+
-+    --helium-blue: hsl(var(--hue) 85% 72%);
-+    --helium-blue-hover: hsl(var(--hue) 90% 80%);
-+    --helium-blue-press: hsl(var(--hue) 78% 66%);
-+
-+    --bg-surface: hsl(var(--hue) 38% 4%);
-+    --bg-gradient-start: var(--bg-surface);
-+    --background: var(--bg-surface);
-+
-+    /* Errors. Some space colors sit near it, so errors also carry an icon. */
-+    --danger: hsl(4 90% 74%);
-+
-+    --helium-elevated: hsl(var(--hue) 40% 85%);
-+    --ring: hsl(var(--hue) 40% 80% / 0.14);
-+    --shadow: 0 12px 32px #0008;
-+
-+    --tooltip-bg: hsl(var(--hue) 22% 13%);
-+    --tooltip-shadow: #0008;
-+    --glass-filter: blur(12px);
-+
-+    --top-bar: 76px;
-+
-+    font-family: var(--font);
-+    font-weight: 400;
-+    letter-spacing: 0;
-+    line-height: 1.45;
-+    transition: --hue 420ms var(--ease);
-+}
-+
-+html {
-+    background: var(--bg-surface);
- }
- 
- body {
-     display: flex;
-     justify-content: center;
-     min-height: 100vh;
--    background: var(--bg-gradient-start);
-+    background: var(--bg-surface);
-     overflow: hidden;
-     user-select: none;
-+    -webkit-font-smoothing: antialiased;
-+}
-+
-+::selection {
-+    background-color: hsl(var(--hue) 85% 72% / 0.35);
- }
- 
- h1, h2, p {
-     white-space: pre-line;
- }
- 
-+h1,
-+h2,
-+h3 {
-+    font-family: var(--font-display);
-+    font-weight: 650;
-+    color: var(--primary);
-+    text-wrap: balance;
-+}
-+
- h1 {
--    font-size: 38px;
-+    font-size: clamp(44px, 1.5rem + 3vw, 76px);
-+    line-height: 1.04;
-+    letter-spacing: -0.03em;
- }
- 
- h2 {
--    font-size: 30px;
--}
-+    font-size: clamp(30px, 1.25rem + 1.3vw, 40px);
-+    line-height: 1.1;
-+    letter-spacing: -0.02em;
-+}
-+
-+h4 {
-+    font-weight: 600;
-+    font-size: var(--text-body);
-+    color: var(--primary);
-+}
-+
-+p, a, li {
-+    font-size: var(--text-body);
-+    line-height: 1.45;
-+    text-wrap: pretty;
-+}
-+
-+/* ---- prism's controls in Loka's shape: 44px targets, the space's accent, instant hovers, a quick press ---- */
-+
-+#app button,
-+#app .button {
-+    --size: 44px;
-+    font-size: var(--text-body);
-+    font-weight: 500;
-+    transition:
-+        background-color 120ms var(--ease),
-+        color 120ms var(--ease),
-+        box-shadow 120ms var(--ease),
-+        opacity 200ms var(--ease),
-+        transform 100ms var(--ease);
-+}
-+
-+#app .button.primary {
-+    font-weight: 600;
-+}
-+
-+/* prism's cards: Button card, CardLink and Toggle (which is "toggle-button card", without .button). */
-+#app .card {
-+    border-radius: 12px;
-+    padding: var(--space-4);
-+    box-shadow: inset 0 0 0 1px var(--ring);
-+    background-color: hsl(var(--hue) 30% 80% / 0.05);
-+}
-+
-+/* Descriptions inside cards read as body text, not as part of the button label. */
-+#app .card p {
-+    font-weight: 400;
-+    font-size: var(--text-small);
-+}
-+
-+/* prism's toggles, checkboxes and card text fade on its own 'ease'; give them the page's curve. */
-+#app .toggle-button .toggle,
-+#app .checkbox-control,
-+#app .button > *,
-+#app .button > * > p {
-+    transition-timing-function: var(--ease);
-+}
-+
-+@media (hover: hover) {
-+    #app .card:hover {
-+        background-color: hsl(var(--hue) 30% 80% / 0.09);
-+    }
-+}
-+
-+#app .card:active {
-+    transform: scale(0.99);
-+}
-+
-+#app .button.selected {
-+    background-color: hsl(var(--hue) 70% 60% / 0.12);
-+    box-shadow:
-+        inset 0 0 0 1.5px var(--helium-blue),
-+        0 0 24px -8px hsl(var(--hue) 85% 60% / 0.5);
-+}
-+
-+#app button:focus-visible,
-+#app .button:focus-visible,
-+#app a:focus-visible {
-+    outline: 2px solid var(--helium-blue);
-+    outline-offset: 3px;
-+}
-+
-+/* prism's switch: a light runner when off, the accent's ink on the accent when on. */
-+#app .toggle-button .toggle {
-+    background-color: hsl(var(--hue) 30% 80% / 0.2);
-+
-+    & .runner {
-+        background-color: var(--primary);
-+        transition: translate 160ms var(--ease-out), background-color 160ms var(--ease);
-+    }
-+
-+    &.enabled {
-+        background-color: var(--helium-blue);
-+
-+        & .runner {
-+            background-color: var(--white);
 +        }
 +    }
-+}
-+
-+#app input:checked + .checkbox-control {
-+    color: var(--white);
-+}
-+
-+#app .checkbox-control {
-+    box-shadow: inset 0 0 0 1.5px hsl(var(--hue) 40% 85% / 0.3);
-+}
-+
-+/* prism hides the real checkbox with position: absolute. Without a positioned label its box belonged to the whole
-+   page, so focusing it from the keyboard scrolled the page itself (header and all) instead of the list. */
-+#app label.checkbox {
-+    position: relative;
-+}
-+
-+/* The same ring as every other control. */
-+#app input:focus-visible + .checkbox-control {
-+    outline-color: var(--helium-blue);
-+}
-+
-+/* ---- pages ---- */
- 
- .onboarding-page {
-     display: flex;
-@@ -37,51 +241,102 @@
-     height: 100%;
-     left: 0;
-     position: absolute;
-+    padding-top: var(--top-bar);
-     visibility: hidden;
-+
-+    /* Forward: the next page rises from below and the last one leaves upward. Back reverses it. */
-+    --enter-from: 0 28px;
-+    --leave-to: 0 -18px;
-+}
-+
-+:root.going-back .onboarding-page {
-+    --enter-from: 0 -28px;
-+    --leave-to: 0 18px;
- }
- 
- .onboarding-page.visible {
-     visibility: visible;
--    animation: page-in 0.3s;
--    animation-delay: var(--page-in-delay, 0.05s);
--    animation-fill-mode: backwards;
-+    animation: page-in 460ms var(--ease-out) backwards;
-+    animation-delay: var(--page-in-delay, 60ms);
-+}
-+
-+/* What's on the page arrives a beat after its heading. */
-+.onboarding-page.visible .page-content {
-+    animation: page-in 520ms var(--ease-out) backwards;
-+    animation-delay: calc(var(--page-in-delay, 60ms) + 90ms);
- }
- 
- .onboarding-page:not(.visible) {
--    animation: page-out 0.2s;
--    animation-fill-mode: forwards;
-+    animation: page-out 180ms var(--ease-in) forwards;
-+}
-+
-+/* Pages that can scroll start at the same place, so the heading doesn't move between steps. */
-+.onboarding-page:has(> .scrollable-page) {
-+    justify-content: flex-start;
-+}
-+
-+/* The two fades grow only when there is more to scroll past that edge. */
-+@property --fade-top {
-+    syntax: "<length>";
-+    inherits: false;
-+    initial-value: 0px;
-+}
-+
-+@property --fade-bottom {
-+    syntax: "<length>";
-+    inherits: false;
-+    initial-value: 0px;
- }
- 
- .scrollable-page {
-     width: 100%;
-+    /* Keeps card descriptions near 75 characters a line. */
-     max-width: 600px;
--    overflow-x: scroll;
--    overflow-y: visible;
--    /* accommodation for outline */
-+    /* The scroller stops above the fixed navigation (its 44px buttons, 24px off the bottom, and 12px of air), so
-+       nothing scrolls under Back and Next, and Tab scrolls a control into view instead of leaving it behind them. */
-+    margin-bottom: 80px;
-+    overflow-x: hidden;
-+    overflow-y: auto;
-+    /* room for focus rings */
-     padding: 6px;
-     padding-top: 0;
--    /* accommodation for navigation buttons */
--    padding-bottom: 96px;
--    mask-image: var(--page-scroll-gradient-mask);
-+    padding-bottom: var(--space-8);
-+    /* Tab scrolls the focused control clear of the fades. */
-+    scroll-padding-block: var(--space-8);
-+    mask-image: linear-gradient(
-+        to bottom,
-+        transparent,
-+        #000 var(--fade-top),
-+        #000 calc(100% - var(--fade-bottom)),
-+        transparent
-+    );
-+    animation: fade-top linear both, fade-bottom linear both;
-+    animation-timeline: scroll(self);
-+    animation-range: 0 40px, calc(100% - 40px) 100%;
-+}
-+
-+@keyframes fade-top {
-+    from { --fade-top: 0px; }
-+    to { --fade-top: 32px; }
-+}
-+
-+@keyframes fade-bottom {
-+    from { --fade-bottom: 48px; }
-+    to { --fade-bottom: 0px; }
- }
- 
- .page-content {
-     display: flex;
-     flex-direction: column;
--    gap: var(--gap-3);
--    margin-top: 24px;
-+    gap: var(--space-3);
-+    margin-top: var(--space-6);
-     align-items: center;
- }
- 
- @keyframes page-in {
-     from {
--        translate: 0 30px;
--        filter: blur(8px);
-         opacity: 0;
--    }
--    to {
--        opacity: 1;
--        filter: none;
-+        translate: var(--enter-from);
-     }
- }
- 
-@@ -93,29 +348,28 @@
-     to {
-         opacity: 0;
-         visibility: hidden;
--        translate: 0 -30px;
--        filter: blur(8px);
-+        translate: var(--leave-to);
-     }
- }
- 
- @media (prefers-reduced-motion: reduce) {
--    @keyframes page-in {
--        from {
--            opacity: 0;
--        }
--        to {
--            opacity: 1;
--        }
--    }
--
--    @keyframes page-out {
--        from {
--            opacity: 1;
--            visibility: visible;
--        }
--        to {
--            visibility: hidden;
--            opacity: 0;
--        }
--    }
--}
-+    .onboarding-page {
-+        --enter-from: 0 0;
-+        --leave-to: 0 0;
-+    }
-+
-+    :root.going-back .onboarding-page {
-+        --enter-from: 0 0;
-+        --leave-to: 0 0;
-+    }
-+
-+    #app button:active,
-+    #app .button:active {
-+        transform: none;
-+    }
-+}
-+
-+#app .tooltip-content {
-+    font-size: var(--text-caption);
-+    line-height: 1.4;
-+}
---- a/components/helium_onboarding/src/components/HeliumPartner.svelte
-+++ b/components/helium_onboarding/src/components/HeliumPartner.svelte
-@@ -29,7 +29,7 @@
-         display: flex;
-         align-items: center;
-         gap: 4px;
--        font-size: 13.5px;
-+        font-size: var(--text-caption);
-         font-weight: 500;
-         width: fit-content;
-         line-height: 0;
++</style>
 --- /dev/null
 +++ b/components/helium_onboarding/src/components/LokaMark.svelte
 @@ -0,0 +1,106 @@
@@ -1178,36 +598,6 @@
 +        }
 +    }
 +</style>
---- a/components/helium_onboarding/src/components/PageHeader.svelte
-+++ b/components/helium_onboarding/src/components/PageHeader.svelte
-@@ -47,8 +47,9 @@
-         }
- 
-         & p {
--            font-size: 18px;
--            max-width: 450px;
-+            font-size: var(--text-lead);
-+            max-width: 32em;
-+            color: var(--secondary);
-             text-wrap: pretty;
-         }
- 
-@@ -56,12 +57,14 @@
-             display: flex;
-             align-items: center;
-             flex-wrap: wrap;
--            gap: 10px;
-+            gap: var(--space-3);
- 
-             & .header-icon {
-                 display: flex;
-                 height: 32px;
-                 width: 32px;
-+                color: var(--helium-blue);
-+                filter: drop-shadow(0 0 12px hsl(var(--hue) 85% 60% / 0.45));
-             }
- 
-             & .header-icon :global(svg) {
 --- a/components/helium_onboarding/src/components/PageNavigation.svelte
 +++ b/components/helium_onboarding/src/components/PageNavigation.svelte
 @@ -5,9 +5,12 @@
@@ -1635,44 +1025,6 @@
 +        }
 +    }
 +</style>
---- a/components/helium_onboarding/src/components/ProfileImportOption.svelte
-+++ b/components/helium_onboarding/src/components/ProfileImportOption.svelte
-@@ -52,8 +52,8 @@
- <style>
-     :global(label.checkbox.profile-option) {
-         width: 100%;
--        gap: 16px;
--        padding: 12px 18px;
-+        gap: var(--space-4);
-+        padding: var(--space-3) var(--space-4);
-         border-radius: 14px;
-         background-color: var(--helium-elevated-7);
-     }
-@@ -73,7 +73,8 @@
-     }
- 
-     :global(label.checkbox.profile-option.selected) {
--        box-shadow: 0 0 0 1px var(--primary) inset, 0 0 0 1px var(--primary);
-+        box-shadow: inset 0 0 0 1.5px var(--helium-blue);
-+        background-color: hsl(var(--hue) 70% 60% / 0.12);
-     }
- 
-     .text {
-@@ -81,10 +82,13 @@
-         flex-direction: column;
-         gap: 2px;
-         text-align: left;
-+
-+        & p {
-+            font-size: var(--text-small);
-+        }
-     }
- 
-     h4 {
-         color: var(--primary);
--        font-size: 17px;
-     }
- </style>
 --- /dev/null
 +++ b/components/helium_onboarding/src/components/Sky.svelte
 @@ -0,0 +1,357 @@
@@ -2159,7 +1511,7 @@
 +++ b/components/helium_onboarding/src/components/WindowControls.svelte
 @@ -0,0 +1,65 @@
 +<script lang="ts">
-+    import { closeWindow, minimizeWindow } from "../lib/browser";
++    import { closeWindow, minimizeWindow } from "../lib/browser/window-frame";
 +</script>
 +
 +<!-- The setup window has no title bar on Windows, so these stand in for its buttons. Silent, like the system's own.
@@ -2223,43 +1575,6 @@
 +        stroke-linejoin: round;
 +    }
 +</style>
---- a/components/helium_onboarding/src/lib/browser/index.ts
-+++ b/components/helium_onboarding/src/lib/browser/index.ts
-@@ -4,5 +4,6 @@
- export * from "./extensions";
- export * from "./is-default";
- export * from "./search-engines";
-+export * from "./window-frame";
- 
- export { setup } from "./setup";
---- a/components/helium_onboarding/src/lib/browser/prefs.ts
-+++ b/components/helium_onboarding/src/lib/browser/prefs.ts
-@@ -11,6 +11,9 @@
-     'services.spellcheck_files': boolean,
-     'services.browser_updates': boolean,
-     'services.ublock_assets': boolean,
-+    // Loka's starter spaces as JSON (see lib/spaces.ts). Registered by Loka's C++ side as
-+    // helium.loka.onboarding_spaces, since the handler prefixes every name with "helium.".
-+    'loka.onboarding_spaces': string,
- };
- 
- export type PrefKey = keyof Preferences;
---- a/components/helium_onboarding/src/lib/browser/setup.ts
-+++ b/components/helium_onboarding/src/lib/browser/setup.ts
-@@ -4,6 +4,7 @@
- import * as Extensions from "./extensions";
- import * as DefaultBrowser from "./is-default";
- import * as SearchEngines from "./search-engines";
-+import * as WindowFrame from "./window-frame";
- 
- let g_did_setup = false;
- export const setup = () => {
-@@ -21,4 +22,5 @@
-     Extensions.setup();
-     SearchEngines.setup();
-     DefaultBrowser.setup();
-+    WindowFrame.setup();
- }
 --- /dev/null
 +++ b/components/helium_onboarding/src/lib/browser/window-frame.ts
 @@ -0,0 +1,22 @@
@@ -2285,38 +1600,40 @@
 +
 +/** Hands the press that's still down to the system's move loop, like pressing on a title bar. */
 +export const startWindowDrag = () => chrome.send("startWindowDrag");
---- a/components/helium_onboarding/src/lib/chrome-send-polyfill.ts
-+++ b/components/helium_onboarding/src/lib/chrome-send-polyfill.ts
-@@ -29,6 +29,7 @@
-     'services.spellcheck_files': true,
-     'services.browser_updates': true,
-     'services.ublock_assets': true,
-+    'loka.onboarding_spaces': '',
- };
- 
- const searchEngineTemplate: SearchEngine = {
-@@ -121,7 +122,7 @@
-     [ "Opera", "lalala", chrome_has_favs ],
-     [ "Yandex", "Бла бла бла", chrome_has_favs ],
-     [ "NAVER Whale", "Work", chrome_has ],
--    [ "Arc", "Person 1", chrome_has ],
-+    [ "Arc", "Person 1", chrome_has_favs ],
-     [ "Dia", "Person 1", chrome_has ],
-     [ "Microsoft Edge", "Profile 1", chrome_has ],
-     [ "Microsoft Edge", "Bill Gates", chrome_has ],
-@@ -241,6 +242,12 @@
-                 : cr.ImportDataStatus.SUCCEEDED
-             );
-         }, 2000);
-+    } else if (msg === 'getWindowFrame') {
-+        // As in the setup window on Windows, which has no title bar. ?frame=system shows a window that has one.
-+        const frame = new URLSearchParams(location.search).get('frame') === 'system' ? 'system' : 'page';
-+        cr.webUIResponse(params![0], true, frame);
-+    } else if (msg === 'windowAction' || msg === 'startWindowDrag') {
-+        // Nothing to move or close in a dev tab; the console line above shows the call.
-     } else if (msg === 'getExtensions') {
-         cr.webUIResponse(params![0], true, structuredClone(extensionList));
-     } else if (msg === 'installExtension') {
+--- /dev/null
++++ b/components/helium_onboarding/src/lib/loka-dev-polyfill.ts
+@@ -0,0 +1,31 @@
++// Loka's messages in the dev server (`vite`), where Helium's chrome-send-polyfill.ts stands in for the browser. It
++// answers Loka's calls and hands everything else to Helium's polyfill, so that file stays Helium's.
++import * as cr from './cr';
++
++declare namespace globalThis {
++    namespace chrome {
++        function send(msg: string, params?: any[]): void;
++    }
++}
++
++if (import.meta.env.DEV) {
++    const helium = globalThis.chrome.send;
++
++    globalThis.chrome.send = (msg: string, params?: any[]) => {
++        if (msg === 'getWindowFrame') {
++            console.log(msg, params);
++            // As in the setup window on Windows, which has no title bar. ?frame=system shows a window that has one.
++            const frame = new URLSearchParams(location.search).get('frame') === 'system' ? 'system' : 'page';
++            cr.webUIResponse(params![0], true, frame);
++        } else if (msg === 'windowAction' || msg === 'startWindowDrag') {
++            // Nothing to move or close in a dev tab; the console line shows the call.
++            console.log(msg, params);
++        } else if (msg === 'setPref' && params?.[1] === 'loka.onboarding_spaces') {
++            // Registered by Loka's C++ side as helium.loka.onboarding_spaces; Helium's polyfill doesn't know it.
++            console.log(msg, params);
++            cr.webUIResponse(params[0], typeof params[2] === 'string', null);
++        } else {
++            helium(msg, params);
++        }
++    };
++}
 --- /dev/null
 +++ b/components/helium_onboarding/src/lib/motion.ts
 @@ -0,0 +1,11 @@
@@ -2347,29 +1664,7 @@
      "HeliumServices",
      "SearchEngine",
      "DataImport",
-@@ -14,14 +15,20 @@
-     "Finish"
- ] as const;
- 
-+export type Page = typeof flow[number];
-+
- const index = writable(0);
-+/** Which way the last move went: 1 forward, -1 back. Transitions and the sky's drift follow it. */
-+const _direction = writable<1 | -1>(1);
- 
- export const currentPage = derived(
-     index,
-     $index => flow[$index]
- );
-+export const pageIndex = readonly(index);
-+export const direction = readonly(_direction);
- 
--const shouldSkip = (page: typeof flow[number]): boolean => {
-+const shouldSkip = (page: Page): boolean => {
-     switch (page) {
-         case 'DataImport':
-             // skip if nothing to import
-@@ -53,14 +60,27 @@
+@@ -53,12 +54,32 @@
  }
  
  export const nextPage = () => {
@@ -2381,8 +1676,14 @@
 +    _direction.set(-1);
      index.update((current) => getPageNumber(current, -1));
  }
- 
--export const ONBOARDING_INTRO_DELAY_MS = 800;
++
++// Loka: where setup is, which way it last moved, and the steps its progress dots show.
++export const pageIndex = readonly(index);
++
++/** Which way the last move went: 1 forward, -1 back. Transitions and the sky's drift follow it. */
++const _direction = writable<1 | -1>(1);
++export const direction = readonly(_direction);
++
 +/** The steps between Welcome and Finish that will be shown, for the progress dots. */
 +export const steps = derived(
 +    [index, importableProfiles, preferences, isDefaultBrowser],
@@ -2393,11 +1694,9 @@
 +        return { shown, current: shown.indexOf(flow[$index] as typeof shown[number]) };
 +    }
 +);
-+
-+export const ONBOARDING_INTRO_DELAY_MS = 300;
  
- export const hasSeenIntro = writable(false);
- export const markIntroSeen = () => {
+ export const ONBOARDING_INTRO_DELAY_MS = 800;
+ 
 --- /dev/null
 +++ b/components/helium_onboarding/src/lib/sound.ts
 @@ -0,0 +1,319 @@
@@ -2722,10 +2021,10 @@
 +};
 --- /dev/null
 +++ b/components/helium_onboarding/src/lib/spaces.ts
-@@ -0,0 +1,70 @@
+@@ -0,0 +1,72 @@
 +import { writable } from "svelte/store";
 +import { s } from "./strings";
-+import { setPref } from "./browser";
++import * as cr from "./cr";
 +
 +// The same kinds, hues and order as Loka's sidebar (prototype/src/features/sidebar/planet.ts and sidebar.logic.ts),
 +// so a space made here looks the same once it's in the sidebar.
@@ -2788,37 +2087,436 @@
 +export const saveStarterSpaces = async (spaces: StarterSpace[]): Promise<void> => {
 +    const value = JSON.stringify({ version: 1, spaces });
 +    try {
-+        await setPref("loka.onboarding_spaces", value);
++        // Helium's setPref, sent directly: its Preferences type lists only Helium's prefs. The handler saves it as
++        // helium.loka.onboarding_spaces (it prefixes every name with "helium."), which Loka's C++ side registers.
++        await cr.sendWithPromise("setPref", "loka.onboarding_spaces", value);
 +    } catch (error) {
 +        console.error("Could not save loka.onboarding_spaces:", error);
 +    }
 +};
+--- /dev/null
++++ b/components/helium_onboarding/src/loka.css
+@@ -0,0 +1,379 @@
++/* Loka's look over Helium's components (@imput/helium-prism): the night sky, one hue per space, the system face.
++   Every color takes --hue, which the page sets to the space being shown (lib/spaces.ts skyHue).
++   Values follow the site's direction note (site/.critly/direction.md).
++
++   main.ts imports this right after Helium's app.css, so a rule here with the same selector as one there wins, and
++   app.css stays Helium's. Helium's components keep their own scoped styles; the few Loka changes are at the end,
++   under #app so they outrank the component's scoped rule. */
++
++/* Registered so the whole page can ease from one space's color to the next. */
++@property --hue {
++    syntax: "<number>";
++    inherits: true;
++    initial-value: 200;
++}
++
++:root {
++    --hue: 200;
++    color-scheme: dark;
++
++    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
++    --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
++
++    /* Type: one job per size. Display sizes (h1, h2) are fluid and set below. */
++    --text-caption: 13px;
++    --text-small: 15px;
++    --text-body: 17px;
++    --text-lead: 19px;
++
++    /* Space: 4, 8, 12, 16, 24, 32, 48. */
++    --space-1: 4px;
++    --space-2: 8px;
++    --space-3: 12px;
++    --space-4: 16px;
++    --space-6: 24px;
++    --space-8: 32px;
++    --space-12: 48px;
++
++    /* Three curves. --ease for color and things already on screen, --ease-out for anything the user starts,
++       --ease-in only for what is leaving. */
++    --ease: cubic-bezier(0.2, 0, 0, 1);
++    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
++    --ease-in: cubic-bezier(0.4, 0, 1, 1);
++
++    /* Roles, mapped onto prism's names so its components follow. */
++    --primary: #ececf1;
++    --secondary: #a7a8b4;
++    --tertiary: #9c9eab;
++    /* prism draws text on its accent with --white: here that's the accent's dark ink. */
++    --white: hsl(var(--hue) 50% 10%);
++
++    --helium-blue: hsl(var(--hue) 85% 72%);
++    --helium-blue-hover: hsl(var(--hue) 90% 80%);
++    --helium-blue-press: hsl(var(--hue) 78% 66%);
++
++    --bg-surface: hsl(var(--hue) 38% 4%);
++    --bg-gradient-start: var(--bg-surface);
++    --background: var(--bg-surface);
++
++    /* Errors. Some space colors sit near it, so errors also carry an icon. */
++    --danger: hsl(4 90% 74%);
++
++    --helium-elevated: hsl(var(--hue) 40% 85%);
++    --ring: hsl(var(--hue) 40% 80% / 0.14);
++    --shadow: 0 12px 32px #0008;
++
++    --tooltip-bg: hsl(var(--hue) 22% 13%);
++    --tooltip-shadow: #0008;
++    --glass-filter: blur(12px);
++
++    --top-bar: 76px;
++
++    font-family: var(--font);
++    font-weight: 400;
++    letter-spacing: 0;
++    line-height: 1.45;
++    transition: --hue 420ms var(--ease);
++}
++
++html {
++    background: var(--bg-surface);
++}
++
++body {
++    background: var(--bg-surface);
++    -webkit-font-smoothing: antialiased;
++}
++
++::selection {
++    background-color: hsl(var(--hue) 85% 72% / 0.35);
++}
++
++h1,
++h2,
++h3 {
++    font-family: var(--font-display);
++    font-weight: 650;
++    color: var(--primary);
++    text-wrap: balance;
++}
++
++h1 {
++    font-size: clamp(44px, 1.5rem + 3vw, 76px);
++    line-height: 1.04;
++    letter-spacing: -0.03em;
++}
++
++h2 {
++    font-size: clamp(30px, 1.25rem + 1.3vw, 40px);
++    line-height: 1.1;
++    letter-spacing: -0.02em;
++}
++
++h4 {
++    font-weight: 600;
++    font-size: var(--text-body);
++    color: var(--primary);
++}
++
++p, a, li {
++    font-size: var(--text-body);
++    line-height: 1.45;
++    text-wrap: pretty;
++}
++
++/* ---- prism's controls in Loka's shape: 44px targets, the space's accent, instant hovers, a quick press ---- */
++
++#app button,
++#app .button {
++    --size: 44px;
++    font-size: var(--text-body);
++    font-weight: 500;
++    transition:
++        background-color 120ms var(--ease),
++        color 120ms var(--ease),
++        box-shadow 120ms var(--ease),
++        opacity 200ms var(--ease),
++        transform 100ms var(--ease);
++}
++
++#app .button.primary {
++    font-weight: 600;
++}
++
++/* prism's cards: Button card, CardLink and Toggle (which is "toggle-button card", without .button). */
++#app .card {
++    border-radius: 12px;
++    padding: var(--space-4);
++    box-shadow: inset 0 0 0 1px var(--ring);
++    background-color: hsl(var(--hue) 30% 80% / 0.05);
++}
++
++/* Descriptions inside cards read as body text, not as part of the button label. */
++#app .card p {
++    font-weight: 400;
++    font-size: var(--text-small);
++}
++
++/* prism's toggles, checkboxes and card text fade on its own 'ease'; give them the page's curve. */
++#app .toggle-button .toggle,
++#app .checkbox-control,
++#app .button > *,
++#app .button > * > p {
++    transition-timing-function: var(--ease);
++}
++
++@media (hover: hover) {
++    #app .card:hover {
++        background-color: hsl(var(--hue) 30% 80% / 0.09);
++    }
++}
++
++#app .card:active {
++    transform: scale(0.99);
++}
++
++#app .button.selected {
++    background-color: hsl(var(--hue) 70% 60% / 0.12);
++    box-shadow:
++        inset 0 0 0 1.5px var(--helium-blue),
++        0 0 24px -8px hsl(var(--hue) 85% 60% / 0.5);
++}
++
++#app button:focus-visible,
++#app .button:focus-visible,
++#app a:focus-visible {
++    outline: 2px solid var(--helium-blue);
++    outline-offset: 3px;
++}
++
++/* prism's switch: a light runner when off, the accent's ink on the accent when on. */
++#app .toggle-button .toggle {
++    background-color: hsl(var(--hue) 30% 80% / 0.2);
++
++    & .runner {
++        background-color: var(--primary);
++        transition: translate 160ms var(--ease-out), background-color 160ms var(--ease);
++    }
++
++    &.enabled {
++        background-color: var(--helium-blue);
++
++        & .runner {
++            background-color: var(--white);
++        }
++    }
++}
++
++#app input:checked + .checkbox-control {
++    color: var(--white);
++}
++
++#app .checkbox-control {
++    box-shadow: inset 0 0 0 1.5px hsl(var(--hue) 40% 85% / 0.3);
++}
++
++/* prism hides the real checkbox with position: absolute. Without a positioned label its box belonged to the whole
++   page, so focusing it from the keyboard scrolled the page itself (header and all) instead of the list. */
++#app label.checkbox {
++    position: relative;
++}
++
++/* The same ring as every other control. */
++#app input:focus-visible + .checkbox-control {
++    outline-color: var(--helium-blue);
++}
++
++/* ---- pages ---- */
++
++.onboarding-page {
++    padding-top: var(--top-bar);
++
++    /* Forward: the next page rises from below and the last one leaves upward. Back reverses it. */
++    --enter-from: 0 28px;
++    --leave-to: 0 -18px;
++}
++
++:root.going-back .onboarding-page {
++    --enter-from: 0 -28px;
++    --leave-to: 0 18px;
++}
++
++.onboarding-page.visible {
++    animation: page-in 460ms var(--ease-out) backwards;
++    animation-delay: var(--page-in-delay, 60ms);
++}
++
++/* What's on the page arrives a beat after its heading. */
++.onboarding-page.visible .page-content {
++    animation: page-in 520ms var(--ease-out) backwards;
++    animation-delay: calc(var(--page-in-delay, 60ms) + 90ms);
++}
++
++.onboarding-page:not(.visible) {
++    animation: page-out 180ms var(--ease-in) forwards;
++}
++
++/* Pages that can scroll start at the same place, so the heading doesn't move between steps. */
++.onboarding-page:has(> .scrollable-page) {
++    justify-content: flex-start;
++}
++
++/* The two fades grow only when there is more to scroll past that edge. */
++@property --fade-top {
++    syntax: "<length>";
++    inherits: false;
++    initial-value: 0px;
++}
++
++@property --fade-bottom {
++    syntax: "<length>";
++    inherits: false;
++    initial-value: 0px;
++}
++
++.scrollable-page {
++    /* The scroller stops above the fixed navigation (its 44px buttons, 24px off the bottom, and 12px of air), so
++       nothing scrolls under Back and Next, and Tab scrolls a control into view instead of leaving it behind them. */
++    margin-bottom: 80px;
++    overflow-x: hidden;
++    overflow-y: auto;
++    padding-bottom: var(--space-8);
++    /* Tab scrolls the focused control clear of the fades. */
++    scroll-padding-block: var(--space-8);
++    mask-image: linear-gradient(
++        to bottom,
++        transparent,
++        #000 var(--fade-top),
++        #000 calc(100% - var(--fade-bottom)),
++        transparent
++    );
++    animation: fade-top linear both, fade-bottom linear both;
++    animation-timeline: scroll(self);
++    animation-range: 0 40px, calc(100% - 40px) 100%;
++}
++
++@keyframes fade-top {
++    from { --fade-top: 0px; }
++    to { --fade-top: 32px; }
++}
++
++@keyframes fade-bottom {
++    from { --fade-bottom: 48px; }
++    to { --fade-bottom: 0px; }
++}
++
++.page-content {
++    gap: var(--space-3);
++    margin-top: var(--space-6);
++}
++
++/* These replace app.css's page-in and page-out, and its reduced-motion versions: the last @keyframes of a name wins. */
++@keyframes page-in {
++    from {
++        opacity: 0;
++        translate: var(--enter-from);
++    }
++}
++
++@keyframes page-out {
++    from {
++        opacity: 1;
++        visibility: visible;
++    }
++    to {
++        opacity: 0;
++        visibility: hidden;
++        translate: var(--leave-to);
++    }
++}
++
++@media (prefers-reduced-motion: reduce) {
++    .onboarding-page {
++        --enter-from: 0 0;
++        --leave-to: 0 0;
++    }
++
++    :root.going-back .onboarding-page {
++        --enter-from: 0 0;
++        --leave-to: 0 0;
++    }
++
++    #app button:active,
++    #app .button:active {
++        transform: none;
++    }
++}
++
++#app .tooltip-content {
++    font-size: var(--text-caption);
++    line-height: 1.4;
++}
++
++/* ---- Helium's components in Loka's type and color ---- */
++
++/* PageHeader: the subtitle in the lead size and secondary color, the icon in the space's accent with a glow. */
++#app .page-header p {
++    font-size: var(--text-lead);
++    max-width: 32em;
++    color: var(--secondary);
++}
++
++#app .page-header .title {
++    gap: var(--space-3);
++}
++
++#app .page-header .header-icon {
++    color: var(--helium-blue);
++    filter: drop-shadow(0 0 12px hsl(var(--hue) 85% 60% / 0.45));
++}
++
++/* HeliumPartner */
++#app .helium-partner-badge {
++    font-size: var(--text-caption);
++}
++
++/* HeliumServices: as wide as the toggles above it, so the link card shares their edges. */
++#app .instance-link {
++    width: 100%;
++}
 --- a/components/helium_onboarding/src/main.ts
 +++ b/components/helium_onboarding/src/main.ts
-@@ -1,13 +1,14 @@
+@@ -1,14 +1,17 @@
  import { mount } from 'svelte'
  import './lib/chrome-send-polyfill';
++import './lib/loka-dev-polyfill';
  
 -import "@fontsource-variable/instrument-sans/index.css";
  import "@imput/helium-prism/styles.css";
  import './app.css'
++import './loka.css'
  import { initStrings, s } from './lib/strings';
 +import { installSoundCues } from './lib/sound';
  
  await initStrings();
  document.title = s.page.title;
+-const { default: App } = await import('./App.svelte');
 +installSoundCues();
- const { default: App } = await import('./App.svelte');
++const { default: App } = await import('./LokaApp.svelte');
  
  const app = mount(App, {
---- a/components/helium_onboarding/src/pages/DataImport.svelte
-+++ b/components/helium_onboarding/src/pages/DataImport.svelte
-@@ -13,8 +13,17 @@
- 
-     const visible = $derived($currentPage === "DataImport");
- 
--    const sorted = $derived.by(() => {
--        const grouped = $importableProfiles.reduce(
+     target: document.getElementById('app')!,
+--- /dev/null
++++ b/components/helium_onboarding/src/pages/LokaDataImport.svelte
+@@ -0,0 +1,242 @@
++<script lang="ts">
++    // Loka's import page (Arc and Zen first); pages/index.ts exports it as DataImport in place of Helium's.
++    import { IconWorld } from "@imput/helium-prism";
++    import { s } from "../lib/strings";
++    import type { BrowserProfile } from "../lib/cr";
++    import { currentPage } from "../lib/onboarding-flow";
++    import { importableProfiles } from "../lib/browser";
++    import { browserIcons } from "../lib/nonfree-icons";
++
++    import PageHeader from "../components/PageHeader.svelte";
++    import ProfileImportOption from "../components/ProfileImportOption.svelte";
++
++    import IconTransferIn from "../icons/tabler/IconTransferIn.svelte";
++
++    const visible = $derived($currentPage === "DataImport");
++
 +    // People moving from Arc or Zen are who Loka is for, so those two lead when they're on this computer.
 +    // What each brings is exactly what Helium's importer does: Arc's spaces become bookmark folders, and Zen
 +    // gives bookmarks and history (its workspaces aren't read).
@@ -2830,36 +2528,50 @@
 +
 +    const grouped = $derived.by(() => {
 +        const groups = $importableProfiles.reduce(
-             (acc, profile) => {
-                 (acc[profile.name] ??= []).push(profile);
-                 return acc;
-@@ -22,8 +31,15 @@
-             {} as Record<string, BrowserProfile[]>
-         );
- 
--        return Object.entries(grouped)
++            (acc, profile) => {
++                (acc[profile.name] ??= []).push(profile);
++                return acc;
++            },
++            {} as Record<string, BrowserProfile[]>
++        );
++
 +        const featured = FEATURED.flatMap(name => {
 +            const profiles = groups[name];
 +            return profiles ? [[name, profiles] as const] : [];
 +        });
 +        const others = Object.entries(groups)
 +            .filter(([name]) => !(FEATURED as readonly string[]).includes(name))
-             .sort(([a], [b]) => a.localeCompare(b));
++            .sort(([a], [b]) => a.localeCompare(b));
 +
 +        return { featured, others };
-     });
- 
-     const browserIconMap = {
-@@ -46,7 +62,23 @@
-         "NAVER Whale": "whale",
-         "Perplexity Comet": "comet",
-     } as const;
++    });
++
++    const browserIconMap = {
++        Arc: "arc",
++        Brave: "brave",
++        Chromium: "chromium",
++        Dia: "dia",
++        Opera: "opera",
++        Safari: "safari",
++        Vivaldi: "vivaldi",
++        Yandex: "yandex",
++        Zen: "zen",
++
++        "Google Chrome": "chrome",
++        "Google Chrome Beta": "chrome_beta",
++        "Google Chrome Canary": "chrome_canary",
++        "Google Chrome Dev": "chrome_dev",
++        "Microsoft Edge": "edge",
++        "Mozilla Firefox": "firefox",
++        "NAVER Whale": "whale",
++        "Perplexity Comet": "comet",
++    } as const;
 +
 +    const iconUrl = (browser: string) => {
 +        const icon = browserIconMap[browser as keyof typeof browserIconMap];
 +        return icon && browserIcons[icon];
 +    };
- </script>
++</script>
 +
 +{#snippet browserIcon(browser: string, size: number)}
 +    {@const url = iconUrl(browser)}
@@ -2871,16 +2583,15 @@
 +        {/if}
 +    </div>
 +{/snippet}
- 
- <div id="data-import-page" class="onboarding-page" class:visible>
-     <div id="data-import-container" class="scrollable-page">
-@@ -56,21 +88,34 @@
-             Icon={IconTransferIn}
-         />
-         <div class="page-content">
--            {#each sorted as [browser, profiles]}
--                {@const icon = browserIconMap[browser as keyof typeof browserIconMap]}
--                {@const url = icon && browserIcons[icon]}
++
++<div id="data-import-page" class="onboarding-page" class:visible>
++    <div id="data-import-container" class="scrollable-page">
++        <PageHeader
++            title={s.dataImport.title}
++            subtitle={s.dataImport.subtitle}
++            Icon={IconTransferIn}
++        />
++        <div class="page-content">
 +            {#each grouped.featured as [browser, profiles] (browser)}
 +                <section class="featured" aria-labelledby="import-{browser}">
 +                    <div class="featured-head">
@@ -2903,35 +2614,25 @@
 +            {/if}
 +
 +            {#each grouped.others as [browser, profiles] (browser)}
-                 <div class="browser-header">
--                    <div class="browser-icon">
--                        {#if url}
--                            <img src={url} alt="{browser} icon" />
--                        {:else}
--                            <IconWorld />
--                        {/if}
--                    </div>
++                <div class="browser-header">
 +                    {@render browserIcon(browser, 28)}
-                     <h4>{browser}</h4>
-                 </div>
-                 <div class="browser-profiles">
--                    {#each profiles as profile}
++                    <h4>{browser}</h4>
++                </div>
++                <div class="browser-profiles">
 +                    {#each profiles as profile (profile.index)}
-                         <ProfileImportOption {profile} />
-                     {/each}
-                 </div>
-@@ -80,35 +125,93 @@
- </div>
- 
- <style>
--    #data-import-container {
--        max-width: 600px;
--    }
--
-     .page-content {
-         gap: var(--gap-3);
-     }
- 
++                        <ProfileImportOption {profile} />
++                    {/each}
++                </div>
++            {/each}
++        </div>
++    </div>
++</div>
++
++<style>
++    .page-content {
++        gap: var(--gap-3);
++    }
++
 +    .featured {
 +        display: flex;
 +        flex-direction: column;
@@ -2991,30 +2692,16 @@
 +    }
 +
 +    /* Twice as far from the rows above as from its own rows, so each name reads as the head of what follows. */
-     .browser-header {
-         display: flex;
-         width: 100%;
-         align-items: center;
--        gap: 8px;
--
--        & .browser-icon {
--            width: 28px;
--            height: 28px;
--            display: flex;
--            justify-content: center;
--            align-items: center;
--
--            & img {
--                width: 28px;
--                height: 28px;
--            }
--        }
++    .browser-header {
++        display: flex;
++        width: 100%;
++        align-items: center;
 +        gap: var(--space-4);
 +        margin-top: var(--space-3);
 +        padding-inline-start: var(--space-4);
- 
-         & > h4 {
-             line-height: 1;
++
++        & > h4 {
++            line-height: 1;
 +        }
 +    }
 +
@@ -3029,52 +2716,65 @@
 +        & img {
 +            width: var(--icon-size);
 +            height: var(--icon-size);
-         }
-     }
- 
---- a/components/helium_onboarding/src/pages/Finish.svelte
-+++ b/components/helium_onboarding/src/pages/Finish.svelte
-@@ -1,13 +1,16 @@
- <script lang="ts">
-     import {
-         Button,
--        HeliumLogo,
-         IconArrowLeft,
--        IconCheck,
++        }
++    }
++
++    .browser-profiles {
++        display: flex;
++        flex-direction: column;
++        width: 100%;
++        gap: var(--gap-1);
++    }
++
++    /* Helium's ProfileImportOption rows in Loka's spacing and accent. Same selectors as its own :global rules, which
++       these follow in the stylesheet (this page imports it), so these win and .featured's background still beats
++       the selected one. */
++    :global(label.checkbox.profile-option) {
++        gap: var(--space-4);
++        padding: var(--space-3) var(--space-4);
++    }
++
++    :global(label.checkbox.profile-option.selected) {
++        box-shadow: inset 0 0 0 1.5px var(--helium-blue);
++        background-color: hsl(var(--hue) 70% 60% / 0.12);
++    }
++
++    :global(label.checkbox.profile-option .text p) {
++        font-size: var(--text-small);
++    }
++</style>
+--- /dev/null
++++ b/components/helium_onboarding/src/pages/LokaFinish.svelte
+@@ -0,0 +1,220 @@
++<script lang="ts">
++    // Loka's Finish page; pages/index.ts exports it as Finish in place of Helium's Finish.svelte.
++    import {
++        Button,
++        IconArrowLeft,
 +        IconArrowRight,
-     } from "@imput/helium-prism";
-     import { s } from "../lib/strings";
-     import { setPref } from "../lib/browser";
-     import { currentPage, previousPage } from "../lib/onboarding-flow";
++    } from "@imput/helium-prism";
++    import { s } from "../lib/strings";
++    import { setPref } from "../lib/browser";
++    import { currentPage, previousPage } from "../lib/onboarding-flow";
 +    import { starterSpaces } from "../lib/spaces";
 +
 +    import LokaMark from "../components/LokaMark.svelte";
 +    import Planet from "../components/Planet.svelte";
- 
-     const done = async () => {
-         await setPref('completed_onboarding', true);
-@@ -15,6 +18,7 @@
-     }
- 
-     const visible = $derived($currentPage === "Finish");
++
++    const done = async () => {
++        await setPref('completed_onboarding', true);
++        window.open("chrome://newtab", "_self");
++    }
++
++    const visible = $derived($currentPage === "Finish");
 +    const made = $derived($starterSpaces.length > 0);
- </script>
- 
- <div
-@@ -22,66 +26,194 @@
-     class="onboarding-page"
-     class:visible
- >
--    <div id="finish-page-container">
--        <div id="finish-top">
--            <div id="finish-logo-text">
--                <div id="finish-logo">
--                    <HeliumLogo height="64px" />
--                </div>
--                <div id="finish-text">
--                    <h1>{s.finish.title}</h1>
--                    <p>{s.finish.body}</p>
--                </div>
++</script>
++
++<div
++    id="finish-page"
++    class="onboarding-page"
++    class:visible
++>
 +    <div class="finish">
 +        {#if made}
 +            <ul class="worlds" aria-label={s.finish.title}>
@@ -3090,17 +2790,7 @@
 +        {:else}
 +            <div class="mark">
 +                <LokaMark size={88} />
-             </div>
--            <div class="action-buttons">
--                <Button onclick={previousPage}>
--                    <IconArrowLeft />
--                    {s.button.back}
--                </Button>
--                <Button primary onclick={done}>
--                    <IconCheck />
--                    {s.button.letsGo}
--                </Button>
--            </div>
++            </div>
 +        {/if}
 +
 +        <h1 class="rise">{made ? s.finish.title : s.finish.titleNoSpaces}</h1>
@@ -3115,18 +2805,12 @@
 +                {s.button.letsGo}
 +                <IconArrowRight />
 +            </Button>
-         </div>
-     </div>
- </div>
- 
- <style>
-     #finish-page {
--        --page-in-delay: 0.15s;
--    }
--
--    #finish-top,
--    #finish-text,
--    #finish-logo-text {
++        </div>
++    </div>
++</div>
++
++<style>
++    #finish-page {
 +        --page-in-delay: 0ms;
 +        /* Above the horizon's rim, as on Welcome. */
 +        padding-bottom: calc(25vh + var(--space-6));
@@ -3162,18 +2846,8 @@
 +    }
 +
 +    .finish {
-         display: flex;
-         flex-direction: column;
--    }
--
--    #finish-page-container {
--        max-width: 500px;
--    }
--
--    #finish-top,
--    #finish-logo-text {
--        height: 100%;
--        gap: 32px;
++        display: flex;
++        flex-direction: column;
 +        align-items: center;
 +        width: 100%;
 +        max-width: 640px;
@@ -3183,16 +2857,7 @@
 +    .worlds {
 +        display: flex;
 +        align-items: flex-end;
-         justify-content: center;
--        align-items: center;
--    }
--
--    #finish-logo-text,
--    #finish-text {
--        gap: 16px
--    }
--
--    #finish-logo {
++        justify-content: center;
 +        gap: clamp(24px, 4vw, 56px);
 +        margin: 0 0 var(--space-8);
 +        padding: 0;
@@ -3221,12 +2886,7 @@
 +    }
 +
 +    .mark {
-         display: flex;
--        align-items: center;
--    }
--
--    #finish-text p {
--        font-size: 20px;
++        display: flex;
 +        margin-bottom: var(--space-8);
 +        filter: drop-shadow(0 0 32px hsl(var(--hue) 85% 60% / 0.35));
 +    }
@@ -3304,22 +2964,332 @@
 +                opacity: 0;
 +            }
 +        }
-     }
- </style>
---- a/components/helium_onboarding/src/pages/HeliumServices.svelte
-+++ b/components/helium_onboarding/src/pages/HeliumServices.svelte
-@@ -86,6 +86,11 @@
-         --page-in-delay: 0.1s;
-     }
- 
-+    /* As wide as the toggles above it, so the link card shares their edges. */
-+    .instance-link {
-+        width: 100%;
++    }
++</style>
+--- /dev/null
++++ b/components/helium_onboarding/src/pages/LokaWelcome.svelte
+@@ -0,0 +1,321 @@
++<script lang="ts">
++    // Loka's Welcome page; pages/index.ts exports it as Welcome in place of Helium's Welcome.svelte.
++    import { onMount } from "svelte";
++    import {
++        Button,
++        IconArrowRight,
++        Link,
++    } from "@imput/helium-prism";
++    import { s } from "../lib/strings";
++    import { parseLocalizedString } from "../lib/i18n";
++    import { setPref, acceptLatestSchema } from "../lib/browser";
++    import { play } from "../lib/sound";
++    import {
++        currentPage,
++        hasSeenIntro,
++        markIntroSeen,
++        nextPage,
++    } from "../lib/onboarding-flow";
++
++    import LokaMark from "../components/LokaMark.svelte";
++    import Planet from "../components/Planet.svelte";
++
++    const useDefaults = async () => {
++        acceptLatestSchema();
++        await setPref('services.user_consented', true);
++        await setPref('completed_onboarding', true);
++        window.open("chrome://newtab", "_self");
 +    }
 +
-     .toggle-separator {
-         height: 2px;
-         width: calc(100% - 48px);
++    const visible = $derived($currentPage === "Welcome");
++
++    // Loka runs on Helium's services, so these are Helium's policies.
++    const privacyUrl = "https://helium.computer/privacy";
++    const termsUrl = "https://helium.computer/terms";
++    const termsParts = parseLocalizedString(s.welcome.terms);
++
++    // The intro plays once. Any click or key finishes it at once, so nobody waits on it.
++    const intro = !$hasSeenIntro;
++    let skipped = $state(false);
++
++    const next = () => {
++        markIntroSeen();
++        play("next");
++        nextPage();
++    }
++
++    onMount(() => {
++        if (!intro) return;
++
++        const skip = () => {
++            skipped = true;
++        };
++        window.addEventListener("pointerdown", skip, { capture: true, once: true });
++        window.addEventListener("keydown", skip, { capture: true, once: true });
++        const done = window.setTimeout(markIntroSeen, 2400);
++
++        return () => {
++            window.removeEventListener("pointerdown", skip, { capture: true });
++            window.removeEventListener("keydown", skip, { capture: true });
++            window.clearTimeout(done);
++        };
++    });
++</script>
++
++<div
++    id="welcome-page"
++    class="onboarding-page"
++    class:visible
++    class:intro
++    class:skipped
++>
++    <!-- Three worlds at the edges of the sky: the sidebar's seed spaces, Build, School and Home. -->
++    <div class="worlds" aria-hidden="true">
++        <div class="world w1"><div class="float"><Planet kind="ringed" hue={200} size={150} /></div></div>
++        <div class="world w2"><div class="float"><Planet kind="banded" hue={30} size={96} /></div></div>
++        <div class="world w3"><div class="float"><Planet kind="ocean" hue={150} size={124} /></div></div>
++    </div>
++
++    <div class="welcome">
++        <div class="mark">
++            <LokaMark size={92} intro={intro} />
++        </div>
++        <h1 class="rise r1">{s.welcome.greeting}</h1>
++        <p class="lead rise r2">{s.welcome.body}</p>
++
++        <div class="action-buttons rise r3">
++            <Button onclick={useDefaults}>
++                {s.button.useDefaults}
++            </Button>
++            <Button primary onclick={next} data-sound="none">
++                {s.button.configure}
++                <IconArrowRight />
++            </Button>
++        </div>
++
++        <div class="legal rise r4">
++            <p>
++                {#each termsParts as part}
++                    {#if part.kind === "linkPrivacy"}
++                        <Link href={privacyUrl}>{part.text}</Link>
++                    {:else if part.kind === "linkTerms"}
++                        <Link href={termsUrl}>{part.text}</Link>
++                    {:else}
++                        {part.text}
++                    {/if}
++                {/each}
++            </p>
++            <p>{s.welcome.footer}</p>
++        </div>
++    </div>
++</div>
++
++<style>
++    #welcome-page {
++        --page-in-delay: 0ms;
++        /* The horizon's rim sits at 75% of the window's height (Sky.svelte, .horizon.high). Center the column in the
++           sky above it, with 24px of air, so the legal lines never sit on the rim. */
++        padding-bottom: calc(25vh + var(--space-6));
++    }
++
++    /* Short windows: a smaller mark and tighter gaps, so the column still fits above the rim, and twice the air
++       there, since the rim's glow reaches up into the legal lines. */
++    @media (max-height: 760px) {
++        #welcome-page {
++            padding-bottom: calc(25vh + var(--space-12));
++        }
++
++        .mark {
++            margin-bottom: var(--space-6);
++
++            & :global(svg) {
++                width: 72px;
++                height: 72px;
++            }
++        }
++
++        .action-buttons,
++        .legal {
++            margin-top: var(--space-6);
++        }
++    }
++
++    .welcome {
++        position: relative;
++        display: flex;
++        flex-direction: column;
++        align-items: center;
++        width: 100%;
++        max-width: 640px;
++        padding-inline: 24px;
++    }
++
++    .mark {
++        display: flex;
++        margin-bottom: var(--space-8);
++        filter: drop-shadow(0 0 32px hsl(var(--hue) 85% 60% / 0.35));
++    }
++
++    .lead {
++        margin-top: var(--space-4);
++        max-width: 34em;
++        font-size: var(--text-lead);
++        color: var(--secondary);
++    }
++
++    .action-buttons {
++        margin-top: var(--space-8);
++        gap: var(--space-3);
++
++        & > :global(.button) {
++            min-height: 48px;
++            padding-inline: var(--space-6);
++        }
++
++        /* The arrow sits a little in from the edge, so the label reads as centered. */
++        & > :global(.button.primary) {
++            padding-inline: var(--space-6) 20px;
++        }
++    }
++
++    .legal {
++        display: flex;
++        flex-direction: column;
++        align-items: center;
++        gap: var(--space-1);
++        margin-top: var(--space-8);
++
++        & p {
++            /* About 75 characters a line. */
++            max-width: 38em;
++            font-size: var(--text-caption);
++            color: var(--tertiary);
++        }
++
++        & :global(a) {
++            font-size: inherit;
++            line-height: inherit;
++            color: var(--secondary);
++        }
++    }
++
++    /* ---- the worlds at the edges, only where there's room for them ---- */
++
++    .worlds {
++        position: absolute;
++        inset: 0;
++        pointer-events: none;
++    }
++
++    .world {
++        position: absolute;
++        display: none;
++    }
++
++    .w1 {
++        left: 9%;
++        top: 22%;
++        opacity: 0.9;
++    }
++
++    .w2 {
++        right: 12%;
++        top: 16%;
++        opacity: 0.75;
++    }
++
++    .w3 {
++        right: 8%;
++        top: 52%;
++        opacity: 0.85;
++    }
++
++    @media (min-width: 1180px) and (min-height: 640px) {
++        .world {
++            display: block;
++        }
++    }
++
++    @media (prefers-reduced-motion: no-preference) {
++        .float {
++            animation: float 9s ease-in-out infinite alternate;
++        }
++
++        .w2 .float {
++            animation-duration: 11s;
++            animation-delay: -4s;
++        }
++
++        .w3 .float {
++            animation-duration: 13s;
++            animation-delay: -7s;
++        }
++    }
++
++    @keyframes float {
++        from {
++            transform: translateY(-6px);
++        }
++        to {
++            transform: translateY(6px);
++        }
++    }
++
++    /* ---- the intro: stars fade in, the planet rises, the mark lights up, then the words ---- */
++
++    .intro.visible {
++        animation: none;
++
++        & .rise {
++            animation: rise 700ms var(--ease-out) backwards;
++        }
++
++        & .r1 { animation-delay: 650ms; }
++        & .r2 { animation-delay: 780ms; }
++        & .r3 { animation-delay: 900ms; }
++        & .r4 { animation-delay: 1050ms; }
++
++        & .world {
++            animation: world-in 1600ms var(--ease-out) backwards;
++        }
++
++        & .w1 { animation-delay: 500ms; --from: -60px 30px; }
++        & .w2 { animation-delay: 700ms; --from: 50px 20px; }
++        & .w3 { animation-delay: 850ms; --from: 70px 40px; }
++    }
++
++    .intro.skipped :is(.rise, .world),
++    .intro.skipped .mark :global(*) {
++        animation-duration: 1ms !important;
++        animation-delay: 0ms !important;
++    }
++
++    @keyframes rise {
++        from {
++            opacity: 0;
++            translate: 0 18px;
++        }
++    }
++
++    @keyframes world-in {
++        from {
++            opacity: 0;
++            translate: var(--from);
++            scale: 0.92;
++        }
++    }
++
++    @media (prefers-reduced-motion: reduce) {
++        @keyframes rise {
++            from {
++                opacity: 0;
++            }
++        }
++
++        @keyframes world-in {
++            from {
++                opacity: 0;
++            }
++        }
++    }
++</style>
 --- /dev/null
 +++ b/components/helium_onboarding/src/pages/Spaces.svelte
 @@ -0,0 +1,1247 @@
@@ -4570,592 +4540,68 @@
 +        }
 +    }
 +</style>
---- a/components/helium_onboarding/src/pages/Welcome.svelte
-+++ b/components/helium_onboarding/src/pages/Welcome.svelte
-@@ -1,22 +1,23 @@
- <script lang="ts">
--    import { flushSync, onMount } from "svelte";
-+    import { onMount } from "svelte";
-     import {
-         Button,
--        HeliumLogo,
-         IconArrowRight,
--        IconCheck,
-         Link,
-     } from "@imput/helium-prism";
-     import { s } from "../lib/strings";
-     import { parseLocalizedString } from "../lib/i18n";
-     import { setPref, acceptLatestSchema } from "../lib/browser";
-+    import { play } from "../lib/sound";
-     import {
-         currentPage,
-         hasSeenIntro,
-         markIntroSeen,
-         nextPage,
--        ONBOARDING_INTRO_DELAY_MS,
-     } from "../lib/onboarding-flow";
-+
-+    import LokaMark from "../components/LokaMark.svelte";
-+    import Planet from "../components/Planet.svelte";
- 
-     const useDefaults = async () => {
-         acceptLatestSchema();
-@@ -27,316 +28,293 @@
- 
-     const visible = $derived($currentPage === "Welcome");
- 
-+    // Loka runs on Helium's services, so these are Helium's policies.
-     const privacyUrl = "https://helium.computer/privacy";
-     const termsUrl = "https://helium.computer/terms";
--    const LOGO_TRANSITION_DELAY_MS = ONBOARDING_INTRO_DELAY_MS + 1600;
-     const termsParts = parseLocalizedString(s.welcome.terms);
- 
--    let introLogoVisible = $state(!$hasSeenIntro);
--    let introAnimating = $state(!$hasSeenIntro);
--    const finalLogoVisible = $derived(!introLogoVisible);
-+    // The intro plays once. Any click or key finishes it at once, so nobody waits on it.
-+    const intro = !$hasSeenIntro;
-+    let skipped = $state(false);
- 
-     const next = () => {
-         markIntroSeen();
-+        play("next");
-         nextPage();
-     }
- 
--    const transitionIntroLogo = async () => {
--        const transition = document.startViewTransition(() => {
--            flushSync(() => {
--                introLogoVisible = false;
--            });
--        });
--
--        await transition.finished;
--        introAnimating = false;
--    }
--
-     onMount(() => {
--        if ($hasSeenIntro) {
--            return;
--        }
--
--        const timer = window.setTimeout(
--            transitionIntroLogo,
--            LOGO_TRANSITION_DELAY_MS
--        );
-+        if (!intro) return;
-+
-+        const skip = () => {
-+            skipped = true;
-+        };
-+        window.addEventListener("pointerdown", skip, { capture: true, once: true });
-+        window.addEventListener("keydown", skip, { capture: true, once: true });
-+        const done = window.setTimeout(markIntroSeen, 2400);
- 
-         return () => {
--            window.clearTimeout(timer);
--        }
-+            window.removeEventListener("pointerdown", skip, { capture: true });
-+            window.removeEventListener("keydown", skip, { capture: true });
-+            window.clearTimeout(done);
-+        };
-     });
- </script>
--
--{#if introLogoVisible}
--    <div id="welcome-logo-intro">
--        <HeliumLogo height="84px" />
--    </div>
--{/if}
- 
- <div
-     id="welcome-page"
-     class="onboarding-page"
-     class:visible
--    class:intro={!$hasSeenIntro}
--    inert={introAnimating}
-+    class:intro
-+    class:skipped
- >
--    <div id="welcome-page-container">
--        <div id="welcome-top">
--            <div id="welcome-logo-text">
--                <div id="welcome-logo" class:visible={finalLogoVisible}>
--                    <HeliumLogo height="48px" />
--                </div>
--                <div id="welcome-text">
--                    <h1>
--                        {s.welcome.greeting}
--                    </h1>
--                    <p>
--                        {s.welcome.body}
--                    </p>
--                </div>
--            </div>
--            <div id="welcome-buttons" class="action-buttons">
--                <Button onclick={useDefaults}>
--                    <IconCheck />
--                    {s.button.useDefaults}
--                </Button>
--                <Button primary onclick={next}>
--                    <IconArrowRight />
--                    {s.button.configure}
--                </Button>
--            </div>
--
--            <div id="welcome-footer">
--                <p>
--                    {#each termsParts as part}
--                        {#if part.kind === "linkPrivacy"}
--                            <Link href={privacyUrl}>{part.text}</Link>
--                        {:else if part.kind === "linkTerms"}
--                            <Link href={termsUrl}>{part.text}</Link>
--                        {:else}
--                            {part.text}
--                        {/if}
--                    {/each}
--                </p>
--
--                <p>{s.welcome.footer}</p>
--            </div>
-+    <!-- Three worlds at the edges of the sky: the sidebar's seed spaces, Build, School and Home. -->
-+    <div class="worlds" aria-hidden="true">
-+        <div class="world w1"><div class="float"><Planet kind="ringed" hue={200} size={150} /></div></div>
-+        <div class="world w2"><div class="float"><Planet kind="banded" hue={30} size={96} /></div></div>
-+        <div class="world w3"><div class="float"><Planet kind="ocean" hue={150} size={124} /></div></div>
-+    </div>
-+
-+    <div class="welcome">
-+        <div class="mark">
-+            <LokaMark size={92} intro={intro} />
-+        </div>
-+        <h1 class="rise r1">{s.welcome.greeting}</h1>
-+        <p class="lead rise r2">{s.welcome.body}</p>
-+
-+        <div class="action-buttons rise r3">
-+            <Button onclick={useDefaults}>
-+                {s.button.useDefaults}
-+            </Button>
-+            <Button primary onclick={next} data-sound="none">
-+                {s.button.configure}
-+                <IconArrowRight />
-+            </Button>
-+        </div>
-+
-+        <div class="legal rise r4">
-+            <p>
-+                {#each termsParts as part}
-+                    {#if part.kind === "linkPrivacy"}
-+                        <Link href={privacyUrl}>{part.text}</Link>
-+                    {:else if part.kind === "linkTerms"}
-+                        <Link href={termsUrl}>{part.text}</Link>
-+                    {:else}
-+                        {part.text}
-+                    {/if}
-+                {/each}
-+            </p>
-+            <p>{s.welcome.footer}</p>
-         </div>
-     </div>
- </div>
- 
- <style>
-     #welcome-page {
--        --page-in-delay: 0.1s;
--    }
--
--    #welcome-top,
--    #welcome-text,
--    #welcome-logo-text {
-+        --page-in-delay: 0ms;
-+        /* The horizon's rim sits at 75% of the window's height (Sky.svelte, .horizon.high). Center the column in the
-+           sky above it, with 24px of air, so the legal lines never sit on the rim. */
-+        padding-bottom: calc(25vh + var(--space-6));
-+    }
-+
-+    /* Short windows: a smaller mark and tighter gaps, so the column still fits above the rim, and twice the air
-+       there, since the rim's glow reaches up into the legal lines. */
-+    @media (max-height: 760px) {
-+        #welcome-page {
-+            padding-bottom: calc(25vh + var(--space-12));
-+        }
-+
-+        .mark {
-+            margin-bottom: var(--space-6);
-+
-+            & :global(svg) {
-+                width: 72px;
-+                height: 72px;
-+            }
-+        }
-+
-+        .action-buttons,
-+        .legal {
-+            margin-top: var(--space-6);
-+        }
-+    }
-+
-+    .welcome {
-+        position: relative;
-         display: flex;
-         flex-direction: column;
--        align-items: flex-start;
--        text-align: left;
--    }
--
--    #welcome-page-container {
-+        align-items: center;
-         width: 100%;
--        max-width: 548px;
-+        max-width: 640px;
-         padding-inline: 24px;
-     }
- 
--    #welcome-top,
--    #welcome-logo-text {
--        height: 100%;
--        gap: 32px;
--        justify-content: center;
--    }
--
--    #welcome-logo-text,
--    #welcome-text {
--        gap: 14px;
--    }
--
--    #welcome-logo {
-+    .mark {
-         display: flex;
--        opacity: 0;
--
--        &.visible {
--            opacity: 1;
--            view-transition-name: welcome-logo;
--        }
--    }
--
--    #welcome-text p {
--        font-size: 21px;
--        max-width: 500px;
--    }
--
--    #welcome-footer {
-+        margin-bottom: var(--space-8);
-+        filter: drop-shadow(0 0 32px hsl(var(--hue) 85% 60% / 0.35));
-+    }
-+
-+    .lead {
-+        margin-top: var(--space-4);
-+        max-width: 34em;
-+        font-size: var(--text-lead);
-+        color: var(--secondary);
-+    }
-+
-+    .action-buttons {
-+        margin-top: var(--space-8);
-+        gap: var(--space-3);
-+
-+        & > :global(.button) {
-+            min-height: 48px;
-+            padding-inline: var(--space-6);
-+        }
-+
-+        /* The arrow sits a little in from the edge, so the label reads as centered. */
-+        & > :global(.button.primary) {
-+            padding-inline: var(--space-6) 20px;
-+        }
-+    }
-+
-+    .legal {
-         display: flex;
-         flex-direction: column;
--        width: 100%;
--
--        p {
--            font-size: 13px;
--        }
--
--        :global(a) {
-+        align-items: center;
-+        gap: var(--space-1);
-+        margin-top: var(--space-8);
-+
-+        & p {
-+            /* About 75 characters a line. */
-+            max-width: 38em;
-+            font-size: var(--text-caption);
-+            color: var(--tertiary);
-+        }
-+
-+        & :global(a) {
-             font-size: inherit;
-             line-height: inherit;
--        }
--    }
--
--    #welcome-logo-intro {
--        display: flex;
-+            color: var(--secondary);
-+        }
-+    }
-+
-+    /* ---- the worlds at the edges, only where there's room for them ---- */
-+
-+    .worlds {
-         position: absolute;
--        z-index: 1;
--        top: 50%;
--        translate: 0 -50%;
--
--        animation:
--            intro-logo-center
--            1.7s
--            cubic-bezier(0.16, 1, 0.3, 1)
--            calc(var(--onboarding-intro-delay) + 0.85s)
--            both;
--        view-transition-name: welcome-logo;
--        will-change: transform, filter, opacity;
--    }
--
--    #welcome-page.visible.intro {
-+        inset: 0;
-+        pointer-events: none;
-+    }
-+
-+    .world {
-+        position: absolute;
-+        display: none;
-+    }
-+
-+    .w1 {
-+        left: 9%;
-+        top: 22%;
-+        opacity: 0.9;
-+    }
-+
-+    .w2 {
-+        right: 12%;
-+        top: 16%;
-+        opacity: 0.75;
-+    }
-+
-+    .w3 {
-+        right: 8%;
-+        top: 52%;
-+        opacity: 0.85;
-+    }
-+
-+    @media (min-width: 1180px) and (min-height: 640px) {
-+        .world {
-+            display: block;
-+        }
-+    }
-+
-+    @media (prefers-reduced-motion: no-preference) {
-+        .float {
-+            animation: float 9s ease-in-out infinite alternate;
-+        }
-+
-+        .w2 .float {
-+            animation-duration: 11s;
-+            animation-delay: -4s;
-+        }
-+
-+        .w3 .float {
-+            animation-duration: 13s;
-+            animation-delay: -7s;
-+        }
-+    }
-+
-+    @keyframes float {
-+        from {
-+            transform: translateY(-6px);
-+        }
-+        to {
-+            transform: translateY(6px);
-+        }
-+    }
-+
-+    /* ---- the intro: stars fade in, the planet rises, the mark lights up, then the words ---- */
-+
-+    .intro.visible {
-         animation: none;
- 
--        #welcome-text,
--        #welcome-buttons,
--        #welcome-footer {
--            opacity: 0;
--            animation:
--                page-in
--                0.35s
--                forwards
--                calc(var(--onboarding-intro-delay) + 1.8s);
--        }
--    }
--
--    :global(::view-transition-group(welcome-logo)) {
--        animation-duration: 0.72s;
--        animation-timing-function: cubic-bezier(0.32, 1, 0.4, 1);
--    }
--
--    :global(::view-transition-image-pair(welcome-logo)) {
--        animation: intro-logo-arc 0.72s;
--    }
--
--    :global(::view-transition-old(welcome-logo)),
--    :global(::view-transition-new(welcome-logo)) {
--        animation: none;
--        filter: none;
--        height: 100%;
--        object-fit: contain;
--        width: 100%;
--    }
--
--    @keyframes intro-logo-center {
-+        & .rise {
-+            animation: rise 700ms var(--ease-out) backwards;
-+        }
-+
-+        & .r1 { animation-delay: 650ms; }
-+        & .r2 { animation-delay: 780ms; }
-+        & .r3 { animation-delay: 900ms; }
-+        & .r4 { animation-delay: 1050ms; }
-+
-+        & .world {
-+            animation: world-in 1600ms var(--ease-out) backwards;
-+        }
-+
-+        & .w1 { animation-delay: 500ms; --from: -60px 30px; }
-+        & .w2 { animation-delay: 700ms; --from: 50px 20px; }
-+        & .w3 { animation-delay: 850ms; --from: 70px 40px; }
-+    }
-+
-+    .intro.skipped :is(.rise, .world),
-+    .intro.skipped .mark :global(*) {
-+        animation-duration: 1ms !important;
-+        animation-delay: 0ms !important;
-+    }
-+
-+    @keyframes rise {
-         from {
-             opacity: 0;
--            transform: translateY(360px);
--            filter: blur(10px);
--        }
--
--        90% {
--            filter: none;
--        }
--
--        to {
--            opacity: 1;
--            transform: none;
--            filter: none;
--        }
--    }
--
--    @keyframes intro-logo-arc {
--        from,
--        to {
--            translate: 0 0;
--        }
--
--        20% {
--            translate: 0 -40px;
-+            translate: 0 18px;
-+        }
-+    }
-+
-+    @keyframes world-in {
-+        from {
-+            opacity: 0;
-+            translate: var(--from);
-+            scale: 0.92;
-         }
-     }
- 
-     @media (prefers-reduced-motion: reduce) {
--        #welcome-page.visible.intro {
--            opacity: 0;
--            animation:
--                intro-state-fade-in
--                0.5s
--                calc(var(--onboarding-intro-delay) + 1.6s)
--                both;
--
--            #welcome-text,
--            #welcome-buttons,
--            #welcome-footer {
--                opacity: 1;
--                animation: none;
--            }
--        }
--
--        #welcome-logo-intro {
--            animation:
--                intro-logo-center
--                0.5s
--                calc(var(--onboarding-intro-delay) + 0.2s)
--                both;
--        }
--
--        #welcome-logo.visible {
--            view-transition-name: none;
--        }
--
--        :global(::view-transition-group(welcome-logo)),
--        :global(::view-transition-image-pair(welcome-logo)) {
--            animation: none;
--        }
--
--        :global(::view-transition-old(welcome-logo)) {
--            animation: intro-logo-fade-out 0.5s both;
--        }
--
--        :global(::view-transition-new(welcome-logo)) {
--            display: none;
--        }
--
--        @keyframes intro-logo-center {
-+        @keyframes rise {
-             from {
-                 opacity: 0;
-             }
--
--            to {
--                opacity: 1;
--            }
--        }
--
--        @keyframes intro-logo-fade-out {
--            from {
--                opacity: 1;
--            }
--
--            to {
--                opacity: 0;
--            }
--        }
--
--        @keyframes intro-state-fade-in {
-+        }
-+
-+        @keyframes world-in {
-             from {
-                 opacity: 0;
-             }
--
--            to {
--                opacity: 1;
--            }
-         }
-     }
- </style>
 --- a/components/helium_onboarding/src/pages/index.ts
 +++ b/components/helium_onboarding/src/pages/index.ts
-@@ -1,4 +1,5 @@
- export { default as Welcome } from "./Welcome.svelte";
+@@ -1,9 +1,10 @@
+-export { default as Welcome } from "./Welcome.svelte";
++export { default as Welcome } from "./LokaWelcome.svelte";
 +export { default as Spaces } from "./Spaces.svelte";
  export { default as HeliumServices } from "./HeliumServices.svelte";
  export { default as SearchEngine } from "./SearchEngine.svelte";
- export { default as DataImport } from "./DataImport.svelte";
+-export { default as DataImport } from "./DataImport.svelte";
++export { default as DataImport } from "./LokaDataImport.svelte";
+ export { default as PasswordManager } from "./PasswordManager.svelte";
+ export { default as DefaultBrowser } from "./DefaultBrowser.svelte";
+-export { default as Finish } from "./Finish.svelte";
++export { default as Finish } from "./LokaFinish.svelte";
+ 
+ // Add new pages above this line and update the flow in lib/onboarding-flow.ts
+--- a/components/helium_onboarding/util/generate-i18n.mts
++++ b/components/helium_onboarding/util/generate-i18n.mts
+@@ -4,6 +4,9 @@
+ 
+ const PREFIX = 'IDS_HELIUM_ONBOARDING_';
+ const GRD_PATH = join(import.meta.dirname, '../helium_onboarding_strings.grdp');
++// Loka's strings: its own, and its wording of Helium's (same key, so it replaces Helium's message).
++const LOKA_PREFIX = 'IDS_LOKA_ONBOARDING_';
++const LOKA_GRD_PATH = join(import.meta.dirname, '../loka_onboarding_strings.grdp');
+ const TS_PATH = join(import.meta.dirname, '../src/lib/strings.ts');
+ 
+ if (process.argv.length !== 2 && process.argv.length !== 3) {
+@@ -50,11 +53,12 @@
+ ];
+ 
+ const parseKey = (key: string): [string, string] => {
+-    if (!key.startsWith(PREFIX)) {
++    const prefix = [PREFIX, LOKA_PREFIX].find(prefix => key.startsWith(prefix));
++    if (!prefix) {
+         throw new Error(`unexpected message name: ${key}`);
+     }
+ 
+-    key = key.replace(PREFIX, '');
++    key = key.replace(prefix, '');
+     let name: string, section = LONG_SECTIONS.find(
+         section => key.startsWith(`${section}_`)
+     );
+@@ -287,6 +291,21 @@
+ 
+ const grdp = await readFile(GRD_PATH, 'utf-8');
+ const messages = [...parseMessages(grdp)];
++for (const message of parseMessages(await readFile(LOKA_GRD_PATH, 'utf-8'))) {
++    const helium = messages.findIndex(({ webuiKey }) => webuiKey === message.webuiKey);
++    if (helium === -1) {
++        messages.push(message);
++        continue;
++    }
++
++    // Helium's page code fills Helium's placeholders, so Loka's wording has to keep exactly those.
++    const placeholders = ({ spans, substitutions }: Message) =>
++        JSON.stringify([Object.keys(spans).sort(), Object.keys(substitutions).sort()]);
++    if (placeholders(message) !== placeholders(messages[helium])) {
++        throw new Error(`${message.name} must keep the placeholders of ${messages[helium].name}`);
++    }
++    messages[helium] = message;
++}
+ 
+ if (headerPath) {
+     await writeFile(

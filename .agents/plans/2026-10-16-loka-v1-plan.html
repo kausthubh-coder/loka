@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Move the model into C++, then finish v1</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f8f9fa; --text: #17191c; --muted: #50555c; --line: #d5d9de; --surface: #eceff2;
+  --accent: #1a6491; --accent-soft: #e2eff7;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #111418; --text: #e6e9ec; --muted: #a2a9b1; --line: #2e343b; --surface: #1b2026; --accent: #78cdf5; --accent-soft: #15242f; }
+}
+html { background: var(--bg); color: var(--text); }
+body { margin: 0; font: 1.0625rem/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 48rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+h1 { font-size: 2.1rem; line-height: 1.15; margin: 0 0 0.6rem; text-wrap: balance; }
+h2 { font-size: 1.35rem; line-height: 1.25; margin: 2.6rem 0 0.7rem; text-wrap: balance; }
+p, li { max-width: 62ch; text-wrap: pretty; }
+p { margin: 0 0 0.8rem; }
+.lede { font-size: 1.1875rem; color: var(--muted); margin-bottom: 1.5rem; }
+code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.875em; }
+a { color: var(--accent); }
+::selection { background: var(--accent-soft); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.muted { color: var(--muted); }
+
+.asks { background: var(--accent-soft); border-radius: 10px; padding: 1rem 1.25rem 0.5rem; margin: 0 0 2rem; }
+.asks h2 { margin: 0 0 0.5rem; font-size: 1.0625rem; color: var(--accent); }
+.asks ol { margin: 0; padding-left: 1.3rem; }
+.asks li { margin-bottom: 0.5rem; }
+
+.phases { list-style: none; margin: 0.4rem 0 0.4rem; padding: 0; display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.5rem; counter-reset: ph; }
+.phases li { counter-increment: ph; border-top: 3px solid var(--line); padding-top: 0.45rem; font-size: 0.9375rem; line-height: 1.35; }
+.phases li.first { border-top-color: var(--accent); }
+.phases b { display: block; font-size: 1.0625rem; }
+.phases b::before { content: counter(ph) ". "; color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
+@media (max-width: 40rem) { .phases { grid-template-columns: 1fr 1fr; } }
+
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9375rem; margin: 0.3rem 0 0.8rem; }
+th, td { text-align: left; vertical-align: top; padding: 0.5rem 0.75rem 0.5rem 0; border-bottom: 1px solid var(--line); }
+th { font-weight: 600; }
+th[scope="row"] { font-weight: 600; white-space: nowrap; }
+
+.done { padding-left: 1.3rem; }
+.done li { margin-bottom: 0.35rem; }
+
+.inout { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+.inout h3 { font-size: 1.0625rem; margin: 0 0 0.3rem; }
+.inout ul { margin: 0; padding-left: 1.2rem; }
+@media (max-width: 40rem) { .inout { grid-template-columns: 1fr; gap: 0.8rem; } }
+
+.brand { display: grid; grid-template-columns: 64px 1fr; gap: 1rem; align-items: start; }
+.brand svg { width: 64px; height: 64px; }
+
+details { border-top: 1px solid var(--line); }
+details:last-of-type { border-bottom: 1px solid var(--line); }
+summary { padding-block: 0.7rem; cursor: pointer; font-weight: 500; }
+details[open] { padding-bottom: 0.8rem; }
+details ul, details ol { padding-left: 1.3rem; }
+@media print {
+  :root { color-scheme: light; --bg: #fff; --text: #000; --muted: #333; --line: #bbb; --surface: #eee; --accent: #1a6491; --accent-soft: #eef5fa; }
+  table { break-inside: avoid; } h2 { break-after: avoid; }
+}
+</style>
+</head>
+<body>
+<main>
+<h1>Move the model into C++, then finish v1</h1>
+<p class="lede">All six v1 features exist except one library. What’s missing is a base that survives two windows, a crash and 300 tabs.</p>
+
+<section class="asks">
+<h2>Needs your answer</h2>
+<ol>
+<li>Move spaces, tabs and the archive into a C++ service (phase 2)? It’s the largest phase, and each C++ change costs minutes to build, not seconds.</li>
+<li>Unloaded pinned tabs: closed with their Back history saved (my pick), or Chromium “discarded” tabs that extensions can see?</li>
+<li>Auto-archive on by default after 12 hours, with Never allowed?</li>
+<li>Library as a full page, not a sidebar panel?</li>
+</ol>
+</section>
+
+<ol class="phases" aria-label="Phases in order">
+<li class="first"><b>Measure</b>Baseline speed and memory at 300 tabs</li>
+<li><b>Foundation</b>C++ model, own file, typed messages</li>
+<li><b>Tab life</b>Unload keeps history; closes become undoable</li>
+<li><b>Archive + library</b>On by default; one page</li>
+<li><b>Calm sky</b>Same planets, readable text</li>
+<li><b>Polish</b>Multi-select, reorder, keyboard</li>
+</ol>
+<p class="muted">Patch cleanup runs alongside; each phase is its own PR.</p>
+
+<h2>v1 is six features</h2>
+<div class="scroll">
+<table>
+<thead><tr><th scope="col">Feature</th><th scope="col">Works today</th><th scope="col">v1 adds</th></tr></thead>
+<tbody>
+<tr><th scope="row">Spaces</th><td>Planet horizon, editor, Ctrl+1–9</td><td>Active space per window; reorder</td></tr>
+<tr><th scope="row">Essentials</th><td>Shared grid, drag in and out</td><td>Cap of 12; add several at once</td></tr>
+<tr><th scope="row">Pinned tabs</th><td>Nested folders; close unloads</td><td>Unloaded look, Back kept, reset URL</td></tr>
+<tr><th scope="row">Auto-archive</th><td>Off; can close a tab playing sound</td><td>12 h default, skips audible tabs</td></tr>
+<tr><th scope="row">Archive</th><td>Sidebar panel, search, restore</td><td>Closed tabs too, so undo works</td></tr>
+<tr><th scope="row">Library</th><td>Separate history, downloads, archive</td><td>One page for all three, plus spaces</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2>Foundation changes five things</h2>
+<div class="scroll">
+<table>
+<thead><tr><th scope="col"></th><th scope="col">Today</th><th scope="col">v1</th></tr></thead>
+<tbody>
+<tr><th scope="row">Rules</th><td>JavaScript in the sidebar renderer</td><td>C++ service per profile</td></tr>
+<tr><th scope="row">Saved in</th><td>One pref string, rewritten on every title change</td><td>Loka’s own file, written in batches</td></tr>
+<tr><th scope="row">Tab link</th><td>Matched by URL after restart</td><td>Loka id saved in Chromium’s session data</td></tr>
+<tr><th scope="row">Active space</th><td>One per profile; a second window can drop tabs</td><td>One per window</td></tr>
+<tr><th scope="row">Per click</th><td>About 12–14 messages, full snapshots</td><td>1 call plus 1 change event</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2>Done when</h2>
+<ol class="done">
+<li>Two windows on different spaces: switching one leaves the other and its tabs untouched.</li>
+<li>After a forced crash with duplicate URLs, every tab returns to its own space and folder.</li>
+<li>At 300 tabs, <code>verify:perf</code> meets today’s budgets, including idle sidebar CPU under 2%.</li>
+<li>All sidebar text reaches 4.5:1 contrast for 8 hues in both schemes.</li>
+</ol>
+
+<h2>Calm sky, original logo</h2>
+<div class="brand">
+<svg viewBox="0 0 64 64" role="img" aria-label="Loka logo: a lit planet with a small moon on a night-sky tile">
+<defs><linearGradient id="logo-s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#16344a"/><stop offset="1" stop-color="#091018"/></linearGradient>
+<clipPath id="logo-b"><circle cx="30" cy="34" r="22"/></clipPath></defs>
+<rect width="64" height="64" rx="15" fill="url(#logo-s)"/>
+<circle cx="30" cy="34" r="22" fill="#224859"/>
+<circle cx="20" cy="25" r="27" fill="#78cdf5" clip-path="url(#logo-b)"/>
+<circle cx="51" cy="12.5" r="4.5" fill="#78cdf5"/>
+</svg>
+<p>The planet and moon that ships today stays the logo, and the horizon, stars and hue glow stay. The nebula moves off the text and text colours are set per hue, so every space passes contrast.</p>
+</div>
+
+<h2>Why, how, and what’s out</h2>
+<details>
+<summary>Scope: what’s in and what isn’t</summary>
+<div class="inout">
+<div><h3>In v1</h3><ul><li>The six features above</li><li>Windows only</li><li>Cleanup of the three riskiest patches</li></ul></div>
+<div><h3>Not in v1</h3><ul><li>AI, Peek/Glance, sync, split view</li><li>Library media, notes, easels</li><li>macOS, Linux, code signing</li><li>Landing page (after v1 is real)</li></ul></div>
+</div>
+</details>
+<details>
+<summary>Why the foundation comes first</summary>
+<p>Archive, undo, restore and unloading all need to know which real tab is which Loka tab, every time, across restarts and windows. Today that link lives in the sidebar page’s memory and is rebuilt by URL. Building those features on it would mean writing them twice.</p>
+<p>Moving the rules into the browser process is how Chrome builds tab groups, bookmarks and history. The sidebar renderer can crash or reload without losing anything, and the C++ side can refuse a tab in two places instead of trusting a JSON blob.</p>
+<p>The alternative is to keep the JavaScript model and patch the holes: per-window active space, ids in session data, diffs instead of snapshots. It’s cheaper now, but the truth stays in a renderer and every new feature crosses the same message bridge.</p>
+</details>
+<details>
+<summary>Shape of the C++ side (files, classes, migration)</summary>
+<ul>
+<li><code>components/loka/core/</code>: the pure model, using only <code>//base</code>, with its own small unit-test target that builds in minutes. Today’s <code>sidebar.test.ts</code> cases become shared JSON fixtures that both the C++ and the TypeScript model must pass.</li>
+<li><code>LokaSpacesService</code>, one <code>KeyedService</code> per profile: owns the model, watches every window’s tab strip, keys tabs by <code>TabHandle</code> (it survives discards; the <code>WebContents</code> pointer doesn’t), and writes a Loka id per tab with <code>SessionService::AddTabExtraData</code>.</li>
+<li>Saving: <code>Loka Spaces.json</code> in the profile through <code>ImportantFileWriter</code>, which batches writes and writes atomically.</li>
+<li>A <code>loka_sidebar.mojom</code> interface. The page sends intents (<code>ActivateTab</code>, <code>MoveItem</code>); the service sends changes. Favicons go as <code>chrome://favicon2</code> URLs, not inline PNGs.</li>
+<li>Per-window state (active space) is saved with <code>AddWindowExtraData</code>.</li>
+<li>Migration: the first run reads the <code>loka.store</code> pref into the new file and leaves the pref for one release, so rolling back an alpha loses nothing.</li>
+<li>The TypeScript model stays only as the prototype’s stand-in backend, held equal to C++ by the shared fixtures.</li>
+</ul>
+</details>
+<details>
+<summary>Smaller calls I’ll make unless you object</summary>
+<ul>
+<li>Ctrl+W on a pinned tab resets it to its pinned URL and unloads it, as Zen does.</li>
+<li>Tabs you close by hand go to the archive, which gives Ctrl+Shift+T and undo.</li>
+<li>The archive keeps 30 days or 1,000 tabs, each with its Back history. Clear asks first.</li>
+<li>Deleting a space archives its tabs instead of deleting them.</li>
+<li>Memory Saver still discards live tabs; pinned rows don’t opt out of it.</li>
+<li>Theme: build two calm skies in the prototype, light from the lab’s “Mist” and dark from “Eclipse”, and you pick one before the native change.</li>
+</ul>
+</details>
+<details>
+<summary>Risks, from assuming v1 shipped and failed</summary>
+<ul>
+<li>C++ work stalls on build times. The model stays in a <code>//base</code>-only component with its own tests, and UI work stays in TypeScript.</li>
+<li>A Helium merge breaks the riskiest patches mid-v1. Patch cleanup runs before phase 2 lands.</li>
+<li>Restoring hundreds of tabs is slow at startup. Unloaded pinned tabs restore as rows, not tabs, and phase 1 measures this.</li>
+<li>Two models drift (C++ and the prototype). The shared fixtures fail CI when they disagree.</li>
+<li>Arc found only 5.5% of daily users kept more than one space. One space with pinned tabs and an archive has to feel good alone.</li>
+</ul>
+</details>
+<details>
+<summary>Sources</summary>
+<ul>
+<li>Code read on <code>main</code> at <code>2c24e75</code>; see the companion page <code>.agents/reports/2026-10-16-how-loka-works.html</code>.</li>
+<li>Arc auto-archive and Library: <a href="https://resources.arc.net/hc/en-us/articles/19228855311127">Arc help</a>, <a href="https://resources.arc.net/hc/en-us/articles/19230634389911">Library</a>; 5.52% figure from <a href="https://browsercompany.substack.com/p/letter-to-arc-members-2025">Arc’s 2025 letter</a>.</li>
+<li>Zen pinned-tab close behaviour and Library (1.23b, 6 Oct 2026): <a href="https://github.com/zen-browser/desktop">zen-browser/desktop</a>, <a href="https://zen-browser.app/release-notes/">release notes</a>.</li>
+<li>Chromium <code>TabRestoreService</code> (25 entries), discarding and <code>AddTabExtraData</code>: Chromium <code>main</code>, checked 16 Oct 2026.</li>
+</ul>
+</details>
+</main>
+<script>
+addEventListener("beforeprint", () => document.querySelectorAll("details").forEach((d) => { d.dataset.wasOpen = d.open; d.open = true; }));
+addEventListener("afterprint", () => document.querySelectorAll("details").forEach((d) => (d.open = d.dataset.wasOpen === "true")));
+</script>
+</body>
+</html>

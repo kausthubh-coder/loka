@@ -82,6 +82,38 @@ const recipes = {
 		await loka.proof("03-swiped-to-home");
 		await loka.page.keyboard.press("Control+2");
 
+		// The space's menu moves it along the horizon, which is Ctrl+1..9's order too.
+		const order = async () => (await loka.state()).spaces.map((/** @type {{ name: string }} */ s) => s.name);
+		const world = loka.sidebar.getByRole("button", { name: "Spaces: School", exact: true });
+		await world.click();
+		assert.equal(await loka.menuItem("Move right").count(), 1, "School in the middle can move right");
+		await loka.page.waitForTimeout(400); // the menu's fade-in, for the picture
+		await loka.proof("04-space-menu-moves");
+		await loka.menuItem("Move left").click();
+		assert.deepEqual(await order(), ["School", "Build", "Home"], "Move left put School first");
+		assert.equal((await loka.outline()).space, "School", "the space showing stays showing");
+		await loka.proof("05-school-moved-left");
+		await loka.page.reload({ waitUntil: "networkidle" });
+		await loka.sidebar.getByRole("tree").first().waitFor();
+		assert.deepEqual(await order(), ["School", "Build", "Home"], "the order survives a reload");
+		await loka.page.keyboard.press("Control+2");
+		assert.equal((await loka.outline()).space, "Build", "Ctrl+2 is Build now");
+		await loka.page.keyboard.press("Control+1");
+		assert.equal((await loka.outline()).space, "School", "Ctrl+1 shows School, now first");
+		assert.equal(
+			await loka.space("Build").getAttribute("aria-label"),
+			"Build (Ctrl 2)",
+			"the horizon's neighbour carries its new shortcut",
+		);
+		// At the start there is no Move left; right-clicking the planet has the same moves.
+		await world.click();
+		assert.equal(await loka.menuItem("Move left").count(), 0, "the first space can't move left");
+		await loka.page.keyboard.press("Escape");
+		await world.click({ button: "right" });
+		await loka.menuItem("Move right").click();
+		assert.deepEqual(await order(), ["Build", "School", "Home"], "Move right from the planet's right-click menu");
+		await loka.proof("06-school-moved-back");
+
 		// The current planet lists every space and can add one (through the editor, with the suggested name).
 		await loka.sidebar.getByRole("button", { name: "Spaces: School", exact: true }).click();
 		await loka.menuItem("New space").click();
@@ -89,7 +121,7 @@ const recipes = {
 		o = await loka.outline();
 		assert.equal(o.space, "Space 4");
 		assert.deepEqual([o.pinned, o.open], [[], []], "a new space starts empty");
-		await loka.proof("04-new-space");
+		await loka.proof("07-new-space");
 	},
 
 	async tabs(loka) {
@@ -124,6 +156,93 @@ const recipes = {
 		await loka.sidebar.getByRole("button", { name: "Clear", exact: true }).click();
 		assert.deepEqual((await loka.outline()).open, [], "Clear closes every open tab");
 		await loka.proof("03-cleared");
+
+		// ---- several rows at once: Ctrl+click, Shift+click, and the selection's menu ----
+		await resetDemo(loka);
+		const pick = { modifiers: /** @type {["ControlOrMeta"]} */ (["ControlOrMeta"]) };
+		await loka.row("Hacker News").click(pick);
+		await loka.row("Zen Browser").click(pick);
+		assert.deepEqual(await picked(loka), ["Hacker News", "Zen Browser"], "Ctrl+click picks rows");
+		assert.equal((await loka.outline()).activeTab, "imputnet/helium-windows", "and doesn't switch tabs");
+		await loka.proof("04-ctrl-picked");
+		await loka.page.keyboard.press("Escape");
+		assert.deepEqual(await picked(loka), [], "Escape lets go of them");
+		await loka.row("Hacker News").click(pick);
+		await loka.row("Zen Browser").click({ modifiers: ["Shift"] });
+		assert.deepEqual(
+			await picked(loka),
+			["Hacker News", "Arc: what we learned", "Zen Browser"],
+			"Shift+click picks the run",
+		);
+		await loka.row("Arc: what we learned").click({ button: "right" });
+		await loka.sidebar.getByRole("menu", { name: "3 tabs selected" }).waitFor();
+		// It fades in; the picture waits for that.
+		await loka.page.waitForTimeout(300);
+		await loka.proof("05-selection-menu");
+		await loka.menuItem("Move to space").click();
+		await loka.menuItem("School").click();
+		let s = await loka.state();
+		assert.deepEqual(spaceOpen(s, "s-school"), ["Hacker News", "Arc: what we learned", "Zen Browser"]);
+		assert.deepEqual(spaceOpen(s, "s-build"), [], "Move to space took all three, in order");
+
+		await loka.page.keyboard.press("Control+2");
+		await loka.row("Hacker News").click(pick);
+		await loka.row("Zen Browser").click({ modifiers: ["Shift"] });
+		await loka.row("Hacker News").click({ button: "right" });
+		await loka.menuItem("Pin to space").click();
+		o = await loka.outline();
+		assert.deepEqual(
+			o.pinned.slice(-3),
+			["0:Hacker News", "0:Arc: what we learned", "0:Zen Browser"],
+			"pinned in order",
+		);
+		assert.deepEqual(o.open, []);
+		assert.deepEqual(await picked(loka), [], "a menu action lets go of the selection");
+
+		await loka.row("Arc: what we learned").click(pick);
+		await loka.row("Zen Browser").click(pick);
+		await loka.row("Zen Browser").click({ button: "right" });
+		await loka.menuItem("Unpin").click();
+		assert.deepEqual((await loka.outline()).open, ["Arc: what we learned", "Zen Browser"], "Unpin keeps their order");
+
+		await loka.row("Hacker News").click(pick);
+		await loka.row("Canvas: CSC 281").click(pick);
+		await loka.row("Canvas: CSC 281").click({ button: "right" });
+		await loka.menuItem("Close 2 tabs").click();
+		o = await loka.outline();
+		assert.ok(
+			o.pinned.includes("0:Hacker News") && o.pinned.includes("0:Canvas: CSC 281"),
+			"closing pinned tabs unloads them",
+		);
+		assert.deepEqual((await loka.state()).archive, [], "and archives nothing");
+
+		await loka.row("Arc: what we learned").click(pick);
+		await loka.row("Zen Browser").click(pick);
+		await loka.row("Arc: what we learned").click({ button: "right" });
+		await loka.menuItem("Close 2 tabs").click();
+		s = await loka.state();
+		assert.deepEqual(spaceOpen(s, "s-school"), [], "closing open tabs deletes them");
+		assert.deepEqual(
+			s.archive.map((/** @type {any} */ a) => a.tab.title),
+			["Zen Browser", "Arc: what we learned"],
+			"into the archive, last closed on top",
+		);
+
+		await loka.row("Hacker News").click(pick);
+		await loka.row("Canvas: CSC 281").click(pick);
+		await loka.row("Hacker News").click({ button: "right" });
+		await loka.menuItem("New folder with these tabs").click();
+		await loka.page.keyboard.type("Picked");
+		await loka.page.keyboard.press("Enter");
+		o = await loka.outline();
+		assert.deepEqual(
+			o.pinned.slice(-3),
+			["0:Picked", "1:Canvas: CSC 281", "1:Hacker News"],
+			"a folder of both, in sidebar order",
+		);
+		await loka.proof("06-folder-of-picked");
+		await loka.page.reload({ waitUntil: "networkidle" });
+		assert.deepEqual((await loka.outline()).pinned, o.pinned, "and it survives a reload");
 	},
 
 	async essentials(loka) {
@@ -204,6 +323,85 @@ const recipes = {
 		const firstTile = await boxOf(loka.essential("Hacker News"));
 		assert.ok(near(firstTile.width, quarter.width) && near(firstTile.x, row.x), "the first Essential is a tile too");
 		await loka.proof("04-first-essential");
+
+		// ---- the limit of 12, and adding several at once ----
+		await resetDemo(loka);
+		const pick = { modifiers: /** @type {["ControlOrMeta"]} */ (["ControlOrMeta"]) };
+		const notice = loka.sidebar.getByRole("status").filter({ hasText: "Essentials" });
+		// Build's three open tabs, then its three pinned tabs (the run passes over the Docs folder): 4 + 6 = 10.
+		await loka.row("Hacker News").click(pick);
+		await loka.row("Zen Browser").click({ modifiers: ["Shift"] });
+		await loka.row("Arc: what we learned").click({ button: "right" });
+		await loka.menuItem("Add to Essentials").click();
+		await loka.row("imputnet/helium-windows").click(pick);
+		await loka.row("Lit docs").click({ modifiers: ["Shift"] });
+		assert.deepEqual(await picked(loka), ["imputnet/helium-windows", "Chromium: Windows build guide", "Lit docs"]);
+		await loka.row("Lit docs").click({ button: "right" });
+		await loka.menuItem("Add to Essentials").click();
+		o = await loka.outline();
+		assert.equal(o.essentials.length, 10);
+		assert.deepEqual(o.essentials.slice(4), [
+			"Hacker News",
+			"Arc: what we learned",
+			"Zen Browser",
+			"imputnet/helium-windows",
+			"Chromium: Windows build guide",
+			"Lit docs",
+		]);
+		assert.equal(await notice.count(), 0, "everything fit, so nothing is said");
+
+		// School: Canvas and the two tabs in Game project. Only two fit.
+		await loka.page.keyboard.press("Control+2");
+		await loka.row("Game project").click();
+		await loka.row("Canvas: CSC 281").click(pick);
+		await loka.row("Game design doc").click(pick);
+		await loka.row("Minecraft farm designs").click(pick);
+		await loka.row("Minecraft farm designs").click({ button: "right" });
+		await loka.menuItem("Add to Essentials").click();
+		await notice.waitFor();
+		assert.equal(
+			(await notice.textContent())?.trim(),
+			"Added 2. Essentials have room for 12, so 1 tab didn't fit.",
+			"the sidebar says what didn't fit",
+		);
+		o = await loka.outline();
+		assert.equal(o.essentials.length, 12, "Essentials stop at 12");
+		assert.deepEqual(o.essentials.slice(-2), ["Canvas: CSC 281", "Game design doc"], "the first two, in order");
+		assert.ok(o.pinned.includes("2:Minecraft farm designs"), "the one that didn't fit stays where it was");
+		// The tiles fly in from their rows; the picture waits for them to land.
+		await loka.page.waitForTimeout(400);
+		await loka.proof("03-twelve-and-a-notice");
+
+		// One more from its own menu: refused, and said.
+		await loka.row("Minecraft farm designs").click({ button: "right" });
+		await loka.menuItem("Add to Essentials").click();
+		await loka.page.waitForTimeout(100);
+		assert.equal((await notice.textContent())?.trim(), "Essentials have room for 12. Remove one first.");
+		assert.equal((await loka.outline()).essentials.length, 12);
+
+		// Dragging onto a full grid: no free cell, no drop line on a tile's edge, and letting go changes nothing.
+		const from = await loka.row("Minecraft farm designs").boundingBox();
+		const tile = await loka.essential("YouTube").boundingBox();
+		if (!from || !tile) throw new Error("drag ends not visible");
+		await loka.page.mouse.move(from.x + 60, from.y + from.height / 2);
+		await loka.page.mouse.down();
+		await loka.page.mouse.move(from.x + 70, from.y + from.height / 2, { steps: 3 });
+		await loka.page.mouse.move(tile.x + tile.width - 3, tile.y + tile.height / 2, { steps: 8 });
+		const marks = await loka.sidebar.evaluate(
+			(el) =>
+				el.shadowRoot?.querySelectorAll(".essentials .slot, .essentials .drop-before, .essentials .drop-after").length,
+		);
+		assert.equal(marks, 0, "a full grid shows no drop slot or line");
+		await loka.proof("04-drag-onto-full-grid");
+		await loka.page.mouse.up();
+		await loka.page.waitForTimeout(150);
+		o = await loka.outline();
+		assert.equal(o.essentials.length, 12);
+		assert.ok(o.pinned.includes("2:Minecraft farm designs"), "the drop changed nothing");
+
+		// Full Essentials still reorder.
+		await loka.drag(loka.essential("Game design doc"), loka.essential("Inbox"), "before");
+		assert.equal((await loka.outline()).essentials[0], "Game design doc", "a tile moved to the front");
 	},
 
 	async "export-import"(loka) {
@@ -605,6 +803,53 @@ const recipes = {
 		await loka.page.keyboard.press("ArrowDown");
 		await loka.page.keyboard.press("Enter");
 		assert.equal((await loka.outline()).activeTab, "imputnet/helium-windows", "Down then Enter opened the next row");
+
+		// Left goes up to the folder holding the row; Right on an open folder goes into it.
+		/** The focused row's name. */
+		const focused = () =>
+			loka.sidebar.evaluate((el) => el.shadowRoot?.activeElement?.querySelector(".label")?.textContent ?? null);
+		await loka.page.keyboard.press("ArrowLeft");
+		assert.equal(await focused(), "Loka", "Left on a tab goes to its folder");
+		await loka.page.keyboard.press("ArrowRight");
+		assert.equal(await focused(), "imputnet/helium-windows", "Right on an open folder goes to its first row");
+		await loka.page.keyboard.press("ArrowDown");
+		await loka.page.keyboard.press("ArrowRight");
+		assert.equal(await focused(), "Chromium: Windows build guide", "and into the folder two levels down");
+
+		// Shift+Down picks rows and stays in its own list; Escape lets go.
+		await loka.page.keyboard.press("Shift+ArrowDown");
+		assert.deepEqual(await picked(loka), ["Chromium: Windows build guide", "Lit docs"], "Shift+Down picks the run");
+		await loka.page.keyboard.press("Shift+ArrowDown");
+		assert.equal(await focused(), "Lit docs", "Shift+Down stops at the end of the pinned tree");
+		await loka.proof("02-shift-down");
+		await loka.page.keyboard.press("Escape");
+		assert.deepEqual(await picked(loka), []);
+
+		// Down crosses into the open tabs; Shift+Down picks two; Delete closes them and focus takes their place.
+		await loka.page.keyboard.press("ArrowDown");
+		assert.equal(await focused(), "Hacker News");
+		await loka.page.keyboard.press("Shift+ArrowDown");
+		await loka.page.keyboard.press("Delete");
+		assert.deepEqual((await loka.outline()).open, ["Zen Browser"], "Delete closed the picked tabs");
+		assert.equal(await focused(), "Zen Browser", "focus moved to the row that took their place");
+		// With nothing picked, Delete closes the focused tab; a pinned one only unloads.
+		await loka.page.keyboard.press("Delete");
+		assert.deepEqual((await loka.outline()).open, []);
+		assert.deepEqual(
+			(await loka.state()).archive.map((/** @type {any} */ a) => a.tab.title),
+			["Zen Browser", "Arc: what we learned", "Hacker News"],
+			"all three are in the archive",
+		);
+		await loka.row("Lit docs").focus();
+		await loka.page.keyboard.press("Delete");
+		assert.ok((await loka.outline()).pinned.includes("2:Lit docs"), "Delete on a pinned tab keeps it");
+		await loka.proof("03-deleted");
+
+		// The window's shortcuts still work on a focused row: Ctrl+Alt+Down steps tabs, Ctrl+2 switches space.
+		await loka.page.keyboard.press("Control+Alt+ArrowDown");
+		assert.equal(await focused(), "Lit docs", "Ctrl+Alt+Down doesn't move the row focus");
+		await loka.page.keyboard.press("Control+2");
+		assert.equal((await loka.outline()).space, "School");
 	},
 
 	async import(loka) {
@@ -1223,6 +1468,55 @@ const recipes = {
 		assert.equal((await loka.state()).activeSpaceId, "s-home", "Switch to goes to the space");
 		await loka.page.keyboard.press("Control+1");
 
+		// The rail's space rows reorder the spaces: drag Home above Build with the mouse.
+		await openLibrary();
+		const rail = spaces.getByRole("group", { name: "Go to a space" });
+		// The current space's row is named "<space> Current space" (its dot's title).
+		const railRow = (/** @type {string} */ name) => rail.getByRole("button", { name: new RegExp(`^${name}( |$)`) });
+		const order = async () => (await loka.state()).spaces.map((/** @type {{ name: string }} */ s) => s.name);
+		const railOrder = async () => (await rail.getByRole("button").allTextContents()).map((t) => t.trim());
+		const from = await railRow("Home").boundingBox();
+		const onto = await railRow("Build").boundingBox();
+		if (!from || !onto) throw new Error("the rail's rows are not visible");
+		await loka.page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+		await loka.page.mouse.down();
+		await loka.page.mouse.move(onto.x + onto.width / 2, onto.y + 4, { steps: 8 });
+		assert.deepEqual(await railRow("Home").getAttribute("class"), "filter jump dragging", "the dragged row is lifted");
+		assert.deepEqual(await railOrder(), ["Home", "Build", "School"], "mid-drag the rail shows where it lands");
+		assert.deepEqual(await order(), ["Build", "School", "Home"], "nothing is saved before the drop");
+		await loka.proof("01a-reorder-dragging");
+		await loka.page.mouse.up();
+		assert.deepEqual(await order(), ["Home", "Build", "School"], "the drop saved Home first");
+		assert.deepEqual(
+			(await spaces.getByRole("heading", { level: 2 }).allTextContents()).map((t) => t.trim()),
+			["Essentials", "Home", "Build", "School"],
+			"the list follows the new order",
+		);
+		await loka.proof("01b-reorder-dropped");
+		await loka.page.keyboard.press("Control+1");
+		assert.equal((await loka.state()).activeSpaceId, "s-home", "Ctrl+1 shows Home, now first");
+
+		// Keys: focus Home's row and Alt+Down moves it one place, keeping the focus; at the end it stays.
+		await openLibrary();
+		const focused = () =>
+			loka.page.evaluate(() => {
+				let el = document.activeElement;
+				while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+				return el?.textContent?.trim();
+			});
+		await railRow("Home").focus();
+		await loka.page.keyboard.press("Alt+ArrowDown");
+		assert.deepEqual(await order(), ["Build", "Home", "School"], "Alt+Down moved Home one place");
+		assert.equal(await focused(), "Home", "Home's row keeps the focus");
+		await loka.page.keyboard.press("Alt+ArrowDown");
+		await loka.page.keyboard.press("Alt+ArrowDown");
+		assert.deepEqual(await order(), ["Build", "School", "Home"], "Alt+Down at the end does nothing more");
+		await loka.page.keyboard.press("Alt+ArrowUp");
+		assert.deepEqual(await order(), ["Build", "Home", "School"], "Alt+Up moves it back up");
+		assert.equal(await spaces.getByRole("status").textContent(), "Home moved to 2 of 3", "a screen reader hears it");
+		await loka.proof("01c-reorder-by-keys");
+		await loka.page.keyboard.press("Alt+ArrowDown");
+
 		// Eight hours on, the archive takes Arc (17 h) and Zen (13 h) from Build.
 		await loka.page.clock.install();
 		await loka.page.reload({ waitUntil: "networkidle" });
@@ -1323,6 +1617,19 @@ const recipes = {
 		const [first, last] = await Promise.all([section("Spaces").boundingBox(), section("Downloads").boundingBox()]);
 		assert.equal(first?.y, last?.y, "the four sections sit in one row");
 		await loka.proof("05-narrow");
+
+		// Narrow, the rail's spaces are a row of pills: a drag goes sideways. Home onto Build's left edge goes first.
+		assert.deepEqual(await order(), ["Build", "School", "Home"]);
+		const pill = await railRow("Home").boundingBox();
+		const leftOf = await railRow("Build").boundingBox();
+		if (!pill || !leftOf) throw new Error("the rail's pills are not visible");
+		assert.equal(pill.y, leftOf.y, "the pills sit in one row");
+		await loka.page.mouse.move(pill.x + pill.width / 2, pill.y + pill.height / 2);
+		await loka.page.mouse.down();
+		await loka.page.mouse.move(leftOf.x + 4, leftOf.y + leftOf.height / 2, { steps: 8 });
+		await loka.page.mouse.up();
+		assert.deepEqual(await order(), ["Home", "Build", "School"], "a sideways drag reorders in the narrow rail");
+		await loka.proof("06-narrow-reordered");
 	},
 
 	async sound(loka) {
@@ -1469,6 +1776,24 @@ const recipes = {
 		await loka.proof("02-back-to-default");
 	},
 };
+
+/** The rows picked with Ctrl+ or Shift+click or Shift+arrow (aria-checked), by name, in sidebar order. @param {Loka} loka */
+async function picked(loka) {
+	return loka.sidebar.getByRole("treeitem", { checked: true }).locator(".label").allTextContents();
+}
+
+/** A space's open tabs by title, from the saved state. @param {any} state @param {string} spaceId */
+function spaceOpen(state, spaceId) {
+	const space = state.spaces.find((/** @type {{ id: string }} */ x) => x.id === spaceId);
+	return space.open.map((/** @type {string} */ id) => state.tabs[id].title);
+}
+
+/** Back to the seed data, from `...` > Reset demo data. @param {Loka} loka */
+async function resetDemo(loka) {
+	await loka.sidebar.getByRole("button", { name: "More" }).click();
+	await loka.menuItem("Reset demo data").click();
+	await loka.page.waitForTimeout(300);
+}
 
 /** What the sidebar asked the fake browser to do, by message, as argument lists. @param {Loka} loka @param {string} message */
 async function demoCalls(loka, message) {

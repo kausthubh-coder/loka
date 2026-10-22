@@ -69,10 +69,10 @@ Preconditions: seed data. The fake browser (`prototype/src/demo/`) answers `sugg
   first", "words in the command bar search the web in a new tab", "Ctrl+L opens the bar on the shown address", "and
   Enter goes there in the same tab", "picking Code Lab in the command bar shows it". verify:flows `new-tab` checks
   `command-new-tab`: no tab while the bar is open or after Escape, one tab per pick, the empty tab in a new space,
-  after its last tab closes and in a new window (with the bar open over it). The flows open the bar with
-  `chrome.send("openCommandBar")`, the handler Ctrl+T runs; the real Ctrl+T, Ctrl+K, Ctrl+W, Tab keys, history and
-  bookmark rows, a start with nothing to restore, and jumping to a tab in another space are not checked in the
-  browser.
+  after its last tab closes and in a new window (with the bar open over it). verify:flows `shortcuts` presses the
+  browser's own Ctrl+T and Ctrl+L on a page: "Ctrl+T on a page opens the command bar and makes no tab", "Ctrl+L on a
+  page opens the command bar on its address". Ctrl+K, Tab keys, history and bookmark rows, a start with nothing to
+  restore, and jumping to a tab in another space are not checked in the browser.
 
 ## Gotchas
 

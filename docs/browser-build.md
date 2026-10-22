@@ -90,8 +90,10 @@ bun run browser:package    # C:\src\loka\dist\Loka-<version>-windows-x64.zip and
 ```
 
 - `scripts/alpha/package_alpha.mjs` copies what `gn desc out\Default //chrome:chrome runtime_deps` lists (every
-  DLL, since the dev build is a component build; the sidebar is inside the browser's paks), `initial_preferences`
-  and a README. `LOKA_VERSION` sets the version (default `0.1.0-alpha.1`).
+  DLL, since the dev build is a component build; the sidebar is inside the browser's paks), `initial_preferences`,
+  a README, the repo's `LICENSE` and `LICENSE.ungoogled_chromium`, and `scripts/alpha/NOTICE.txt` (Helium,
+  ungoogled-chromium and Chromium, and chrome://credits for the rest). `LOKA_VERSION` sets the version (default
+  `0.1.0-alpha.1`); `-- --list` prints the zip's top level without a build.
 - `Loka.exe` is `scripts/alpha/Loka.cs`, compiled with the `csc.exe` that ships in Windows. It starts
   `app\chrome.exe` with the profile `%LOCALAPPDATA%\Loka\User Data` and `--custom-update-server-url` pointed at
   Loka's (not yet published) feed, so Helium's updater never offers Helium.

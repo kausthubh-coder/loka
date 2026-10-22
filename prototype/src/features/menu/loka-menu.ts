@@ -81,6 +81,7 @@ export class LokaMenu extends LitElement {
 				role="menuitem"
 				tabindex="-1"
 				data-index=${index}
+				aria-label=${entry.label}
 				aria-haspopup=${opens ? "menu" : nothing}
 				aria-expanded=${opens ? this.submenu === index : nothing}
 				@click=${(e: Event) => {

@@ -39,7 +39,8 @@ def apply_all_patches(_prompt=''):
             patch_bin_path=patch_bin,
         )
     # Loka's built-in pages (webui/, packed into components/loka_sidebar) and its brand images aren't patches:
-    # build and copy them in before GN runs. The name substitution is skipped; loka-name.patch covers the strings.
+    # build and copy them in before GN runs. The full name substitution is skipped; `apply --no-names` renames only
+    # the product's strings (loka_brand.BRANDED_STRINGS).
     subprocess.run(['bun', 'run', 'webui:build'], cwd=ROOT, check=True, shell=True)
     subprocess.run(
         [sys.executable, str(ROOT / 'scripts' / 'loka_brand.py'), 'apply', '--no-names'],

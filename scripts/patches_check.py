@@ -17,10 +17,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from export_patch import ORIG_DIR, ROOT, SOURCE_TREE, read  # noqa: E402
+from loka_brand import BRANDED_STRINGS, branded_strings  # noqa: E402
 
 # Folders only Loka writes, searched for new files no patch lists. components/loka_sidebar/dist is the built page
 # that `bun run webui:build` copies in, so it isn't source.
-LOKA_FOLDERS = ['chrome/browser/ui/webui/loka_sidebar', 'components/loka_sidebar']
+LOKA_FOLDERS = ['chrome/browser/ui/views/loka', 'chrome/browser/ui/webui/loka_sidebar', 'components/loka_sidebar']
 GENERATED = ['components/loka_sidebar/dist/']
 
 
@@ -114,10 +115,18 @@ def main():
     in_folders = {f for f in in_folders if not any(f.startswith(g) for g in GENERATED)}
 
     unexported: list[str] = []
-    for rel in sorted(saved | set(expected) | in_folders):
+    branded = {rel for rel in BRANDED_STRINGS if (SOURCE_TREE / rel).exists()}
+    for rel in sorted(saved | set(expected) | in_folders | branded):
         current = read(SOURCE_TREE / rel)
         if not (SOURCE_TREE / rel).exists():
             problems.append(f'{rel}: in {owner.get(rel, "patch-orig")} but missing from {SOURCE_TREE}')
+            continue
+        if rel in BRANDED_STRINGS and rel not in expected:
+            # loka_brand.py renames it on every apply: it must be the renaming of its original (of itself when there
+            # is no saved original; renaming twice changes nothing).
+            source = ''.join(read(ORIG_DIR / rel) if rel in saved else current)
+            if branded_strings(source, SOURCE_TREE) != ''.join(current):
+                problems.append(f'{rel}: not loka_brand.py\'s renaming of it; run python scripts/loka_brand.py apply --no-names')
             continue
         if rel not in expected:
             if rel in saved and read(ORIG_DIR / rel) == current:

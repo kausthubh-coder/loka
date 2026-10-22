@@ -35,6 +35,8 @@ import {
 	groupIntoFolder,
 	importState,
 	moveItem,
+	moveItems,
+	moveSpace,
 	navigateTab,
 	openTab,
 	type Place,
@@ -122,6 +124,14 @@ export function modelCases(): { states: Record<string, BrowserState>; cases: Cas
 	move("a tab joins the Essentials", "seed", "t-arc", { area: "essentials", index: 1 });
 	move("an Essential goes to another space's open tabs", "seed", "t-gh", { area: "open", spaceId: "s-home", index: 0 });
 	move("past the end means the end", "seed", "t-hn", { area: "open", spaceId: "s-school", index: Infinity });
+	move("a move to a space that's gone changes nothing", "seed", "t-hn", { area: "open", spaceId: "s-gone", index: 0 });
+	on(
+		"several tabs to a space that's gone change nothing",
+		"seed",
+		"moveItems",
+		{ itemIds: ["t-hn", "t-zen"], to: { area: "open", spaceId: "s-gone", index: 0 } },
+		(s) => moveItems(s, ["t-hn", "t-zen"], { area: "open", spaceId: "s-gone", index: 0 }),
+	);
 	move("a negative index means the start", "seed", "t-arc", { area: "essentials", index: -3 });
 	move("a tab sent to another space stops being the one its old space shows", "showing", "t-hn", {
 		area: "open",
@@ -161,6 +171,53 @@ export function modelCases(): { states: Record<string, BrowserState>; cases: Cas
 	});
 	move("an unknown id moves nothing", "seed", "t-nowhere", { area: "essentials", index: 0 });
 	move("a pinned tab goes back to open tabs", "seed", "t-canvas", { area: "open", spaceId: "s-school", index: 0 });
+
+	// ---- the Essentials limit (ESSENTIALS_LIMIT, 12) ----
+	const grow = (count: number) =>
+		["t-hn", "t-arc", "t-zen", "t-helium", "t-chromium", "t-lit", "t-canvas", "t-music"]
+			.slice(0, count - seed.essentials.length)
+			.reduce((s, id) => moveItem(s, id, { area: "essentials", index: Infinity }), seed);
+	states.essentialsEleven = grow(11);
+	states.essentialsFull = grow(12);
+	move("a 13th Essential is refused", "essentialsFull", "t-gdd", { area: "essentials", index: 0 });
+	move("full Essentials still reorder", "essentialsFull", "t-music", { area: "essentials", index: 0 });
+	move("a full Essential can leave", "essentialsFull", "t-mail", { area: "open", spaceId: "s-build", index: 0 });
+
+	// ---- moving several at once ----
+	const moveMany = (name: string, state: string, ids: string[], to: Place) =>
+		on(name, state, "moveItems", { itemIds: ids, to }, (s) => moveItems(s, ids, to));
+	moveMany("several open tabs pin at the end in the order given", "seed", ["t-zen", "t-hn"], {
+		area: "pinned",
+		spaceId: "s-build",
+		parentId: null,
+		index: Infinity,
+	});
+	moveMany("several land together at the top of another space's open tabs", "seed", ["t-helium", "t-lit", "t-arc"], {
+		area: "open",
+		spaceId: "s-home",
+		index: 0,
+	});
+	moveMany("within one list the first counts before the move, the rest follow it", "seed", ["t-zen", "t-hn"], {
+		area: "open",
+		spaceId: "s-build",
+		index: 2,
+	});
+	moveMany("several into a folder two levels down, first to last", "seed", ["t-hn", "t-arc"], {
+		area: "pinned",
+		spaceId: "s-build",
+		parentId: "f-docs",
+		index: 0,
+	});
+	moveMany("several to nearly full Essentials: as many as fit, in order", "essentialsEleven", ["t-gdd", "t-ref"], {
+		area: "essentials",
+		index: Infinity,
+	});
+	moveMany("a folder or an unknown id is skipped, the rest move", "seed", ["f-docs", "t-x", "t-hn"], {
+		area: "essentials",
+		index: 0,
+	});
+	moveMany("nothing allowed changes nothing", "essentialsFull", ["t-gdd", "f-docs"], { area: "essentials", index: 0 });
+	moveMany("no ids changes nothing", "seed", [], { area: "open", spaceId: "s-home", index: 0 });
 
 	// ---- tabs ----
 	on(
@@ -259,6 +316,19 @@ export function modelCases(): { states: Record<string, BrowserState>; cases: Cas
 	on("the only space can't be deleted", "first", "deleteSpace", { spaceId: "s-first" }, (s) =>
 		deleteSpace(s, "s-first"),
 	);
+	// `toIndex` counts after the move: where the space ends up.
+	const moveTo = (name: string, state: string, spaceId: string, toIndex: number) =>
+		on(name, state, "moveSpace", { spaceId, toIndex }, (s) => moveSpace(s, spaceId, toIndex));
+	moveTo("the space showing moves to the end and keeps showing", "seed", "s-build", 2);
+	moveTo("a space moves to the start", "seed", "s-home", 0);
+	moveTo("a space moves one place down", "seed", "s-build", 1);
+	moveTo("a space moves one place up", "home", "s-home", 1);
+	moveTo("a space past the end goes to the end", "seed", "s-build", 99);
+	moveTo("Infinity (null in JSON) is the end", "seed", "s-build", Number.POSITIVE_INFINITY);
+	moveTo("a space before the start goes to the start", "seed", "s-home", -3);
+	moveTo("a space moved to its own place changes nothing", "seed", "s-school", 1);
+	moveTo("moving a missing space changes nothing", "seed", "s-x", 0);
+	moveTo("the only space has nowhere to go", "first", "s-first", 1);
 	on(
 		"an address already pinned in another space is shown there",
 		"seed",

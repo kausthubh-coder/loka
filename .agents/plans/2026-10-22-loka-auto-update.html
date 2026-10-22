@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Auto-update: an installer, two keys, a Depot runner</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f8f8f6; --text: #1a1c1e; --muted: #555b61; --line: #d3d6d9; --surface: #ebedef;
+  --accent: #19588a; --accent-soft: #e2edf6;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #121416; --text: #e6e8ea; --muted: #a7adb3; --line: #2f353b; --surface: #1c2126;
+    --accent: #83c3ee; --accent-soft: #15232f; }
+}
+html { background: var(--bg); color: var(--text); }
+body { margin: 0; font: 1.0625rem/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 50rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+h1 { font-size: 2rem; line-height: 1.15; margin: 0 0 0.6rem; text-wrap: balance; }
+h2 { font-size: 1.3rem; line-height: 1.25; margin: 2.4rem 0 0.7rem; text-wrap: balance; }
+p, li, dd, dt { max-width: 60ch; text-wrap: pretty; }
+p { margin: 0 0 0.8rem; }
+.lede { font-size: 1.1875rem; color: var(--muted); margin-bottom: 1.4rem; }
+code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.9375rem; overflow-wrap: anywhere; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+::selection { background: var(--accent-soft); }
+.asks { background: var(--accent-soft); border-radius: 10px; padding: 1rem 1.25rem 0.5rem; margin: 1.5rem 0 2rem; }
+.asks h2 { margin: 0 0 0.5rem; font-size: 1.0625rem; color: var(--accent); }
+.asks ol { margin: 0; padding-left: 1.3rem; }
+.asks li { margin-bottom: 0.55rem; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9375rem; margin: 0.3rem 0 0.8rem; }
+th, td { text-align: left; vertical-align: top; padding: 0.5rem 0.75rem 0.5rem 0; border-bottom: 1px solid var(--line); }
+th { font-weight: 600; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pick { font-weight: 600; }
+/* The update path: one hop per column, what Loka must add under each. */
+figure { margin: 1.2rem 0 1.6rem; }
+figcaption { font-size: 0.9375rem; color: var(--muted); margin-top: 0.6rem; max-width: 60ch; }
+.path { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.6rem; font-size: 0.9375rem; }
+.hop { background: var(--surface); border-radius: 8px; padding: 0.6rem 0.75rem; min-width: 0; }
+.hop b { display: block; margin-bottom: 0.25rem; font-weight: 600; }
+.hop span { color: var(--muted); display: block; line-height: 1.35; }
+.hop .need { color: var(--accent); margin-top: 0.4rem; }
+ol.steps li { margin-bottom: 0.4rem; }
+.who { color: var(--muted); }
+details { border-top: 1px solid var(--line); }
+details:last-of-type { border-bottom: 1px solid var(--line); }
+summary { padding-block: 0.7rem; cursor: pointer; font-weight: 500; }
+details[open] { padding-bottom: 0.9rem; }
+details ul, details ol { padding-left: 1.3rem; }
+details li { margin-bottom: 0.35rem; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; font-size: 0.9375rem; }
+dt { color: var(--muted); }
+dd { margin: 0; }
+@media (max-width: 40rem) { .path { grid-template-columns: 1fr 1fr; } h1 { font-size: 1.65rem; } dl { grid-template-columns: 1fr; } }
+@media print {
+  :root { color-scheme: light; --bg: #fff; --text: #000; --muted: #333; --line: #bbb; --surface: #eee; --accent: #19588a; --accent-soft: #eef4fa; }
+  figure, table, pre { break-inside: avoid; }
+  h2 { break-after: avoid; }
+  a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 0.85em; }
+}
+</style>
+</head>
+<body>
+<main>
+<h1>Auto-update: an installer, two keys, a Depot runner</h1>
+<p class="lede">Helium's WinSparkle updater is already in the tree, but it only runs for an installed browser, so the portable zip can never update itself. Loka needs an installer built by a CI workflow, an EdDSA key pair, a feed file on GitHub and one small patch.</p>
+
+<figure>
+  <div class="path">
+    <div class="hop"><b>1. Browser polls</b><span>Hourly, <code>&lt;base&gt;/win/appcast.xml</code>. Base is Helium's server unless overridden.</span><span class="need">Add: Loka's base URL</span></div>
+    <div class="hop"><b>2. Feed names a version</b><span>Compared with the build's Helium number, <code>0.19.2.N</code>.</span><span class="need">Add: four-part versions</span></div>
+    <div class="hop"><b>3. Mini installer downloads</b><span>Its Ed25519 signature is checked against the key baked into the build.</span><span class="need">Add: EdDSA key pair</span></div>
+    <div class="hop"><b>4. Installs, swaps at relaunch</b><span>Per-user: silent, no UAC. All-users: also needs an Authenticode-trusted file.</span><span class="need">Add: an install, not a zip</span></div>
+  </div>
+  <figcaption>The four hops in Helium's updater and what each needs from Loka. Read from <code>patches/helium/windows/updater/*.patch</code> and <code>add-updater-preference.patch</code>.</figcaption>
+</figure>
+
+<div class="asks">
+<h2>Your call on five things</h2>
+<ol>
+  <li>Runner: <code>depot-windows-2025-32</code> ($7.68/h, 200 GB disk) is the default. Prefer the 64-core or a self-hosted box?</li>
+  <li>Versions: tag <code>v0.19.2.N</code> and bump <code>revision.txt</code> per release, dropping <code>v0.1.0-alpha.N</code>. The browser only compares the four-part form.</li>
+  <li>Install identity: company and product <code>Loka</code>, new GUIDs. The default profile then moves to <code>%LOCALAPPDATA%\Loka\Loka\User Data</code>. Copy alpha users' profile on first run, or tell them to move it?</li>
+  <li>Signing: ship unsigned with EdDSA now (per-user updates work), then Azure Artifact Signing ($9.99/mo) if you're in the US or Canada, else SignPath.</li>
+  <li>Feed: an <code>updates</code> branch served from <code>raw.githubusercontent.com</code>, written when a release is published.</li>
+</ol>
+</div>
+
+<h2>Done when</h2>
+<ul>
+  <li>A clean Windows VM installs <code>Loka-0.19.2.N-windows-x64-installer.exe</code> and <code>chrome://settings/help</code> says it checked for updates.</li>
+  <li>After <code>N+1</code> is published and the feed pushed, that VM offers "Relaunch to update" within an hour and runs <code>N+1</code> with the profile intact.</li>
+  <li><code>bun run verify</code> passes with <code>LOKA_CHROME</code> at the release build.</li>
+</ul>
+
+<h2>Order of work</h2>
+<ol class="steps">
+  <li><span class="who">agent</span> <code>loka-install-paths.patch</code>: install names, GUIDs, WinSparkle app details, <code>kUpdateBaseUrl</code>; <code>installer/loka.nsi</code>.</li>
+  <li><span class="who">you</span> <code>node scripts/alpha/appcast.mjs generate-key</code> once. Secret <code>LOKA_EDDSA_PRIVATE_KEY</code>; variables <code>WINSPARKLE_ED_KEY</code> and <code>WINSPARKLE_AUTHENTICODE_ORG</code>. Back the seed up offline.</li>
+  <li><span class="who">you</span> Connect the repo to Depot, or register a self-hosted Windows runner. Bump <code>revision.txt</code>.</li>
+  <li><span class="who">you, then agent</span> Run <code>loka-release.yml</code> once. It measures the real build time and shows what breaks in an official build of Loka's patches.</li>
+  <li><span class="who">you</span> Install the draft's installer on a VM, then publish the draft.</li>
+  <li><span class="who">agent</span> <code>loka-feed.yml</code> (on release published, push <code>appcast.xml</code> to <code>updates</code>), a <code>verify-loka</code> feature for updates, docs.</li>
+  <li><span class="who">you</span> When a signing account exists, add the six <code>AZURE_*</code> secrets; the workflow signs on its own.</li>
+</ol>
+
+<details>
+<summary>Decisions: five defaults and what each beat</summary>
+<div class="scroll">
+<table>
+<tr><th>Choice</th><th>Default</th><th>Instead of</th></tr>
+<tr><td>What users install</td><td class="pick">Helium's per-user installer (<code>setup.exe</code> in an NSIS wrapper), renamed for Loka</td><td>Keeping the zip. <code>CanUpdateInstallation</code> refuses anything outside the registered install dir, so updates stay off there.</td></tr>
+<tr><td>Feed base URL</td><td class="pick">Patch <code>kUpdateBaseUrl</code> in <code>helium_services_helpers.cc</code> (one string, no resource id)</td><td><code>Loka.exe</code>'s flag. An installed browser starts from the Start menu, without the launcher.</td></tr>
+<tr><td>Where the feed lives</td><td class="pick"><code>updates</code> branch, <code>win/appcast.xml</code></td><td><code>releases/latest/download</code>: GitHub's "latest" skips pre-releases and drafts. <code>main/updates/</code>: a PR to main per release.</td></tr>
+<tr><td>Builder</td><td class="pick">One job on a Depot runner, <code>loka-release.yml</code></td><td>Helium's <code>main.yml</code> on free runners: up to 15 chained 5.5-hour stages, 15 to 44 hours.</td></tr>
+<tr><td>Signing first</td><td class="pick">EdDSA now; Authenticode when an account exists</td><td>Waiting for a certificate before any auto-update.</td></tr>
+</table>
+</div>
+</details>
+
+<details>
+<summary>CI: Depot 32-core, est. 3 to 6 hours and $25 to $45 per release</summary>
+<div class="scroll">
+<table>
+<tr><th>Runner</th><th class="num">vCPU / RAM / disk</th><th class="num">$/hour</th><th class="num">Build</th><th class="num">$/release</th><th>Keeps the tree?</th></tr>
+<tr><td class="pick">Depot <code>windows-2025-32</code></td><td class="num">32 / 128 GB / 200 GB</td><td class="num">7.68</td><td class="num">3 to 6 h, est.</td><td class="num">25 to 45, est.</td><td>No. Full build each run; the 4 GB of downloads are cached.</td></tr>
+<tr><td>Depot <code>windows-2025-64</code></td><td class="num">64 / 256 GB / 250 GB</td><td class="num">15.36</td><td class="num">2 to 4 h, est.</td><td class="num">30 to 60, est.</td><td>No.</td></tr>
+<tr><td>GitHub larger, Windows 32-core</td><td class="num">32 / 128 GB / not checked</td><td class="num">9.72</td><td class="num">3 to 6 h, est.</td><td class="num">30 to 60, est.</td><td>No, and only for Team or Enterprise organizations.</td></tr>
+<tr><td>GitHub free <code>windows-2025</code> (Helium's <code>main.yml</code>)</td><td class="num">4 / 16 GB</td><td class="num">0</td><td class="num">15 to 44 h</td><td class="num">0</td><td>Zipped between 5.5 h stages.</td></tr>
+<tr><td>Self-hosted (your PC or a rented box)</td><td class="num">yours</td><td class="num">the box</td><td class="num">minutes, incremental</td><td class="num">~0</td><td>Yes, like <code>C:\src\loka</code> today.</td></tr>
+</table>
+</div>
+<p>Only Helium's 15 to 44 hours is measured; the Depot times scale that compile and the first run replaces them. Prices checked <time datetime="2026-10-22">22 Oct 2026</time>.</p>
+<p>Helium's stages run on 4 vCPU and lose time zipping and restoring <code>build\src</code> between jobs. Compiling scales close to linearly with cores, the final ThinLTO link does not, so 32 cores is not 8× faster.</p>
+<p>Depot's docs list no persistent disk for Windows runners, so each run unpacks Chromium again. A self-hosted runner keeps the tree, but <code>build.py --ci</code> only resumes a tree as it is; applying a new Loka commit to an existing tree is what <code>browser:setup</code> plus <code>loka_build.py incremental</code> do on the laptop, and CI would need the same.</p>
+<p>Disk: the dev tree is about 100 GB. An official build needs the source, a release <code>out\Default</code> and <code>signing.py</code>'s staging copy; 200 GB should fit, 250 GB is safer. Unverified until the first run.</p>
+<p>Sources: <a href="https://depot.dev/docs/github-actions/runner-types">depot.dev runner types</a>, <a href="https://docs.github.com/en/billing/reference/actions-runner-pricing">GitHub runner pricing</a>.</p>
+</details>
+
+<details>
+<summary>Signing: unsigned updates per-user; Azure at $9.99/mo removes the warning</summary>
+<div class="scroll">
+<table>
+<tr><th>Option</th><th>Who can get it</th><th class="num">Cost</th><th>What you get</th></tr>
+<tr><td class="pick">None, EdDSA only</td><td>Anyone, today</td><td class="num">$0</td><td>Per-user auto-update works. SmartScreen warns at first install. All-users installs can't update (the admin helper requires Authenticode). Where alpha.12 users are now.</td></tr>
+<tr><td>Azure Artifact Signing</td><td>Individuals in the US or Canada (government ID, an Azure billing account of type Individual); organizations in the EU, UK and others</td><td class="num">$9.99/mo</td><td>A short-lived public-trust certificate, O= your legal name. Helium's <code>signing.py</code> already drives it; the workflow signs when the six <code>AZURE_*</code> secrets exist.</td></tr>
+<tr><td>SignPath Foundation</td><td>OSI-licensed, released, maintained projects; MFA; author, reviewer and approver roles; a published signing policy; builds verifiable from the repo, each release approved by hand</td><td class="num">$0</td><td>The certificate subject is "SignPath Foundation", so that is the org string. Whether they take a Chromium fork with hours-long builds: not checked.</td></tr>
+<tr><td>Classic OV certificate</td><td>Anyone with ID; keys must sit on hardware or a cloud HSM since 2023</td><td class="num">~$70 to $400/yr</td><td>Certum's open-source OV is the cheap end; CI signing then needs the vendor's cloud tool. Vendor-page prices, not verified further.</td></tr>
+</table>
+</div>
+<p>What the code checks, and where:</p>
+<ul>
+  <li><code>build.py</code> lines 393 to 398: the updater is compiled in only when both <code>WINSPARKLE_ED_KEY</code> and <code>WINSPARKLE_AUTHENTICODE_ORG</code> are set. An unsigned build still needs a non-empty org string; only the all-users helper compares it.</li>
+  <li><code>third_party/winsparkle/src/signatureverifier.cpp</code>: every download is checked against the 32-byte public key, a 64-byte Ed25519 signature over the whole file. No Authenticode check on this path.</li>
+  <li><code>helper.patch</code>, <code>payload_verifier.cc</code>: the all-users helper requires <code>WinVerifyTrust</code> to pass, then either a matching O= or a valid EdDSA signature.</li>
+  <li><code>glue.patch</code>, <code>OnRunInstaller</code>: per-user runs the downloaded mini installer with <code>--do-not-launch-chrome</code>; the swap (<code>new_chrome.exe</code>) happens at relaunch.</li>
+  <li><code>signing.py</code>: Azure Artifact Signing through <code>Microsoft.ArtifactSigning.Client</code> 1.0.128 and <code>signtool</code> with a timestamp, then verifies every binary. Its six environment variables are the workflow's secrets.</li>
+</ul>
+<p>Sources: <a href="https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart">Artifact Signing quickstart</a> (updated 8 Oct 2026), <a href="https://azure.microsoft.com/pricing/details/trusted-signing/">its pricing</a>, <a href="https://signpath.org/terms">SignPath Foundation terms</a>.</p>
+</details>
+
+<details>
+<summary>Rollback is roll-forward: pull the feed item, publish a higher number</summary>
+<p>WinSparkle only offers a version higher than the running one, and <code>setup.exe</code> refuses a lower one (exit 4, "higher version exists"). To pull a bad release, remove its item from <code>win/appcast.xml</code> so nobody else gets it, then publish the last good commit under a higher <code>revision.txt</code>.</p>
+<p>Users who already have the bad build get the fixed one within the hour.</p>
+</details>
+
+<details>
+<summary>What's in this branch: the workflow, a build wrapper, the appcast script</summary>
+<dl>
+  <dt><code>.github/workflows/loka-release.yml</code></dt><dd><code>workflow_dispatch</code> only. One Windows job: toolchain check, SDK, build through <code>scripts/loka_release_build.py</code>, package unsigned or sign with Azure when the secrets exist, rename to <code>Loka-&lt;version&gt;-windows-x64-{installer,mini-installer,portable}</code>, appcast when the key exists, draft pre-release. actionlint 1.7.7 reports nothing.</dd>
+  <dt><code>scripts/loka_release_build.py</code></dt><dd>Helium's <code>build.py</code> with Loka's two steps (build <code>webui/</code>, apply the brand and name) hooked in before <code>gn gen</code>, as <code>loka_build.py</code> does for dev builds. Imports and hooks; never run against a real build.</dd>
+  <dt><code>scripts/alpha/appcast.mjs</code> and its test</dt><dd>Key generation, signing and the appcast XML, compatible with <code>winsparkle-tool</code>'s key file. Five tests pass: a 32-byte public key, a 64-byte signature that verifies and fails when tampered, the enclosure attributes, alpha labels refused.</dd>
+</dl>
+</details>
+
+<details>
+<summary>Facts this plan rests on, and where each was read</summary>
+<ol>
+  <li>Updates run only for an installed browser: <code>IsSupportedInstallation</code> calls <code>installer::CanUpdateInstallation</code>, which compares <code>chrome.exe</code>'s folder with the registered or default install dir, and the module dir with <code>&lt;install&gt;\&lt;version&gt;</code>. <code>glue.patch</code> lines 74 to 83 and 745 to 788. Verified.</li>
+  <li>Feed URL: <code>GetBrowserUpdateURL</code> resolves <code>win/appcast.xml</code> against <code>https://updates.helium.computer/</code> or <code>--custom-update-server-url</code>. <code>add-updater-preference.patch</code>. Verified.</li>
+  <li>Version compared: WinSparkle's <code>GetAppBuildVersion</code>, set from <code>version_info::GetHeliumVersionNumber()</code>, <code>0.19.2.1</code> in this tree (<code>helium_version.py --print</code>). <code>updatechecker.cpp</code> line 258. Verified.</li>
+  <li>Check interval 3600 s, automatic checks on: <code>chrome/updater/winsparkle.gni</code> in <code>build-wiring.patch</code>. The headless UI starts the download as soon as an update is found (<code>ui_headless.cpp</code>). Verified.</li>
+  <li>Install identity is Helium's: <code>kCompanyPathName = L"imput"</code>, <code>kProductPathName = L"Helium"</code>, GUID <code>FB68A146…</code> (<code>patches/helium/windows/change-branding.patch</code>, <code>installer/helium.nsi</code>); <code>patches/loka</code> doesn't touch them. A Loka installer built today would install over a real Helium. Verified. That the default profile path follows those names is inferred from Chromium's <code>GetUserDataDirectory</code>, not re-read here.</li>
+  <li>Helium's CI: <code>build.py --ci</code> stops at 5.5 h (exit 42), the stage action zips <code>build\src</code> to an artifact, <code>build-steps.yml</code> chains up to 15 stages. Verified.</li>
+  <li>Depot labels, sizes and prices: depot.dev docs. GitHub larger runners need a Team or Enterprise organization: GitHub billing docs. Azure Artifact Signing eligibility and the $9.99 Basic plan: Microsoft Learn and the Azure pricing page. All read on 22 Oct 2026.</li>
+  <li>Not verified: Chromium build time at 32 or 64 cores; that Depot's image has Visual Studio 2026 with ATL/MFC and 7-Zip (the workflow checks and fails early); that 200 GB fits an official build plus packaging; SignPath's view of a Chromium fork; classic OV prices beyond vendor snippets.</li>
+</ol>
+</details>
+
+<details>
+<summary>Scope: Windows x64 per-user installs; no macOS, deltas or channels</summary>
+<p>In: Windows x64, per-user install, hourly checks, a GitHub-hosted feed, draft releases from CI, optional Authenticode.</p>
+<p>Out: macOS (Sparkle and notarization, see <code>docs/cross-platform.md</code>), delta updates, beta and stable channels, keeping a build tree between CI runs, all-users install updates without a certificate, the legacy extension.</p>
+</details>
+
+<details>
+<summary>Risks: six ways this fails, each with its answer</summary>
+<ul>
+  <li>Loka's patches have never been built with <code>is_official_build</code>, and <code>loka_brand.py apply</code> has never run after Helium's own name substitution. The first CI run is a test run; budget a day of fixes.</li>
+  <li>The runner image lacks VS 2026, the SDK or 7-Zip. The toolchain step fails in the first minute, before any cost.</li>
+  <li>Disk runs out during packaging. Use the 64-core label (250 GB) or lower <code>symbol_level</code> in a Loka GN flag.</li>
+  <li>Alpha.12 users on the zip never hear about the installer. The release notes and the next zip's README say so; the zip stays for people who want portable.</li>
+  <li>The profile path change loses spaces. Decide question 3 before the first installer goes out.</li>
+  <li>The EdDSA seed leaks or is lost. Leak: ship a build with the new public key through the old key, then switch the feed. Loss: every installed copy is stuck until reinstalled. Back it up offline.</li>
+</ul>
+</details>
+</main>
+<script>
+addEventListener("beforeprint", () => document.querySelectorAll("details").forEach((d) => {
+  d.dataset.wasOpen = d.open; d.open = true;
+}));
+addEventListener("afterprint", () => document.querySelectorAll("details").forEach((d) => (d.open = d.dataset.wasOpen === "true")));
+</script>
+</body>
+</html>

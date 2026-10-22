@@ -1,0 +1,218 @@
+# Builds a Loka release (Helium's build.py, is_official_build, one chrome.dll) on one Windows runner, packages the
+# installers, signs them when the signing secrets exist, writes the WinSparkle appcast, and uploads everything to a
+# draft pre-release. Started by hand only. Nothing goes live until the draft is published and appcast.xml (one of
+# its assets) is pushed to the updates branch as win/appcast.xml, which is where the browser looks.
+#
+# One job, no chaining: it needs a runner without GitHub's 6-hour cap on hosted jobs (Depot, or a self-hosted
+# Windows machine). On windows-2025 use Helium's main.yml, which chains 5.5-hour stages.
+#
+# Repository variables: WINSPARKLE_ED_KEY (public update key, base64), WINSPARKLE_AUTHENTICODE_ORG (the O= of the
+# Authenticode certificate; both must be set or build.py leaves the updater out), LOKA_BUILD_JOBS (optional).
+# Secrets, each optional: LOKA_EDDSA_PRIVATE_KEY (the seed the appcast is signed with), and the six AZURE_* values
+# signing.py reads for Azure Artifact Signing.
+
+name: Build and draft a Loka release
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner label (depot-windows-2025-32, or a self-hosted Windows label)
+        required: true
+        default: depot-windows-2025-32
+      version:
+        description: Release version, four numbers (0.19.2.<revision.txt>); must match what the tree reports
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  LOKA_ROOT: C:\loka
+  WINSPARKLE_ED_KEY: ${{ vars.WINSPARKLE_ED_KEY }}
+  WINSPARKLE_AUTHENTICODE_ORG: ${{ vars.WINSPARKLE_AUTHENTICODE_ORG }}
+  # Secrets can't be read in a step's if:, so each becomes a yes/no here.
+  HAS_AZURE_SIGNING: ${{ secrets.AZURE_CLIENT_ID != '' }}
+  HAS_UPDATE_KEY: ${{ secrets.LOKA_EDDSA_PRIVATE_KEY != '' }}
+
+jobs:
+  build:
+    name: Build, package, sign, draft
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 1440
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Check the version matches the tree
+        shell: pwsh
+        run: |
+          $tree = (python helium-chromium/utils/helium_version.py --print --tree helium-chromium --platform-tree .).Trim()
+          if ($tree -ne '${{ inputs.version }}') {
+            throw "The tree builds version $tree but the run asked for ${{ inputs.version }}: bump revision.txt and commit, or pass $tree"
+          }
+          if (-not $env:WINSPARKLE_ED_KEY -or -not $env:WINSPARKLE_AUTHENTICODE_ORG) {
+            Write-Warning 'WINSPARKLE_ED_KEY or WINSPARKLE_AUTHENTICODE_ORG is unset: build.py leaves the updater out of this build'
+          }
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+
+      - name: Check the toolchain (Visual Studio 2026, 7-Zip)
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -products * -prerelease -latest -property catalog_productDisplayVersion
+          Write-Host "Visual Studio $vs"
+          if (-not $vs -or [int]($vs.Split('.')[0]) -lt 18) { throw 'Chromium needs Visual Studio 2026 (18.x) with the Desktop C++ workload and ATL/MFC on this runner' }
+          if (-not (Get-Command 7z -ErrorAction SilentlyContinue) -and -not (Test-Path 'C:\Program Files\7-Zip\7z.exe')) { throw '7-Zip is missing on this runner' }
+
+      - name: Install Windows SDK 10.0.28000.0
+        shell: pwsh
+        run: |
+          if (Test-Path "${env:ProgramFiles(x86)}\Windows Kits\10\Include\10.0.28000.0\um\Windows.h") { exit 0 }
+          Invoke-WebRequest 'https://go.microsoft.com/fwlink/?linkid=2370315' -OutFile "$env:RUNNER_TEMP\winsdksetup.exe"
+          $installer = Start-Process "$env:RUNNER_TEMP\winsdksetup.exe" -ArgumentList '/quiet', '/norestart', '/features', '+' -Wait -PassThru
+          if ($installer.ExitCode -notin @(0, 3010)) { throw "Windows SDK installation failed: $($installer.ExitCode)" }
+
+      - name: Python packages the build needs
+        shell: pwsh
+        run: python -m pip install httplib2==0.22.0 Pillow clang-format pywin32==311
+
+      - name: Prepare the build root (short paths, long paths on, no Defender scans)
+        shell: pwsh
+        run: |
+          New-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -Value 1 -PropertyType DWORD -Force | Out-Null
+          try { Add-MpPreference -ExclusionPath $env:LOKA_ROOT -ErrorAction Stop } catch { Write-Host 'No Defender exclusion set (not available on this runner)' }
+          New-Item -ItemType Directory -Force $env:LOKA_ROOT | Out-Null
+          robocopy . $env:LOKA_ROOT /E /NFL /NDL /NJH /NJS /XD build .git node_modules
+          if ($LASTEXITCODE -ge 8) { throw "robocopy failed: $LASTEXITCODE" }
+          Copy-Item -Recurse -Force .git "$env:LOKA_ROOT\.git"
+          Copy-Item -Recurse -Force node_modules "$env:LOKA_ROOT\node_modules"
+          exit 0
+
+      - name: Keep Chromium's downloads between runs (about 4 GB)
+        uses: actions/cache@v4
+        with:
+          path: C:\loka\build\download_cache
+          key: chromium-downloads-${{ hashFiles('downloads.ini', 'helium-chromium/downloads.ini', 'helium-chromium/deps.ini') }}
+
+      - name: Build the release (hours)
+        shell: pwsh
+        working-directory: C:\loka
+        env:
+          LOKA_BUILD_DIR: C:\loka
+        run: |
+          $buildArgs = @('scripts/loka_release_build.py', '--ci', [string][DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
+          if ('${{ vars.LOKA_BUILD_JOBS }}') { $buildArgs += @('-j', '${{ vars.LOKA_BUILD_JOBS }}') }
+          python @buildArgs
+          if ($LASTEXITCODE -ne 0) { throw "build.py exited $LASTEXITCODE (42 means it hit build.py's 5.5-hour budget)" }
+
+      - name: Package, unsigned
+        if: env.HAS_AZURE_SIGNING != 'true'
+        id: unsigned
+        shell: pwsh
+        working-directory: C:\loka
+        run: |
+          python package.py --build-outputs build\src\out\Default --output-dir build\artifacts
+          if ($LASTEXITCODE -ne 0) { throw "package.py exited $LASTEXITCODE" }
+          "artifacts=C:\loka\build\artifacts" >> $env:GITHUB_OUTPUT
+
+      - name: Sign with Azure Artifact Signing and package
+        if: env.HAS_AZURE_SIGNING == 'true'
+        id: signed
+        shell: pwsh
+        working-directory: C:\loka
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_CERTIFICATE_NAME: ${{ secrets.AZURE_SIGNING_CERTIFICATE_NAME }}
+        run: |
+          nuget install Microsoft.ArtifactSigning.Client -Version 1.0.128 -ExcludeVersion -NonInteractive
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          # signing.py writes artifacts=<dir> to GITHUB_OUTPUT itself.
+          python signing.py --arch x64 --dlib Microsoft.ArtifactSigning.Client/bin/x64/Azure.CodeSigning.Dlib.dll
+          if ($LASTEXITCODE -ne 0) { throw "signing.py exited $LASTEXITCODE" }
+
+      - name: Name the packages after Loka and write checksums
+        id: packages
+        shell: pwsh
+        env:
+          ARTIFACTS: ${{ steps.signed.outputs.artifacts || steps.unsigned.outputs.artifacts }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          $out = "C:\loka\dist"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          $names = @{
+            "helium_${env:VERSION}_x64-installer.exe"      = "Loka-${env:VERSION}-windows-x64-installer.exe"
+            "helium_${env:VERSION}_x64-mini-installer.exe" = "Loka-${env:VERSION}-windows-x64-mini-installer.exe"
+            "helium_${env:VERSION}_x64-windows.zip"        = "Loka-${env:VERSION}-windows-x64-portable.zip"
+          }
+          foreach ($pair in $names.GetEnumerator()) {
+            $from = Join-Path $env:ARTIFACTS $pair.Key
+            if (-not (Test-Path $from)) { throw "package.py didn't produce $from" }
+            Copy-Item $from (Join-Path $out $pair.Value)
+          }
+          Get-ChildItem $out -File | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" | Out-File -Encoding ascii "$($_.FullName).sha256"
+          }
+          "dist=$out" >> $env:GITHUB_OUTPUT
+
+      - name: Sign the update and write the appcast
+        if: env.HAS_UPDATE_KEY == 'true'
+        shell: pwsh
+        env:
+          LOKA_EDDSA_PRIVATE_KEY: ${{ secrets.LOKA_EDDSA_PRIVATE_KEY }}
+          VERSION: ${{ inputs.version }}
+          DIST: ${{ steps.packages.outputs.dist }}
+        run: |
+          $installer = "Loka-${env:VERSION}-windows-x64-mini-installer.exe"
+          node scripts/alpha/appcast.mjs --version $env:VERSION --file "$env:DIST\$installer" `
+            --url "https://github.com/${{ github.repository }}/releases/download/v${env:VERSION}/$installer" `
+            --out "$env:DIST\appcast.xml"
+          if ($LASTEXITCODE -ne 0) { throw "appcast.mjs exited $LASTEXITCODE" }
+
+      - name: Keep the packages as a run artifact for testing before the release goes out
+        uses: actions/upload-artifact@v4
+        with:
+          name: loka-${{ inputs.version }}-windows-x64
+          path: ${{ steps.packages.outputs.dist }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Draft the pre-release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          DIST: ${{ steps.packages.outputs.dist }}
+        run: |
+          $tag = "v${env:VERSION}"
+          gh release view $tag --repo ${{ github.repository }} 2>$null
+          if ($LASTEXITCODE -eq 0) { throw "$tag already exists on GitHub; bump revision.txt" }
+          $signed = if ('${{ env.HAS_AZURE_SIGNING }}' -eq 'true') { 'Signed with Azure Artifact Signing.' } else { 'Not Authenticode-signed: SmartScreen warns on first install; choose More info, then Run anyway.' }
+          $updates = if (Test-Path "$env:DIST\appcast.xml") { 'Installed copies update themselves once this release is published and the feed is pushed.' } else { 'No appcast: this build does not offer itself as an update.' }
+          @"
+          Loka ${env:VERSION} for Windows x64, built from ${{ github.sha }} by run ${{ github.run_id }}.
+
+          - **Installer** (`-installer.exe`): installs for the current user, no admin needed. Updates itself.
+          - **Portable** (`-portable.zip`): unzip and run `chrome.exe`. Does not update itself.
+          - `-mini-installer.exe` is what the updater downloads; you don't need it.
+
+          $signed
+          $updates
+          "@ | Out-File -Encoding utf8 "$env:RUNNER_TEMP\notes.md"
+          $files = Get-ChildItem $env:DIST -File | ForEach-Object { $_.FullName }
+          gh release create $tag --repo ${{ github.repository }} --draft --prerelease --target ${{ github.sha }} `
+            --title "Loka ${env:VERSION}" --notes-file "$env:RUNNER_TEMP\notes.md" @files
+          if ($LASTEXITCODE -ne 0) { throw "gh release create exited $LASTEXITCODE" }
+

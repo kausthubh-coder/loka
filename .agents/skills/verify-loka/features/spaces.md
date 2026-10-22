@@ -22,6 +22,11 @@ the previous and next spaces are small planets on the left and right.
 - `space-tab-group`: in the real browser each space's tabs are one tab group named and colored after it, and the
   other spaces' groups are folded away.
 - `space-new` opens the space editor with `Space N` and the next color; creating switches to it.
+- `space-reorder`: the spaces' order (`state.spaces`) is Ctrl+1..9's, the horizon's neighbours' and the spaces
+  menu's. The current planet's menu (click it or right-click it) has `Move left` and `Move right` for the current
+  space; at either end the item that would wrap is left out. The Library's Spaces reorders any space (see
+  [library.md](./library.md)). Both send the `moveSpace` intent (`{ op: "moveSpace", spaceId, toIndex }`, `toIndex`
+  counted after the move, clamped); the space showing stays showing.
 - `space-per-window`: in the real browser each window shows its own space. A new window opens on the space last
   used (the saved `activeSpaceId`); switching one window leaves the others' spaces and tabs on screen alone. After a
   restart each window shows the space of the tab it had on screen. The browser keeps the space per window
@@ -35,6 +40,8 @@ the previous and next spaces are small planets on the left and right.
 - Drag a tab and hold it over a small planet.
 - Click the big planet, or the space's name at the top of the list, for the list of spaces and `New space`; the `+`
   (`New`) button > `New space`; or `...` > `New space`.
+- Click or right-click the big planet > `Move left` / `Move right`; or reorder in the Library's Spaces (`...` >
+  `Library`).
 
 ## Driving it with loka.mjs
 
@@ -47,6 +54,9 @@ Preconditions: seed data (Build, School, Home).
 - **Swipe.** Hover a sidebar row, then `page.mouse.wheel(120, 0)`. From School, `space` is `Home`.
 - **New.** Click the `Spaces: <current>` button, `loka.menuItem("New space")`, then `Create space` in the editor
   (see [space-editor.md](./space-editor.md)). `space` is `Space 4`, with empty `pinned` and `open`.
+- **Reorder.** From School, click `Spaces: School` > `Move left`. `state().spaces` names read School, Build, Home;
+  `space` stays School; Ctrl+2 shows Build and Ctrl+1 School. On the first space the menu has no `Move left`.
+  Right-click the big planet > `Move right` puts it back.
 - **Tint.** Compare `proof()` screenshots of Build (blue) and School (amber). The sky, the big planet and the accents
   change hue.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs spaces`.
@@ -57,6 +67,9 @@ Preconditions: seed data (Build, School, Home).
   still shows Research, on the same tab", "switching the first window leaves the new one on Play".
   Not checked in the browser: the swipe, drag-hover switching, each space keeping its own active tab, and windows
   keeping their spaces through a restart.
+  Reordering (`space-reorder`) is proven in the prototype only: the browser check is pending the C++ port of
+  `moveSpace` (components/loka/core, against the `moveSpace` cases in `model-cases.json`). Until a build has it, the
+  browser refuses the intent and the order springs back.
 
 ## Gotchas
 

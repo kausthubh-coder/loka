@@ -17,6 +17,7 @@ import {
 	groupIntoFolder,
 	importState,
 	moveItem,
+	moveSpace,
 	navigateTab,
 	openTab,
 	pinnedRows,
@@ -188,6 +189,39 @@ describe("tabs and spaces", () => {
 		const one = deleteSpace(deleteSpace(seedState(), "s-school"), "s-home");
 		expect(one.spaces.map((s) => s.id)).toEqual(["s-build"]);
 		expect(deleteSpace(one, "s-build")).toBe(one);
+	});
+
+	test("moving a space puts it at the index it is given, counted after the move, and keeps the space showing", () => {
+		const ids = (state: ReturnType<typeof seedState>) => state.spaces.map((s) => s.id);
+		const seed = seedState();
+		const down = moveSpace(seed, "s-build", 2);
+		expect(ids(down)).toEqual(["s-school", "s-home", "s-build"]);
+		expect(down.activeSpaceId).toBe("s-build");
+		// The spaces themselves are untouched, the same objects, so nothing inside them redraws.
+		for (const id of ["s-build", "s-school", "s-home"]) expect(space(down, id)).toBe(space(seed, id));
+		expect(ids(moveSpace(seedState(), "s-home", 0))).toEqual(["s-home", "s-build", "s-school"]);
+		expect(ids(moveSpace(seedState(), "s-school", 2))).toEqual(["s-build", "s-home", "s-school"]);
+		expect(ids(moveSpace(seedState(), "s-home", 1))).toEqual(["s-build", "s-home", "s-school"]);
+		expect(importState(exportState(down))).toEqual(down);
+	});
+
+	test("a move past either end goes to that end", () => {
+		const ids = (state: ReturnType<typeof seedState>) => state.spaces.map((s) => s.id);
+		expect(ids(moveSpace(seedState(), "s-build", 99))).toEqual(["s-school", "s-home", "s-build"]);
+		expect(ids(moveSpace(seedState(), "s-home", -3))).toEqual(["s-home", "s-build", "s-school"]);
+		expect(ids(moveSpace(seedState(), "s-school", Number.POSITIVE_INFINITY))).toEqual([
+			"s-build",
+			"s-home",
+			"s-school",
+		]);
+	});
+
+	test("moving an unknown space, or a space to where it is, changes nothing", () => {
+		const seed = seedState();
+		expect(moveSpace(seed, "s-nowhere", 0)).toBe(seed);
+		expect(moveSpace(seed, "s-school", 1)).toBe(seed);
+		expect(moveSpace(seed, "s-build", -1)).toBe(seed);
+		expect(moveSpace(seed, "s-home", 7)).toBe(seed);
 	});
 
 	test("a new space follows the system's light or dark unless it picks one", () => {

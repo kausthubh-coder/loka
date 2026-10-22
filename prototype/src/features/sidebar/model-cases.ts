@@ -35,6 +35,7 @@ import {
 	groupIntoFolder,
 	importState,
 	moveItem,
+	moveSpace,
 	navigateTab,
 	openTab,
 	type Place,
@@ -259,6 +260,18 @@ export function modelCases(): { states: Record<string, BrowserState>; cases: Cas
 	on("the only space can't be deleted", "first", "deleteSpace", { spaceId: "s-first" }, (s) =>
 		deleteSpace(s, "s-first"),
 	);
+	// `toIndex` counts after the move: where the space ends up.
+	const moveTo = (name: string, state: string, spaceId: string, toIndex: number) =>
+		on(name, state, "moveSpace", { spaceId, toIndex }, (s) => moveSpace(s, spaceId, toIndex));
+	moveTo("the space showing moves to the end and keeps showing", "seed", "s-build", 2);
+	moveTo("a space moves to the start", "seed", "s-home", 0);
+	moveTo("a space moves one place down", "seed", "s-build", 1);
+	moveTo("a space moves one place up", "home", "s-home", 1);
+	moveTo("a space past the end goes to the end", "seed", "s-build", 99);
+	moveTo("a space before the start goes to the start", "seed", "s-home", -3);
+	moveTo("a space moved to its own place changes nothing", "seed", "s-school", 1);
+	moveTo("moving a missing space changes nothing", "seed", "s-x", 0);
+	moveTo("the only space has nowhere to go", "first", "s-first", 1);
 	on(
 		"an address already pinned in another space is shown there",
 		"seed",

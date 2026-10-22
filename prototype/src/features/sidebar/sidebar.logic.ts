@@ -331,6 +331,20 @@ export function updateSpace(state: BrowserState, spaceId: string, look: SpaceLoo
 }
 
 /**
+ * Moves a space so it ends up at `toIndex` in the list (counted after the move, unlike moveItem's), which is the order
+ * of Ctrl+1..9, the horizon's neighbours and the spaces menu. The index is clamped to the list. The space showing
+ * stays the one showing. An unknown id, or the place it already has, changes nothing.
+ */
+export function moveSpace(state: BrowserState, spaceId: string, toIndex: number): BrowserState {
+	const from = state.spaces.findIndex((s) => s.id === spaceId);
+	const space = state.spaces[from];
+	if (!space) return state;
+	const to = clamp(toIndex, state.spaces.length - 1);
+	if (to === from) return state;
+	return { ...state, spaces: state.spaces.toSpliced(from, 1).toSpliced(to, 0, space) };
+}
+
+/**
  * Deletes a space with its pinned tabs, folders and open tabs; its archived tabs stay and come back to the current
  * space. The last space can't go. Deleting the one showing shows the next one along the switcher (the one before it
  * when it was last).

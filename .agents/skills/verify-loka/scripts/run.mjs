@@ -82,6 +82,38 @@ const recipes = {
 		await loka.proof("03-swiped-to-home");
 		await loka.page.keyboard.press("Control+2");
 
+		// The space's menu moves it along the horizon, which is Ctrl+1..9's order too.
+		const order = async () => (await loka.state()).spaces.map((/** @type {{ name: string }} */ s) => s.name);
+		const world = loka.sidebar.getByRole("button", { name: "Spaces: School", exact: true });
+		await world.click();
+		assert.equal(await loka.menuItem("Move right").count(), 1, "School in the middle can move right");
+		await loka.page.waitForTimeout(400); // the menu's fade-in, for the picture
+		await loka.proof("04-space-menu-moves");
+		await loka.menuItem("Move left").click();
+		assert.deepEqual(await order(), ["School", "Build", "Home"], "Move left put School first");
+		assert.equal((await loka.outline()).space, "School", "the space showing stays showing");
+		await loka.proof("05-school-moved-left");
+		await loka.page.reload({ waitUntil: "networkidle" });
+		await loka.sidebar.getByRole("tree").first().waitFor();
+		assert.deepEqual(await order(), ["School", "Build", "Home"], "the order survives a reload");
+		await loka.page.keyboard.press("Control+2");
+		assert.equal((await loka.outline()).space, "Build", "Ctrl+2 is Build now");
+		await loka.page.keyboard.press("Control+1");
+		assert.equal((await loka.outline()).space, "School", "Ctrl+1 shows School, now first");
+		assert.equal(
+			await loka.space("Build").getAttribute("aria-label"),
+			"Build (Ctrl 2)",
+			"the horizon's neighbour carries its new shortcut",
+		);
+		// At the start there is no Move left; right-clicking the planet has the same moves.
+		await world.click();
+		assert.equal(await loka.menuItem("Move left").count(), 0, "the first space can't move left");
+		await loka.page.keyboard.press("Escape");
+		await world.click({ button: "right" });
+		await loka.menuItem("Move right").click();
+		assert.deepEqual(await order(), ["Build", "School", "Home"], "Move right from the planet's right-click menu");
+		await loka.proof("06-school-moved-back");
+
 		// The current planet lists every space and can add one (through the editor, with the suggested name).
 		await loka.sidebar.getByRole("button", { name: "Spaces: School", exact: true }).click();
 		await loka.menuItem("New space").click();
@@ -89,7 +121,7 @@ const recipes = {
 		o = await loka.outline();
 		assert.equal(o.space, "Space 4");
 		assert.deepEqual([o.pinned, o.open], [[], []], "a new space starts empty");
-		await loka.proof("04-new-space");
+		await loka.proof("07-new-space");
 	},
 
 	async tabs(loka) {
@@ -769,6 +801,55 @@ const recipes = {
 		assert.equal((await loka.state()).activeSpaceId, "s-home", "Switch to goes to the space");
 		await loka.page.keyboard.press("Control+1");
 
+		// The rail's space rows reorder the spaces: drag Home above Build with the mouse.
+		await openLibrary();
+		const rail = spaces.getByRole("group", { name: "Go to a space" });
+		// The current space's row is named "<space> Current space" (its dot's title).
+		const railRow = (/** @type {string} */ name) => rail.getByRole("button", { name: new RegExp(`^${name}( |$)`) });
+		const order = async () => (await loka.state()).spaces.map((/** @type {{ name: string }} */ s) => s.name);
+		const railOrder = async () => (await rail.getByRole("button").allTextContents()).map((t) => t.trim());
+		const from = await railRow("Home").boundingBox();
+		const onto = await railRow("Build").boundingBox();
+		if (!from || !onto) throw new Error("the rail's rows are not visible");
+		await loka.page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+		await loka.page.mouse.down();
+		await loka.page.mouse.move(onto.x + onto.width / 2, onto.y + 4, { steps: 8 });
+		assert.deepEqual(await railRow("Home").getAttribute("class"), "filter jump dragging", "the dragged row is lifted");
+		assert.deepEqual(await railOrder(), ["Home", "Build", "School"], "mid-drag the rail shows where it lands");
+		assert.deepEqual(await order(), ["Build", "School", "Home"], "nothing is saved before the drop");
+		await loka.proof("01a-reorder-dragging");
+		await loka.page.mouse.up();
+		assert.deepEqual(await order(), ["Home", "Build", "School"], "the drop saved Home first");
+		assert.deepEqual(
+			(await spaces.getByRole("heading", { level: 2 }).allTextContents()).map((t) => t.trim()),
+			["Essentials", "Home", "Build", "School"],
+			"the list follows the new order",
+		);
+		await loka.proof("01b-reorder-dropped");
+		await loka.page.keyboard.press("Control+1");
+		assert.equal((await loka.state()).activeSpaceId, "s-home", "Ctrl+1 shows Home, now first");
+
+		// Keys: focus Home's row and Alt+Down moves it one place, keeping the focus; at the end it stays.
+		await openLibrary();
+		const focused = () =>
+			loka.page.evaluate(() => {
+				let el = document.activeElement;
+				while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+				return el?.textContent?.trim();
+			});
+		await railRow("Home").focus();
+		await loka.page.keyboard.press("Alt+ArrowDown");
+		assert.deepEqual(await order(), ["Build", "Home", "School"], "Alt+Down moved Home one place");
+		assert.equal(await focused(), "Home", "Home's row keeps the focus");
+		await loka.page.keyboard.press("Alt+ArrowDown");
+		await loka.page.keyboard.press("Alt+ArrowDown");
+		assert.deepEqual(await order(), ["Build", "School", "Home"], "Alt+Down at the end does nothing more");
+		await loka.page.keyboard.press("Alt+ArrowUp");
+		assert.deepEqual(await order(), ["Build", "Home", "School"], "Alt+Up moves it back up");
+		assert.equal(await spaces.getByRole("status").textContent(), "Home moved to 2 of 3", "a screen reader hears it");
+		await loka.proof("01c-reorder-by-keys");
+		await loka.page.keyboard.press("Alt+ArrowDown");
+
 		// Eight hours on, the archive takes Arc (17 h) and Zen (13 h) from Build.
 		await loka.page.clock.install();
 		await loka.page.reload({ waitUntil: "networkidle" });
@@ -869,6 +950,19 @@ const recipes = {
 		const [first, last] = await Promise.all([section("Spaces").boundingBox(), section("Downloads").boundingBox()]);
 		assert.equal(first?.y, last?.y, "the four sections sit in one row");
 		await loka.proof("05-narrow");
+
+		// Narrow, the rail's spaces are a row of pills: a drag goes sideways. Home onto Build's left edge goes first.
+		assert.deepEqual(await order(), ["Build", "School", "Home"]);
+		const pill = await railRow("Home").boundingBox();
+		const leftOf = await railRow("Build").boundingBox();
+		if (!pill || !leftOf) throw new Error("the rail's pills are not visible");
+		assert.equal(pill.y, leftOf.y, "the pills sit in one row");
+		await loka.page.mouse.move(pill.x + pill.width / 2, pill.y + pill.height / 2);
+		await loka.page.mouse.down();
+		await loka.page.mouse.move(leftOf.x + 4, leftOf.y + leftOf.height / 2, { steps: 8 });
+		await loka.page.mouse.up();
+		assert.deepEqual(await order(), ["Home", "Build", "School"], "a sideways drag reorders in the narrow rail");
+		await loka.proof("06-narrow-reordered");
 	},
 
 	async sound(loka) {

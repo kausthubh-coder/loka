@@ -652,6 +652,7 @@ export class LokaSidebar extends LitElement {
 			{ label: "New folder", run: () => this.newFolder(null) },
 			{ label: "New space", divider: true, run: () => this.action("new-space") },
 			{ label: `Edit ${space.name}`, run: () => this.action("edit-space") },
+			...this.moveSpaceItems(),
 			{
 				label: this.pinned ? "Hide sidebar" : "Keep sidebar open",
 				divider: true,
@@ -786,8 +787,25 @@ export class LokaSidebar extends LitElement {
 				run: () => this.switchTo(s.id),
 			})),
 			{ label: "Edit this space", divider: true, run: () => this.action("edit-space") },
+			...this.moveSpaceItems(),
 			{ label: "New space", run: () => this.action("new-space") },
 		];
+	}
+
+	/**
+	 * Moves the current space one place along the horizon, which is also Ctrl+1..9's order. At either end the item
+	 * that would wrap round is left out rather than jumping the space to the other end.
+	 */
+	private moveSpaceItems(): MenuItem[] {
+		const spaces = this.state.spaces;
+		const index = spaces.findIndex((s) => s.id === this.state.activeSpaceId);
+		const spaceId = this.state.activeSpaceId;
+		const items: MenuItem[] = [];
+		if (index > 0)
+			items.push({ label: "Move left", run: () => this.apply({ op: "moveSpace", spaceId, toIndex: index - 1 }) });
+		if (index !== -1 && index < spaces.length - 1)
+			items.push({ label: "Move right", run: () => this.apply({ op: "moveSpace", spaceId, toIndex: index + 1 }) });
+		return items;
 	}
 
 	/** The sideways swipe in progress (swipe.logic.ts). */

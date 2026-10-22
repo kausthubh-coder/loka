@@ -16,6 +16,7 @@ import {
 	groupIntoFolder,
 	importState,
 	moveItem,
+	moveSpace,
 	navigateTab,
 	openTab,
 	type Place,
@@ -44,6 +45,8 @@ export type Intent =
 	| { op: "createSpace"; look: SpaceLook; id: string }
 	| { op: "updateSpace"; spaceId: string; look: SpaceLook }
 	| { op: "deleteSpace"; spaceId: string }
+	/** `toIndex` is where the space ends up, counted after the move. */
+	| { op: "moveSpace"; spaceId: string; toIndex: number }
 	| { op: "focusOrOpen"; url: string; title: string; now: number; id: TabId }
 	| { op: "createFolder"; spaceId: string; parentId: string | null; name: string; id: string }
 	| { op: "renameFolder"; folderId: string; name: string }
@@ -84,6 +87,8 @@ export function applyIntent(state: BrowserState, intent: Intent): BrowserState {
 			return updateSpace(state, intent.spaceId, intent.look);
 		case "deleteSpace":
 			return deleteSpace(state, intent.spaceId);
+		case "moveSpace":
+			return moveSpace(state, intent.spaceId, intent.toIndex);
 		case "focusOrOpen":
 			return focusOrOpen(state, intent.url, intent.title, intent.now, intent.id);
 		case "createFolder":

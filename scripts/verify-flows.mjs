@@ -97,6 +97,7 @@ const SETTINGS_RAIL = `nav[aria-label="Settings sections"] button`;
 const SETTINGS_SECTIONS = [
 	"Sidebar",
 	"Spaces",
+	"Appearance",
 	"Sound",
 	"Media",
 	"Tabs",
@@ -1923,6 +1924,26 @@ async function settings() {
 		`sidebar ui.sound=${await sb.run(`document.querySelector("loka-panel").ui.sound`)}`,
 	);
 	await page.click("Sound effects", { role: "[role=switch]" });
+
+	// Moving stars: Always keeps the sidebar's stars going while its window shows, Off holds them; the sidebar's
+	// root says which (--loka-sky-play, set by sky.ts).
+	const skyPlay = `getComputedStyle(document.documentElement).getPropertyValue("--loka-sky-play").trim()`;
+	/** @type {[string, string, string | null][]} */
+	const starModes = [
+		["Always", "always", "running"],
+		["Off", "off", "paused"],
+		["While I'm using Loka", "while-using", null],
+	];
+	for (const [name, mode, play] of starModes) {
+		await page.click(name, { role: `[role=radiogroup][aria-label="Moving stars"] [role=radio]` });
+		const saved = await until(async () => (await sb.ui()).starMotion === mode, 4000);
+		const follows = play === null || (await until(async () => (await sb.run(skyPlay)) === play, 4000));
+		check(
+			`Moving stars: ${name} saves${play ? ` and the sidebar's stars are ${play}` : ""}`,
+			saved && follows,
+			`starMotion ${(await sb.ui()).starMotion}, sidebar --loka-sky-play ${await sb.run(skyPlay)}`,
+		);
+	}
 
 	// Keep the sidebar open: off lets the browser slide it away.
 	await page.click("Keep the sidebar open", { role: "[role=switch]" });

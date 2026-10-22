@@ -1,13 +1,18 @@
 import { css, html, type TemplateResult } from "lit";
+import { starsMoving } from "./sky.logic";
 import type { Scheme } from "./theme.logic";
+import type { StarMotion } from "./ui-prefs.logic";
 
-// Loka's night sky, shared by the prototype's window and the real browser's sidebar and new tab page.
+// Loka's night sky, shared by the prototype's window and the real browser's sidebar, new tab, History and Settings.
 // Put skyLayer() first inside an element with `position: relative; isolation: isolate` and `--hue` set, and add
 // skyStyles to that component's styles. Call skyTurn() when the space changes.
 //
-// Everything that moves is a transform or opacity on a layer painted once, so the compositor runs it and a busy
-// page (or a scrolling tab list) can't make it stutter: three star layers drift at different speeds for depth, the
-// nebula breathes, and now and then a shooting star crosses. With reduced motion the sky holds still.
+// Only the sidebar's sky moves (and the prototype's window, which stands in for it): three star layers drift at
+// different speeds for depth, the nebula breathes, and now and then a shooting star crosses. Each of those is one
+// layer painted once and moved by transform or opacity alone, so the compositor runs it, nothing repaints, and a busy
+// page (or a scrolling tab list) can't make it stutter. A sky that covers a whole tab (new tab, History, Settings)
+// holds still: moving layers that size cost far more to composite. setStarMotion() applies Settings > Appearance >
+// Moving stars, and every mode holds still while the window is hidden and with reduced motion (sky.logic.ts).
 //
 // In a light space it's the day sky instead: the space's hue as a pale atmosphere with soft clouds and the sun's
 // glow at the top left, where the planets are lit from. The stars are gone, as they are by day.
@@ -34,48 +39,84 @@ const FAR = starTile(7919, 480, 320, 70, [0.3, 0.7]);
 const MID = starTile(104729, 640, 420, 34, [0.5, 1]);
 const NEAR = starTile(1299709, 820, 540, 12, [0.9, 1.6]);
 
-/** No one has touched the page for a while (restWhenIdle): the sky holds still until they do. */
-let resting = false;
+/** Settings > Appearance > Moving stars, as the page last set it (setStarMotion). */
+let motion: StarMotion = "while-using";
+/** performance.now() of the last pointer, key or wheel input in the window. */
+let lastInput = 0;
+let timer = 0;
+let started = false;
+let reducedMotion: MediaQueryList | null = null;
+/** What the page's root holds now: writing an unchanged value would still restyle the page. */
+const written = new Map<string, string>();
+
+function write(name: string, value: string) {
+	if (written.get(name) === value) return;
+	written.set(name, value);
+	document.documentElement.style.setProperty(name, value);
+}
 
 /**
- * Pauses or resumes everything that moves on its own: --loka-play on the page's root, inherited into every shadow
- * root, holds the sky, the planet's turn and the equaliser. Hidden pages don't draw, but are paused anyway.
+ * Starts or stops everything that moves on its own, through properties on the page's root that every shadow root
+ * inherits. --loka-sky-play and --loka-sky-will-change hold the sky (Moving stars). --loka-play holds the planet's
+ * turn, the equaliser and the download sweep, which keep the default rule whatever the stars do: they show something,
+ * so Off doesn't freeze them, and Always doesn't keep them going when no one is there.
  */
 function syncPlay() {
-	document.documentElement.style.setProperty("--loka-play", document.hidden || resting ? "paused" : "running");
+	window.clearTimeout(timer);
+	const now = {
+		sinceInput: performance.now() - lastInput,
+		hidden: document.visibilityState === "hidden",
+		reducedMotion: reducedMotion?.matches ?? false,
+	};
+	const sky = starsMoving({ motion, ...now });
+	const rest = starsMoving({ motion: "while-using", ...now });
+	write("--loka-sky-play", sky.moving ? "running" : "paused");
+	// The layer hint only while the stars move. Chrome keeps a layer for a paused animation anyway (LayerTree counts the
+	// same layers resting as moving), so only a sky with no animation, `still`, gives that GPU memory back.
+	write("--loka-sky-will-change", sky.moving ? "transform" : "auto");
+	write("--loka-play", rest.moving ? "running" : "paused");
+	const next = Math.min(sky.changesIn ?? Number.POSITIVE_INFINITY, rest.changesIn ?? Number.POSITIVE_INFINITY);
+	if (next !== Number.POSITIVE_INFINITY) timer = window.setTimeout(syncPlay, next);
 }
-if (typeof document !== "undefined") document.addEventListener("visibilitychange", syncPlay);
 
 /**
- * After `ms` with no pointer, key or wheel on the page, the sky rests until the next one. Its drift is a couple of
- * pixels a second, so stopping it is hard to notice, and a still sidebar then asks nothing of the CPU or GPU.
+ * Input only needs to wake a page that rests. While things move, the timer looks again when it fires and sees the
+ * newer input, so a stream of pointer moves costs one number each.
  */
-export function restWhenIdle(ms: number) {
-	let timer = 0;
-	const wake = () => {
-		window.clearTimeout(timer);
-		timer = window.setTimeout(() => {
-			resting = true;
-			syncPlay();
-		}, ms);
-		if (resting) {
-			resting = false;
-			syncPlay();
+function onInput() {
+	lastInput = performance.now();
+	if (written.get("--loka-play") !== "running") syncPlay();
+}
+
+/**
+ * Applies Settings > Appearance > Moving stars to this page's sky. The first call starts watching input, visibility
+ * and reduced motion; later calls with the same mode do nothing, so a page can call it on every render.
+ */
+export function setStarMotion(next: StarMotion) {
+	if (started && next === motion) return;
+	motion = next;
+	if (!started) {
+		started = true;
+		lastInput = performance.now();
+		for (const type of ["pointermove", "pointerdown", "keydown", "wheel"]) {
+			window.addEventListener(type, onInput, { capture: true, passive: true });
 		}
-	};
-	for (const type of ["pointermove", "pointerdown", "keydown", "wheel"]) {
-		window.addEventListener(type, wake, { capture: true, passive: true });
+		document.addEventListener("visibilitychange", syncPlay);
+		reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+		reducedMotion.addEventListener("change", syncPlay);
 	}
-	wake();
+	syncPlay();
 }
 
 /**
  * The sky behind everything: the deep ground, a nebula in the space's color, three star layers, shooting stars.
  * It takes the hue itself rather than inheriting the window's animated --hue: animating a hue number from blue to
  * orange passes through green and yellow, which on the whole sky reads as a rainbow. skyTurn() crossfades instead.
+ * `drifts` for the sidebar's sky, whose motion setStarMotion() runs; `still` for a sky that covers a whole tab, and
+ * for the sidebar's with Moving stars off: no animation at all, so no layers held for it.
  */
-export function skyLayer(hue: number, scheme: Scheme): TemplateResult {
-	return html`<div class="sky ${scheme}" aria-hidden="true" style="--hue: ${hue}">
+export function skyLayer(hue: number, scheme: Scheme, moves: "drifts" | "still"): TemplateResult {
+	return html`<div class="sky ${scheme} ${moves}" aria-hidden="true" style="--hue: ${hue}">
 		<div class="nebula"></div>
 		<div class="sweep far"><div class="stars far" style="background-image: ${FAR}"></div></div>
 		<div class="sweep mid"><div class="stars mid" style="background-image: ${MID}"></div></div>
@@ -248,14 +289,20 @@ export const skyStyles = css`
 			/* They move a pixel at a time (steps), not every frame: at two pixels a second a smooth slide looks the
 			   same, and each step is the only frame the compositor has to draw, where a smooth one draws sixty a
 			   second for ever. */
-			.stars.far {
-				animation: drift-far 260s steps(480) infinite;
+			/* Each animation names its play state, paused until setStarMotion() says the stars move: the shorthand
+			   resets animation-play-state, so a separate rule for it loses to these more specific ones. */
+			.sky.drifts .stars.far {
+				animation: drift-far 260s steps(480) infinite var(--loka-sky-play, paused);
 			}
-			.stars.mid {
-				animation: drift-mid 210s steps(640) infinite;
+			.sky.drifts .stars.mid {
+				animation: drift-mid 210s steps(640) infinite var(--loka-sky-play, paused);
 			}
-			.stars.near {
-				animation: drift-near 150s steps(820) infinite;
+			.sky.drifts .stars.near {
+				animation: drift-near 150s steps(820) infinite var(--loka-sky-play, paused);
+			}
+			.sky.drifts .stars,
+			.sky.drifts > .nebula {
+				will-change: var(--loka-sky-will-change, auto);
 			}
 			@keyframes drift-far {
 				to {
@@ -272,9 +319,10 @@ export const skyStyles = css`
 					transform: translateX(-820px);
 				}
 			}
-			.nebula {
+			/* The child only: the nebula held in .sky-was during a switch stays where it was. */
+			.sky.drifts > .nebula {
 				/* In steps too, two a second: the change between two is far too small to see. */
-				animation: breathe 40s steps(80) infinite alternate;
+				animation: breathe 40s steps(80) infinite alternate var(--loka-sky-play, paused);
 			}
 			@keyframes breathe {
 				to {
@@ -283,11 +331,11 @@ export const skyStyles = css`
 				}
 			}
 			/* Each visible for about a second of a long, uneven cycle: roughly one shooting star a minute. */
-			.meteor.one {
-				animation: meteor 83s linear -61s infinite;
+			.sky.drifts .meteor.one {
+				animation: meteor 83s linear -61s infinite var(--loka-sky-play, paused);
 			}
-			.meteor.two {
-				animation: meteor 127s linear -20s infinite;
+			.sky.drifts .meteor.two {
+				animation: meteor 127s linear -20s infinite var(--loka-sky-play, paused);
 			}
 			@keyframes meteor {
 				0%,
@@ -302,9 +350,6 @@ export const skyStyles = css`
 					opacity: 0;
 					transform: translateX(-280px) scaleX(1);
 				}
-			}
-			.sky * {
-				animation-play-state: var(--loka-play, running);
 			}
 		}
 `;

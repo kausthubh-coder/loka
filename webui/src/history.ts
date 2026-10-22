@@ -6,7 +6,7 @@
 
 import { css, html, LitElement } from "lit";
 import type { Act } from "../../prototype/src/app/loka-app";
-import { restWhenIdle, skyLayer, skyStyles } from "../../prototype/src/app/sky";
+import { skyLayer, skyStyles } from "../../prototype/src/app/sky";
 import { themeTokens } from "../../prototype/src/app/theme";
 import { resolveScheme } from "../../prototype/src/app/theme.logic";
 import { type Section, sectionFromHash, sectionTitle } from "../../prototype/src/features/library/library.logic";
@@ -19,8 +19,6 @@ import { history } from "./history-bridge";
 import { act, readState, watch } from "./store";
 
 setFaviconSource(faviconUrl);
-// The sky behind the list holds still once the page has been left alone for a while.
-restWhenIdle(15_000);
 
 const darkSystem = matchMedia("(prefers-color-scheme: dark)");
 
@@ -72,7 +70,7 @@ export class LokaLibraryPage extends LitElement {
 				location.hash = e.detail;
 			}}
 		>
-			${skyLayer(hue, scheme)}
+			${skyLayer(hue, scheme, "still")}
 			<loka-library
 				.section=${this.section}
 				.state=${this.state}

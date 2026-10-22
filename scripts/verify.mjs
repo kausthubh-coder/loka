@@ -48,6 +48,11 @@ export const UX = {
 	},
 	media: { prototype: ["media"], browser: true, flows: ["panels"] },
 	sound: { prototype: ["sound"], browser: true, flows: ["settings"] },
+	sky: {
+		prototype: ["sky"],
+		flows: ["settings"],
+		gap: "the 15 s rest, a hidden window and reduced motion are proven in the prototype only; verify:perf --stars measures the cost",
+	},
 	"native-sidebar": { browser: true, flows: ["restart"] },
 	"browser-build": { browser: true, patches: true },
 };

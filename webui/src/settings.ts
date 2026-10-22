@@ -130,7 +130,7 @@ export class LokaSettingsPage extends LitElement {
 				this.preview = e.detail;
 			}}
 		>
-			${skyLayer(hue, scheme)}
+			${skyLayer(hue, scheme, "still")}
 			<loka-settings
 				native
 				.state=${state}

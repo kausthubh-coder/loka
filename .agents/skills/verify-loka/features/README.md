@@ -73,6 +73,8 @@ disagree, or a recipe or flow it names doesn't exist.
 - [Import](./import.md): Chrome and Edge bookmarks, Arc spaces and Favorites.
 - [Media controls](./media.md): the now-playing card.
 - [Sound](./sound.md): interface cues for sidebar actions, the throttle, and Settings > Sound.
+- [Moving stars](./sky.md): the sidebar sky's drift, Settings > Appearance > Moving stars, the 15 s rest, hidden
+  windows and reduced motion.
 - [The sidebar in the real browser](./native-sidebar.md): `chrome://loka-sidebar` on real tabs, first run, icons,
   sound, the hit test and real clicks, restart; `verify:browser` and `verify:flows`.
 - [Browser build](./browser-build.md): Helium plus Loka's patches: launch, `patches:check`, the shared build checkout,

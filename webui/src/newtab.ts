@@ -49,7 +49,7 @@ export class LokaNewTabPage extends LitElement {
 		const space = activeSpace(state);
 		const scheme = resolveScheme(space.scheme, this.systemDark);
 		document.documentElement.style.colorScheme = scheme;
-		return html`<div class="page theme-${scheme}" style="--hue: ${space.hue}">${skyLayer(space.hue, scheme)}</div>`;
+		return html`<div class="page theme-${scheme}" style="--hue: ${space.hue}">${skyLayer(space.hue, scheme, "still")}</div>`;
 	}
 
 	static override styles = [

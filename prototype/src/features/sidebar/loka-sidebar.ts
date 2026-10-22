@@ -1148,7 +1148,19 @@ export class LokaSidebar extends LitElement {
 
 	private moreMenu(e: MouseEvent) {
 		this.openMenu(e, [
-			{ label: "New space", run: () => this.action("new-space") },
+			{ label: "New window", hint: keys("Ctrl N"), run: () => this.action("new-window") },
+			{ label: "New private window", hint: keys("Ctrl Shift N"), run: () => this.action("new-private-window") },
+			{ label: "New space", divider: true, run: () => this.action("new-space") },
+			{
+				label: "This page",
+				items: [
+					{ label: "Find on page", hint: keys("Ctrl F"), run: () => this.action("find") },
+					{ label: "Print", hint: keys("Ctrl P"), run: () => this.action("print") },
+					{ label: "Zoom in", hint: keys("Ctrl +"), divider: true, run: () => this.action("zoom-in") },
+					{ label: "Zoom out", hint: keys("Ctrl −"), run: () => this.action("zoom-out") },
+					{ label: "Reset zoom", hint: keys("Ctrl 0"), run: () => this.action("zoom-reset") },
+				],
+			},
 			{ label: "Search the sidebar", run: () => this.openPanel("search") },
 			{ label: "Downloads", run: () => this.openPanel("downloads") },
 			{ label: `Archived tabs (${this.state.archive.length})`, run: () => this.openPanel("archive") },
@@ -1156,6 +1168,8 @@ export class LokaSidebar extends LitElement {
 			{ label: "Library", run: () => this.action("library") },
 			{ label: this.soundOn ? "Mute sounds" : "Unmute sounds", run: () => this.action("toggle-sound") },
 			{ label: "Settings", run: () => this.action("settings") },
+			{ label: "Clear browsing data", run: () => this.action("clear-data") },
+			{ label: "About Loka", run: () => this.action("about") },
 			{ label: "Show the welcome tour", divider: true, run: () => this.action("onboarding") },
 			{ label: "Export spaces (JSON)", divider: true, run: () => this.exportFile() },
 			{ label: "Import spaces (JSON)", run: () => this.importFile() },

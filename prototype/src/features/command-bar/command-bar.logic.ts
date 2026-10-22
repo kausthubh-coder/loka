@@ -42,7 +42,29 @@ export type ActionId =
 	| "search-sidebar"
 	| "archive"
 	| "onboarding"
-	| "toggle-sound";
+	| "toggle-sound"
+	| ChromeMenuCommand;
+
+/**
+ * The browser's own commands, which Chrome reaches from its toolbar menu. Loka has no toolbar menu, so they're in the
+ * sidebar's ... menu and the command bar; the browser runs each as Chrome's menu would (handler: browserCommand).
+ */
+export const CHROME_MENU_COMMANDS = [
+	"new-window",
+	"new-private-window",
+	"find",
+	"print",
+	"zoom-in",
+	"zoom-out",
+	"zoom-reset",
+	"clear-data",
+	"about",
+] as const;
+export type ChromeMenuCommand = (typeof CHROME_MENU_COMMANDS)[number];
+
+export function isChromeMenuCommand(action: string): action is ChromeMenuCommand {
+	return (CHROME_MENU_COMMANDS as readonly string[]).includes(action);
+}
 
 export type ResultGroup = "" | "Tabs" | "History" | "Bookmarks" | "Spaces" | "Commands";
 
@@ -93,6 +115,25 @@ const ACTIONS: { action: ActionId; label: string; detail: string; words: string 
 		detail: "Loka's interface sounds",
 		words: "sound effects audio quiet silence mute unmute volume",
 	},
+	{ action: "new-window", label: "New window", detail: "Ctrl+N", words: "open another window" },
+	{
+		action: "new-private-window",
+		label: "New private window",
+		detail: "Ctrl+Shift+N, nothing saved",
+		words: "incognito private secret window",
+	},
+	{ action: "find", label: "Find on page", detail: "Ctrl+F", words: "search text in page" },
+	{ action: "print", label: "Print", detail: "Ctrl+P", words: "pdf save paper" },
+	{ action: "zoom-in", label: "Zoom in", detail: "Ctrl+Plus", words: "bigger larger magnify" },
+	{ action: "zoom-out", label: "Zoom out", detail: "Ctrl+Minus", words: "smaller" },
+	{ action: "zoom-reset", label: "Reset zoom", detail: "Ctrl+0", words: "actual size 100" },
+	{
+		action: "clear-data",
+		label: "Clear browsing data",
+		detail: "Ctrl+Shift+Delete",
+		words: "delete history cookies cache privacy",
+	},
+	{ action: "about", label: "About Loka", detail: "Version and updates", words: "version help update" },
 ];
 
 /** Where a tab lives, for the result's label. Essentials belong to every space, so they go to the current one. */

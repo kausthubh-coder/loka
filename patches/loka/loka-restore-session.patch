@@ -19,3 +19,16 @@
  }
  
  // static
+--- a/chrome/browser/ui/ui_features.cc
++++ b/chrome/browser/ui/ui_features.cc
+@@ -386,7 +386,9 @@
+ BASE_FEATURE(kRespectShouldTriggerSessionRestoreOnDesktop,
+              base::FEATURE_ENABLED_BY_DEFAULT);
+ 
+-BASE_FEATURE(kSessionRestoreInfobar, base::FEATURE_ENABLED_BY_DEFAULT);
++// Loka restores the last session by default (session_startup_pref.cc), so the
++// first window needs no infobar offering it.
++BASE_FEATURE(kSessionRestoreInfobar, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ BASE_FEATURE_PARAM(bool,
+                    kSetDefaultToContinueSession,

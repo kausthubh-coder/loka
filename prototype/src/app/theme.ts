@@ -71,6 +71,15 @@ export const themeTokens = css`
 	.theme-light {
 		color: var(--loka-ink);
 	}
+	/* More contrast asked for: quiet text reads as plain text and hairlines become lines. */
+	@media (prefers-contrast: more) {
+		.theme-dark,
+		.theme-light {
+			--loka-ink-2: var(--loka-ink);
+			--loka-ink-3: var(--loka-ink);
+			--loka-line: color-mix(in srgb, var(--loka-ink) 55%, transparent);
+		}
+	}
 `;
 
 // Lists fade at an edge while there's more to scroll past it, with a scroll-driven animation of these two lengths.

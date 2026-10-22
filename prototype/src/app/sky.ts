@@ -379,4 +379,11 @@ export const skyStyles = css`
 				}
 			}
 		}
+		/* Windows High Contrast: no sky. Its stars are images, which forced colors keep, scattered behind the text. */
+		@media (forced-colors: active) {
+			.sky,
+			.sky-was {
+				display: none;
+			}
+		}
 `;

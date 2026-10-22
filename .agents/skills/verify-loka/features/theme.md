@@ -25,6 +25,16 @@ sky; light is a day sky with white raised rows. Switching to a space in the othe
   completion at 4.0:1 in green and teal spaces); the chosen archive filter's count is `--loka-ink-2`; the planet's
   name stays on one line between the + and Downloads buttons and ends in "…" (a long one ran over the buttons onto
   the bright sky, 1.3:1 in light), and its shade starts a pixel higher.
+- `theme-forced-colors`: Windows High Contrast (`@media (forced-colors: active)`) drops every background tint and
+  shadow, which is how Loka draws boxes and selection. The sky is hidden (`skyStyles`); the address field,
+  Essentials, panels, the toast, menus and the command bar get a CanvasText edge (an `outline`, so nothing moves);
+  the tab on screen, a lit menu item, the command bar's and the sidebar search's selected row, and a switched-on
+  button are Highlight with HighlightText; drop lines and progress fills are Highlight; the divider is GrayText; the
+  space's name is CanvasText on a Canvas label. Lit items use `forced-color-adjust: none`, or Chromium draws a Canvas
+  backplate behind their text inside the Highlight. Planets and favicons keep their colors (`forced-color-adjust:
+  none`).
+- `theme-more-contrast`: `prefers-contrast: more` makes `--loka-ink-2` and `-ink-3` plain ink, lines stronger
+  (`themeTokens`), and edges the selected row, the address field and Essentials.
 
 ## How to get to it (user POV)
 
@@ -37,7 +47,14 @@ Preconditions: seed data. Build is dark, School light, Home follows the system (
 - **Switch.** Ctrl+2 and Ctrl+3: the window's root has `theme-light`; `window.lokaDemo.calls` holds
   `setColorScheme` with `dark`, `light`, `system` in that order.
 - **Choose.** Edit Home, pick `Dark` (a `radio`), Save: `state().spaces` has Home's `scheme: "dark"`.
-- **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs theme`.
+- **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs theme`. It also checks the live region says
+  "School" and "Home" on the switches (layout.md), then emulates forced colors in both schemes
+  (`page.emulateMedia({ forcedColors: "active", colorScheme })`) and compares computed colors with the system colors
+  read from a probe element: the active row is Highlight/HighlightText and no other row is, the address field and a
+  tile have a solid CanvasText outline, the name label is CanvasText on Canvas, the divider GrayText, the sky
+  `display: none`, and a row's menu has an edge with the hovered item lit (`03-forced-colors-<dark|light>.png`,
+  `04-forced-colors-menu-...`). Last, `contrast: "more"`: Clear is the same color as a row's label
+  (`05-more-contrast.png`).
 - **Contrast.** `node .agents/skills/verify-loka/scripts/run.mjs contrast` (about 5 minutes). For each hue and
   scheme it gives every space that look in the saved state (Moving stars off, so the stars hold still), and measures
   Build, a hovered row, a row's menu, School (a closed folder's count) and Home (an empty address field, the divider
@@ -71,7 +88,9 @@ Preconditions: seed data. Build is dark, School light, Home follows the system (
   reaches pages', 'setColorScheme("dark") reaches pages') and verify:flows `spaces`: "pages in a dark space are
   dark", "and its pages turn light". The browser's sidebar, command bar, menus, new tab, History and Settings use
   the same components and the same `themeTokens` and `skyStyles`, so the inks and the sky are the same CSS there.
-  Not checked in the browser: the scheme after a space switch, System, the preview, the crossfade, and contrast
+  Not checked in the browser: the scheme after a space switch, System, the preview, the crossfade, forced colors
+  (emulated in the prototype only; the real Windows High Contrast palette and its menu window are unchecked), and
+  contrast
   (no suite measures text against the real sidebar's or pages' pixels; the sidebar's sky is as wide as the
   sidebar, which the 330 px run stands in for, and a page's as wide as the page, which the hidden sidebar stands
   in for).

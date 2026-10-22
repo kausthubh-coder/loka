@@ -276,6 +276,25 @@ export class LokaExtensions extends LitElement {
 				outline: 2px solid var(--loka-accent);
 				outline-offset: -2px;
 			}
+			/* Windows High Contrast: the main button keeps an edge, a pinned pin is solid, hover is an edge. */
+			@media (forced-colors: active) {
+				.primary {
+					outline: 1px solid ButtonText;
+					outline-offset: -1px;
+				}
+				.pin.on svg {
+					fill-opacity: 1;
+				}
+				li:hover,
+				.pin:hover,
+				.quiet:hover {
+					outline: 1px solid Highlight;
+					outline-offset: -1px;
+				}
+				:focus-visible {
+					outline-color: CanvasText;
+				}
+			}
 			@media (prefers-reduced-motion: no-preference) {
 				li,
 				.pin,

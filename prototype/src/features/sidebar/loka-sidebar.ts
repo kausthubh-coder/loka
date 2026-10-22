@@ -5,7 +5,7 @@ import { repeat } from "lit/directives/repeat.js";
 import type { Browser, NativeDownload, NativeExtension } from "../../../../webui/src/bridge";
 import type { Act } from "../../app/loka-app";
 import { EASE_IN, EASE_OUT, leave, reducedMotion } from "../../app/theme";
-import type { ActionId, CommandMode } from "../command-bar/command-bar.logic";
+import { type ActionId, type CommandMode, spaceShortcut } from "../command-bar/command-bar.logic";
 import { faviconBackground, faviconInner, hostOf, type LiveTabs } from "./favicon";
 import "../archive/loka-archive-panel";
 import { newlyFinished, overallProgress } from "../downloads/downloads.logic";
@@ -114,6 +114,7 @@ export class LokaSidebar extends LitElement {
 		downloads: { state: true },
 		unseenDownload: { state: true },
 		toast: { state: true },
+		said: { state: true },
 		playing: { attribute: false },
 		live: { attribute: false },
 		browser: { attribute: false },
@@ -145,6 +146,12 @@ export class LokaSidebar extends LitElement {
 	/** The download that just finished, said for a moment above the bottom row. */
 	toast: NativeDownload | null = null;
 	private toastTimer = 0;
+	/**
+	 * What the live region says to screen readers (a finished download, the space switched to). `count` makes the
+	 * same words said twice a new message: the region's text is replaced, not left as it was.
+	 */
+	said = { text: "", count: 0 };
+	private saidTimer = 0;
 	private stopWatching: (() => void)[] = [];
 	playing: NowPlaying | null = null;
 	/** What the browser says about each loaded tab: its page's icon, loading, playing sound. */
@@ -193,7 +200,9 @@ export class LokaSidebar extends LitElement {
 	private followDownloads(list: NativeDownload[]) {
 		const finished = newlyFinished(this.downloads, list).at(-1);
 		this.downloads = list;
-		if (!finished || this.panel === "downloads") return;
+		if (!finished) return;
+		this.say(`${finished.name} downloaded`);
+		if (this.panel === "downloads") return;
 		this.unseenDownload = true;
 		this.toast = finished;
 		window.clearTimeout(this.toastTimer);
@@ -201,6 +210,19 @@ export class LokaSidebar extends LitElement {
 			await leave(this.renderRoot.querySelector(".toast"), 160);
 			if (this.toast === finished) this.toast = null;
 		}, 4000);
+	}
+
+	/**
+	 * Says `text` once through the sidebar's one polite live region, then clears it after a while so a reader moving
+	 * through the page later doesn't find an old message. Nothing else in the sidebar is a live region, so nothing is
+	 * said twice.
+	 */
+	private say(text: string) {
+		this.said = { text, count: this.said.count + 1 };
+		window.clearTimeout(this.saidTimer);
+		this.saidTimer = window.setTimeout(() => {
+			this.said = { text: "", count: this.said.count };
+		}, 7000);
 	}
 
 	/** Opens a panel, or closes it if it's the one open (its button, pressed again). */
@@ -247,6 +269,7 @@ export class LokaSidebar extends LitElement {
 		this.bottomObserver = null;
 		window.removeEventListener("keydown", this.onEscape);
 		window.clearTimeout(this.toastTimer);
+		window.clearTimeout(this.saidTimer);
 		for (const stop of this.stopWatching) stop();
 		this.stopWatching = [];
 		super.disconnectedCallback();
@@ -760,11 +783,11 @@ export class LokaSidebar extends LitElement {
 
 	private neighbour(target: Space | null, side: "left" | "right"): TemplateResult | typeof nothing {
 		if (!target) return nothing;
-		const number = this.state.spaces.indexOf(target) + 1;
+		const shortcut = spaceShortcut(this.state.spaces.indexOf(target), this.state.spaces.length);
 		return html`<button
 			class="neighbour ${side}"
-			aria-label="${target.name} (${keys(`Ctrl ${number}`)})"
-			title="${target.name}, ${keys(`Ctrl+${number}`)}"
+			aria-label=${shortcut ? `${target.name} (${keys(shortcut.replace("+", " "))})` : target.name}
+			title=${shortcut ? `${target.name}, ${keys(shortcut)}` : target.name}
 			@click=${() => this.switchTo(target.id)}
 			.dropZone=${{ key: `space-${target.id}`, switchTo: target.id } satisfies DropZone}
 		>
@@ -780,11 +803,10 @@ export class LokaSidebar extends LitElement {
 
 	private spacesMenu(): MenuItem[] {
 		return [
-			...this.state.spaces.map((s, i) => ({
-				label: s.name,
-				hint: keys(`Ctrl+${i + 1}`),
-				run: () => this.switchTo(s.id),
-			})),
+			...this.state.spaces.map((s, i) => {
+				const shortcut = spaceShortcut(i, this.state.spaces.length);
+				return { label: s.name, hint: shortcut && keys(shortcut), run: () => this.switchTo(s.id) };
+			}),
 			{ label: "Edit this space", divider: true, run: () => this.action("edit-space") },
 			{ label: "New space", run: () => this.action("new-space") },
 		];
@@ -904,6 +926,8 @@ export class LokaSidebar extends LitElement {
 		const before = changed.get("state") as BrowserState | undefined;
 		if (!before) return;
 		if (before.activeSpaceId !== this.state.activeSpaceId) {
+			// The planet's name says where you are on screen; this says it to a screen reader.
+			this.say(activeSpace(this.state).name);
 			const forward = switchesForward(this.state, before.activeSpaceId, this.state.activeSpaceId);
 			this.slideFrom = forward ? "right" : "left";
 			// The list kept until now, unless it's the one being shown, leaves the page after this frame (updated).
@@ -1726,8 +1750,6 @@ export class LokaSidebar extends LitElement {
 		const count = state.essentials.length;
 		const draggingTab = this.dragId !== null && state.tabs[this.dragId] !== undefined;
 		const slots = essentialsDropSlots(count, draggingTab);
-		// Essentials fill the row they're in, so one is one big tile; a drag adds the free cell to drop in.
-		const columns = Math.min(4, Math.max(1, count + slots));
 		const toEssentials = (): Place => ({ area: "essentials", index: Infinity });
 
 		return html`
@@ -1767,7 +1789,7 @@ export class LokaSidebar extends LitElement {
 										: nothing
 								}
 							</div>`
-						: html`<div class="essentials" role="list" aria-label="Essentials" style="--cols: ${columns}">
+						: html`<div class="essentials" role="list" aria-label="Essentials">
 								${repeat(
 									state.essentials,
 									(id) => id,
@@ -1877,6 +1899,9 @@ export class LokaSidebar extends LitElement {
 						: nothing
 				}
 				${this.menu && !this.floatingMenus ? this.menuView(this.menu) : nothing}
+				<div class="said" role="status" aria-live="polite" aria-atomic="true">
+					${keyed(this.said.count, html`<span>${this.said.text}</span>`)}
+				</div>
 			</aside>
 		`;
 	}
@@ -1936,11 +1961,14 @@ export class LokaSidebar extends LitElement {
 		</button>`;
 	}
 
-	/** A finished download, said once, quietly, above the bottom row; a click opens Downloads. */
+	/**
+	 * A finished download, shown once, quietly, above the bottom row; a click opens Downloads. It isn't a live region:
+	 * the sidebar's one live region (say) has already said it.
+	 */
 	private toastView(): TemplateResult | typeof nothing {
 		const done = this.toast;
 		if (!done) return nothing;
-		return html`<div class="toast" role="status">
+		return html`<div class="toast">
 			<button @click=${(e: Event) => this.togglePanel(e, "downloads")} title="Show in Downloads">
 				<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 10.5 2.75 2.75L14.5 7.5" /></svg>
 				<span class="toast-name">${done.name}</span>
@@ -2205,11 +2233,13 @@ export class LokaSidebar extends LitElement {
 			color: var(--loka-ink);
 		}
 
+		/* Always four columns, as Arc's Favorites: a tile is a quarter of the row however many there are, and a short
+		   row sits at the left rather than stretching one tile across the sidebar. */
 		.essentials {
 			position: relative;
 			flex: none;
 			display: grid;
-			grid-template-columns: repeat(var(--cols, 4), 1fr);
+			grid-template-columns: repeat(4, minmax(0, 1fr));
 			gap: 8px;
 		}
 		.essential {
@@ -3056,6 +3086,16 @@ export class LokaSidebar extends LitElement {
 			max-height: calc(100% - 140px);
 			transform-origin: bottom left;
 		}
+		/* The live region: read by screen readers, never drawn. */
+		.said {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			margin: -1px;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
+		}
 		/* A menu drawn in place (the prototype): <loka-menu> draws itself; this only places it. */
 		loka-menu.menu {
 			position: fixed;
@@ -3066,6 +3106,129 @@ export class LokaSidebar extends LitElement {
 		aside.floating {
 			border-radius: 12px;
 			box-shadow: inset 0 0 0 1px var(--loka-line);
+		}
+
+		/* Windows High Contrast (forced colors) drops every background tint and shadow, which is how the sidebar draws
+		   its boxes and what's selected. Boxes get an edge instead, the tab on screen and what's switched on take
+		   Highlight, and a drop shows in Highlight. Planets and favicons keep their own colors: they're pictures. */
+		@media (forced-colors: active) {
+			.fav,
+			.world,
+			.neighbour,
+			.orbit,
+			.address .planet {
+				forced-color-adjust: none;
+			}
+			:focus-visible {
+				outline: 2px solid CanvasText;
+				outline-offset: -2px;
+			}
+			.url,
+			.essential,
+			.toast,
+			.panel,
+			.drag-ghost,
+			aside.floating {
+				outline: 1px solid CanvasText;
+				outline-offset: -1px;
+			}
+			.new,
+			.downloads {
+				outline: 1px solid ButtonText;
+				outline-offset: -1px;
+				color: ButtonText;
+				background: ButtonFace;
+			}
+			.row:hover,
+			.essential:hover,
+			.icon:hover,
+			.tool:hover,
+			.clear:hover,
+			.close:hover,
+			.sound:hover,
+			.toast button:hover {
+				outline: 1px solid Highlight;
+				outline-offset: -1px;
+			}
+			/* Not adjusted, or the text would sit on its Canvas backplate inside the Highlight, Canvas on Canvas. */
+			.row.active,
+			.essential.active,
+			.tool.on,
+			.downloads.on {
+				forced-color-adjust: none;
+				background: Highlight;
+				color: HighlightText;
+				box-shadow: none;
+			}
+			.row.active .label,
+			.row.active .close,
+			.row.active .sound {
+				color: HighlightText;
+			}
+			.essential.active {
+				outline: 2px solid CanvasText;
+				outline-offset: -2px;
+			}
+			.divider span {
+				background: GrayText;
+			}
+			.essential.slot,
+			.essential.ghost {
+				outline: 1.5px dashed CanvasText;
+				outline-offset: -1.5px;
+			}
+			.row.drop-before::before,
+			.row.drop-after::after,
+			.end-zone.drop-before::before,
+			.end-zone.drop-after::before,
+			.essential.drop-before::before,
+			.essential.drop-after::before,
+			.url.loading::after,
+			.dot {
+				background: Highlight;
+			}
+			.row.drop-into,
+			.essential.slot.drop-before,
+			.essential.slot.drop-after,
+			.essential.ghost.drop-before,
+			.essential.ghost.drop-after {
+				outline: 2px solid Highlight;
+				outline-offset: -2px;
+			}
+			.ring circle {
+				stroke: Highlight;
+			}
+			.downloads.on .ring circle {
+				stroke: HighlightText;
+			}
+			/* The list's bottom fades into the window, not the sky, which forced colors leave out (sky.ts). */
+			.bottom {
+				background: linear-gradient(to bottom, transparent, Canvas 56px);
+			}
+			/* The space's name on the planet: a plain label with an edge instead of the soft shade under white. */
+			.world-name {
+				color: CanvasText;
+			}
+			.world-name > span {
+				background: Canvas;
+				border-radius: 999px;
+				outline: 1px solid CanvasText;
+			}
+			.world-name > span::before {
+				display: none;
+			}
+		}
+		/* More contrast asked for (not forced): the quiet texts and the hairlines step up. */
+		@media (prefers-contrast: more) {
+			.row.active,
+			.essential.active,
+			.tool.on {
+				box-shadow: inset 0 0 0 1.5px var(--loka-ink);
+			}
+			.url,
+			.essential {
+				box-shadow: inset 0 0 0 1px var(--loka-ink-2);
+			}
 		}
 
 		@media (prefers-reduced-motion: no-preference) {

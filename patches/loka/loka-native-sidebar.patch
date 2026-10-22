@@ -913,7 +913,7 @@
    map.AddWebUIConfig(std::make_unique<SigninErrorUIConfig>());
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/BUILD.gn
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,84 @@
 +# Copyright 2026 The Loka Authors
 +# You can use, redistribute, and/or modify this source code under
 +# the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -977,6 +977,7 @@
 +    "//components/pref_registry",
 +    "//components/prefs",
 +    "//components/search_engines",
++    "//components/sessions",
 +    "//components/tab_groups",
 +    "//components/tabs:public",
 +    "//ui/base",
@@ -3959,7 +3960,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_UI_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_spaces_service.cc
-@@ -0,0 +1,892 @@
+@@ -0,0 +1,996 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -3994,14 +3995,20 @@
 +#include "chrome/browser/ui/tab_ui_helper.h"
 +#include "chrome/browser/ui/tabs/tab_enums.h"
 +#include "chrome/browser/ui/tabs/tab_group_model.h"
++#include "chrome/browser/tab_list/tab_removed_reason.h"
++#include "chrome/browser/ui/browser_tabrestore.h"
 +#include "chrome/browser/ui/tabs/tab_strip_model.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
 +#include "components/loka/core/intents.h"
 +#include "components/prefs/pref_service.h"
++#include "components/sessions/content/content_serialized_navigation_builder.h"
++#include "components/sessions/core/serialized_user_agent_override.h"
 +#include "components/tab_groups/tab_group_color.h"
 +#include "components/tab_groups/tab_group_visual_data.h"
 +#include "components/tabs/public/tab_group.h"
 +#include "components/tabs/public/tab_interface.h"
++#include "content/public/browser/navigation_controller.h"
++#include "content/public/browser/navigation_entry.h"
 +#include "content/public/browser/web_contents.h"
 +#include "ui/base/page_transition_types.h"
 +#include "ui/base/window_open_disposition.h"
@@ -4085,6 +4092,11 @@
 +
 +LokaSpacesService::Window::Window() = default;
 +LokaSpacesService::Window::~Window() = default;
++LokaSpacesService::History::History() = default;
++LokaSpacesService::History::History(const History&) = default;
++LokaSpacesService::History& LokaSpacesService::History::operator=(
++    const History&) = default;
++LokaSpacesService::History::~History() = default;
 +
 +// static
 +LokaSpacesService* LokaSpacesService::Get(Profile* profile) {
@@ -4233,6 +4245,10 @@
 +  loka::State before = std::exchange(state_, std::move(next));
 +  if (!(before == state_)) {
 +    spaces_writer_->ScheduleWrite(this);
++    // A kept history goes when its tab leaves the spaces (deleted or archived).
++    std::erase_if(histories_, [&](const auto& kept) {
++      return !state_.tabs.contains(kept.first);
++    });
 +  }
 +  if (before.archive != state_.archive) {
 +    SaveArchive();
@@ -4442,9 +4458,94 @@
 +    TabStripModel* tab_strip_model,
 +    const TabStripModelChange& change,
 +    const TabStripSelectionChange& selection) {
-+  if (Window* window = FindWindow(tab_strip_model)) {
-+    Schedule(*window, Pass::kBrowser);
++  Window* window = FindWindow(tab_strip_model);
++  if (!window) {
++    return;
 +  }
++  // A closing tab's page is still here: a pinned tab or Essential keeps its
++  // history for when it opens again.
++  if (change.type() == TabStripModelChange::kRemoved) {
++    for (const TabStripModelChange::RemovedTab& removed :
++         change.GetRemove()->contents) {
++      if (removed.tab && removed.contents &&
++          TabRemoveReasonUtils::WillDeleteWebContents(removed.remove_reason)) {
++        KeepHistory(*window, TabNumber(removed.tab), removed.contents);
++      }
++    }
++  }
++  Schedule(*window, Pass::kBrowser);
++}
++
++void LokaSpacesService::KeepHistory(Window& window,
++                                    int browser_id,
++                                    content::WebContents* page) {
++  std::optional<loka::TabId> id = window.live.TabIdOf(browser_id);
++  if (!id || !state_.tabs.contains(*id)) {
++    return;
++  }
++  const bool open = std::ranges::any_of(
++      state_.spaces,
++      [&](const loka::Space& space) {
++        return std::ranges::contains(space.open, *id);
++      });
++  if (open) {
++    return;
++  }
++  content::NavigationController& controller = page->GetController();
++  History history;
++  for (int i = 0; i < controller.GetEntryCount(); ++i) {
++    content::NavigationEntry* entry = controller.GetEntryAtIndex(i);
++    if (entry->IsInitialEntry()) {
++      continue;
++    }
++    if (i == controller.GetLastCommittedEntryIndex()) {
++      history.selected = static_cast<int>(history.entries.size());
++    }
++    history.entries.push_back(
++        sessions::ContentSerializedNavigationBuilder::FromNavigationEntry(
++            static_cast<int>(history.entries.size()), entry));
++  }
++  if (history.entries.empty()) {
++    histories_.erase(*id);
++    return;
++  }
++  histories_[*id] = std::move(history);
++}
++
++std::optional<int> LokaSpacesService::OpenWithHistory(Window& window,
++                                                      const loka::TabId& id) {
++  auto kept = histories_.find(id);
++  if (kept == histories_.end()) {
++    return std::nullopt;
++  }
++  History history = std::move(kept->second);
++  histories_.erase(kept);
++  const loka::Tab& tab = state_.tabs.at(id);
++  // Forward history goes, as a new page would drop it; the tab's own address
++  // comes next, unless that's where it already was.
++  history.entries.resize(history.selected + 1);
++  const GURL home(tab.url);
++  if (history.entries.back().virtual_url() != home) {
++    sessions::SerializedNavigationEntry entry;
++    entry.set_index(static_cast<int>(history.entries.size()));
++    entry.set_virtual_url(home);
++    entry.set_original_request_url(home);
++    entry.set_title(base::UTF8ToUTF16(tab.title));
++    entry.set_transition_type(ui::PAGE_TRANSITION_AUTO_BOOKMARK);
++    entry.set_timestamp(base::Time::Now());
++    history.entries.push_back(std::move(entry));
++  }
++  content::WebContents* page = chrome::AddRestoredTab(
++      window.browser, history.entries, window.tab_strip->count(),
++      static_cast<int>(history.entries.size()) - 1,
++      /*extension_app_id=*/std::string(), /*group=*/std::nullopt,
++      /*select=*/true, /*pin=*/false, base::TimeTicks::Now(), base::Time::Now(),
++      /*storage_namespace=*/nullptr, sessions::SerializedUserAgentOverride(),
++      /*extra_data=*/{}, /*from_session_restore=*/false,
++      /*is_active_browser=*/std::nullopt);
++  tabs::TabInterface* made =
++      page ? tabs::TabInterface::MaybeGetFromContents(page) : nullptr;
++  return made ? std::optional<int>(TabNumber(made)) : std::nullopt;
 +}
 +
 +void LokaSpacesService::OnTabChangedAt(tabs::TabInterface* tab,
@@ -4741,7 +4842,11 @@
 +
 +  switch (op.kind) {
 +    case loka::Op::Kind::kCreate: {
-+      if (std::optional<int> made = open(state_.tabs.at(op.tab_id).url)) {
++      std::optional<int> made = OpenWithHistory(window, op.tab_id);
++      if (!made) {
++        made = open(state_.tabs.at(op.tab_id).url);
++      }
++      if (made) {
 +        window.live.Set(op.tab_id, *made);
 +        // Seen now, so the next look doesn't take it for a tab of its own.
 +        for (const loka::BrowserTab& tab : TabsOf(window)) {
@@ -4854,7 +4959,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_spaces_service.h
-@@ -0,0 +1,199 @@
+@@ -0,0 +1,226 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -4883,10 +4988,15 @@
 +#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 +#include "components/loka/core/spaces_model.h"
 +#include "components/loka/core/tab_links.h"
++#include "components/sessions/core/serialized_navigation_entry.h"
 +#include "components/tab_groups/tab_group_id.h"
 +
 +class BrowserWindowInterface;
 +class Profile;
++
++namespace content {
++class WebContents;
++}
 +class TabStripModel;
 +
 +// Loka's spaces for one profile, owned in the browser process: the model
@@ -4999,8 +5109,27 @@
 +    bool ui_pass = false;
 +  };
 +
++  // A pinned tab's or Essential's Back history, kept while it's unloaded so
++  // opening it again can go back to where it was.
++  struct History {
++    History();
++    History(const History&);
++    History& operator=(const History&);
++    ~History();
++
++    std::vector<sessions::SerializedNavigationEntry> entries;
++    int selected = 0;
++  };
++
 +  void OnLoaded(std::optional<std::string> spaces,
 +                std::optional<std::string> archive);
++  // Keeps the history of `window`'s browser tab `browser_id`, about to be
++  // closed, when it shows a pinned tab or Essential.
++  void KeepHistory(Window& window, int browser_id, content::WebContents* page);
++  // Opens Loka tab `id` in `window` from its kept history, then at its own
++  // address: Back goes to where it was when it unloaded. Null when it has no
++  // kept history.
++  std::optional<int> OpenWithHistory(Window& window, const loka::TabId& id);
 +  // Makes `next` the spaces: saves, tells observers, also when only a
 +  // window's space changed. A window whose space is gone shows the one last
 +  // used.
@@ -5048,6 +5177,9 @@
 +  int next_group_number_ = 1;
 +  std::unique_ptr<base::ImportantFileWriter> spaces_writer_;
 +  std::unique_ptr<base::ImportantFileWriter> archive_writer_;
++  // Kept until the browser quits: an unloaded tab after a restart opens with
++  // no Back history, as before.
++  std::map<loka::TabId, History> histories_;
 +  base::RepeatingTimer archive_timer_;
 +  base::ObserverList<Observer> observers_;
 +  base::WeakPtrFactory<LokaSpacesService> weak_factory_{this};

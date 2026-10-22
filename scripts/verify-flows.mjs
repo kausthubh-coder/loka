@@ -1534,6 +1534,22 @@ async function pinning() {
 		reset,
 		show((await sb.tabs()).find((t) => t.active)),
 	);
+	// Its Back history came with it: Back goes to where it was when it closed.
+	const reopenedPage = (await ctx.browser.targets()).find((t) => t.type === "page" && t.url === foxtrotUrl);
+	if (reopenedPage) {
+		const s = await connect(reopenedPage.webSocketDebuggerUrl);
+		await evaluate(s, "(history.back(), true)");
+		s.close();
+	}
+	const wentBack = await until(
+		async () => (await sb.tabs()).find((t) => t.active && t.title === "QA Elsewhere" && !t.loading),
+		6000,
+	);
+	check(
+		"and Back goes to the page it was on before it closed",
+		wentBack && (await sb.rows()).some((r) => r.label === "QA Foxtrot"),
+		show((await sb.tabs()).find((t) => t.active)),
+	);
 
 	// Out of a pinned folder into the open tabs and back in, with a real mouse grabbing Foxtrot by its icon.
 	await sb.realDrag({ re: "^QA Foxtrot$" }, { re: "^QA Hotel$" }, 0.8);

@@ -16,6 +16,9 @@ so it stays in the sidebar, with its icon faded, and opens again at the address 
 - `tab-reorder` drags a row before or after another; dropping under a pinned row pins it.
 - `tab-pin` uses right-click > `Pin to space`; `Unpin` moves it back to the top of the open tabs.
 - `tab-unload` uses right-click > `Unload tab` on a pinned tab. It stays pinned, with no active tab.
+- `tab-unload-history`: in the real browser a pinned tab or Essential whose browser tab closes (Unload tab, Ctrl+W, x)
+  keeps its Back history in `LokaSpacesService` until the browser quits. Opened again, it opens at its pinned address
+  with that history behind it, so Back goes to where it was. After a restart it opens with no history, as before.
 - `tab-unloaded-look`: in the real browser a row or Essential with no page in memory (never opened, closed, or
   unloaded by the browser) has a faded, greyed icon and a dimmer title (`.unloaded`, from `live[id].unloaded`). The
   prototype has no notion of loaded, so it never shows it.
@@ -58,7 +61,8 @@ Preconditions: seed data, `Build` space active.
   browser", "a middle click closes a tab", "closed tabs go to the top of the archive, so they can come back", "Move
   to Play moves the tab there", "Ctrl+L opens the bar on the shown address"; `pinning`: "and looks unloaded: its icon
   faded", "and looks loaded again", "closing a pinned tab's browser tab after it went elsewhere keeps its row", "and
-  opening it again goes to the address it was pinned with"; and `restart`: "after the restart, Research's QA Twin
+  opening it again goes to the address it was pinned with", "and Back goes to the page it was on before it closed";
+  and `restart`: "after the restart, Research's QA Twin
   row opens the tab that was Research's" (and Play's), two tabs at one address told apart by the id each saved.
   `tabs` also has "Reopen closed tab brings its row back out of the archive", through the QA extension's
   `chrome.sessions.restore()`, Chromium's own restore behind Ctrl+Shift+T.

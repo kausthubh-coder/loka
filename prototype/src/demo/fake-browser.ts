@@ -243,6 +243,7 @@ export const fakeBrowser: Browser = {
 		emit("sidebar-pinned-changed", pinned);
 	},
 	sidebarPinned: async () => localStorage.getItem(PINNED_KEY) !== "false",
+	takeBrowserBookmarks: async () => "",
 	setAutoplay: (mode) => {
 		log("setAutoplay", mode);
 		autoplay = mode;

@@ -44,7 +44,8 @@ export const UX = {
 	"search-and-keys": { prototype: ["search-and-keys"], flows: ["panels", "tabs", "shortcuts"] },
 	import: {
 		prototype: ["import"],
-		gap: "Chrome, Edge and Arc import have no browser check; only the alpha's JSON import does (export-import)",
+		flows: ["browser-bookmarks"],
+		gap: "Settings > Import from Chrome, Edge and Arc has no browser check, nor setup's import page itself",
 	},
 	media: { prototype: ["media"], browser: true, flows: ["panels"] },
 	sound: { prototype: ["sound"], browser: true, flows: ["settings"] },

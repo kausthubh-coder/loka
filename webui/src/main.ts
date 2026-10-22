@@ -13,6 +13,7 @@ import {
 	isChromeMenuCommand,
 } from "../../prototype/src/features/command-bar/command-bar.logic";
 import "../../prototype/src/features/command-bar/loka-command-bar";
+import { addImportedFolder, parseChromeBookmarks } from "../../prototype/src/features/import/import.logic";
 import { sectionUrl } from "../../prototype/src/features/library/library.logic";
 import type { MediaAction, NowPlaying } from "../../prototype/src/features/media/loka-media-card";
 import { nowPlaying } from "../../prototype/src/features/media/media.logic";
@@ -187,6 +188,7 @@ export class LokaPanel extends LitElement {
 		void (async () => {
 			[this.state, this.ui] = await Promise.all([readState(), readUi()]);
 			await this.applySetup();
+			await this.takeBrowserBookmarks();
 		})();
 		watch(({ state, ui, onboarding }) => {
 			if (onboarding) void this.applySetup();
@@ -232,6 +234,28 @@ export class LokaPanel extends LitElement {
 		if (!json || !this.state) return;
 		markOnboardingApplied(json);
 		for (const intent of onboardingIntents(this.state, onboardingSpaces(json))) this.apply(intent);
+	}
+
+	/**
+	 * Setup's import page brings bookmarks into the browser's own bookmarks, which Loka doesn't show: they come in
+	 * once, as one closed pinned folder in the first space, as the prototype's tour brings in a Chrome import.
+	 */
+	private async takeBrowserBookmarks() {
+		for (let tries = 0; tries < 10; tries++) {
+			const json = await browser.takeBrowserBookmarks();
+			if (json === null) {
+				await new Promise((done) => setTimeout(done, 1000));
+				continue;
+			}
+			const nodes = json ? parseChromeBookmarks(json) : null;
+			// Setup's spaces may still be crossfading in (pending): the folder goes on top of them, not of the old ones.
+			const now = this.pending ?? this.state;
+			const first = now?.spaces[0];
+			if (nodes?.length && first && now) {
+				this.apply({ op: "replaceState", state: addImportedFolder(now, first.id, "Imported bookmarks", nodes) });
+			}
+			return;
+		}
 	}
 
 	/** The old sky's nebula on a switch, read before the switch is drawn (skyNow). */

@@ -39,10 +39,10 @@ hours ago, all inside the 12-hour default.
 - **In the browser.** `bun run verify -- --ux archive` runs it and verify:flows `panels` ("the Archive panel opens"),
   `settings` (both settings' defaults and that each saves) and `sleep` (a QA page in Research unloads while Play
   shows, keeps its row, and loads again in the same tab when clicked; the setting is set to 0.05 minutes there), and
-  `tabs` ("closed tabs go to the top of the archive, so they can come back").
-  Not checked in the browser: tabs archiving by age (it needs old `lastActiveAt` values or a 60 s wait), restoring,
-  search and Clear, Reopen closed tab bringing a row back (CDP can't press browser shortcuts; the model cases cover
-  the rule), and that Chromium's rules keep a tab playing sound loaded.
+  `tabs` ("closed tabs go to the top of the archive, so they can come back", "Reopen closed tab brings its row back
+  out of the archive", the same Loka tab, through the QA extension's `chrome.sessions.restore()`).
+  Not checked in the browser: tabs archiving by age (it needs old `lastActiveAt` values or a 60 s wait), restoring
+  from the panel, search and Clear, and that Chromium's rules keep a tab playing sound loaded.
 
 ## Gotchas
 

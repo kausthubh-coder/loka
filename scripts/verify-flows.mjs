@@ -171,7 +171,10 @@ async function startPages() {
 	return { server, host: `127.0.0.1:${port}` };
 }
 
-/** An unpacked MV3 extension with a popup and a badge, to sit next to uBlock Origin. */
+/**
+ * An unpacked MV3 extension with a popup and a badge, to sit next to uBlock Origin. Its `sessions` permission lets
+ * the tabs flow reopen a closed tab the way Ctrl+Shift+T does (chrome.sessions.restore), which CDP can't press.
+ */
 function writeExtension() {
 	mkdirSync(extensionDir, { recursive: true });
 	const icon = readFileSync(join(repo, "resources", "loka", "branding", "product_logo_22_mono.png"));
@@ -186,6 +189,7 @@ function writeExtension() {
 			background: { service_worker: "worker.js" },
 			options_page: "options.html",
 			icons: { 32: "icon.png" },
+			permissions: ["sessions"],
 		}),
 	);
 	writeFileSync(
@@ -1111,6 +1115,29 @@ async function tabs() {
 		show(archived),
 	);
 	await step("closed-two");
+
+	// Reopen closed tab (Ctrl+Shift+T, here through the QA extension's chrome.sessions.restore, the same restore):
+	// the tab brings its row back out of the archive, the same Loka tab, not a new one.
+	const charlieId = (await sb.state()).archive.find((a) => a.tab.title === "QA Charlie")?.tab.id;
+	const worker = (await ctx.browser.targets()).find((t) => t.type === "service_worker" && t.url.endsWith("/worker.js"));
+	let reopened = "no QA extension worker";
+	if (worker) {
+		const w = await connect(worker.webSocketDebuggerUrl);
+		reopened = await evaluate(w, `chrome.sessions.restore().then((s) => s?.tab?.url ?? "nothing restored")`);
+		w.close();
+	}
+	const unarchived = await until(async () => {
+		const st = await sb.state();
+		const research = spaceNamed(st, "Research");
+		return charlieId && research?.open.includes(charlieId) && !st.archive.some((a) => a.tab.id === charlieId)
+			? st
+			: null;
+	}, 8000);
+	check(
+		"Reopen closed tab brings its row back out of the archive",
+		unarchived,
+		`restored ${reopened}; Research open ${show(openTitles(await sb.state(), "Research"))}; archive ${show((await sb.state()).archive.map((a) => a.tab.title))}`,
+	);
 
 	// Reorder: Alpha above Bravo.
 	await sb.drag({ re: "^QA Alpha$" }, { re: "^QA Bravo$" }, 0.15, "[role=treeitem]");

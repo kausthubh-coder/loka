@@ -60,8 +60,9 @@ Preconditions: seed data, `Build` space active.
   faded", "and looks loaded again", "closing a pinned tab's browser tab after it went elsewhere keeps its row", "and
   opening it again goes to the address it was pinned with"; and `restart`: "after the restart, Research's QA Twin
   row opens the tab that was Research's" (and Play's), two tabs at one address told apart by the id each saved.
-  Not checked in the browser: `Clear`, `Close tab` from the menu, the real Ctrl+T and Ctrl+W keys, and Reopen closed
-  tab.
+  `tabs` also has "Reopen closed tab brings its row back out of the archive", through the QA extension's
+  `chrome.sessions.restore()`, Chromium's own restore behind Ctrl+Shift+T.
+  Not checked in the browser: `Clear`, `Close tab` from the menu, and the real Ctrl+T, Ctrl+W and Ctrl+Shift+T keys.
 
 ## Gotchas
 

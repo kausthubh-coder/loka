@@ -7,7 +7,11 @@ import { type NebulaNow, setStarMotion, skyLayer, skyNow, skyStyles, skyTurn } f
 import { reducedMotion, themeTokens } from "../../prototype/src/app/theme";
 import { resolveScheme, type Scheme } from "../../prototype/src/app/theme.logic";
 import { DEFAULT_UI, type UiPrefs } from "../../prototype/src/app/ui-prefs.logic";
-import { type ActionId, isActionId } from "../../prototype/src/features/command-bar/command-bar.logic";
+import {
+	type ActionId,
+	isActionId,
+	isChromeMenuCommand,
+} from "../../prototype/src/features/command-bar/command-bar.logic";
 import "../../prototype/src/features/command-bar/loka-command-bar";
 import { sectionUrl } from "../../prototype/src/features/library/library.logic";
 import type { MediaAction, NowPlaying } from "../../prototype/src/features/media/loka-media-card";
@@ -418,6 +422,8 @@ export class LokaPanel extends LitElement {
 			this.sidebar()?.openPanel(action);
 		} else if (action === "search-sidebar") {
 			this.sidebar()?.openPanel("search");
+		} else if (isChromeMenuCommand(action)) {
+			browser.browserCommand(action);
 		}
 	}
 

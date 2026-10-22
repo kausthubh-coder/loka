@@ -67,7 +67,7 @@ Preconditions: seed data, `Build` space active.
   `tabs` also has "Reopen closed tab brings its row back out of the archive", through the QA extension's
   `chrome.sessions.restore()`, Chromium's own restore behind Ctrl+Shift+T.
   `shortcuts` presses the browser's own keys on a page: "Ctrl+PgDn on a page steps to the space's next row", "Ctrl+PgUp
-  steps back", "Ctrl+W on a page closes it the way its x does: into the archive, and the window stays".
+  steps back", "Ctrl+Tab on a page steps to the space's next row", "Ctrl+Shift+Tab steps back", "Ctrl+W on a page closes it the way its x does: into the archive, and the window stays".
   Not checked in the browser: `Clear`, `Close tab` from the menu, and the real Ctrl+Shift+T key.
 
 ## Gotchas

@@ -22,6 +22,7 @@ export const MESSAGES = [
 	"search",
 	"openPage",
 	"windowAction",
+	"browserCommand",
 	"startWindowDrag",
 	"extensionAction",
 	// The floating menu window (LokaMenu): the sidebar shows a menu; the menu page says its size, what was picked, or

@@ -74,6 +74,8 @@ export const PLANNED_MESSAGES = [
 	"getAutoplay",
 	// A hidden sidebar that is showing stays open while true (typing in it, a menu open, a drag).
 	"holdSidebar",
+	// The browser's own bookmarks (setup's import brings them in there), handed out once as a Bookmarks file.
+	"takeBrowserBookmarks",
 ] as const;
 
 /** Events the handler in patches/loka doesn't fire yet; same rule as PLANNED_MESSAGES. */

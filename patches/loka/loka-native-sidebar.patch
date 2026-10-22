@@ -948,7 +948,7 @@
  }
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/BUILD.gn
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,97 @@
 +# Copyright 2026 The Loka Authors
 +# You can use, redistribute, and/or modify this source code under
 +# the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -986,7 +986,9 @@
 +  deps = [
 +    "//base",
 +    "//chrome/browser/autocomplete",
++    "//chrome/browser/bookmarks",
 +    "//chrome/browser/history",
++    "//components/bookmarks/browser",
 +    "//components/history/core/browser",
 +    "//components/keyed_service/core",
 +    "//chrome/browser/extensions",
@@ -1539,7 +1541,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_MEDIA_WATCHER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.cc
-@@ -0,0 +1,847 @@
+@@ -0,0 +1,848 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1721,6 +1723,7 @@
 +  add("openPage", &LokaSidebarHandler::HandleOpenPage);
 +  add("windowAction", &LokaSidebarHandler::HandleWindowAction);
 +  add("browserCommand", &LokaSidebarHandler::HandleChromeMenuCommand);
++  add("takeBrowserBookmarks", &LokaSidebarHandler::HandleTakeBrowserBookmarks);
 +  add("startWindowDrag", &LokaSidebarHandler::HandleStartWindowDrag);
 +  add("getExtensions", &LokaSidebarHandler::HandleGetExtensions);
 +  add("runExtension", &LokaSidebarHandler::HandleRunExtension);
@@ -2389,7 +2392,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h
-@@ -0,0 +1,310 @@
+@@ -0,0 +1,312 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2638,6 +2641,8 @@
 +  // One of Chrome's toolbar-menu commands (new window, find, print, zoom...),
 +  // which Loka offers in its own menus since it has no toolbar.
 +  void HandleChromeMenuCommand(const base::ListValue& args);
++  // The browser's own bookmarks (setup imports into them), once per profile.
++  void HandleTakeBrowserBookmarks(const base::ListValue& args);
 +  void HandleStartWindowDrag(const base::ListValue& args);
 +
 +  raw_ptr<TabStripModel> observed_ = nullptr;
@@ -2702,7 +2707,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler_features.cc
-@@ -0,0 +1,1071 @@
+@@ -0,0 +1,1116 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2718,6 +2723,7 @@
 +#include <vector>
 +
 +#include "base/functional/bind.h"
++#include "base/json/json_writer.h"
 +#include "base/functional/callback_helpers.h"
 +#include "base/location.h"
 +#include "base/no_destructor.h"
@@ -2728,6 +2734,7 @@
 +#include "chrome/app/chrome_command_ids.h"
 +#include "chrome/browser/autocomplete/chrome_autocomplete_provider_client.h"
 +#include "chrome/browser/autocomplete/chrome_autocomplete_scheme_classifier.h"
++#include "chrome/browser/bookmarks/bookmark_model_factory.h"
 +#include "chrome/browser/extensions/extension_action_runner.h"
 +#include "chrome/browser/extensions/extension_tab_util.h"
 +#include "chrome/browser/extensions/extension_view_host.h"
@@ -2757,6 +2764,8 @@
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
 +#include "chrome/common/pref_names.h"
++#include "components/bookmarks/browser/bookmark_codec.h"
++#include "components/bookmarks/browser/bookmark_model.h"
 +#include "components/download/public/common/download_item.h"
 +#include "components/loka_sidebar/resources/grit/loka_sidebar_generated_map.h"
 +#include "components/omnibox/browser/autocomplete_classifier.h"
@@ -2764,6 +2773,7 @@
 +#include "components/omnibox/browser/autocomplete_match.h"
 +#include "components/omnibox/browser/autocomplete_result.h"
 +#include "components/prefs/pref_service.h"
++#include "components/prefs/scoped_user_pref_update.h"
 +#include "components/tabs/public/tab_interface.h"
 +#include "content/public/browser/download_manager.h"
 +#include "content/public/browser/media_session.h"
@@ -2915,6 +2925,46 @@
 +  }
 +  LOG(ERROR) << "Loka: the sidebar asked for a browser command it doesn't know: "
 +             << name;
++}
++
++void LokaSidebarHandler::HandleTakeBrowserBookmarks(
++    const base::ListValue& args) {
++  AllowJavascript();
++  // Setup's import page brings bookmarks into the browser's own bookmarks,
++  // which Loka doesn't show. The first window to ask gets them, once per
++  // profile, as Chrome's Bookmarks file, and makes them a pinned folder. The
++  // pref is the one place that says they were taken, so two windows starting
++  // together never both get them.
++  static constexpr char kTakenKey[] = "bookmarks.taken";
++  Profile* profile = Profile::FromWebUI(web_ui());
++  bookmarks::BookmarkModel* model =
++      profile->IsOffTheRecord()
++          ? nullptr
++          : BookmarkModelFactory::GetForBrowserContext(profile);
++  if (model && !model->loaded()) {
++    // Not read from disk yet: the page asks again in a moment.
++    ResolveJavascriptCallback(args[0], base::Value());
++    return;
++  }
++  PrefService* prefs = profile->GetPrefs();
++  const bool none = !model || (model->bookmark_bar_node()->children().empty() &&
++                               model->other_node()->children().empty() &&
++                               model->mobile_node()->children().empty());
++  if (none || prefs->GetDict(kLokaSidebarStorePref).FindString(kTakenKey)) {
++    ResolveJavascriptCallback(args[0], base::Value(""));
++    return;
++  }
++  {
++    ScopedDictPrefUpdate update(prefs, kLokaSidebarStorePref);
++    update->Set(kTakenKey, "1");
++  }
++  std::string json;
++  base::JSONWriter::Write(
++      bookmarks::BookmarkCodec().Encode(model->bookmark_bar_node(),
++                                        model->other_node(),
++                                        model->mobile_node(), std::string()),
++      &json);
++  ResolveJavascriptCallback(args[0], base::Value(json));
 +}
 +
 +bool LokaSidebarHandler::HandleBrowserCommand(BrowserWindowInterface* browser,

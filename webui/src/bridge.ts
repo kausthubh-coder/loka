@@ -255,6 +255,11 @@ export const browser = {
 	setSidebarPinned: (pinned: boolean) => tell("setSidebarPinned", pinned),
 	sidebarPinned: () => ask<boolean>("getSidebarPinned"),
 	/**
+	 * The browser's own bookmarks, where setup's import puts them, as Chrome's Bookmarks file: once per profile, to
+	 * the first window that asks. "" when there are none or they were taken already; null while they're still loading.
+	 */
+	takeBrowserBookmarks: () => ask<string | null>("takeBrowserBookmarks"),
+	/**
 	 * While true, a hidden (unpinned) sidebar that is showing stays open: something in it is being typed in, a menu
 	 * or panel is open, or a tab is being dragged (hold.logic.ts decides).
 	 */

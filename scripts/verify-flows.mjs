@@ -47,6 +47,7 @@ import {
 	connect,
 	evaluate,
 	freePort,
+	launchBrowser,
 	processes,
 	RECORD_EVENTS,
 	refuseWhileBuilding,
@@ -250,11 +251,22 @@ async function launch() {
 	if (!version) throw new Error("the browser never opened its debugging port");
 	const browserSession = await connect(version.webSocketDebuggerUrl);
 	console.log(`Started ${chrome} (pid ${pid}), CDP on ${port}, profile ${profile}`);
+	// The QA extension's worker stops 30 s after it last did anything, and its target goes with it. A session attached
+	// to it keeps it running, so the flows that call its chrome.* APIs find it however long the flows before took.
+	const worker = await until(
+		async () =>
+			/** @type {Target[]} */ (await fetch(`${http}/json/list`).then((r) => r.json())).find(
+				(t) => t.type === "service_worker" && t.url.endsWith("/worker.js"),
+			),
+		10000,
+	);
+	const qaWorker = worker ? await connect(worker.webSocketDebuggerUrl) : null;
 	return {
 		pid,
 		root,
 		http,
 		browserSession,
+		qaWorker,
 		/** @returns {Promise<Target[]>} */
 		targets: () => fetch(`${http}/json/list`).then((r) => r.json()),
 	};
@@ -273,6 +285,7 @@ async function quit(b) {
 	const asked = Date.now();
 	await b.browserSession.call("Browser.close", {}, 5000).catch(() => {});
 	b.browserSession.close();
+	b.qaWorker?.close();
 	let left = tree;
 	const ended = await until(async () => {
 		left = stillRunning(left);
@@ -1126,13 +1139,10 @@ async function tabs() {
 	// Reopen closed tab (Ctrl+Shift+T, here through the QA extension's chrome.sessions.restore, the same restore):
 	// the tab brings its row back out of the archive, the same Loka tab, not a new one.
 	const charlieId = (await sb.state()).archive.find((a) => a.tab.title === "QA Charlie")?.tab.id;
-	const worker = (await ctx.browser.targets()).find((t) => t.type === "service_worker" && t.url.endsWith("/worker.js"));
-	let reopened = "no QA extension worker";
-	if (worker) {
-		const w = await connect(worker.webSocketDebuggerUrl);
-		reopened = await evaluate(w, `chrome.sessions.restore().then((s) => s?.tab?.url ?? "nothing restored")`);
-		w.close();
-	}
+	const worker = ctx.browser.qaWorker;
+	const reopened = worker
+		? await evaluate(worker, `chrome.sessions.restore().then((s) => s?.tab?.url ?? "nothing restored")`)
+		: "no QA extension worker";
 	const unarchived = await until(async () => {
 		const st = await sb.state();
 		const research = spaceNamed(st, "Research");
@@ -2819,6 +2829,57 @@ async function browserMenu() {
 	}
 }
 
+/**
+ * Bookmarks in the browser's own store, where setup's import page puts them, come into Loka once: a browser of its
+ * own starts on a profile whose Bookmarks file is already there (the sample in verify-loka/fixtures), as after an
+ * import, and a second window doesn't bring them in again.
+ */
+async function browserBookmarks() {
+	const sample = readFileSync(join(repo, ".agents", "skills", "verify-loka", "fixtures", "Bookmarks"), "utf8");
+	const b = await launchBrowser({ name: "bookmarks", chrome, files: { "Default/Bookmarks": sample } });
+	try {
+		const sidebar = await b.sidebar();
+		/** @returns {Promise<{ state: BrowserState }>} */
+		const spaces = () => evaluate(sidebar, askExpression("getSpaces", []));
+		/** The first space's pinned folders named Imported bookmarks, each as its tree of names. @param {BrowserState} st */
+		const imported = (st) => {
+			/** @param {PinnedNode} n @returns {string} */
+			const tree = (n) =>
+				n.kind === "folder" ? `[${n.name}: ${n.children.map(tree).join(", ")}]` : (st.tabs[n.id]?.title ?? "?");
+			return (st.spaces[0]?.pinned ?? [])
+				.filter((n) => n.kind === "folder" && n.name === "Imported bookmarks")
+				.map(tree);
+		};
+		const first = await until(async () => {
+			const found = imported((await spaces()).state);
+			return found.length ? found : null;
+		}, 15000);
+		check(
+			"bookmarks already in the browser become one pinned folder in the first space",
+			first?.length === 1 &&
+				["Lit", "[School: Canvas, [Labs: Lab 3]]", "Hacker News"].every((part) => first[0]?.includes(part)),
+			show(first ?? imported((await spaces()).state)),
+		);
+		// A second window's sidebar starts and asks too: the browser hands them out once.
+		const known = new Set((await b.targets()).map((t) => t.id));
+		await evaluate(sidebar, `chrome.send("browserCommand", ["new-window"]), true`);
+		const second = await until(
+			async () => (await b.targets()).find((t) => !known.has(t.id) && t.url === SIDEBAR_URL),
+			10000,
+		);
+		await sleep(3000);
+		const after = imported((await spaces()).state);
+		check(
+			"a second window doesn't bring them in again",
+			Boolean(second) && after.length === 1,
+			`${second ? "second sidebar started" : "no second sidebar"}; ${after.length} Imported bookmarks folders`,
+		);
+		sidebar.close();
+	} finally {
+		await b.close();
+	}
+}
+
 const NEEDS = {
 	"4-states": ["3-tabs"],
 	"5-pinning": ["3-tabs"],
@@ -2844,6 +2905,7 @@ async function main() {
 		["12-windows", windowSpaces],
 		["13-shortcuts", shortcuts],
 		["14-browser-menu", browserMenu],
+		["15-browser-bookmarks", browserBookmarks],
 	];
 	// --only <flow>[,<flow>] runs those flows after the ones they build on (first run always; restart needs them all).
 	const onlyAt = process.argv.indexOf("--only");

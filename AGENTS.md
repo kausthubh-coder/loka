@@ -51,6 +51,10 @@ model, so keep it pure and keep its rules tested.
   building, how long builds take, and which binary tests drive. After editing `webui/`: `bun run webui:build`.
 - C++: edit in `C:\src\loka\build\src`, export with `python scripts/export_patch.py`, check with
   `bun run patches:check`.
+- Model: the C++ model (`components/loka/core`, `patches/loka/loka-core.patch`) must answer the cases in
+  `prototype/src/features/sidebar/model-cases.json` as the TypeScript model does. After changing either model:
+  `bun run model:cases` (rewrites the file), then `bun run model:cases -- --cpp` (builds and runs the C++ tests,
+  minutes).
 - Alpha: `LOKA_VERSION=<v> bun run browser:package`, then `bun run release:alpha -- --version <v>` (dry run).
 
 ## Start and ship
@@ -117,6 +121,7 @@ makes sure Playwright has a browser; outside the cloud it exits at once. Its las
 | Strict types, checked index access | `tsconfig.json` |
 | A tab sits in exactly one place; a folder never goes inside itself | `sidebar.test.ts`, `importState` |
 | Every message the page sends is one the handler answers | `webui/src/messages.test.ts` |
+| The TypeScript and C++ models give the same results | `model-cases.test.ts` (the case file is current); `bun run model:cases -- --cpp` (C++ against it) |
 | Every C++ edit in `build\src` is in a `patches/loka` patch | `bun run patches:check`; `browser:setup` and `release:alpha` refuse until it passes |
 | One build at a time; no browser runs from `out\Default` during a build | `build.lock` (`build_log.py`); `browser:build` and `browser:run` refuse; tests switch to the snapshot |
 | A real mouse reaches the sidebar (the column is page, not title bar) | verify:browser's hit-test and real-click checks |

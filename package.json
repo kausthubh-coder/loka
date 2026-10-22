@@ -12,6 +12,7 @@
 		"lint:fix": "biome check --write .",
 		"typecheck": "tsc --noEmit",
 		"test": "bun test prototype webui scripts",
+		"model:cases": "bun scripts/model-cases.mjs",
 		"check": "bun run lint && bun run typecheck && bun run test && bun run build && vite build --config webui/vite.config.ts",
 		"setup": "bun scripts/setup.mjs",
 		"doctor": "bun scripts/doctor.mjs",

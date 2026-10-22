@@ -653,7 +653,7 @@
    map.AddWebUIConfig(std::make_unique<SigninErrorUIConfig>());
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/BUILD.gn
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,77 @@
 +# Copyright 2026 The Loka Authors
 +# You can use, redistribute, and/or modify this source code under
 +# the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -724,6 +724,12 @@
 +    "//services/media_session/public/mojom",
 +    "//skia",
 +  ]
++}
++
++# So GN knows the C++ model's tests (scripts/loka_core_test.py builds them).
++group("loka_tests") {
++  testonly = true
++  deps = [ "//components/loka/core:loka_core_unittests" ]
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_history_ui.cc

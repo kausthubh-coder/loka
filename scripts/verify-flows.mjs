@@ -361,12 +361,16 @@ function driver(s) {
 		}
 		return last;
 	};
-	/** @param {string} type @param {number} x @param {number} y @param {"none" | "left" | "middle" | "right"} [button] */
-	const mouse = (type, x, y, button = "none") =>
+	/**
+	 * @param {string} type @param {number} x @param {number} y @param {"none" | "left" | "middle" | "right"} [button]
+	 * @param {number} [modifiers] CDP's bit mask: 2 is Ctrl, 8 is Shift.
+	 */
+	const mouse = (type, x, y, button = "none", modifiers = 0) =>
 		s.call("Input.dispatchMouseEvent", {
 			type,
 			x,
 			y,
+			modifiers,
 			button,
 			buttons: button === "left" ? 1 : button === "right" ? 2 : button === "middle" ? 4 : 0,
 			clickCount: type === "mouseMoved" ? 0 : 1,
@@ -399,15 +403,16 @@ function driver(s) {
 		focused: () => run("window.__qa.focused()"),
 		/** @returns {Promise<string>} */
 		text: () => run("window.__qa.text()"),
-		/** Waits for something with this name, then clicks its middle. @param {Label} label @param {{ role?: string, button?: "left" | "middle" | "right", at?: number }} [opts] */
+		/** Waits for something with this name, then clicks its middle. @param {Label} label @param {{ role?: string, button?: "left" | "middle" | "right", at?: number, ctrl?: boolean }} [opts] */
 		async click(label, opts = {}) {
 			const at = await steady(label, opts.role);
 			if (!at) throw new Error(`nothing named ${show(label)} to click`);
 			const button = opts.button ?? "left";
 			const y = opts.at === undefined ? at.y : at.top + at.height * opts.at;
+			const modifiers = opts.ctrl ? 2 : 0;
 			await mouse("mouseMoved", at.x, y);
-			await mouse("mousePressed", at.x, y, button);
-			await mouse("mouseReleased", at.x, y, button);
+			await mouse("mousePressed", at.x, y, button, modifiers);
+			await mouse("mouseReleased", at.x, y, button, modifiers);
 			return at;
 		},
 		/** @param {Label} label @param {string} [role] */
@@ -552,7 +557,7 @@ async function attachSidebar(b, pick = () => true) {
 	const isMenu = (role = "") => role.includes("role=menu");
 	return {
 		...d,
-		/** @param {Label} label @param {{ role?: string, button?: "left" | "middle" | "right", at?: number }} [opts] */
+		/** @param {Label} label @param {{ role?: string, button?: "left" | "middle" | "right", at?: number, ctrl?: boolean }} [opts] */
 		async click(label, opts = {}) {
 			if (!isMenu(opts.role)) return d.click(label, opts);
 			const menu = await until(async () => {
@@ -560,9 +565,12 @@ async function attachSidebar(b, pick = () => true) {
 				return page && (await page.has(label, opts.role)) ? page : null;
 			}, 6000);
 			if (!menu) {
-				const shown = await shownMenu();
-				const items = shown ? await shown.names("[role=menuitem]").catch(() => []) : [];
-				throw new Error(`no menu window shows ${show(label)}; the shown menu has ${show(items)}`);
+				const seen = [];
+				for (const page of menuPages.values()) {
+					const visible = await page.run(`document.visibilityState`).catch(() => "gone");
+					seen.push(`${visible}: ${show(await page.names("[role=menuitem]").catch(() => []))}`);
+				}
+				throw new Error(`no menu window shows ${show(label)}; menu windows: ${seen.join(" | ") || "none"}`);
 			}
 			return menu.click(label, opts);
 		},
@@ -2643,6 +2651,53 @@ async function windowSpaces() {
 }
 
 /**
+ * v1 polish the browser has to accept as intents: a space moved with its planet's menu (moveSpace), and two rows
+ * picked with Ctrl+click added to Essentials in one change (moveItems).
+ */
+async function polish() {
+	const sb = ctx.sidebar;
+	await inResearch();
+	const order = async () => (await sb.state()).spaces.map((s) => s.name);
+	const before = await order();
+	await sb.click("Spaces: Research");
+	await sb.click("Move right", { role: "[role=menuitem]" });
+	const moved = await until(async () => {
+		const now = await order();
+		return now.indexOf("Research") === before.indexOf("Research") + 1 ? now : null;
+	}, 5000);
+	check("Move right in the space's menu moves Research one place on", moved, show(await order()));
+	await sb.key("1", { ctrl: true });
+	const first = await until(async () => shownSpace(await sb.state())?.name === (await order())[0], 5000);
+	check("and Ctrl+1 shows the space now first", first, `showing ${shownSpace(await sb.state())?.name}`);
+	await sb.key(String((await order()).indexOf("Research") + 1), { ctrl: true });
+	await until(async () => shownSpace(await sb.state())?.name === "Research", 5000);
+	await sb.click("Spaces: Research");
+	await sb.click("Move left", { role: "[role=menuitem]" });
+	const back = await until(async () => show(await order()) === show(before), 5000);
+	check("Move left puts it back", back, show(await order()));
+
+	await openSite("quebec");
+	await openSite("sierra");
+	const [a, b] = ["QA Quebec", "QA Sierra"];
+	await sb.click(a, { role: "[role=treeitem]", ctrl: true });
+	await sb.click(b, { role: "[role=treeitem]", ctrl: true });
+	await sb.click(a, { role: "[role=treeitem]", button: "right" });
+	await sb.click("Add to Essentials", { role: "[role=menuitem]" });
+	const added = await until(async () => {
+		const st = await sb.state();
+		const essentials = st.essentials.map((id) => st.tabs[id]?.title);
+		return essentials.includes(a) && essentials.includes(b) && !openTitles(st, "Research").includes(a) ? st : null;
+	}, 5000);
+	const now = await sb.state();
+	check(
+		"two rows picked with Ctrl+click go to Essentials together",
+		added,
+		`Essentials ${show(now.essentials.map((id) => now.tabs[id]?.title))}; Research open ${show(openTitles(now, "Research"))}`,
+	);
+	await step("polish", true);
+}
+
+/**
  * Presses a browser shortcut on the page the window shows, so it goes where a person's key goes: CDP key events that
  * carry a native key code reach the browser's accelerators (BrowserView::PreHandleKeyboardEvent for the reserved ones
  * like Ctrl+T, and its unhandled-key path for the ones a page may take first like Ctrl+L), which run
@@ -2906,6 +2961,7 @@ async function main() {
 		["13-shortcuts", shortcuts],
 		["14-browser-menu", browserMenu],
 		["15-browser-bookmarks", browserBookmarks],
+		["16-polish", polish],
 	];
 	// --only <flow>[,<flow>] runs those flows after the ones they build on (first run always; restart needs them all).
 	const onlyAt = process.argv.indexOf("--only");

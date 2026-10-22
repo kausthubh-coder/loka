@@ -28,9 +28,9 @@ const root = resolve(import.meta.dirname, "..");
  */
 export const UX = {
 	folders: { prototype: ["folders", "make-folders"], flows: ["pinning"] },
-	spaces: { prototype: ["spaces"], flows: ["spaces", "windows"] },
-	tabs: { prototype: ["tabs"], browser: true, flows: ["tabs", "shortcuts", "browser-menu"] },
-	essentials: { prototype: ["essentials"], flows: ["pinning"] },
+	spaces: { prototype: ["spaces"], flows: ["spaces", "windows", "polish"] },
+	tabs: { prototype: ["tabs"], browser: true, flows: ["tabs", "shortcuts", "browser-menu", "polish"] },
+	essentials: { prototype: ["essentials"], flows: ["pinning", "polish"] },
 	"export-import": { prototype: ["export-import"], browser: true },
 	"command-bar": { prototype: ["command-bar"], browser: true, flows: ["tabs", "spaces", "new-tab", "shortcuts"] },
 	"space-editor": { prototype: ["space-editor"], flows: ["spaces"] },

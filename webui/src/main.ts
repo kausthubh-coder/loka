@@ -58,6 +58,8 @@ setFaviconSource(faviconUrl);
 type Editing = { mode: "create"; look: SpaceLook } | { mode: "edit"; spaceId: string; look: SpaceLook };
 
 const darkSystem = matchMedia("(prefers-color-scheme: dark)");
+/** How long after the last space switch the browser takes the new space's colour and scheme: past the orbit. */
+const FOLLOW_AFTER_SWITCH_MS = 700;
 
 export class LokaPanel extends LitElement {
 	static override properties = {
@@ -90,6 +92,8 @@ export class LokaPanel extends LitElement {
 	private icons = new Map<TabId, string>();
 	private sentScheme: string | null = null;
 	private sentFrame: string | null = null;
+	/** A space switch's colour and scheme, waiting until switching stops (updated). */
+	private followTimer = 0;
 	/** Why the hidden sidebar must stay open right now, and what the browser was told. */
 	private holding: Hold = NO_HOLD;
 
@@ -277,8 +281,20 @@ export class LokaPanel extends LitElement {
 			skyTurn(this.renderRoot, forward, activeSpace(before).hue, this.schemeOf(before, null), this.nebulaBefore);
 			this.nebulaBefore = null;
 		}
-		this.followScheme(this.pending ?? state);
-		this.followFrame(this.pending ?? state);
+		// Telling the browser a colour or scheme re-themes the whole window and every tab's page. After a switch it
+		// waits until switching stops, so that work never lands in the switch's own frames (verify:perf: a median 14
+		// slow frames per ten switches with it in them, 9 without); other changes tell it at once.
+		const follow = () => {
+			this.followTimer = 0;
+			const now = this.pending ?? this.state;
+			if (!now) return;
+			this.followScheme(now);
+			this.followFrame(now);
+		};
+		if (before && before.activeSpaceId !== state.activeSpaceId) {
+			window.clearTimeout(this.followTimer);
+			this.followTimer = window.setTimeout(follow, FOLLOW_AFTER_SWITCH_MS);
+		} else if (!this.followTimer) follow();
 		// Scrollbars and form controls in this page match what it shows.
 		document.documentElement.style.colorScheme = this.schemeOf(state);
 		// Unpinned, the browser floats this page over the window: its rounded corners show what's behind.

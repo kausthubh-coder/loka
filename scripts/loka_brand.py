@@ -6,9 +6,9 @@ Loka's name and icons in the browser, on top of Helium's branding.
   python scripts/loka_brand.py apply    in the build checkout, after `first`: rename to Loka, copy the images,
                                         then rebuild with `loka_build.py incremental`
   python scripts/loka_brand.py apply --no-names
-                                        BRANDING and images only. The name substitution rewrites thousands of
-                                        source files (a near-full rebuild); the product's strings already say
-                                        Loka through patches/loka/loka-name.patch
+                                        BRANDING, images and the product's strings (BRANDED_STRINGS) only. The
+                                        full name substitution rewrites thousands of source files (a near-full
+                                        rebuild); the product's own strings are the ones a user reads
 
 Helium's release builds run a name substitution ("Chrome"/"Chromium" -> "Helium") that dev builds skip. `apply` runs
 the same substitution with "Loka", rewrites BRANDING, and copies Loka's images over every place Helium's go, using
@@ -126,19 +126,43 @@ def rewrite_branding():
     path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
 
-def substitute_names():
-    """Helium's own name substitution, pointed at "Loka". Its chrome:// -> helium:// rule is Helium's to keep."""
+# The strings files the product's name comes from, renamed on every apply (also with --no-names). Generated rather
+# than kept as a patch: a saved copy of a renamed file conflicts with every Chromium or Helium change to it, while
+# renaming the file as it is never does. patches_check.py compares them with this renaming of their original.
+BRANDED_STRINGS = ['chrome/app/chromium_strings.grd']
+
+
+def loka_substitution(tree: Path = SOURCE_TREE):
+    """Helium's name substitution utilities, pointed at "Loka". Its chrome:// -> helium:// rule is Helium's to keep.
+    `tree` is a Chromium tree, for its grit."""
     sys.path.insert(0, str(ROOT / 'helium-chromium' / 'utils'))
-    import name_substitution  # noqa: E402
     import name_substitution_utils as nsu  # noqa: E402
     nsu.REPLACEMENT_REGEXES = [
-        (re.compile(pattern), replacement)
+        (re.compile(pattern), 'Loka' if replacement == 'Helium' else replacement)
         for pattern, replacement in nsu.REPLACEMENT_REGEXES_STR
         if 'chrome://' not in pattern
     ]
-    nsu.REPLACEMENT_REGEXES = [
-        (regex, 'Loka' if replacement == 'Helium' else replacement) for regex, replacement in nsu.REPLACEMENT_REGEXES
-    ]
+    nsu.add_grit_to_path(tree)
+    return nsu
+
+
+def branded_strings(text: str, tree: Path = SOURCE_TREE) -> str:
+    """A grit strings file's text with the product named Loka. Renaming it again changes nothing. Translations
+    (.xtb) keep their Chromium wording, as they did under the old patch."""
+    renamed, _fingerprints = loka_substitution(tree).replace_grit_tree(text)
+    return renamed
+
+
+def brand_strings():
+    for rel in BRANDED_STRINGS:
+        path = SOURCE_TREE / rel
+        path.write_text(branded_strings(path.read_text(encoding='utf-8')), encoding='utf-8', newline='\n')
+
+
+def substitute_names():
+    """Helium's own name substitution over the whole tree, pointed at "Loka"."""
+    loka_substitution()
+    import name_substitution  # noqa: E402
     name_substitution.do_substitution(SOURCE_TREE, tarpath=None, workers=4, dry_run=False)
 
 
@@ -173,6 +197,8 @@ def apply(names: bool = True):
     copy_images()
     if names:
         substitute_names()
+    else:
+        brand_strings()
     print('Loka branding applied. Rebuild: python scripts/loka_build.py incremental')
 
 

@@ -540,7 +540,7 @@ async function attachSidebar(b, pick = () => true) {
 	const isMenu = (role = "") => role.includes("role=menu");
 	return {
 		...d,
-		/** @param {Label} label @param {{ role?: string, button?: "left" | "middle" | "right", at?: number }} [opts] */
+		/** @param {Label} label @param {{ role?: string, button?: "left" | "middle" | "right", at?: number, ctrl?: boolean }} [opts] */
 		async click(label, opts = {}) {
 			if (!isMenu(opts.role)) return d.click(label, opts);
 			const menu = await until(async () => {
@@ -548,13 +548,13 @@ async function attachSidebar(b, pick = () => true) {
 				return page && (await page.has(label, opts.role)) ? page : null;
 			}, 6000);
 			if (!menu) {
-			const seen = [];
-			for (const page of menuPages.values()) {
-				const visible = await page.run(`document.visibilityState`).catch(() => "gone");
-				seen.push(`${visible}: ${show(await page.names("[role=menuitem]").catch(() => []))}`);
+				const seen = [];
+				for (const page of menuPages.values()) {
+					const visible = await page.run(`document.visibilityState`).catch(() => "gone");
+					seen.push(`${visible}: ${show(await page.names("[role=menuitem]").catch(() => []))}`);
+				}
+				throw new Error(`no menu window shows ${show(label)}; menu windows: ${seen.join(" | ") || "none"}`);
 			}
-			throw new Error(`no menu window shows ${show(label)}; menu windows: ${seen.join(" | ") || "none"}`);
-		}
 			return menu.click(label, opts);
 		},
 		/** @param {string} role @returns {Promise<string[]>} */

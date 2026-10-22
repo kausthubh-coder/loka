@@ -1408,7 +1408,7 @@ async function pinning() {
 	const icon = await until(
 		() =>
 			sb.run(
-				`(() => { const row = window.__qa.find("QA Foxtrot", "[role=treeitem]"); const img = row?.querySelector(".fav img"); return img?.getAttribute("src")?.startsWith("data:image/") ? img.getAttribute("src").slice(0, 30) : null; })()`,
+				`(() => { const row = window.__qa.find("QA Foxtrot", "[role=treeitem]"); const img = row?.querySelector(".fav img"); return img?.getAttribute("src")?.startsWith("chrome://loka-sidebar.top-chrome/tab-icon/") && img.complete && img.naturalWidth > 0 ? img.getAttribute("src") : null; })()`,
 			),
 		6000,
 	);

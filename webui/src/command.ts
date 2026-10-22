@@ -68,9 +68,7 @@ export class LokaCommandPage extends LitElement {
 				setSoundPrefs({ on: ui.sound, volume: ui.soundVolume });
 			}
 		});
-		browser.onTabsChanged((tabs) => {
-			this.tabs = tabs;
-		});
+		// A snapshot now and on each open (open()), not every change: the bar is hidden most of the time.
 		void browser.tabs().then((tabs) => {
 			this.tabs = tabs;
 			if (this.mode === "focus-location" && this.opened === 0) {

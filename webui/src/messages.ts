@@ -4,6 +4,7 @@
 
 /** Requests the sidebar sends with chrome.send; the handler registers each in RegisterMessages. */
 export const MESSAGES = [
+	"syncTabs",
 	"getTabs",
 	"getGroups",
 	"getStore",

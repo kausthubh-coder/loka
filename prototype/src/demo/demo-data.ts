@@ -141,7 +141,6 @@ export function DEMO_DOWNLOADS(now: number): NativeDownload[] {
 /** The browser tab playing music: the seed's "Lo-fi beats" tab in Home (see DEMO_LINKS). */
 export const MUSIC_TAB: NativeTab = {
 	id: 101,
-	index: 0,
 	url: "https://music.youtube.com",
 	title: "Lo-fi beats",
 	favicon: "",

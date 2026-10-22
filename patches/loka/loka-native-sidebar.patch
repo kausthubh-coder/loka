@@ -1210,7 +1210,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_MEDIA_WATCHER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.cc
-@@ -0,0 +1,656 @@
+@@ -0,0 +1,831 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1223,8 +1223,12 @@
 +
 +#include "base/functional/bind.h"
 +#include "base/location.h"
++#include "base/memory/ref_counted_memory.h"
++#include "base/numerics/safe_conversions.h"
++#include "base/strings/strcat.h"
++#include "base/strings/string_number_conversions.h"
++#include "base/strings/string_util.h"
 +#include "base/strings/utf_string_conversions.h"
-+#include "base/task/sequenced_task_runner.h"
 +#include "build/build_config.h"
 +#include "chrome/browser/favicon/favicon_utils.h"
 +#include "chrome/browser/profiles/profile.h"
@@ -1237,7 +1241,6 @@
 +#include "chrome/browser/ui/tabs/tab_group_model.h"
 +#include "chrome/browser/ui/tabs/tab_strip_model.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
-+#include "chrome/browser/ui/webui/util/image_util.h"
 +#include "chrome/browser/ui/webui/webui_embedding_context.h"
 +#include "chrome/common/pref_names.h"
 +#include "components/prefs/pref_service.h"
@@ -1257,6 +1260,9 @@
 +#include "ui/base/base_window.h"
 +#include "ui/base/window_open_disposition.h"
 +#include "ui/color/color_provider.h"
++#include "ui/gfx/codec/png_codec.h"
++#include "ui/gfx/image/image_skia_rep.h"
++#include "ui/gfx/skia_util.h"
 +#include "url/gurl.h"
 +
 +#if BUILDFLAG(IS_WIN)
@@ -1296,7 +1302,80 @@
 +  return tab->GetHandle().raw_value();
 +}
 +
++// A page loading in the background changes its title, icon and spinner many
++// times a second; the sidebar hears about them at most once a frame.
++constexpr base::TimeDelta kTabsBatch = base::Milliseconds(16);
++
++// FaviconUrl's addresses: tab-icon/<tab id>-<version>@<scale %>.png.
++constexpr char kTabIconPath[] = "tab-icon/";
++
++// The tab's icon as the browser draws it, or nothing when that would be the
++// stand-in globe: the page shows its own fallback for that.
++gfx::ImageSkia TabIcon(tabs::TabInterface* tab,
++                       const ui::ColorProvider& provider) {
++  TabUIHelper* helper = TabUIHelper::From(tab);
++  if (!helper || !helper->ShouldDisplayFavicon()) {
++    return gfx::ImageSkia();
++  }
++  const ui::ImageModel favicon = helper->GetFavicon();
++  if (favicon.IsEmpty()) {
++    return gfx::ImageSkia();
++  }
++  gfx::ImageSkia image = favicon.Rasterize(&provider);
++  if (image.BackedBySameObjectAs(
++          favicon::GetDefaultFaviconModel().Rasterize(&provider))) {
++    return gfx::ImageSkia();
++  }
++  return image;
++}
++
 +}  // namespace
++
++// static
++bool LokaSidebarHandler::IsTabIconRequest(const std::string& path) {
++  return base::StartsWith(path, kTabIconPath);
++}
++
++// static
++void LokaSidebarHandler::ServeTabIcon(
++    const std::string& path,
++    content::WebUIDataSource::GotDataCallback callback) {
++  // The version in the address only keeps image caches honest; the tab's
++  // icon now is what's served.
++  const std::string_view name =
++      std::string_view(path).substr(std::size(kTabIconPath) - 1);
++  const size_t dash = name.find('-');
++  const size_t at = name.find('@');
++  const size_t dot = name.rfind(".png");
++  int id = 0;
++  int percent = 0;
++  tabs::TabInterface* tab = nullptr;
++  if (dash != std::string_view::npos && at != std::string_view::npos &&
++      dot != std::string_view::npos && dash < at && at < dot &&
++      base::StringToInt(name.substr(0, dash), &id) &&
++      base::StringToInt(name.substr(at + 1, dot - at - 1), &percent) &&
++      percent > 0) {
++    tab = tabs::TabHandle(id).Get();
++  }
++  gfx::ImageSkia image;
++  if (tab && tab->GetContents()) {
++    image = TabIcon(tab, tab->GetContents()->GetColorProvider());
++  }
++  if (image.isNull()) {
++    std::move(callback).Run(nullptr);
++    return;
++  }
++  std::optional<std::vector<uint8_t>> png =
++      gfx::PNGCodec::EncodeBGRASkBitmap(
++          image.GetRepresentation(percent / 100.0f).GetBitmap(),
++          /*discard_transparency=*/false);
++  if (!png) {
++    std::move(callback).Run(nullptr);
++    return;
++  }
++  std::move(callback).Run(
++      base::MakeRefCounted<base::RefCountedBytes>(std::move(*png)));
++}
 +
 +LokaSidebarHandler::LokaSidebarHandler() = default;
 +
@@ -1314,6 +1393,7 @@
 +    web_ui()->RegisterMessageCallback(
 +        name, base::BindRepeating(handler, base::Unretained(this)));
 +  };
++  add("syncTabs", &LokaSidebarHandler::HandleSyncTabs);
 +  add("getTabs", &LokaSidebarHandler::HandleGetTabs);
 +  add("getGroups", &LokaSidebarHandler::HandleGetGroups);
 +  add("getStore", &LokaSidebarHandler::HandleGetStore);
@@ -1381,7 +1461,15 @@
 +    observed_ = nullptr;
 +  }
 +  weak_factory_.InvalidateWeakPtrs();
-+  tabs_change_pending_ = false;
++  // A reloaded page starts from nothing and hears everything again.
++  watching_tabs_ = false;
++  tabs_timer_.Stop();
++  sent_tabs_.clear();
++  sent_order_.clear();
++  sent_groups_ = base::ListValue();
++  sent_media_ = base::ListValue();
++  sent_extensions_ = base::ListValue();
++  sent_store_ = base::DictValue();
 +}
 +
 +void LokaSidebarHandler::StartObserving() {
@@ -1444,31 +1532,31 @@
 +  return std::nullopt;
 +}
 +
-+std::string LokaSidebarHandler::FaviconDataUrl(tabs::TabInterface* tab) {
-+  TabUIHelper* helper = TabUIHelper::From(tab);
-+  if (!helper || !helper->ShouldDisplayFavicon()) {
++std::string LokaSidebarHandler::FaviconUrl(tabs::TabInterface* tab) {
++  gfx::ImageSkia image =
++      TabIcon(tab, web_ui()->GetWebContents()->GetColorProvider());
++  if (image.isNull()) {
 +    return std::string();
 +  }
-+  const ui::ImageModel favicon = helper->GetFavicon();
-+  if (favicon.IsEmpty()) {
-+    return std::string();
++  const float scale = web_ui()->GetDeviceScaleFactor();
++  // A new picture gets a new address, so no image cache shows an old one;
++  // the same picture keeps its address, so the row doesn't load it again.
++  // Icons drawn from vector art are new objects each time, hence the pixels.
++  static int next_version = 0;
++  auto [it, inserted] = favicons_.try_emplace(TabId(tab), image, 0);
++  auto& [cached, version] = it->second;
++  if (inserted || (!cached.BackedBySameObjectAs(image) &&
++                   !gfx::BitmapsAreEqual(
++                       cached.GetRepresentation(scale).GetBitmap(),
++                       image.GetRepresentation(scale).GetBitmap()))) {
++    version = ++next_version;
 +  }
-+  const ui::ColorProvider& provider =
-+      web_ui()->GetWebContents()->GetColorProvider();
-+  gfx::ImageSkia image = favicon.Rasterize(&provider);
-+  // The browser's stand-in globe isn't the site's icon; the page shows its
-+  // own fallback for that.
-+  if (image.BackedBySameObjectAs(
-+          favicon::GetDefaultFaviconModel().Rasterize(&provider))) {
-+    return std::string();
-+  }
-+  auto& cached = favicons_[TabId(tab)];
-+  if (!cached.second.empty() && cached.first.BackedBySameObjectAs(image)) {
-+    return cached.second;
-+  }
-+  cached = {image, webui::EncodePNGAndMakeDataURI(
-+                       image, web_ui()->GetDeviceScaleFactor())};
-+  return cached.second;
++  cached = image;
++  return base::StrCat({kLokaSidebarURL, kTabIconPath,
++                       base::NumberToString(TabId(tab)), "-",
++                       base::NumberToString(version), "@",
++                       base::NumberToString(base::ClampRound(scale * 100)),
++                       ".png"});
 +}
 +
 +base::DictValue LokaSidebarHandler::TabData(tabs::TabInterface* tab,
@@ -1480,13 +1568,14 @@
 +  if ((!url.is_valid() || url.is_empty()) && helper) {
 +    url = helper->GetVisibleURL();
 +  }
++  // No index: a tab opened at the front would change every tab's, and the
++  // tabs' order travels on its own ("order" in TabChanges).
 +  base::DictValue data;
 +  data.Set("id", TabId(tab));
-+  data.Set("index", index);
 +  data.Set("url", url.spec());
 +  data.Set("title",
 +           helper ? base::UTF16ToUTF8(helper->GetTitle()) : std::string());
-+  data.Set("favicon", FaviconDataUrl(tab));
++  data.Set("favicon", FaviconUrl(tab));
 +  data.Set("active", tab_strip->active_index() == index);
 +  data.Set("pinned", tab->IsPinned());
 +  data.Set("loading", contents->IsLoading());
@@ -1508,16 +1597,63 @@
 +  if (!tab_strip) {
 +    return tabs;
 +  }
-+  std::map<int32_t, std::pair<gfx::ImageSkia, std::string>> alive;
++  std::set<int32_t> ids;
 +  for (int i = 0; i < tab_strip->count(); ++i) {
++    tabs.Append(TabData(tab_strip->GetTabAtIndex(i), i));
++    ids.insert(TabId(tab_strip->GetTabAtIndex(i)));
++  }
++  std::erase_if(favicons_, [&ids](const auto& entry) {
++    return !ids.contains(entry.first);
++  });
++  return tabs;
++}
++
++base::DictValue LokaSidebarHandler::TabChanges() {
++  base::DictValue changes;
++  TabStripModel* tab_strip = GetTabStrip();
++  std::map<int32_t, base::DictValue> now;
++  std::vector<int32_t> order;
++  base::ListValue changed;
++  for (int i = 0; tab_strip && i < tab_strip->count(); ++i) {
 +    tabs::TabInterface* tab = tab_strip->GetTabAtIndex(i);
-+    tabs.Append(TabData(tab, i));
-+    if (auto it = favicons_.find(TabId(tab)); it != favicons_.end()) {
-+      alive.insert(*it);
++    base::DictValue data = TabData(tab, i);
++    auto heard = sent_tabs_.find(TabId(tab));
++    if (heard == sent_tabs_.end() || heard->second != data) {
++      changed.Append(data.Clone());
++    }
++    order.push_back(TabId(tab));
++    now.emplace(TabId(tab), std::move(data));
++  }
++  base::ListValue removed;
++  for (const auto& [id, data] : sent_tabs_) {
++    if (!now.contains(id)) {
++      removed.Append(id);
 +    }
 +  }
-+  favicons_ = std::move(alive);
-+  return tabs;
++  if (!changed.empty()) {
++    changes.Set("tabs", std::move(changed));
++  }
++  if (!removed.empty()) {
++    changes.Set("removed", std::move(removed));
++  }
++  if (order != sent_order_) {
++    base::ListValue ids;
++    for (int32_t id : order) {
++      ids.Append(id);
++    }
++    changes.Set("order", std::move(ids));
++  }
++  base::ListValue groups = GroupList();
++  if (groups != sent_groups_) {
++    changes.Set("groups", groups.Clone());
++    sent_groups_ = std::move(groups);
++  }
++  std::erase_if(favicons_, [&now](const auto& entry) {
++    return !now.contains(entry.first);
++  });
++  sent_tabs_ = std::move(now);
++  sent_order_ = std::move(order);
++  return changes;
 +}
 +
 +base::ListValue LokaSidebarHandler::GroupList() {
@@ -1568,29 +1704,58 @@
 +}
 +
 +void LokaSidebarHandler::ScheduleTabsChanged() {
-+  if (tabs_change_pending_ || !IsJavascriptAllowed()) {
++  if (!watching_tabs_ || !IsJavascriptAllowed() || tabs_timer_.IsRunning()) {
 +    return;
 +  }
-+  tabs_change_pending_ = true;
-+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-+      FROM_HERE, base::BindOnce(&LokaSidebarHandler::SendTabsChanged,
-+                                weak_factory_.GetWeakPtr()));
++  // Right away (after the current batch of tab strip changes) unless the
++  // last send was less than a frame ago.
++  const base::TimeDelta wait =
++      std::max(base::TimeDelta(),
++               kTabsBatch - (base::TimeTicks::Now() - tabs_sent_at_));
++  tabs_timer_.Start(FROM_HERE, wait,
++                    base::BindOnce(&LokaSidebarHandler::SendTabsChanged,
++                                   base::Unretained(this)));
 +}
 +
 +void LokaSidebarHandler::SendTabsChanged() {
-+  tabs_change_pending_ = false;
-+  if (!IsJavascriptAllowed()) {
++  tabs_timer_.Stop();
++  if (!watching_tabs_ || !IsJavascriptAllowed()) {
 +    return;
 +  }
++  tabs_sent_at_ = base::TimeTicks::Now();
 +  // The sidebar can be moved to another window's panel; follow it.
 +  StartObserving();
-+  FireWebUIListener("tabs-changed", TabList());
++  base::DictValue changes = TabChanges();
++  if (!changes.empty()) {
++    FireWebUIListener("tabs-changed", changes);
++  }
 +  // What's playing changes with the tabs' sound.
-+  FireWebUIListener("media-changed", MediaList());
++  SendMediaChanged();
 +}
 +
 +void LokaSidebarHandler::OnStoreChanged() {
-+  FireWebUIListener("store-changed", StoreValue());
++  // Only the keys that changed, and never back to the page that wrote them.
++  base::DictValue store = StoreValue();
++  base::DictValue changed;
++  for (const auto [key, value] : store) {
++    const base::Value* heard = sent_store_.Find(key);
++    if (!heard || *heard != value) {
++      changed.Set(key, value.Clone());
++    }
++  }
++  sent_store_ = std::move(store);
++  if (!setting_store_ && !changed.empty()) {
++    FireWebUIListener("store-changed", changed);
++  }
++}
++
++void LokaSidebarHandler::HandleSyncTabs(const base::ListValue& args) {
++  // The page's copy of the tabs is current once this answers: whatever
++  // changed is sent first ("tabs-changed"), everything on the first call.
++  AllowJavascript();
++  watching_tabs_ = true;
++  SendTabsChanged();
++  ResolveJavascriptCallback(args[0], base::Value());
 +}
 +
 +void LokaSidebarHandler::HandleGetTabs(const base::ListValue& args) {
@@ -1605,7 +1770,8 @@
 +
 +void LokaSidebarHandler::HandleGetStore(const base::ListValue& args) {
 +  AllowJavascript();
-+  ResolveJavascriptCallback(args[0], StoreValue());
++  sent_store_ = StoreValue();
++  ResolveJavascriptCallback(args[0], sent_store_);
 +}
 +
 +void LokaSidebarHandler::HandleSetStore(const base::ListValue& args) {
@@ -1613,12 +1779,17 @@
 +    return;
 +  }
 +  Profile* profile = Profile::FromWebUI(web_ui());
-+  ScopedDictPrefUpdate update(profile->GetPrefs(), kLokaSidebarStorePref);
-+  if (args[1].is_string()) {
-+    update->Set(args[0].GetString(), args[1].GetString());
-+  } else {
-+    update->Remove(args[0].GetString());
++  // The pref tells its observers as the update ends, this handler included.
++  setting_store_ = true;
++  {
++    ScopedDictPrefUpdate update(profile->GetPrefs(), kLokaSidebarStorePref);
++    if (args[1].is_string()) {
++      update->Set(args[0].GetString(), args[1].GetString());
++    } else {
++      update->Remove(args[0].GetString());
++    }
 +  }
++  setting_store_ = false;
 +}
 +
 +void LokaSidebarHandler::HandleCreateTab(const base::ListValue& args) {
@@ -1640,6 +1811,8 @@
 +          ? tabs::TabInterface::MaybeGetFromContents(
 +                params.navigated_or_inserted_contents)
 +          : nullptr;
++  // The page hears of the new tab before it gets its id.
++  SendTabsChanged();
 +  ResolveJavascriptCallback(args[0],
 +                            tab ? base::Value(TabId(tab)) : base::Value());
 +}
@@ -1733,6 +1906,8 @@
 +  } else {
 +    group = tab_strip->AddToNewGroup(indices);
 +  }
++  // The page hears of the group before it gets its number.
++  SendTabsChanged();
 +  ResolveJavascriptCallback(args[0], base::Value(GroupNumber(*group)));
 +}
 +
@@ -1869,7 +2044,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h
-@@ -0,0 +1,239 @@
+@@ -0,0 +1,268 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1882,8 +2057,10 @@
 +
 +#include <memory>
 +#include <set>
++#include <vector>
 +
 +#include "base/time/time.h"
++#include "base/timer/timer.h"
 +
 +#include "base/memory/raw_ptr.h"
 +#include "base/memory/weak_ptr.h"
@@ -1901,6 +2078,7 @@
 +#include "extensions/browser/extension_host.h"
 +#include "extensions/browser/extension_host_observer.h"
 +#include "components/tab_groups/tab_group_id.h"
++#include "content/public/browser/web_ui_data_source.h"
 +#include "content/public/browser/web_ui_message_handler.h"
 +#include "ui/gfx/image/image_skia.h"
 +
@@ -1916,7 +2094,8 @@
 +// by a number this handler hands out, so the page works with plain numbers.
 +//
 +// Page -> browser (chrome.send):
-+//   getTabs(cb), getGroups(cb), getStore(cb), setStore(key, value|null),
++//   syncTabs(cb), getTabs(cb), getGroups(cb), getStore(cb),
++//   setStore(key, value|null),
 +//   createTab(cb, url, active), activateTab(id), closeTab(id),
 +//   navigateTab(id, url), goBack(id), goForward(id), reload(id),
 +//   setMuted(id, muted), groupTabs(cb, ids, groupId|-1),
@@ -1928,8 +2107,10 @@
 +//   mediaAction(tabId, action), suggest(query), setSidebarPinned(on),
 +//   getSidebarPinned(cb), setColorScheme("light"|"dark"|"system")
 +// Browser -> page (WebUI listeners):
-+//   "tabs-changed" (tabs), "store-changed" (store), "extensions-changed",
-+//   "downloads-changed", "media-changed", "suggestions" (query, list),
++//   "tabs-changed" ({tabs?, removed?, order?, groups?}, only what changed
++//   since the last one, after syncTabs), "store-changed" (the keys another
++//   page changed), "extensions-changed", "downloads-changed",
++//   "media-changed", "suggestions" (query, list),
 +//   "command" ("new-tab"|"focus-location")
 +class LokaSidebarHandler : public content::WebUIMessageHandler,
 +                           public TabStripModelObserver,
@@ -1948,6 +2129,12 @@
 +  // False while that page hasn't loaded yet.
 +  static bool DeliverCommandBarCommand(BrowserWindowInterface* browser,
 +                                       const std::string& command);
++  // A tab's icon as a PNG, at the address FaviconUrl gives it, so icons
++  // load as images instead of riding along in every message. For the
++  // sidebar's data source (SetRequestFilter).
++  static bool IsTabIconRequest(const std::string& path);
++  static void ServeTabIcon(const std::string& path,
++                           content::WebUIDataSource::GotDataCallback callback);
 +
 +  LokaSidebarHandler();
 +  LokaSidebarHandler(const LokaSidebarHandler&) = delete;
@@ -2041,16 +2228,20 @@
 +
 +  base::ListValue TabList();
 +  base::DictValue TabData(tabs::TabInterface* tab, int index);
-+  std::string FaviconDataUrl(tabs::TabInterface* tab);
++  std::string FaviconUrl(tabs::TabInterface* tab);
 +  base::ListValue GroupList();
 +  base::DictValue StoreValue();
++  // What changed in the window's tabs and groups since the page last heard,
++  // and remembers it as heard. Empty when nothing did.
++  base::DictValue TabChanges();
 +
-+  // Sends the tabs once, after the current batch of tab strip changes.
++  // Sends what changed in the tabs, at most once a frame (kTabsBatch).
 +  void ScheduleTabsChanged();
 +  void SendTabsChanged();
 +  void OnStoreChanged();
 +  void StartObserving();
 +
++  void HandleSyncTabs(const base::ListValue& args);
 +  void HandleGetTabs(const base::ListValue& args);
 +  void HandleGetGroups(const base::ListValue& args);
 +  void HandleGetStore(const base::ListValue& args);
@@ -2073,12 +2264,25 @@
 +
 +  raw_ptr<TabStripModel> observed_ = nullptr;
 +  PrefChangeRegistrar pref_change_registrar_;
-+  bool tabs_change_pending_ = false;
++  // Only a page that called syncTabs hears "tabs-changed" (the sidebar). The
++  // command bar, Settings and the empty tab ask when they need the tabs.
++  bool watching_tabs_ = false;
++  base::OneShotTimer tabs_timer_;
++  base::TimeTicks tabs_sent_at_;
++  // What the page has heard, to send it only what changed.
++  std::map<int32_t, base::DictValue> sent_tabs_;
++  std::vector<int32_t> sent_order_;
++  base::ListValue sent_groups_;
++  base::ListValue sent_media_;
++  base::ListValue sent_extensions_;
++  base::DictValue sent_store_;
++  // True while this page's own setStore writes the pref: it knows the value.
++  bool setting_store_ = false;
 +  std::map<tab_groups::TabGroupId, int> group_numbers_;
 +  int next_group_number_ = 1;
-+  // Each tab's last favicon and its data: URL, so unchanged icons aren't
-+  // encoded again on every change.
-+  std::map<int32_t, std::pair<gfx::ImageSkia, std::string>> favicons_;
++  // Each tab's last favicon and its version in FaviconUrl's address, which
++  // changes only when the picture does.
++  std::map<int32_t, std::pair<gfx::ImageSkia, int>> favicons_;
 +
 +  base::ScopedObservation<ToolbarActionsModel, ToolbarActionsModel::Observer>
 +      toolbar_observation_{this};
@@ -2111,7 +2315,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_HANDLER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler_features.cc
-@@ -0,0 +1,879 @@
+@@ -0,0 +1,891 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -2440,8 +2644,14 @@
 +                         return;
 +                       }
 +                       self->extensions_change_pending_ = false;
-+                       self->FireWebUIListener("extensions-changed",
-+                                               self->ExtensionList());
++                       // Pages loading in other tabs update extension
++                       // actions all the time; most change nothing shown.
++                       base::ListValue list = self->ExtensionList();
++                       if (list == self->sent_extensions_) {
++                         return;
++                       }
++                       self->sent_extensions_ = list.Clone();
++                       self->FireWebUIListener("extensions-changed", list);
 +                     },
 +                     weak_factory_.GetWeakPtr()));
 +}
@@ -2775,7 +2985,7 @@
 +                           : contents->GetLastCommittedURL().host());
 +    data.Set("artwork", media && !media->artwork().empty()
 +                            ? media->artwork()
-+                            : FaviconDataUrl(tab));
++                            : FaviconUrl(tab));
 +    data.Set("playing", playing);
 +    data.Set("canPrevious",
 +             media && media->Can(MediaSessionAction::kPreviousTrack));
@@ -2802,9 +3012,15 @@
 +
 +void LokaSidebarHandler::SendMediaChanged() {
 +  media_change_pending_ = false;
-+  if (IsJavascriptAllowed()) {
-+    FireWebUIListener("media-changed", MediaList());
++  if (!IsJavascriptAllowed()) {
++    return;
 +  }
++  base::ListValue list = MediaList();
++  if (list == sent_media_) {
++    return;
++  }
++  sent_media_ = list.Clone();
++  FireWebUIListener("media-changed", list);
 +}
 +
 +void LokaSidebarHandler::HandleGetMedia(const base::ListValue& args) {
@@ -2993,7 +3209,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.cc
-@@ -0,0 +1,192 @@
+@@ -0,0 +1,197 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -3004,6 +3220,7 @@
 +#include <string>
 +#include <string_view>
 +
++#include "base/functional/bind.h"
 +#include "chrome/browser/profiles/profile.h"
 +#include "chrome/browser/ui/webui/extensions/extension_icon_source.h"
 +#include "chrome/browser/ui/webui/favicon_source.h"
@@ -3047,6 +3264,10 @@
 +  source->OverrideContentSecurityPolicy(
 +      network::mojom::CSPDirectiveName::StyleSrc,
 +      "style-src 'self' 'unsafe-inline';");
++  // Loaded tabs' icons, at the addresses the handler sends (tab-icon/...).
++  source->SetRequestFilter(
++      base::BindRepeating(&LokaSidebarHandler::IsTabIconRequest),
++      base::BindRepeating(&LokaSidebarHandler::ServeTabIcon));
 +
 +  content::URLDataSource::Add(
 +      profile, std::make_unique<FaviconSource>(

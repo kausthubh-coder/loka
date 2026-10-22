@@ -137,6 +137,7 @@ function suggestionsFor(query: string): NativeSuggestion[] {
 export const fakeBrowser: Browser = {
 	tabs: async () => tabs(),
 	groups: async () => [],
+	syncTabs: async () => ({ tabs: tabs(), groups: [] }),
 	createTab: async (url, active) => {
 		log("createTab", url, active);
 		return null;

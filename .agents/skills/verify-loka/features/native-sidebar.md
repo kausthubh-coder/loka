@@ -14,9 +14,12 @@ before any browser window. The UI is never delivered as an extension.
   in its top bar (`windowAction`), and the bar's empty space moves the window (`startWindowDrag`). Its top strip
   answers WM_NCHITTEST as page, and its top edge still resizes. On macOS, and for setup opened in a tab, the page asks
   `getWindowFrame`, gets "system" and draws none of these.
-- `native-tabs`: every tab in the window is a row; tabs opened from outside the sidebar join the current space.
-- `native-favicon`: a loaded tab's row shows its page's own icon (a data: URL from `getTabs`); an unloaded one asks
-  the favicon cache (`chrome://favicon2`), which answers the default globe when it knows nothing.
+- `native-tabs`: every tab in the window is a row; tabs opened from outside the sidebar join the current space. The
+  sidebar calls `syncTabs`, then hears only what changed (`tabs-changed`: changed tabs, removed ids, the order and
+  the groups when they change), at most once a frame.
+- `native-favicon`: a loaded tab's row shows its page's own icon, an image the sidebar's own host serves
+  (`chrome://loka-sidebar.top-chrome/tab-icon/<tab>-<version>@<scale>.png`, the `favicon` in `getTabs`); an unloaded
+  one asks the favicon cache (`chrome://favicon2`), which answers the default globe when it knows nothing.
 - `native-sound`: a tab playing sound gets a speaker on its row; it goes about two seconds after the sound stops.
 - `native-media`: the playing tab is in `getMedia`; `mediaAction` pause and play switch it like the page's controls.
 - `native-extensions`: `getExtensions` lists installed extensions with their toolbar icon and pinned state; the

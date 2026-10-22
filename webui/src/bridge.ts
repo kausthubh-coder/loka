@@ -20,10 +20,12 @@ const send = (message: Message, args: unknown[]) =>
 /** A tab in this window, as the browser reports it. Ids are the browser's tab handles. */
 export interface NativeTab {
 	id: number;
-	index: number;
 	url: string;
 	title: string;
-	/** The tab's own favicon as a data: URL, or "" when it has none yet. */
+	/**
+	 * The tab's own favicon, an image the sidebar's host serves (chrome://loka-sidebar.top-chrome/tab-icon/...), or ""
+	 * when it has none yet. The address changes only when the picture does.
+	 */
 	favicon: string;
 	active: boolean;
 	pinned: boolean;
@@ -40,6 +42,17 @@ export interface NativeGroup {
 	id: number;
 	title: string;
 	collapsed: boolean;
+}
+
+/** What changed in the window's tabs since the page last heard (the handler's "tabs-changed"). */
+interface TabChanges {
+	/** Tabs that are new or changed, whole. */
+	tabs?: NativeTab[];
+	removed?: number[];
+	/** Every tab's id in the window's order, when the order changed. */
+	order?: number[];
+	/** Every group, when any changed. */
+	groups?: NativeGroup[];
 }
 
 export type GroupColor = "grey" | "blue" | "red" | "yellow" | "green" | "pink" | "purple" | "cyan" | "orange";
@@ -169,9 +182,36 @@ function on(event: BrowserEvent, listener: (...args: unknown[]) => void): () => 
 	return () => set.delete(listener);
 }
 
+/**
+ * This window's tabs and groups as the page last heard, kept by "tabs-changed" once syncTabs has started it. Listening
+ * here first means every other listener sees the copy with the change applied.
+ */
+const heard = { tabs: new Map<number, NativeTab>(), order: [] as number[], groups: [] as NativeGroup[] };
+
+function heardTabs(): NativeTab[] {
+	return heard.order.flatMap((id) => heard.tabs.get(id) ?? []);
+}
+
+on("tabs-changed", (c) => {
+	const changes = c as TabChanges;
+	for (const id of changes.removed ?? []) heard.tabs.delete(id);
+	for (const tab of changes.tabs ?? []) heard.tabs.set(tab.id, tab);
+	if (changes.order) heard.order = changes.order;
+	if (changes.groups) heard.groups = changes.groups;
+});
+
 export const browser = {
+	/** A snapshot of the window's tabs, for a page that looks now and then (the command bar). */
 	tabs: () => ask<NativeTab[]>("getTabs"),
 	groups: () => ask<NativeGroup[]>("getGroups"),
+	/**
+	 * The window's tabs and groups, current as of now: the browser sends what changed before it answers. The first
+	 * call starts tabs-changed for this page (onTabsChanged); after that it costs one small message each way.
+	 */
+	syncTabs: async (): Promise<{ tabs: NativeTab[]; groups: NativeGroup[] }> => {
+		await ask("syncTabs");
+		return { tabs: heardTabs(), groups: heard.groups };
+	},
 	/** Opens a tab and returns its id; an empty url opens the browser's new tab page. */
 	createTab: (url: string, active = true) => ask<number | null>("createTab", url, active),
 	activateTab: (id: number) => tell("activateTab", id),
@@ -197,7 +237,9 @@ export const browser = {
 	store: () => ask<Record<string, string>>("getStore"),
 	/** Saves a value in the profile, shared by every window; null removes it. */
 	setStore: (key: string, value: string | null) => tell("setStore", key, value),
-	onTabsChanged: (listener: (tabs: NativeTab[]) => void) => on("tabs-changed", (t) => listener(t as NativeTab[])),
+	/** The window's tabs, whole, each time something in them changes (after syncTabs). */
+	onTabsChanged: (listener: (tabs: NativeTab[]) => void) => on("tabs-changed", () => listener(heardTabs())),
+	/** The keys another page changed in the store (never this page's own setStore). */
 	onStoreChanged: (listener: (store: Record<string, string>) => void) =>
 		on("store-changed", (s) => listener(s as Record<string, string>)),
 

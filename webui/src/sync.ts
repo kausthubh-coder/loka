@@ -31,8 +31,10 @@ let written = "";
 let shownSpace = "";
 let started: Promise<void> | null = null;
 let queue: Promise<unknown> = Promise.resolve();
-/** The tabs as last seen, to turn each new snapshot into created, removed, updated and activated. */
+/** The tabs as last seen, to turn each change into created, removed, updated and activated. */
 let seen = new Map<number, NativeTab>();
+/** Whether the start has taken its look at the tabs, which later changes are compared with. */
+let looked = false;
 /**
  * Empty tabs this window opened, by browser tab id, until the browser reports them. They start on about:blank, so
  * their address can't say yet that they are never one of Loka's tabs. The tab's creation event is queued behind the
@@ -73,8 +75,9 @@ function asBrowserTab(t: NativeTab): BrowserTab {
 function start(): Promise<void> {
 	started ??= (async () => {
 		const saved = await readState();
-		const tabs = await browser.tabs();
+		const { tabs } = await browser.syncTabs();
 		see(tabs);
+		looked = true;
 		let state: BrowserState;
 		[state, live] = adoptTabs(saved, tabs.map(asBrowserTab), Date.now());
 		written = await writeState(state);
@@ -89,8 +92,10 @@ function see(tabs: NativeTab[]) {
 }
 
 async function reconcile(state: BrowserState, pass: Pass) {
-	const tabs = (await browser.tabs()).map(asBrowserTab);
-	const known = new Set((await browser.groups()).map((g) => g.id));
+	// Current as of now, so what the last pass asked of the browser is in it.
+	const current = await browser.syncTabs();
+	const tabs = current.tabs.map(asBrowserTab);
+	const known = new Set(current.groups.map((g) => g.id));
 	groups = Object.fromEntries(Object.entries(groups).filter(([, g]) => known.has(g.id)));
 	// The browser is never left on another space's tab: after a switch, or when the tab on screen was just moved to
 	// another space, it shows this space's tab (or a new one), as on a switch.
@@ -142,14 +147,20 @@ async function run(op: Op) {
 	}
 }
 
-/** Turns a fresh snapshot of the window's tabs into the events the model understands. */
+/**
+ * Turns the window's tabs, each time they change, into the events the model understands. One job for all of them, so
+ * twenty background tabs retitling at once save the spaces once, not twenty times. Until the start has taken its
+ * own look at the tabs, there is nothing to compare with: the start covers them.
+ */
 function onTabs(tabs: NativeTab[]) {
+	if (!looked) return;
 	const before = seen;
 	see(tabs);
+	const changes: ((s: BrowserState) => BrowserState)[] = [];
 	for (const t of tabs) {
 		const old = before.get(t.id);
 		if (!old) {
-			void serial("browser", (s) => {
+			changes.push((s) => {
 				if (emptyTabs.delete(t.id)) return s;
 				const [state, next] = tabCreated(s, live, asBrowserTab(t), Date.now());
 				live = next;
@@ -158,22 +169,23 @@ function onTabs(tabs: NativeTab[]) {
 			continue;
 		}
 		if (old.title !== t.title || old.url !== t.url) {
-			void serial("browser", (s) => {
+			changes.push((s) => {
 				const [state, next] = tabUpdated(s, live, asBrowserTab(t), Date.now());
 				live = next;
 				return state;
 			});
 		}
-		if (t.active && !old.active) void serial("browser", (s) => tabActivated(s, live, t.id, Date.now()));
+		if (t.active && !old.active) changes.push((s) => tabActivated(s, live, t.id, Date.now()));
 	}
 	for (const id of before.keys()) {
 		if (seen.has(id)) continue;
-		void serial("browser", (s) => {
+		changes.push((s) => {
 			const [state, next] = tabRemoved(s, live, id);
 			live = next;
 			return state;
 		});
 	}
+	if (changes.length) void serial("browser", (s) => changes.reduce((state, change) => change(state), s));
 }
 
 /** Starts the sync for this window. `changedHere` is told when the sidebar's own edits have been written. */

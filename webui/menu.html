@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="color-scheme" content="light dark" />
+		<title>Loka menu</title>
+		<!-- The browser shows this in a transparent window at the pointer: nothing but the menu is painted. -->
+		<style>
+			html,
+			body {
+				margin: 0;
+				height: 100%;
+				background: transparent;
+				overflow: hidden;
+				font:
+					13px / 1.4 system-ui,
+					"Segoe UI",
+					sans-serif;
+				-webkit-font-smoothing: antialiased;
+			}
+		</style>
+		<script type="module" src="./src/menu.ts"></script>
+	</head>
+	<body>
+		<loka-menu-page></loka-menu-page>
+	</body>
+</html>

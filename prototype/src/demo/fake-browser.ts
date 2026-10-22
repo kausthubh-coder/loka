@@ -15,6 +15,7 @@ import type {
 	NativeMedia,
 	NativeSuggestion,
 	NativeTab,
+	ShownMenu,
 } from "../../../webui/src/bridge";
 import { seedState } from "../features/sidebar/sidebar.seed";
 import type { SpacesDelta } from "../features/sidebar/spaces-delta.logic";
@@ -266,6 +267,14 @@ export const fakeBrowser: Browser = {
 		emit("command-picked", pick);
 	},
 	onCommandPicked: (listener) => on("command-picked", (p) => listener(p as CommandPick)),
+	// The prototype draws menus in the sidebar itself; it has no menu window.
+	showMenu: (menu, x, y) => log("showMenu", menu, x, y),
+	onMenuPicked: (listener) => on("menu-picked", (p) => listener(p as number[])),
+	onMenuClosed: (listener) => on("menu-closed", () => listener()),
+	onMenuShow: (listener) => on("menu-show", (m) => listener(m as ShownMenu)),
+	menuReady: (width, height) => log("menuReady", width, height),
+	menuPicked: (path) => log("menuPicked", path),
+	closeMenu: () => log("closeMenu"),
 };
 
 /** The prototype draws a stand-in popup where an extension's real one would open. */

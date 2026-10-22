@@ -81,6 +81,7 @@ const evidence = join(repo, ".agents", "verify-runs", `${stamp}-flows`);
 const profile = join(BUILD_DIR, `profile-qa-${stamp}`);
 const extensionDir = join(BUILD_DIR, `profile-qa-${stamp}-extension`);
 const SIDEBAR_URL = "chrome://loka-sidebar.top-chrome/";
+const MENU_URL = "chrome://loka-sidebar.top-chrome/menu.html";
 /** In the sidebar page: the sidebar component's shadow root. */
 const SIDEBAR_ROOT = `document.querySelector("loka-panel")?.shadowRoot?.querySelector("loka-sidebar")?.shadowRoot`;
 const UBLOCK = "blockjmkbacgjkknlgpkjjiijinjdanf";
@@ -504,8 +505,53 @@ async function attachSidebar(b, pick = () => true) {
 	const ask = (message, ...args) => evaluate(s, askExpression(message, args));
 	/** @returns {Promise<BrowserState>} */
 	const state = async () => (await ask("getSpaces"))?.state ?? null;
+	/**
+	 * The sidebar's menus open in the browser's menu window (menu.html, one kept loaded per window), not in the sidebar
+	 * page. Whatever asks for a menu item goes to the menu page showing one; nothing else changes for the checks.
+	 */
+	/** @type {Map<string, ReturnType<typeof driver>>} */
+	const menuPages = new Map();
+	const shownMenu = async () => {
+		for (const t of await b.targets()) {
+			if (!t.url.startsWith(MENU_URL)) continue;
+			let page = menuPages.get(t.id);
+			if (!page) {
+				const ms = await connect(t.webSocketDebuggerUrl);
+				await ms.call("Runtime.enable");
+				page = driver(ms);
+				menuPages.set(t.id, page);
+			}
+			const visible = await page.run(`document.visibilityState === "visible"`).catch(() => false);
+			if (visible && (await page.names("[role=menuitem]").catch(() => [])).length) return page;
+		}
+		return null;
+	};
+	/** @param {string} [role] */
+	const isMenu = (role = "") => role.includes("role=menu");
 	return {
 		...d,
+		/** @param {Label} label @param {{ role?: string, button?: "left" | "middle" | "right", at?: number }} [opts] */
+		async click(label, opts = {}) {
+			if (!isMenu(opts.role)) return d.click(label, opts);
+			const menu = await until(async () => {
+				const page = await shownMenu();
+				return page && (await page.has(label, opts.role)) ? page : null;
+			}, 6000);
+			if (!menu) throw new Error(`no menu window shows ${show(label)}`);
+			return menu.click(label, opts);
+		},
+		/** @param {string} role @returns {Promise<string[]>} */
+		async names(role) {
+			if (!isMenu(role)) return d.names(role);
+			const menu = await until(shownMenu, 3000);
+			return menu ? menu.names(role) : [];
+		},
+		/** @param {Label} label @param {string} [role] */
+		async has(label, role = "") {
+			if (!isMenu(role)) return d.has(label, role);
+			const menu = await shownMenu();
+			return menu ? menu.has(label, role) : false;
+		},
 		ask,
 		/** @param {string} message @param {unknown[]} args */
 		tell: (message, ...args) => evaluate(s, `(chrome.send(${JSON.stringify(message)}, ${JSON.stringify(args)}), true)`),

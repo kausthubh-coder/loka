@@ -27,14 +27,29 @@ import { builtSpaceIds, rowsMoved } from "./lists.logic";
 import { arrivePath, leavePath, ORBIT, type OrbitPlace, orbitFrames, orbitPoint } from "./orbit.logic";
 import { planet } from "./planet";
 import {
+	essentialsNotice,
+	inSidebarOrder,
+	NO_SELECTION,
+	pruneSelection,
+	type Selection,
+	selectableLists,
+	selectRange,
+	stepWithin,
+	toggleSelected,
+} from "./selection.logic";
+import {
 	activeSpace,
 	activeTab,
 	type BrowserState,
+	ESSENTIALS_LIMIT,
 	exportState,
 	type FolderNode,
+	findFolder,
 	folderHolds,
 	groupIntoFolder,
 	importState,
+	moveItem,
+	moveItems,
 	newId,
 	type PinnedRow,
 	type Place,
@@ -114,6 +129,8 @@ export class LokaSidebar extends LitElement {
 		downloads: { state: true },
 		unseenDownload: { state: true },
 		toast: { state: true },
+		notice: { state: true },
+		selection: { state: true },
 		playing: { attribute: false },
 		live: { attribute: false },
 		browser: { attribute: false },
@@ -145,6 +162,13 @@ export class LokaSidebar extends LitElement {
 	/** The download that just finished, said for a moment above the bottom row. */
 	toast: NativeDownload | null = null;
 	private toastTimer = 0;
+	/** A short line said for a moment in the toast's place: why Add to Essentials added fewer than asked. */
+	notice: string | null = null;
+	private noticeTimer = 0;
+	/** The rows picked with Ctrl+click, Shift+click or Shift+arrow (selection.logic.ts). Never saved. */
+	selection: Selection = NO_SELECTION;
+	/** A row to focus after the next render: the one taking the place of tabs the Delete key closed. */
+	private focusKey: string | null = null;
 	private stopWatching: (() => void)[] = [];
 	playing: NowPlaying | null = null;
 	/** What the browser says about each loaded tab: its page's icon, loading, playing sound. */
@@ -230,11 +254,47 @@ export class LokaSidebar extends LitElement {
 		this.dispatchEvent(new CustomEvent("loka-tab-closed", { detail: tabId, bubbles: true, composed: true }));
 	}
 
+	/** Closes several tabs as one change, as closing each would: open ones go to the archive, pinned ones unload. */
+	private closeTabsFor(tabIds: TabId[]) {
+		playCue("tab-close");
+		this.selection = NO_SELECTION;
+		this.apply({ op: "closeTabs", tabIds, now: Date.now() });
+		for (const tabId of tabIds) {
+			this.dispatchEvent(new CustomEvent("loka-tab-closed", { detail: tabId, bubbles: true, composed: true }));
+		}
+	}
+
+	/** Says something short for a moment where the finished download shows. */
+	private say(text: string | null) {
+		if (!text) return;
+		this.notice = text;
+		window.clearTimeout(this.noticeTimer);
+		this.noticeTimer = window.setTimeout(async () => {
+			await leave(this.renderRoot.querySelector(".toast.notice"), 160);
+			if (this.notice === text) this.notice = null;
+		}, 4000);
+	}
+
+	/** Adds tabs to the end of Essentials, as many as fit, and says so when some didn't. */
+	private addToEssentials(tabIds: TabId[]) {
+		const to: Place = { area: "essentials", index: Infinity };
+		const added = moveItems(this.state, tabIds, to).essentials.length - this.state.essentials.length;
+		this.selection = NO_SELECTION;
+		if (added > 0) {
+			playCue("pin");
+			this.apply({ op: "moveItems", itemIds: tabIds, to });
+		}
+		this.say(essentialsNotice(tabIds.length, added));
+	}
+
 	// Escape closes a panel or menu wherever focus is: a click inside a panel can re-render the button that had it.
+	// With neither open it lets go of the picked rows, unless something else used it (a menu closing itself).
 	private onEscape = (e: KeyboardEvent) => {
-		if (e.key !== "Escape" || (!this.panel && !this.menu)) return;
-		void this.closePanel();
-		this.menu = null;
+		if (e.key !== "Escape") return;
+		if (this.panel || this.menu) {
+			void this.closePanel();
+			this.menu = null;
+		} else if (!e.defaultPrevented && this.selection.ids.length) this.selection = NO_SELECTION;
 	};
 
 	override connectedCallback() {
@@ -247,6 +307,7 @@ export class LokaSidebar extends LitElement {
 		this.bottomObserver = null;
 		window.removeEventListener("keydown", this.onEscape);
 		window.clearTimeout(this.toastTimer);
+		window.clearTimeout(this.noticeTimer);
 		for (const stop of this.stopWatching) stop();
 		this.stopWatching = [];
 		super.disconnectedCallback();
@@ -364,7 +425,8 @@ export class LokaSidebar extends LitElement {
 		const ratio = zone.axis === "x" ? (x - rect.left) / rect.width : (y - rect.top) / rect.height;
 		const { mode, grouping } = dropModeAt(ratio, zone.into, this.state.tabs[dragId] !== undefined);
 		const target = grouping ? zone.place("before") : zone.place(mode);
-		if (!target) {
+		// Full Essentials take no new tab (the model refuses it): a tile's edge shows no drop line.
+		if (!target || (target.area === "essentials" && moveItem(this.state, dragId, target) === this.state)) {
 			this.drop = null;
 			return;
 		}
@@ -568,7 +630,13 @@ export class LokaSidebar extends LitElement {
 			items.push({ label: "Unpin", run: move("unpin", { area: "open", spaceId: space.id, index: 0 }) });
 		}
 		if (!isEssential) {
-			items.push({ label: "Add to Essentials", run: move("pin", { area: "essentials", index: Infinity }) });
+			items.push({
+				label: "Add to Essentials",
+				run: () => {
+					if (this.state.essentials.length >= ESSENTIALS_LIMIT) this.say(essentialsNotice(1, 0));
+					else move("pin", { area: "essentials", index: Infinity })();
+				},
+			});
 		} else {
 			items.push({
 				label: "Remove from Essentials",
@@ -644,6 +712,96 @@ export class LokaSidebar extends LitElement {
 		return items;
 	}
 
+	/** The menu for every picked row at once, in sidebar order; each item lets go of the selection. */
+	private selectionMenu(): MenuItem[] {
+		const state = this.state;
+		const space = activeSpace(state);
+		const ids = inSidebarOrder(this.selection, selectableLists(state));
+		const open = ids.filter((id) => space.open.includes(id));
+		const pinned = ids.filter((id) => !space.open.includes(id));
+		const moveAll = (cue: Cue, picked: TabId[], to: Place) => () => {
+			playCue(cue);
+			this.selection = NO_SELECTION;
+			this.apply({ op: "moveItems", itemIds: picked, to });
+		};
+		const items: MenuItem[] = [];
+		if (open.length) {
+			items.push({
+				label: "Pin to space",
+				run: moveAll("pin", open, { area: "pinned", spaceId: space.id, parentId: null, index: Infinity }),
+			});
+		}
+		if (pinned.length) {
+			items.push({ label: "Unpin", run: moveAll("unpin", pinned, { area: "open", spaceId: space.id, index: 0 }) });
+		}
+		items.push({ label: "Add to Essentials", run: () => this.addToEssentials(ids) });
+		const others = state.spaces.filter((s) => s.id !== space.id);
+		if (others.length) {
+			items.push({
+				label: "Move to space",
+				items: others.map((other) => ({
+					label: other.name,
+					run: moveAll("space", ids, { area: "open", spaceId: other.id, index: 0 }),
+				})),
+			});
+		}
+		items.push(
+			{
+				label: "New folder with these tabs",
+				run: () => {
+					const folderId = newId();
+					playCue("into-folder");
+					this.selection = NO_SELECTION;
+					this.apply({ op: "createFolder", spaceId: space.id, parentId: null, name: "New folder", id: folderId });
+					this.apply({
+						op: "moveItems",
+						itemIds: ids,
+						to: { area: "pinned", spaceId: space.id, parentId: folderId, index: 0 },
+					});
+					this.renamingId = folderId;
+				},
+			},
+			{ label: `Close ${ids.length} tabs`, divider: true, danger: true, run: () => this.closeTabsFor(ids) },
+		);
+		return items;
+	}
+
+	/** Right-click on a tab's row: the picked rows' menu when it's one of several picked, else its own. */
+	private rowMenu(e: MouseEvent, tabId: TabId) {
+		const picked = this.selection.ids;
+		if (picked.length > 1 && picked.includes(tabId)) {
+			this.openMenu(e, this.selectionMenu(), `${picked.length} tabs selected`);
+			return;
+		}
+		if (picked.length) this.selection = NO_SELECTION;
+		this.openMenu(e, this.tabMenu(tabId));
+	}
+
+	/**
+	 * A click on a tab's row. Ctrl+click (Cmd+click on a Mac) picks or unpicks it; Shift+click picks the run from the
+	 * last one picked (or the tab shown) in the same list. A plain click lets go of the picked rows and shows the tab.
+	 */
+	private clickTab(e: MouseEvent, tabId: TabId) {
+		if (PLATFORM === "mac" ? e.metaKey : e.ctrlKey) {
+			this.selection = toggleSelected(this.selection, tabId);
+			return;
+		}
+		if (e.shiftKey) {
+			const state = this.state;
+			const isTab = (id: string) => state.tabs[id] !== undefined;
+			this.selection = selectRange(
+				this.selection,
+				selectableLists(state),
+				isTab,
+				tabId,
+				activeSpace(state).activeTabId,
+			);
+			return;
+		}
+		this.selection = NO_SELECTION;
+		this.apply({ op: "activateTab", tabId, now: Date.now() });
+	}
+
 	/** Right-click on the sidebar's background: what you'd make here, and the space and sidebar themselves. */
 	private emptyMenu(): MenuItem[] {
 		const space = activeSpace(this.state);
@@ -689,19 +847,67 @@ export class LokaSidebar extends LitElement {
 
 	/**
 	 * Keys on a sidebar row, following the tree pattern: Up and Down move between rows, Enter runs the row, Right
-	 * opens a closed folder and Left closes an open one.
+	 * opens a closed folder and goes into an open one, Left closes an open folder and otherwise goes up to the folder
+	 * holding the row. Shift+Up and Shift+Down pick rows; Delete (or Backspace) closes the picked tabs, or the focused
+	 * one. Keys with Ctrl, Cmd or Alt are the window's (Ctrl+Alt+arrows steps through tabs).
 	 */
-	private rowKey(e: KeyboardEvent, run: () => void, folderOpen?: boolean) {
+	private rowKey(e: KeyboardEvent, id: string, run: () => void, folderOpen?: boolean) {
+		if (e.ctrlKey || e.metaKey || e.altKey) return;
+		const space = activeSpace(this.state);
 		if (e.key === "Enter") run();
 		else if (e.key === "ArrowRight" && folderOpen === false) run();
+		else if (e.key === "ArrowRight" && folderOpen === true)
+			this.focusRow(findFolder(space.pinned, id)?.children[0]?.id);
 		else if (e.key === "ArrowLeft" && folderOpen === true) run();
-		else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-			e.preventDefault();
+		else if (e.key === "ArrowLeft") this.focusRow(pinnedRows(space.pinned).find((r) => r.node.id === id)?.parentId);
+		else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && e.shiftKey) {
+			this.extendSelection(id, e.key === "ArrowDown" ? 1 : -1);
+		} else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
 			const rows = [...this.renderRoot.querySelectorAll<HTMLElement>('.scroll.shown [role="treeitem"]')];
 			const at = rows.indexOf(e.currentTarget as HTMLElement);
 			rows[at + (e.key === "ArrowDown" ? 1 : -1)]?.focus();
-		} else return;
+		} else if (e.key === "Delete" || e.key === "Backspace") this.deleteKey(id);
+		else return;
 		e.preventDefault();
+	}
+
+	/** Focuses a row of the list on screen by its id. */
+	private focusRow(id: string | null | undefined) {
+		if (!id) return;
+		this.renderRoot.querySelector<HTMLElement>(`.scroll.shown [data-key="${CSS.escape(id)}"]`)?.focus();
+	}
+
+	/** Shift+Up or Shift+Down: focus moves one row within its list and the run from the anchor to it is picked. */
+	private extendSelection(id: string, step: 1 | -1) {
+		const state = this.state;
+		const lists = selectableLists(state);
+		const to = stepWithin(lists, id, step);
+		if (!to) return;
+		this.selection = selectRange(this.selection, lists, (x) => state.tabs[x] !== undefined, to, id);
+		this.focusRow(to);
+	}
+
+	/**
+	 * Delete closes the picked tabs, or the focused tab when none are picked. Focus moves to the row that takes their
+	 * place (the next one still there, or the one before), so the keyboard keeps its place in the list.
+	 */
+	private deleteKey(id: string) {
+		const state = this.state;
+		const ids = this.selection.ids.length
+			? inSidebarOrder(this.selection, selectableLists(state))
+			: state.tabs[id]
+				? [id]
+				: [];
+		if (!ids.length) return;
+		// Open tabs leave the list; pinned ones stay, unloaded.
+		const leaving = new Set(ids.filter((x) => activeSpace(state).open.includes(x)));
+		const rows = [...this.renderRoot.querySelectorAll<HTMLElement>('.scroll.shown [role="treeitem"]')].map(
+			(el) => el.dataset.key ?? "",
+		);
+		const at = rows.indexOf(id);
+		const stays = (key: string) => !leaving.has(key);
+		this.focusKey = rows.slice(at).find(stays) ?? rows.slice(0, at).findLast(stays) ?? null;
+		this.closeTabsFor(ids);
 	}
 
 	private folderMenu(folderId: string): MenuItem[] {
@@ -901,6 +1107,8 @@ export class LokaSidebar extends LitElement {
 		}
 		if (changed.has("browser") && this.browser) this.watchBrowser();
 		if (changed.has("playing")) this.followPlaying();
+		// Picked rows that closed, left the space or hid in a closed folder are no longer picked.
+		if (changed.has("state")) this.selection = pruneSelection(this.selection, selectableLists(this.state));
 		const before = changed.get("state") as BrowserState | undefined;
 		if (!before) return;
 		if (before.activeSpaceId !== this.state.activeSpaceId) {
@@ -1242,8 +1450,9 @@ export class LokaSidebar extends LitElement {
 		const dragging = this.dragId === tabId;
 		const drop = this.dropClass(tabId);
 		const live = this.live[tabId];
-		return guard([tab, live, active, dragging, drop, depth, closable, where], () =>
-			this.tabRowView(tab, depth, place, closable, active),
+		const selected = this.selection.ids.includes(tabId);
+		return guard([tab, live, active, dragging, drop, depth, closable, where, selected], () =>
+			this.tabRowView(tab, depth, place, closable, active, selected),
 		);
 	}
 
@@ -1253,20 +1462,23 @@ export class LokaSidebar extends LitElement {
 		place: (mode: DropMode) => Place | null,
 		closable: boolean,
 		active: boolean,
+		selected: boolean,
 	): TemplateResult {
 		const tabId = tab.id;
+		// aria-selected is the tab shown (the browser suites read it); a picked row is aria-checked.
 		return html`
 			<div
-				class="row ${active ? "active" : ""} ${this.live[tabId]?.unloaded ? "unloaded" : ""} ${this.dragId === tabId ? "dragging" : ""} ${this.dropClass(tabId)}"
+				class="row ${active ? "active" : ""} ${selected ? "selected" : ""} ${this.live[tabId]?.unloaded ? "unloaded" : ""} ${this.dragId === tabId ? "dragging" : ""} ${this.dropClass(tabId)}"
 				data-key=${tabId}
 				style="--depth: ${depth}"
 				role="treeitem"
 				aria-level=${depth + 1}
 				aria-selected=${active}
+				aria-checked=${selected ? "true" : nothing}
 				tabindex="0"
 				@pointerdown=${(e: PointerEvent) => this.pressDrag(e, tabId)}
 				.dropZone=${{ key: tabId, place, into: "tab" } satisfies DropZone}
-				@click=${() => this.apply({ op: "activateTab", tabId, now: Date.now() })}
+				@click=${(e: MouseEvent) => this.clickTab(e, tabId)}
 				@mousedown=${(e: MouseEvent) => e.button === 1 && e.preventDefault()}
 				@auxclick=${(e: MouseEvent) => {
 					// A middle click closes the tab, as on a browser's tab strip; a pinned one unloads.
@@ -1274,8 +1486,8 @@ export class LokaSidebar extends LitElement {
 					e.preventDefault();
 					this.closeTabFor(tabId);
 				}}
-				@keydown=${(e: KeyboardEvent) => this.rowKey(e, () => this.apply({ op: "activateTab", tabId, now: Date.now() }))}
-				@contextmenu=${(e: MouseEvent) => this.openMenu(e, this.tabMenu(tabId))}
+				@keydown=${(e: KeyboardEvent) => this.rowKey(e, tabId, () => this.apply({ op: "activateTab", tabId, now: Date.now() }))}
+				@contextmenu=${(e: MouseEvent) => this.rowMenu(e, tabId)}
 			>
 				${this.favicon(tabId, tab.url)}
 				<span class="label">${tab.title}</span>
@@ -1347,9 +1559,14 @@ export class LokaSidebar extends LitElement {
 				tabindex="0"
 				@pointerdown=${(e: PointerEvent) => !renaming && this.pressDrag(e, node.id)}
 				.dropZone=${{ key: node.id, place: folderPlace, into: "folder" } satisfies DropZone}
-				@click=${() => !renaming && this.toggle(node.id, node.open)}
+				@click=${(e: MouseEvent) => {
+					// Folders aren't picked: Ctrl+ or Shift+click on one leaves the selection as it is.
+					if (renaming || e.ctrlKey || e.metaKey || e.shiftKey) return;
+					this.selection = NO_SELECTION;
+					this.toggle(node.id, node.open);
+				}}
 				@dblclick=${() => (this.renamingId = node.id)}
-				@keydown=${(e: KeyboardEvent) => !renaming && this.rowKey(e, () => this.toggle(node.id, node.open), node.open)}
+				@keydown=${(e: KeyboardEvent) => !renaming && this.rowKey(e, node.id, () => this.toggle(node.id, node.open), node.open)}
 				@contextmenu=${(e: MouseEvent) => this.openMenu(e, this.folderMenu(node.id))}
 			>
 				${
@@ -1510,6 +1727,10 @@ export class LokaSidebar extends LitElement {
 		if (this.refocus && !this.menu) {
 			this.refocus = false;
 			if (!this.shadowRoot?.activeElement && this.menuOpener?.isConnected) this.menuOpener.focus();
+		}
+		if (this.focusKey) {
+			this.focusRow(this.focusKey);
+			this.focusKey = null;
 		}
 	}
 
@@ -1936,8 +2157,12 @@ export class LokaSidebar extends LitElement {
 		</button>`;
 	}
 
-	/** A finished download, said once, quietly, above the bottom row; a click opens Downloads. */
+	/**
+	 * A finished download, said once, quietly, above the bottom row; a click opens Downloads. A notice (say) takes its
+	 * place while it shows.
+	 */
 	private toastView(): TemplateResult | typeof nothing {
+		if (this.notice) return html`<div class="toast notice" role="status"><p>${this.notice}</p></div>`;
 		const done = this.toast;
 		if (!done) return nothing;
 		return html`<div class="toast" role="status">
@@ -2366,6 +2591,18 @@ export class LokaSidebar extends LitElement {
 		.row.active {
 			background: var(--loka-selected);
 			box-shadow: var(--loka-selected-edge);
+		}
+		/* Picked (Ctrl+ or Shift+click): tinted with the space's color and ringed, apart from the tab shown. */
+		.row.selected,
+		.row.selected:hover {
+			background: color-mix(in srgb, var(--loka-accent) 14%, transparent);
+			box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--loka-accent) 50%, transparent);
+		}
+		.row.selected.active {
+			background: var(--loka-selected);
+			box-shadow:
+				var(--loka-selected-edge),
+				inset 0 0 0 1.5px color-mix(in srgb, var(--loka-accent) 70%, transparent);
 		}
 		.row.dragging,
 		.essential.dragging {
@@ -2954,6 +3191,13 @@ export class LokaSidebar extends LitElement {
 			flex: none;
 			color: var(--loka-ink-3);
 			font-size: 12px;
+		}
+		.toast.notice p {
+			margin: 0;
+			padding: 10px 12px;
+			font-size: 13px;
+			line-height: 1.4;
+			color: var(--loka-ink);
 		}
 		@keyframes in-right {
 			from {

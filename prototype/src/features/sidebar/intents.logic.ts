@@ -16,6 +16,7 @@ import {
 	groupIntoFolder,
 	importState,
 	moveItem,
+	moveItems,
 	navigateTab,
 	openTab,
 	type Place,
@@ -33,6 +34,8 @@ import {
 
 export type Intent =
 	| { op: "moveItem"; id: string; to: Place }
+	/** Several rows as one change: a selection's Pin, Unpin, Move to space, Add to Essentials, New folder with these. */
+	| { op: "moveItems"; itemIds: string[]; to: Place }
 	| { op: "openTab"; url: string; title: string; now: number; id: TabId }
 	| { op: "navigateTab"; tabId: TabId; url: string; title: string }
 	| { op: "activateTab"; tabId: TabId; now: number }
@@ -66,6 +69,8 @@ export function applyIntent(state: BrowserState, intent: Intent): BrowserState {
 	switch (intent.op) {
 		case "moveItem":
 			return moveItem(state, intent.id, intent.to);
+		case "moveItems":
+			return moveItems(state, intent.itemIds, intent.to);
 		case "openTab":
 			return openTab(state, intent.url, intent.title, intent.now, intent.id);
 		case "navigateTab":

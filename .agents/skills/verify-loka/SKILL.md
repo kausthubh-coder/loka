@@ -62,8 +62,9 @@ and data is per origin). Drive only a server you started.
 Loka prototype and its listener was started from this checkout. Run it first, and again when a recipe fails oddly.
 
 **Drive.** `node .agents/skills/verify-loka/scripts/run.mjs <recipe|all>` (recipes: the feature ids, plus
-`make-folders`, and `contrast`, which measures every sidebar text against the pixels behind it for 8 hues in both
-schemes, about 5 minutes: theme.md). Each opens a fresh browser, resets to the seed data, drives the UI as a user
+`make-folders`, `contrast`, which measures every sidebar text against the pixels behind it for 8 hues in both
+schemes, about 5 minutes, and `contrast-pages`, the same on Settings, the Library, the command bar, the sidebar's
+panels and toast and a long space name, about 20 minutes: theme.md). Each opens a fresh browser, resets to the seed data, drives the UI as a user
 would, asserts the saved state, and prints `PASS` or `FAIL` with its evidence folder. For a change no recipe covers, write a short
 script that imports the driver:
 

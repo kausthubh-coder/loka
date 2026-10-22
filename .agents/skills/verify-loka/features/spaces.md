@@ -64,6 +64,9 @@ Preconditions: seed data (Build, School, Home).
 - **Tint.** Compare `proof()` screenshots of Build (blue) and School (amber). The sky, the big planet and the accents
   change hue.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs spaces`.
+- **Long names.** The name on the big planet stays on one line between the + and Downloads buttons and ends in "…"
+  when it doesn't fit; `run.mjs contrast-pages` measures a 31-letter name on each planet at 300 and 220 px
+  (theme.md).
 - **In the browser.** `bun run verify -- --ux spaces` runs it and verify:flows `spaces`: "clicking Play's planet
   shows Play", "the browser follows to Play", "Ctrl+3 shows Code Lab", "picking Code Lab in the command bar shows
   it", "the browser shows Work's tab group, the rest folded", "switching to the empty space opens a new tab in it";

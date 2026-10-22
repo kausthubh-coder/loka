@@ -1,5 +1,5 @@
 // Runs the mapped feature recipes against the running prototype and saves evidence.
-//   node .agents/skills/verify-loka/scripts/run.mjs <folders|spaces|tabs|essentials|export-import|command-bar|space-editor|layout|make-folders|archive|search-and-keys|import|media|theme|contrast|extensions|history|library|sound|sky|onboarding|all>
+//   node .agents/skills/verify-loka/scripts/run.mjs <folders|spaces|tabs|essentials|export-import|command-bar|space-editor|layout|make-folders|archive|search-and-keys|import|media|theme|contrast|contrast-pages|extensions|history|library|sound|sky|onboarding|all>
 // Each recipe starts from fresh seed data, drives the UI the way a user does, asserts the saved state,
 // and writes screenshots, ARIA snapshots and outlines to .agents/verify-runs/<time>-<feature>/.
 
@@ -831,13 +831,13 @@ const recipes = {
 				for (const hue of hues) {
 					for (const planet of width === 330 ? planets : planets.slice(0, 1)) {
 						await showSpace(loka, { hue, scheme, planet }, away);
-						const at = { width, hue, scheme, planet };
+						const at = { width, hue, scheme, planet, surface: "sidebar" };
 						all.push(...(await measureText(loka, { ...at, state: "Build" })));
 						if (width === 330) {
 							// The planet turns under the name: look at it a quarter turn at a time.
 							for (const phase of [0.25, 0.5, 0.75]) {
 								await turnPlanet(loka, phase);
-								all.push(...(await measureText(loka, { ...at, state: `turn ${phase}` }, ".world-name")));
+								all.push(...(await measureText(loka, { ...at, state: `turn ${phase}` }, { only: ".world-name" })));
 							}
 						}
 						if (planet !== planets[0]) continue;
@@ -868,23 +868,188 @@ const recipes = {
 				}
 			}
 		}
-		writeFileSync(join(loka.dir, "contrast.json"), JSON.stringify(all, null, 1));
-		const failing = worstPerText(all.filter((m) => !m.excluded && m.ratio < m.needs));
-		const counts = ["dark", "light"].map((s) => `${s} ${failing.filter((m) => m.scheme === s).length}`).join(", ");
-		const measured = all.filter((m) => !m.excluded);
-		const lowest = Math.min(...measured.map((m) => m.ratio)).toFixed(2);
-		const table = [
-			`${measured.length} text boxes measured (${hues.length} hues x 2 schemes x ${planets.length} planets, windows 330 and 1280 px wide; Build, a hovered row, a menu, School, Home, the planet turning); lowest ${lowest}:1`,
-			`${failing.length} texts below their minimum (${counts})`,
-			"",
-			["scheme", "hue", "element", "text", "ratio", "needs", "raw", "where"].join("\t"),
-			...failing.map((m) =>
-				[m.scheme, m.hue, m.element, m.text, m.ratio.toFixed(2), m.needs, m.raw.toFixed(2), m.where].join("\t"),
-			),
-		].join("\n");
-		writeFileSync(join(loka.dir, "contrast.txt"), `${table}\n`);
-		console.log(table);
-		assert.equal(failing.length, 0, `${failing.length} texts below 4.5:1 (3:1 large); table in contrast.txt`);
+		contrastReport(
+			loka,
+			all,
+			`${hues.length} hues x 2 schemes x ${planets.length} planets, windows 330 and 1280 px wide; Build, a hovered row, a menu, School, Home, the planet turning`,
+		);
+	},
+
+	async "contrast-pages"(loka) {
+		// The contrast recipe's measurement on everything else Loka draws text on: Settings (every screen of it, and the
+		// space editor it opens), the Library's four sections, the command bar, the sidebar's panels and download toast,
+		// the empty page, and a long space name on the planet. Each hue and scheme as in `contrast`. Pages are measured
+		// with the sidebar hidden, so they span the window as the browser's tab does, its sky as wide as the page (with
+		// the sidebar beside them they were the same, 2x the time); the command bar embedded, beside the sidebar and
+		// without it (the prototype's glass), and as the browser's floating page (layout="page"). The sidebar's surfaces
+		// at 330 and 1280 px, like `contrast`. CONTRAST_HUES=210,40 limits the hues while iterating.
+		const hues = sourceList("prototype/src/features/sidebar/planet.ts", "SPACE_HUES").map(Number);
+		const planets = sourceList("prototype/src/features/sidebar/sidebar.logic.ts", "PLANET_KINDS");
+		assert.equal(hues.length, 8, "the eight space colors");
+		const only = process.env.CONTRAST_HUES?.split(",").map(Number);
+		/** @type {Measured[]} */
+		const all = [];
+		const page = loka.page.locator("loka-page");
+		const seed = await loka.state();
+		for (const scheme of ["dark", "light"]) {
+			for (const hue of only ?? hues) {
+				const look = { hue, scheme, planet: planets[0] ?? "banded" };
+				const measure = async (
+					/** @type {number} */ width,
+					/** @type {string} */ surface,
+					/** @type {string} */ state,
+					/** @type {{ root?: string, only?: string }} */ where,
+				) => all.push(...(await measureText(loka, { width, hue, scheme, planet: look.planet, surface, state }, where)));
+
+				await loka.page.setViewportSize({ width: 1280, height: 800 });
+				const away = { x: 1272, y: 400 };
+				// Settings, a screen at a time, then the space editor from its Spaces section.
+				await showSpace(loka, look, away, { seed, pinned: false, page: "loka://settings" });
+				await page.getByRole("navigation", { name: "Settings sections" }).waitFor();
+				for (let step = 0; step < 12; step++) {
+					if (step > 0 && !(await scrollSurface(loka, "loka-settings"))) break;
+					await measure(1280, "settings", `screen ${step + 1}`, { root: "loka-page" });
+					if (step === 0) await pageShot(loka, `settings-${scheme}-${hue}`);
+				}
+				await scrollSurface(loka, "loka-settings", "top");
+				await page.getByRole("button", { name: "Edit", exact: true }).first().click();
+				const editor = loka.page
+					.getByRole("dialog")
+					.filter({ has: loka.page.getByRole("radiogroup") })
+					.first();
+				await editor.waitFor();
+				// The name opens selected, drawn in the selection's colors; End puts the caret after it, as typing would.
+				await loka.page.keyboard.press("End");
+				await loka.page.waitForTimeout(400);
+				await measure(1280, "space editor", "from Settings", { root: "loka-space-editor" });
+				await pageShot(loka, `space-editor-${scheme}-${hue}`);
+				await loka.page.keyboard.press("Escape");
+
+				// The Library's sections, the first three screens of each.
+				for (const [section, url, ready] of /** @type {[string, string, string][]} */ ([
+					["spaces", "loka://history#spaces", "heading"],
+					["archive", "loka://history#archive", "button"],
+					["history", "loka://history", "treeitem"],
+					["downloads", "loka://history#downloads", "button"],
+				])) {
+					await showSpace(loka, look, away, { seed, pinned: false, page: url, archive: true });
+					await page
+						.locator("loka-library")
+						.getByRole(/** @type {any} */ (ready))
+						.first()
+						.waitFor();
+					await loka.page.waitForTimeout(300);
+					for (let step = 0; step < 3; step++) {
+						if (step > 0 && !(await scrollSurface(loka, "loka-library"))) break;
+						await measure(1280, `library ${section}`, `screen ${step + 1}`, { root: "loka-page" });
+						if (step === 0) await pageShot(loka, `library-${section}-${scheme}-${hue}`);
+					}
+				}
+
+				for (const layout of ["sidebar", "full"]) {
+					const pinned = layout === "sidebar";
+					// The command bar, empty and with results, over a web page.
+					await showSpace(loka, look, away, { seed, pinned });
+					await loka.page.keyboard.press("Control+k");
+					const field = loka.page.getByRole("combobox", { name: "Search or enter address" });
+					await field.waitFor();
+					await loka.page.waitForTimeout(300);
+					await measure(1280, "command bar", `${layout} empty`, { root: "loka-command-bar" });
+					await field.fill("lit");
+					await loka.page.waitForTimeout(500);
+					await measure(1280, "command bar", `${layout} results`, { root: "loka-command-bar" });
+					await pageShot(loka, `command-bar-${layout}-${scheme}-${hue}`);
+					if (layout === "full") {
+						// The browser's floating window: the bar is the whole page, near solid, with no scrim.
+						await loka.page.evaluate(() =>
+							document
+								.querySelector("loka-app")
+								?.shadowRoot?.querySelector("loka-command-bar")
+								?.setAttribute("layout", "page"),
+						);
+						await loka.page.waitForTimeout(300);
+						await measure(1280, "command bar", "floating page, results", { root: "loka-command-bar" });
+						await pageShot(loka, `command-bar-floating-${scheme}-${hue}`);
+					}
+					await loka.page.keyboard.press("Escape");
+				}
+
+				// The sidebar's panels and the download toast, at both widths like `contrast`; the empty page beside it.
+				for (const width of [330, 1280]) {
+					await loka.page.setViewportSize({ width, height: 800 });
+					const off = { x: width - 8, y: 400 };
+					await showSpace(loka, look, off, { seed, archive: true });
+					const panels = /** @type {[string, () => Promise<void>][]} */ ([
+						["downloads", () => loka.sidebar.locator(".bottom").getByRole("button", { name: "Downloads" }).click()],
+						[
+							"archive",
+							async () => {
+								await loka.sidebar.getByRole("button", { name: "More" }).click();
+								await loka.sidebar.getByRole("menuitem", { name: /^Archived tabs/ }).click();
+							},
+						],
+						[
+							"search",
+							async () => {
+								await loka.page.keyboard.press("Control+Shift+F");
+								await loka.sidebar.getByRole("combobox", { name: "Search the sidebar" }).fill("lit");
+							},
+						],
+						["extensions", () => loka.sidebar.getByRole("button", { name: "Extensions", exact: true }).click()],
+					]);
+					for (const [panel, open] of panels) {
+						await open();
+						await loka.page.mouse.move(off.x, off.y);
+						await loka.page.waitForTimeout(500);
+						await measure(width, `${panel} panel`, `${width}px`, { root: "loka-sidebar", only: PANELS });
+						await sidebarShot(loka, `${panel}-panel-${width}-${scheme}-${hue}`);
+						await loka.page.keyboard.press("Escape");
+						await loka.page.waitForTimeout(250);
+					}
+					await loka.page.evaluate(() => {
+						const sidebar = /** @type {any} */ (
+							document.querySelector("loka-app")?.shadowRoot?.querySelector("loka-sidebar")
+						);
+						// What followDownloads sets when a download finishes with the panel closed (the layout recipe and
+						// verify:flows `panels` prove it gets there); set here so it doesn't leave after 4 s mid-measure.
+						sidebar.toast = sidebar.downloads.find((/** @type {any} */ d) => d.state === "complete");
+					});
+					await loka.sidebar.locator(".toast").waitFor();
+					await loka.page.waitForTimeout(400);
+					await measure(width, "download toast", `${width}px`, { root: "loka-sidebar", only: ".toast" });
+					await sidebarShot(loka, `toast-${width}-${scheme}-${hue}`);
+					if (width === 1280) {
+						await loka.page.keyboard.press("Control+3");
+						await page.getByText("Nothing open in Home").waitFor();
+						await loka.page.mouse.move(off.x, off.y);
+						await loka.page.waitForTimeout(800);
+						await measure(width, "empty page", "Home", { root: "loka-page" });
+					}
+				}
+
+				// The longest name the editor takes, on each planet: a quarter turn at a time in the default sidebar width,
+				// and once in the narrowest.
+				await loka.page.setViewportSize({ width: 330, height: 800 });
+				for (const sidebarWidth of [300, 220]) {
+					for (const planet of planets) {
+						await showSpace(loka, { ...look, planet }, { x: 322, y: 400 }, { seed, name: LONG_NAME, sidebarWidth });
+						for (const phase of sidebarWidth === 300 ? [0, 0.25, 0.5, 0.75] : [0]) {
+							await turnPlanet(loka, phase);
+							await measure(330, "long space name", `${sidebarWidth}px sidebar, ${planet}, turn ${phase}`, {
+								root: "loka-sidebar",
+								only: ".world-name",
+							});
+						}
+						if (planet === planets[0]) await sidebarShot(loka, `long-name-${sidebarWidth}-${scheme}-${hue}`);
+					}
+				}
+			}
+		}
+		contrastReport(
+			loka,
+			all,
+			`${(only ?? hues).length} hues x 2 schemes; Settings and the space editor and the Library's four sections at 1280 px, the sidebar hidden; the command bar with the sidebar shown and hidden, and floating; the sidebar's four panels and the download toast at 330 and 1280 px; the empty page; a ${LONG_NAME.length}-letter space name on each planet at 300 and 220 px`,
+		);
 	},
 
 	async extensions(loka) {
@@ -1436,19 +1601,68 @@ function sourceList(/** @type {string} */ file, /** @type {string} */ name) {
 	return match[1].split(",").map((s) => s.trim().replace(/"/g, ""));
 }
 
-/** Gives every space this hue, scheme and planet and shows Build, from a reload, with the stars still. */
-async function showSpace(
-	/** @type {Loka} */ loka,
-	/** @type {{ hue: number, scheme: string, planet: string }} */ look,
-	/** @type {{ x: number, y: number }} */ away,
-) {
-	await loka.page.evaluate((look) => {
-		const state = JSON.parse(localStorage.getItem("loka.state.v1") ?? "null");
-		for (const space of state.spaces) Object.assign(space, look);
-		state.activeSpaceId = state.spaces[0].id;
-		localStorage.setItem("loka.state.v1", JSON.stringify(state));
-		localStorage.setItem("loka.ui.v1", JSON.stringify({ onboarded: true, starMotion: "off" }));
-	}, look);
+/**
+ * Gives every space this hue, scheme and planet and shows Build, from a reload, with the stars still. `seed` starts
+ * from that saved state instead of the current one. `page` shows that address in Build (loka://settings,
+ * loka://history#spaces), `archive` puts three tabs in the archive (one from a deleted space), `name` renames Build,
+ * `pinned: false` hides the sidebar so the page spans the window, and `sidebarWidth` sets its width.
+ * @param {Loka} loka
+ * @param {{ hue: number, scheme: string, planet: string }} look
+ * @param {{ x: number, y: number }} away
+ * @param {{ seed?: unknown, page?: string, archive?: boolean, name?: string, pinned?: boolean, sidebarWidth?: number }} [options]
+ */
+async function showSpace(loka, look, away, options = {}) {
+	await loka.page.evaluate(
+		({ look, options }) => {
+			const state = options.seed
+				? structuredClone(options.seed)
+				: JSON.parse(localStorage.getItem("loka.state.v1") ?? "null");
+			for (const space of state.spaces) Object.assign(space, look);
+			const build = state.spaces[0];
+			state.activeSpaceId = build.id;
+			if (options.name) build.name = options.name;
+			if (options.page) {
+				state.tabs["contrast-page"] = { id: "contrast-page", title: "Loka", url: options.page };
+				build.open.unshift("contrast-page");
+				build.activeTabId = "contrast-page";
+			}
+			if (options.archive) {
+				const hour = 3_600_000;
+				const gone = (/** @type {string} */ id, /** @type {string} */ title, /** @type {string} */ url) => ({
+					id: `contrast-archived-${id}`,
+					title,
+					url,
+				});
+				state.archive = [
+					{
+						tab: gone("1", "Arc: what we learned", "https://arc.net/blog"),
+						spaceId: build.id,
+						archivedAt: Date.now() - 2 * hour,
+					},
+					{
+						tab: gone("2", "Zen Browser", "https://zen-browser.app/"),
+						spaceId: state.spaces[1].id,
+						archivedAt: Date.now() - 26 * hour,
+					},
+					{
+						tab: gone("3", "Notes on tab groups", "https://example.com/notes"),
+						spaceId: "gone",
+						archivedAt: Date.now() - 72 * hour,
+					},
+				];
+			}
+			localStorage.setItem("loka.state.v1", JSON.stringify(state));
+			const ui = {
+				onboarded: true,
+				starMotion: "off",
+				...(options.sidebarWidth ? { sidebarWidth: options.sidebarWidth } : {}),
+			};
+			localStorage.setItem("loka.ui.v1", JSON.stringify(ui));
+			if (options.pinned === false) localStorage.setItem("loka.demo.sidebarPinned", "false");
+			else localStorage.removeItem("loka.demo.sidebarPinned");
+		},
+		{ look, options },
+	);
 	await loka.page.reload({ waitUntil: "networkidle" });
 	await loka.sidebar.getByRole("tree").first().waitFor();
 	await loka.page.mouse.move(away.x, away.y);
@@ -1478,13 +1692,93 @@ async function sidebarShot(/** @type {Loka} */ loka, /** @type {string} */ name)
 	});
 }
 
+/** The page (Settings, the Library, the empty page) as <name>.png in the evidence folder: the whole window. */
+async function pageShot(/** @type {Loka} */ loka, /** @type {string} */ name) {
+	await loka.page.screenshot({ path: join(loka.dir, `${name}.png`) });
+}
+
 /**
- * @typedef {{ width: number, hue: number, scheme: string, planet: string, state: string, element: string,
- *   text: string, ratio: number, raw: number, needs: number, where: string, excluded?: string }} Measured
+ * Scrolls the biggest scrolling box inside the first `host` element (found through shadow roots) on by most of its
+ * height, or back to the top. Says whether it moved.
+ * @param {Loka} loka @param {string} host @param {"next" | "top"} [to]
+ */
+async function scrollSurface(loka, host, to = "next") {
+	const moved = await loka.page.evaluate(
+		({ host, to }) => {
+			/** @returns {Element[]} */
+			const everything = (/** @type {ParentNode} */ root) =>
+				[...root.querySelectorAll("*")].flatMap((el) => [el, ...(el.shadowRoot ? everything(el.shadowRoot) : [])]);
+			const surface = everything(document).find((el) => el.localName === host);
+			if (!surface?.shadowRoot) throw new Error(`no ${host}`);
+			const scrollers = everything(surface.shadowRoot).filter((el) => {
+				const s = getComputedStyle(el);
+				return /auto|scroll/.test(s.overflowY) && el.scrollHeight > el.clientHeight + 8;
+			});
+			const box = scrollers.sort((a, b) => b.clientHeight * b.clientWidth - a.clientHeight * a.clientWidth)[0];
+			if (!box) return false;
+			const before = box.scrollTop;
+			box.scrollTo({ top: to === "top" ? 0 : before + box.clientHeight * 0.85, behavior: "instant" });
+			return box.scrollTop !== before;
+		},
+		{ host, to },
+	);
+	// Lists fade at their edges with scroll-driven animations; give them, and anything loading in, a moment.
+	await loka.page.waitForTimeout(moved ? 400 : 0);
+	return moved;
+}
+
+/** Where the sidebar's panels draw: the four panels' own elements, inside the sidebar's panel. */
+const PANELS = "loka-downloads, loka-archive-panel, loka-sidebar-search, loka-extensions";
+
+/** As long as the space editor lets a name be (maxlength 32). */
+const LONG_NAME = "Weekend research and long reads";
+
+/**
+ * Writes every measurement to contrast.json and the texts below their minimum, worst per text, to contrast.txt with
+ * the counts per surface and scheme; prints the table and fails if any text is short.
+ * @param {Loka} loka @param {Measured[]} all @param {string} what
+ */
+function contrastReport(loka, all, what) {
+	writeFileSync(join(loka.dir, "contrast.json"), JSON.stringify(all, null, 1));
+	const failing = worstPerText(all.filter((m) => !m.excluded && m.ratio < m.needs));
+	const measured = all.filter((m) => !m.excluded);
+	const lowest = Math.min(...measured.map((m) => m.ratio)).toFixed(2);
+	const surfaces = [...new Set(all.map((m) => m.surface))];
+	const count = (/** @type {Measured[]} */ list, /** @type {string} */ surface, /** @type {string} */ scheme) =>
+		list.filter((m) => m.surface === surface && m.scheme === scheme).length;
+	const table = [
+		`${measured.length} text boxes measured (${what}); lowest ${lowest}:1`,
+		`${failing.length} texts below their minimum (${["dark", "light"].map((s) => `${s} ${failing.filter((m) => m.scheme === s).length}`).join(", ")})`,
+		"",
+		["surface", "measured dark", "measured light", "failing dark", "failing light"].join("\t"),
+		...surfaces.map((s) =>
+			[
+				s,
+				count(measured, s, "dark"),
+				count(measured, s, "light"),
+				count(failing, s, "dark"),
+				count(failing, s, "light"),
+			].join("\t"),
+		),
+		"",
+		["scheme", "hue", "element", "text", "ratio", "needs", "raw", "where"].join("\t"),
+		...failing.map((m) =>
+			[m.scheme, m.hue, m.element, m.text, m.ratio.toFixed(2), m.needs, m.raw.toFixed(2), m.where].join("\t"),
+		),
+	].join("\n");
+	writeFileSync(join(loka.dir, "contrast.txt"), `${table}\n`);
+	console.log(table);
+	assert.equal(failing.length, 0, `${failing.length} texts below 4.5:1 (3:1 large); table in contrast.txt`);
+}
+
+/**
+ * @typedef {{ width: number, hue: number, scheme: string, planet: string, surface: string, state: string,
+ *   element: string, text: string, ratio: number, raw: number, needs: number, where: string, excluded?: string }} Measured
  */
 
 /**
- * WCAG contrast of every text in the sidebar against what's drawn behind it. It reads each text's color and box,
+ * WCAG contrast of every text in an element (the sidebar unless `root` names another, found through shadow roots)
+ * against what's drawn behind it. It reads each text's color and box,
  * screenshots the window, hides all text (color: transparent; a text-shadow stays, as it's drawn to sit behind the
  * letters, the way a halo is the background in WCAG's terms) and screenshots it again. The pixels that changed are the
  * letters; the rectangle around them inside the text's box is where it looks, so a line box's padding or a badge's
@@ -1492,58 +1786,72 @@ async function sidebarShot(/** @type {Loka} */ loka, /** @type {string} */ name)
  * blended by its own and its ancestors' opacity, against that pixel. Before that each pixel is the median of the 5x5
  * around it, which keeps the sky's gradients, the nebula, the clouds and the planet but drops specks under 2 px
  * across: a single star under a light label would fail any color there is (`raw` is the ratio without it). Large text
- * (24 px, or 18.66 px bold) needs 3:1, the rest 4.5:1. Text in the list that has slid under the planet's fade is
- * excluded, as it's meant to dissolve there. `only` limits it to the elements matching a selector.
+ * (24 px, or 18.66 px bold) needs 3:1, the rest 4.5:1. A text field's value, or its placeholder when it's empty, and a
+ * select's shown option count as text in the field's content box. Text in the sidebar's list that has slid under the
+ * planet's fade is excluded, as it's meant to dissolve there, and so is a disabled control's (WCAG exempts inactive
+ * controls). `only` limits it to texts inside an element matching a selector, through shadow roots.
+ * @param {Loka} loka
+ * @param {{ width: number, hue: number, scheme: string, planet: string, surface: string, state: string }} at
+ * @param {{ root?: string, only?: string }} [where]
  * @returns {Promise<Measured[]>}
  */
-async function measureText(
-	/** @type {Loka} */ loka,
-	/** @type {{ width: number, hue: number, scheme: string, planet: string, state: string }} */ at,
-	only = "",
-) {
-	const texts = await loka.page.evaluate((only) => {
-		const sidebar = document.querySelector("loka-app")?.shadowRoot?.querySelector("loka-sidebar");
-		if (!sidebar?.shadowRoot) throw new Error("no sidebar");
-		const paint = new OffscreenCanvas(1, 1).getContext("2d", { willReadFrequently: true });
-		if (!paint) throw new Error("no canvas");
-		/** A CSS color as sRGB 0-255 and alpha 0-1, however it's written (hsl, oklch, color-mix). */
-		const rgba = (/** @type {string} */ color) => {
-			paint.clearRect(0, 0, 1, 1);
-			paint.fillStyle = color;
-			paint.fillRect(0, 0, 1, 1);
-			const [r = 0, g = 0, b = 0, a = 0] = paint.getImageData(0, 0, 1, 1).data;
-			return [r, g, b, a / 255];
-		};
-		const up = (/** @type {Element} */ el) => {
-			const root = el.getRootNode();
-			return el.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
-		};
-		const fade = sidebar.shadowRoot.querySelector(".bottom")?.getBoundingClientRect();
-		/**
-		 * @type {{ element: string, text: string, color: number[], opacity: number, needs: number, excluded?: string,
-		 *   boxes: { x: number, y: number, right: number, bottom: number }[] }[]}
-		 */
-		const out = [];
-		const visit = (/** @type {Node} */ node) => {
-			if (node instanceof Text) {
-				const el = node.parentElement;
-				const text = node.data.replace(/\s+/g, " ").trim();
-				// .fav is a favicon stand-in: a letter drawn as the site's icon, on its own color.
-				if (!el || !text || el.closest("svg, style, .fav")) return;
-				if (only && !el.closest(only)) return;
+async function measureText(loka, at, { root = "loka-sidebar", only = "" } = {}) {
+	const texts = await loka.page.evaluate(
+		({ root, only }) => {
+			/** @returns {Element | undefined} */
+			const find = (/** @type {ParentNode} */ r) => {
+				for (const el of r.querySelectorAll("*")) {
+					if (el.localName === root) return el;
+					const inside = el.shadowRoot && find(el.shadowRoot);
+					if (inside) return inside;
+				}
+				return undefined;
+			};
+			const surface = find(document);
+			if (!surface?.shadowRoot) throw new Error(`no ${root}`);
+			const paint = new OffscreenCanvas(1, 1).getContext("2d", { willReadFrequently: true });
+			if (!paint) throw new Error("no canvas");
+			/** A CSS color as sRGB 0-255 and alpha 0-1, however it's written (hsl, oklch, color-mix). */
+			const rgba = (/** @type {string} */ color) => {
+				paint.clearRect(0, 0, 1, 1);
+				paint.fillStyle = color;
+				paint.fillRect(0, 0, 1, 1);
+				const [r = 0, g = 0, b = 0, a = 0] = paint.getImageData(0, 0, 1, 1).data;
+				return [r, g, b, a / 255];
+			};
+			const up = (/** @type {Element} */ el) => {
+				const root = el.getRootNode();
+				return el.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
+			};
+			const fade =
+				root === "loka-sidebar" ? surface.shadowRoot.querySelector(".bottom")?.getBoundingClientRect() : undefined;
+			/**
+			 * @type {{ element: string, text: string, color: number[], opacity: number, needs: number, excluded?: string,
+			 *   boxes: { x: number, y: number, right: number, bottom: number }[] }[]}
+			 */
+			const out = [];
+			/** One text drawn by `el` in `color`, in these rectangles. */
+			const record = (
+				/** @type {Element} */ el,
+				/** @type {string} */ text,
+				/** @type {string} */ color,
+				/** @type {DOMRect[]} */ rects,
+			) => {
 				if (!el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return;
 				const style = getComputedStyle(el);
 				let opacity = 1;
+				let inside = !only;
+				let disabled = false;
 				const clips = [new DOMRect(0, 0, innerWidth, innerHeight)];
 				for (let a = /** @type {Element | null} */ (el); a; a = up(a)) {
 					const s = getComputedStyle(a);
 					opacity *= Number(s.opacity);
 					if (s.overflowX !== "visible" || s.overflowY !== "visible") clips.push(a.getBoundingClientRect());
+					if (only && a.matches(only)) inside = true;
+					if (a.matches(":disabled, [aria-disabled='true']")) disabled = true;
 				}
-				if (opacity < 0.05) return;
-				const range = document.createRange();
-				range.selectNodeContents(node);
-				const boxes = [...range.getClientRects()].flatMap((r) => {
+				if (!inside || opacity < 0.05) return;
+				const boxes = rects.flatMap((r) => {
 					const x = Math.max(r.left, ...clips.map((c) => c.left));
 					const y = Math.max(r.top, ...clips.map((c) => c.top));
 					const right = Math.min(r.right, ...clips.map((c) => c.right));
@@ -1560,21 +1868,54 @@ async function measureText(
 				const name = el.classList.length || !el.parentElement ? tag(el) : `${tag(el.parentElement)} > ${tag(el)}`;
 				out.push({
 					element: `${host} ${name}`.trim(),
-					text: text.slice(0, 40),
-					color: rgba(style.color),
+					text: text.replace(/\s+/g, " ").trim().slice(0, 40),
+					color: rgba(color),
 					opacity,
 					boxes,
 					needs: size >= 24 || (size >= 18.66 && weight >= 700) ? 3 : 4.5,
-					excluded: under ? "under the planet's fade" : undefined,
+					excluded: under ? "under the planet's fade" : disabled ? "disabled" : undefined,
 				});
-				return;
-			}
-			if (node instanceof Element && node.shadowRoot) visit(node.shadowRoot);
-			for (const child of node.childNodes) visit(child);
-		};
-		visit(sidebar);
-		return out;
-	}, only);
+			};
+			/** A field's content box: where its value or placeholder is drawn. */
+			const contentBox = (/** @type {Element} */ el) => {
+				const r = el.getBoundingClientRect();
+				const s = getComputedStyle(el);
+				const px = (/** @type {string} */ v) => Number.parseFloat(v) || 0;
+				const left = r.left + px(s.borderLeftWidth) + px(s.paddingLeft);
+				const top = r.top + px(s.borderTopWidth) + px(s.paddingTop);
+				const right = r.right - px(s.borderRightWidth) - px(s.paddingRight);
+				const bottom = r.bottom - px(s.borderBottomWidth) - px(s.paddingBottom);
+				return new DOMRect(left, top, right - left, bottom - top);
+			};
+			const visit = (/** @type {Node} */ node) => {
+				if (node instanceof Text) {
+					const el = node.parentElement;
+					// .fav is a favicon stand-in: a letter drawn as the site's icon, on its own color.
+					if (!el || !node.data.trim() || el.closest("svg, style, .fav, option, textarea")) return;
+					const range = document.createRange();
+					range.selectNodeContents(node);
+					record(el, node.data, getComputedStyle(el).color, [...range.getClientRects()]);
+					return;
+				}
+				if (
+					(node instanceof HTMLInputElement && /^(text|search|url|email|number|)$/.test(node.type)) ||
+					node instanceof HTMLTextAreaElement
+				) {
+					const color = node.value ? getComputedStyle(node).color : getComputedStyle(node, "::placeholder").color;
+					if (node.value || node.placeholder) record(node, node.value || node.placeholder, color, [contentBox(node)]);
+				}
+				if (node instanceof HTMLSelectElement) {
+					const shown = node.selectedOptions[0]?.text ?? "";
+					if (shown.trim()) record(node, shown, getComputedStyle(node).color, [contentBox(node)]);
+				}
+				if (node instanceof Element && node.shadowRoot) visit(node.shadowRoot);
+				for (const child of node.childNodes) visit(child);
+			};
+			visit(surface);
+			return out;
+		},
+		{ root, only },
+	);
 
 	// The same window with every letter gone.
 	const hide = (/** @type {boolean} */ on) =>
@@ -1583,7 +1924,7 @@ async function measureText(
 			if (!w.contrastHide) {
 				w.contrastHide = new CSSStyleSheet();
 				w.contrastHide.replaceSync(
-					"*, *::before, *::after { color: transparent !important; -webkit-text-fill-color: transparent !important; text-decoration-color: transparent !important; caret-color: transparent !important; transition: none !important; }",
+					"*, *::before, *::after, *::placeholder { color: transparent !important; -webkit-text-fill-color: transparent !important; text-decoration-color: transparent !important; caret-color: transparent !important; transition: none !important; }",
 				);
 			}
 			const sheet = w.contrastHide;
@@ -1637,36 +1978,39 @@ async function measureText(
 				}
 				return found.n >= 3 ? found : b;
 			};
+			// This runs for every pixel under every text (millions on a page), so it allocates nothing per pixel.
 			const linear = (/** @type {number} */ c) => {
 				const v = c / 255;
 				return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
 			};
-			const luminance = (/** @type {number[]} */ [r = 0, g = 0, b = 0]) =>
-				0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
-			const at = (/** @type {number} */ x, /** @type {number} */ y) => {
-				const i = (Math.min(height - 1, Math.max(0, y)) * width + Math.min(width - 1, Math.max(0, x))) * 4;
-				return [px[i] ?? 0, px[i + 1] ?? 0, px[i + 2] ?? 0];
-			};
+			const LINEAR = Float64Array.from({ length: 256 }, (_, c) => linear(c));
+			/** Linear light of a channel that may be a blend (not a whole number). */
+			const lin = (/** @type {number} */ c) => (Number.isInteger(c) ? (LINEAR[c] ?? 0) : linear(c));
+			const luminance = (/** @type {number} */ r, /** @type {number} */ g, /** @type {number} */ b) =>
+				0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+			const index = (/** @type {number} */ x, /** @type {number} */ y) =>
+				(Math.min(height - 1, Math.max(0, y)) * width + Math.min(width - 1, Math.max(0, x))) * 4;
+			const window5 = [new Uint8Array(25), new Uint8Array(25), new Uint8Array(25)];
+			const bg = [0, 0, 0];
+			/** The median of the 5x5 around a pixel, per channel, into `bg`. */
 			const median = (/** @type {number} */ x, /** @type {number} */ y) => {
-				/** @type {number[][]} */
-				const channels = [[], [], []];
+				let n = 0;
 				for (let dy = -2; dy <= 2; dy++) {
 					for (let dx = -2; dx <= 2; dx++) {
-						const [r = 0, g = 0, b = 0] = at(x + dx, y + dy);
-						channels[0]?.push(r);
-						channels[1]?.push(g);
-						channels[2]?.push(b);
+						const i = index(x + dx, y + dy);
+						for (let c = 0; c < 3; c++) /** @type {Uint8Array} */ (window5[c])[n] = px[i + c] ?? 0;
+						n++;
 					}
 				}
-				return channels.map((c) => c.sort((a, b) => a - b)[12] ?? 0);
+				for (let c = 0; c < 3; c++) bg[c] = /** @type {Uint8Array} */ (window5[c]).sort()[12] ?? 0;
 			};
 			return texts.map((t) => {
 				const [tr = 0, tg = 0, tb = 0, ta = 1] = t.color;
 				const alpha = ta * t.opacity;
-				const ratio = (/** @type {number[]} */ bg) => {
-					const ink = [tr, tg, tb].map((v, c) => alpha * v + (1 - alpha) * (bg[c] ?? 0));
-					const [a, b] = [luminance(ink), luminance(bg)];
-					return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+				const ratio = (/** @type {number} */ r, /** @type {number} */ g, /** @type {number} */ b) => {
+					const a = luminance(alpha * tr + (1 - alpha) * r, alpha * tg + (1 - alpha) * g, alpha * tb + (1 - alpha) * b);
+					const l = luminance(r, g, b);
+					return (Math.max(a, l) + 0.05) / (Math.min(a, l) + 0.05);
 				};
 				let worst = Number.POSITIVE_INFINITY;
 				let raw = Number.POSITIVE_INFINITY;
@@ -1674,12 +2018,14 @@ async function measureText(
 				for (const b of t.boxes.map(ink)) {
 					for (let y = Math.ceil(b.y); y < Math.floor(b.bottom); y++) {
 						for (let x = Math.ceil(b.x); x < Math.floor(b.right); x++) {
-							const bg = median(x, y);
-							const r = ratio(bg);
-							raw = Math.min(raw, ratio(at(x, y)));
-							if (r < worst) {
-								worst = r;
-								where = `${x},${y} on rgb(${bg.join(" ")}) ink rgba(${t.color.join(" ")}) x${t.opacity.toFixed(2)}`;
+							median(x, y);
+							const [r = 0, g = 0, bl = 0] = bg;
+							const here = ratio(r, g, bl);
+							const i = index(x, y);
+							raw = Math.min(raw, ratio(px[i] ?? 0, px[i + 1] ?? 0, px[i + 2] ?? 0));
+							if (here < worst) {
+								worst = here;
+								where = `${x},${y} on rgb(${r} ${g} ${bl}) ink rgba(${t.color.join(" ")}) x${t.opacity.toFixed(2)}`;
 							}
 						}
 					}
@@ -1704,7 +2050,7 @@ function worstPerText(failing) {
 	/** @type {Map<string, Measured & { states: Set<string> }>} */
 	const worst = new Map();
 	for (const m of failing) {
-		const key = `${m.scheme} ${m.hue} ${m.element} ${m.text}`;
+		const key = `${m.surface} ${m.scheme} ${m.hue} ${m.element} ${m.text}`;
 		const seen = worst.get(key);
 		const states = seen?.states ?? new Set();
 		states.add(

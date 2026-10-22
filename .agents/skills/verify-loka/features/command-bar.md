@@ -53,6 +53,9 @@ Preconditions: seed data. The fake browser (`prototype/src/demo/`) answers `sugg
   "how to cook rice" stays a search first.
 - **Command by a related word.** Fill `preferences`, ArrowDown, Enter. `activeTab` is `Settings`.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs command-bar`.
+- **Contrast.** `run.mjs contrast-pages` measures the bar's text, empty and with "lit" typed (its completion
+  selected, on `--loka-text-selection`), embedded beside the sidebar and without it, and as the floating page
+  (`layout="page"`), for 8 hues in both schemes (theme.md).
 - **In the browser.** `bun run verify -- --ux command-bar` runs it, verify:browser ('suggest("example") answers, a
   search first') and verify:flows `tabs` and `spaces`: "pages opened from the command bar land in Research, newest
   first", "words in the command bar search the web in a new tab", "Ctrl+L opens the bar on the shown address", "and

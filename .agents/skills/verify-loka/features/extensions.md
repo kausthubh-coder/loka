@@ -34,6 +34,9 @@ Preconditions: the fake browser has five extensions; uBlock Origin and `Bitwarde
   `Manage extension` logs `extensionAction` with `manage`. Bitwarden has no `Options`. The fake takes the yes on
   `remove` and drops the extension.
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs extensions`.
+- **Contrast.** `run.mjs contrast-pages` measures the Extensions panel and Settings > Extensions, for 8 hues in both
+  schemes (theme.md). A badge's text is white or black, whichever reads better on the extension's color
+  (`badgeInk`, unit tested on every color); the browser doesn't pass an extension's own badge text color yet.
 - **In the browser.** `bun run verify -- --ux extensions` runs it, verify:browser ("getExtensions has uBlock Origin,
   pinned, with its icon", "the sidebar's Extensions panel lists exactly those") and verify:flows `extensions`, which
   loads a test extension with a popup and a badge: "the Extensions panel lists both", "pinning puts its icon in the

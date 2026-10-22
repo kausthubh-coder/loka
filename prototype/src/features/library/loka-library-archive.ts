@@ -252,6 +252,10 @@ export class LokaLibraryArchive extends LitElement {
 				font-size: 13px;
 				font-variant-numeric: tabular-nums;
 			}
+			/* On the chosen filter's lighter fill the count steps up a tone, so it keeps 4.5:1. */
+			.filter[aria-pressed="true"] .n {
+				color: var(--loka-ink-2);
+			}
 			.mini {
 				display: grid;
 				flex: none;

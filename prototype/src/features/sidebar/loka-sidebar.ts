@@ -3020,12 +3020,21 @@ export class LokaSidebar extends LitElement {
 		.world:hover {
 			filter: brightness(1.08);
 		}
+		/* Between the + and Downloads on the left and as far in on the right, so it stays centered, on one line, on
+		   the planet's shaded cap: a longer name ends in "…" instead of running over the buttons onto the bright sky. */
 		.world-name {
 			position: absolute;
 			z-index: 2;
-			left: 0;
-			right: 0;
-			top: 55px;
+			left: 72px;
+			right: 72px;
+			/* The letters at 55px; the padding keeps the shade's blur and the halo inside what's clipped, and the mask
+			   fades a cut-off shade's ends instead of leaving them square. */
+			top: 45px;
+			padding: 10px 6px;
+			overflow: hidden;
+			mask-image: linear-gradient(90deg, transparent, #000 6px, #000 calc(100% - 6px), transparent);
+			white-space: nowrap;
+			text-overflow: ellipsis;
 			text-align: center;
 			font-size: 13px;
 			font-weight: 650;
@@ -3034,8 +3043,9 @@ export class LokaSidebar extends LitElement {
 			pointer-events: none;
 		}
 		/* A soft shade on the planet under the name, so the white reads on every planet in every color (its lit cap is
-		   too bright for white alone). Blurred, so it reads as shadow rather than a chip, and no taller than the
-		   letters, so it stays on the planet rather than spilling over its edge onto the sky. */
+		   too bright for white alone). Blurred, so it reads as shadow rather than a chip, and hardly taller than the
+		   letters, so it stays on the planet rather than spilling over its edge onto the sky. It starts a pixel above
+		   the line, so the blur's fading top edge clears the tall letters (a long name's k and d were at 3.9:1). */
 		.world-name > span {
 			position: relative;
 			padding: 0 8px;
@@ -3043,10 +3053,10 @@ export class LokaSidebar extends LitElement {
 		.world-name > span::before {
 			content: "";
 			position: absolute;
-			inset: 1px 0 0;
+			inset: -1px 0 0;
 			z-index: -1;
 			border-radius: 999px;
-			background: hsl(var(--hue) 55% 12% / 0.6);
+			background: hsl(var(--hue) 55% 12% / 0.68);
 			filter: blur(3px);
 		}
 		.neighbour {

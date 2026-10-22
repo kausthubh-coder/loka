@@ -94,6 +94,22 @@ export function oklchToRgb(L: number, C: number, h: number): Rgb {
 	return linear.map((v) => Math.min(255, Math.max(0, fromLinear(v)))) as Rgb;
 }
 
+/**
+ * A color written as hex (#rgb, #rrggbb) or rgb()/rgba() (with spaces or commas), as sRGB; null for anything else.
+ * The browser sends extension badge colors as rgb(r g b), the demo as hex.
+ */
+export function parseRgb(css: string): Rgb | null {
+	const color = css.trim().toLowerCase();
+	const hex = color.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/)?.[1];
+	if (hex) {
+		const full = hex.length === 3 ? [...hex].map((d) => d + d).join("") : hex;
+		return [0, 2, 4].map((at) => Number.parseInt(full.slice(at, at + 2), 16)) as Rgb;
+	}
+	const rgb = color.match(/^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/);
+	if (rgb) return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
+	return null;
+}
+
 /** WCAG relative luminance. */
 export function luminance(rgb: Rgb): number {
 	const [r, g, b] = rgb.map(toLinear) as Rgb;

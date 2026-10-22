@@ -148,15 +148,24 @@ def loka_substitution(tree: Path = SOURCE_TREE):
 
 def branded_strings(text: str, tree: Path = SOURCE_TREE) -> str:
     """A grit strings file's text with the product named Loka. Renaming it again changes nothing. Translations
-    (.xtb) keep their Chromium wording, as they did under the old patch."""
+    (.xtb) aren't renamed: a renamed message's fingerprint changes, so other languages show it in English, as they
+    did under the old patch."""
     renamed, _fingerprints = loka_substitution(tree).replace_grit_tree(text)
     return renamed
 
 
 def brand_strings():
+    # The first rename keeps the file as it came in patch-orig (export_patch.py's originals), so patches_check.py can
+    # tell this renaming from a hand edit on any machine, not only where someone saved an original by hand.
+    orig_dir = SOURCE_TREE.parent.parent / 'patch-orig'
     for rel in BRANDED_STRINGS:
         path = SOURCE_TREE / rel
-        path.write_text(branded_strings(path.read_text(encoding='utf-8')), encoding='utf-8', newline='\n')
+        text = path.read_text(encoding='utf-8')
+        orig = orig_dir / rel
+        if not orig.exists():
+            orig.parent.mkdir(parents=True, exist_ok=True)
+            orig.write_text(text, encoding='utf-8', newline='\n')
+        path.write_text(branded_strings(text), encoding='utf-8', newline='\n')
 
 
 def substitute_names():

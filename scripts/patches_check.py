@@ -115,7 +115,8 @@ def main():
     in_folders = {f for f in in_folders if not any(f.startswith(g) for g in GENERATED)}
 
     unexported: list[str] = []
-    for rel in sorted(saved | set(expected) | in_folders | set(BRANDED_STRINGS)):
+    branded = {rel for rel in BRANDED_STRINGS if (SOURCE_TREE / rel).exists()}
+    for rel in sorted(saved | set(expected) | in_folders | branded):
         current = read(SOURCE_TREE / rel)
         if not (SOURCE_TREE / rel).exists():
             problems.append(f'{rel}: in {owner.get(rel, "patch-orig")} but missing from {SOURCE_TREE}')

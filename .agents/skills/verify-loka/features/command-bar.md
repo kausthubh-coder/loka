@@ -27,6 +27,10 @@ it's drawn over the window.
 - `command-actions`: commands matched by label or related words ("preferences" finds Settings).
 - `command-modes`: "New tab" or "This tab" on the right of the field says where an address opens.
 - `command-keys`: Up, Down, Tab and Shift+Tab move, Enter runs, Ctrl+Enter takes one word to its .com, Escape closes.
+- `command-shortcuts`: a row whose command has a key that works in the browser shows it as a key cap (`shortcut` on
+  `CommandResult`): History Ctrl+H, Search the sidebar Ctrl+Shift+F (the sidebar's own, while it has focus), a space
+  Ctrl+1..8 and Ctrl+9 only for a ninth that is also the last (`spaceShortcut`; the browser's Ctrl+9 is the last
+  space, the sidebar's the ninth). Ctrl+S (prototype only) and Ctrl+E (the prototype's Ctrl+W) are not listed.
 - `command-new-tab`: there is no new tab page. Ctrl+T, the `New tab` row and the + menu's New tab open the bar and
   make no tab; Escape leaves the tabs as they were; a pick makes exactly one. A window with nothing to show (a new
   window, a space with no tabs, its last tab closed) shows an empty tab: chrome://newtab, which the browser loads as
@@ -52,6 +56,10 @@ Preconditions: seed data. The fake browser (`prototype/src/demo/`) answers `sugg
   `activeTab: "YouTube"`. For the browser's history pick, type `redd` (reddit is only in the fake's history).
   "how to cook rice" stays a search first.
 - **Command by a related word.** Fill `preferences`, ArrowDown, Enter. `activeTab` is `Settings`.
+- **Shortcuts.** In Build, Ctrl+K: the rows with a `kbd.shortcut` are exactly History Ctrl+H and Search the sidebar
+  Ctrl+Shift+F; fill `scho`: School Ctrl+2. Pressing Ctrl+2, Ctrl+Shift+F and Ctrl+H then does what each row does.
+- **Forced colors.** With `emulateMedia({ forcedColors: "active" })` the bar and its field have a CanvasText outline
+  and the selected row is Highlight/HighlightText (theme.md).
 - **Recipe.** `node .agents/skills/verify-loka/scripts/run.mjs command-bar`.
 - **Contrast.** `run.mjs contrast-pages` measures the bar's text, empty and with "lit" typed (its completion
   selected, on `--loka-text-selection`), embedded beside the sidebar and without it, and as the floating page

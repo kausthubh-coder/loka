@@ -263,6 +263,67 @@ const recipes = {
 		assert.equal(o.open[0], "Inbox", "removed essential lands at the top of open tabs");
 		await loka.proof("02-removed");
 
+		// Tiles are a quarter of the row however many there are, like Arc's Favorites: one Essential is one tile at
+		// the left, not a tile the width of the sidebar.
+		const grid = loka.sidebar.locator(".essentials");
+		const boxOf = async (/** @type {import("playwright").Locator} */ target) => {
+			const b = await target.boundingBox();
+			if (!b) throw new Error("not visible");
+			return b;
+		};
+		const [first, ...rest] = o.essentials;
+		const quarter = await boxOf(loka.essential(first));
+		for (const title of rest) {
+			await loka.essential(title).click({ button: "right" });
+			await loka.menuItem("Remove from Essentials").click();
+		}
+		assert.deepEqual((await loka.outline()).essentials, [first], "one Essential left");
+		await loka.page.waitForTimeout(400);
+		const one = await boxOf(loka.essential(first));
+		const row = await boxOf(grid);
+		const near = (/** @type {number} */ a, /** @type {number} */ b) => Math.abs(a - b) <= 1;
+		assert.ok(
+			near(one.width, quarter.width) && near(one.height, quarter.height) && near(one.x, row.x),
+			`one Essential keeps a four-across tile's size, at the left: ${JSON.stringify({ one, quarter, row })}`,
+		);
+		await loka.proof("03-one-essential");
+
+		// While a tab is dragged the free cell beside it takes the drop.
+		const press = async (/** @type {string} */ title) => {
+			const from = await boxOf(loka.row(title));
+			await loka.page.mouse.move(from.x + 60, from.y + from.height / 2);
+			await loka.page.mouse.down();
+			await loka.page.mouse.move(from.x + 60, from.y + from.height / 2 - 12, { steps: 3 });
+		};
+		const letGo = async (/** @type {import("playwright").Locator} */ target) => {
+			const to = await boxOf(target);
+			await loka.page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 6 });
+			await loka.page.mouse.up();
+			await loka.page.waitForTimeout(200);
+		};
+		await press("Inbox");
+		const slot = loka.sidebar.locator(".essential.slot");
+		const free = await boxOf(slot);
+		assert.ok(near(free.x, one.x + one.width + 8) && near(free.width, one.width), "the free cell is the next tile");
+		await letGo(slot);
+		assert.deepEqual((await loka.outline()).essentials, [first, "Inbox"], "dropping in the free cell adds it");
+
+		// With none, a drag shows three slots where the address field was, and a drop there makes the first one.
+		for (const title of [first, "Inbox"]) {
+			await loka.essential(title).click({ button: "right" });
+			await loka.menuItem("Remove from Essentials").click();
+		}
+		assert.deepEqual((await loka.outline()).essentials, []);
+		await press("Hacker News");
+		const ghosts = loka.sidebar.locator(".essentials .tray .essential.ghost");
+		assert.equal(await ghosts.count(), 3, "three slots while a tab is dragged");
+		await letGo(ghosts.first());
+		assert.deepEqual((await loka.outline()).essentials, ["Hacker News"], "the first Essential");
+		await loka.page.waitForTimeout(400);
+		const firstTile = await boxOf(loka.essential("Hacker News"));
+		assert.ok(near(firstTile.width, quarter.width) && near(firstTile.x, row.x), "the first Essential is a tile too");
+		await loka.proof("04-first-essential");
+
 		// ---- the limit of 12, and adding several at once ----
 		await resetDemo(loka);
 		const pick = { modifiers: /** @type {["ControlOrMeta"]} */ (["ControlOrMeta"]) };
@@ -434,6 +495,68 @@ const recipes = {
 		assert.equal(o.activeTab, "Settings", "a command found by a related word opened Settings");
 		await loka.page.locator("loka-settings").getByRole("heading", { name: "Settings" }).waitFor();
 		await loka.proof("03-settings-from-command");
+
+		// Every row whose command has a key shows it, and only keys that work: pressing each does what its row does.
+		const shortcuts = () =>
+			loka.page
+				.locator("loka-command-bar")
+				.evaluate((el) =>
+					[...(el.shadowRoot?.querySelectorAll(".result") ?? [])].flatMap((r) =>
+						r.querySelector("kbd.shortcut")
+							? [`${r.querySelector(".label")?.textContent?.trim()}: ${r.querySelector("kbd.shortcut")?.textContent}`]
+							: [],
+					),
+				);
+		await loka.page.keyboard.press("Control+1");
+		assert.equal((await loka.outline()).space, "Build");
+		// Let the switch to a dark space finish turning the sky before the screenshot.
+		await loka.page.waitForTimeout(800);
+		await loka.page.keyboard.press("Control+k");
+		assert.deepEqual(
+			await shortcuts(),
+			["History: Ctrl+H", "Search the sidebar: Ctrl+Shift+F"],
+			"the commands with keys show them",
+		);
+		await bar.fill("scho");
+		assert.deepEqual(await shortcuts(), ["School: Ctrl+2"], "a space shows its key");
+		await loka.proof("04-shortcuts");
+
+		// Windows High Contrast: the bar and its field have edges, and the selected row is Highlight.
+		await loka.page.emulateMedia({ forcedColors: "active", colorScheme: "dark" });
+		await loka.page.waitForTimeout(300);
+		const system = await systemColors(loka);
+		const look = await loka.page.locator("loka-command-bar").evaluate((el) => {
+			const css = (/** @type {string} */ selector) => {
+				const found = el.shadowRoot?.querySelector(selector);
+				return found ? getComputedStyle(found) : null;
+			};
+			const [panel, input, on, other] = [".panel", ".input", ".result.on", ".result:not(.on)"].map(css);
+			return [
+				panel?.outlineStyle,
+				panel?.outlineColor,
+				input?.outlineColor,
+				on?.backgroundColor,
+				on?.color,
+				other?.backgroundColor,
+			];
+		});
+		assert.deepEqual(
+			look.slice(0, 5),
+			["solid", system.CanvasText, system.CanvasText, system.Highlight, system.HighlightText],
+			`the bar is edged and its selected row lit: ${JSON.stringify(look)}`,
+		);
+		assert.notEqual(look[5], system.Highlight, "the other rows aren't lit");
+		await loka.proof("05-forced-colors");
+		await loka.page.emulateMedia({ forcedColors: "none" });
+
+		await loka.page.keyboard.press("Escape");
+		await loka.page.keyboard.press("Control+2");
+		assert.equal((await loka.outline()).space, "School", "Ctrl+2 went to School");
+		await loka.page.keyboard.press("Control+Shift+F");
+		await loka.sidebar.getByRole("combobox", { name: "Search the sidebar" }).waitFor();
+		await loka.page.keyboard.press("Escape");
+		await loka.page.keyboard.press("Control+h");
+		await loka.page.locator("loka-history").waitFor();
 	},
 
 	async "space-editor"(loka) {
@@ -572,6 +695,20 @@ const recipes = {
 		await loka.menuItem("Downloads").click();
 		await downloads.waitFor();
 		await loka.page.keyboard.press("Escape");
+		await downloads.waitFor({ state: "detached", timeout: 3000 }).catch(() => {});
+
+		// The download tried again finishes (about 30 s in the fake): the toast shows it, and the sidebar's one live
+		// region says it once. The toast itself isn't a live region, so it isn't said twice.
+		const live = loka.sidebar.locator("[aria-live], [role=status], [role=alert]");
+		assert.equal(await live.count(), 1, "one live region");
+		let said = "";
+		for (let i = 0; i < 90 && !said.endsWith(" downloaded"); i++) {
+			await loka.page.waitForTimeout(500);
+			said = (await live.textContent())?.trim() ?? "";
+		}
+		assert.equal(said, "lofi-cover.png downloaded", "the finished download was said");
+		assert.match(await loka.sidebar.locator(".toast").innerText(), /lofi-cover\.png/, "the toast names it too");
+		await loka.proof("06-download-said");
 	},
 
 	async "make-folders"(loka) {
@@ -788,9 +925,19 @@ const recipes = {
 		await loka.page.keyboard.press("Control+2");
 		await loka.page.waitForTimeout(800);
 		assert.equal(await scheme(), "light", "School is light");
+		// A switch is said to screen readers by the sidebar's one live region, which no one sees.
+		const live = loka.sidebar.locator("[aria-live], [role=status], [role=alert]");
+		assert.equal(await live.count(), 1, "the sidebar has one live region");
+		assert.deepEqual(
+			[await live.getAttribute("aria-live"), await live.textContent().then((t) => t?.trim())],
+			["polite", "School"],
+			"the switch to School was said",
+		);
+		assert.ok(((await live.boundingBox())?.width ?? 0) <= 1, "the live region isn't drawn");
 		await loka.proof("01-school-light");
 		await loka.page.keyboard.press("Control+3");
 		await loka.page.waitForTimeout(800);
+		assert.equal(await live.textContent().then((t) => t?.trim()), "Home", "the next switch replaced what was said");
 		assert.equal(await scheme(), "light", "Home follows the system");
 		assert.deepEqual(
 			await demoCalls(loka, "setColorScheme"),
@@ -810,6 +957,73 @@ const recipes = {
 		const home = (await loka.state()).spaces.find((/** @type {{ id: string }} */ s) => s.id === "s-home");
 		assert.equal(home.scheme, "dark");
 		assert.deepEqual((await demoCalls(loka, "setColorScheme")).at(-1), ["dark"]);
+
+		// Windows High Contrast (forced colors), in both of its schemes, back in Build: no sky, boxes drawn with edges
+		// in system colors, the tab on screen in Highlight, the space's name a plain label, menus edged and lit.
+		await loka.page.keyboard.press("Control+1");
+		for (const contrast of /** @type {const} */ (["dark", "light"])) {
+			await loka.page.emulateMedia({ forcedColors: "active", colorScheme: contrast });
+			await loka.page.waitForTimeout(300);
+			const system = await systemColors(loka);
+			const look = await sidebarLook(loka, {
+				active: ".scroll.shown .row.active",
+				activeLabel: ".scroll.shown .row.active .label",
+				row: ".scroll.shown .row:not(.active):not(.new-tab)",
+				url: ".url",
+				essential: ".essential:not(.active)",
+				name: ".world-name > span",
+				divider: ".divider span",
+			});
+			const shown = JSON.stringify(look);
+			assert.deepEqual(
+				[look.active?.background, look.active?.color, look.activeLabel?.color],
+				[system.Highlight, system.HighlightText, system.HighlightText],
+				`${contrast}: the tab on screen is Highlight with HighlightText: ${shown}`,
+			);
+			assert.notEqual(look.row?.background, system.Highlight, `${contrast}: other rows aren't lit`);
+			for (const box of /** @type {const} */ (["url", "essential"])) {
+				assert.deepEqual(
+					[look[box]?.outlineStyle, look[box]?.outlineColor],
+					["solid", system.CanvasText],
+					`${contrast}: the ${box} has a CanvasText edge: ${shown}`,
+				);
+			}
+			assert.deepEqual(
+				[look.name?.background, look.name?.color],
+				[system.Canvas, system.CanvasText],
+				`${contrast}: the space's name is CanvasText on Canvas`,
+			);
+			assert.equal(look.divider?.background, system.GrayText, `${contrast}: the divider is a GrayText line`);
+			const sky = await loka.page.evaluate(() => {
+				const el = document.querySelector("loka-app")?.shadowRoot?.querySelector(".sky");
+				return el ? getComputedStyle(el).display : "none";
+			});
+			assert.equal(sky, "none", `${contrast}: no sky behind the text`);
+			await loka.proof(`03-forced-colors-${contrast}`);
+
+			await loka.row("Hacker News").click({ button: "right" });
+			await loka.menuItem("Pin to space").hover();
+			const menu = await loka.sidebar.locator("loka-menu").evaluate((el) => {
+				const css = (/** @type {Element | null | undefined} */ e) => (e ? getComputedStyle(e) : null);
+				const box = css(el.shadowRoot?.querySelector(".menu"));
+				const lit = css(el.shadowRoot?.querySelector("button:hover"));
+				return [box?.outlineStyle, box?.outlineColor, lit?.backgroundColor, lit?.color];
+			});
+			assert.deepEqual(
+				menu,
+				["solid", system.CanvasText, system.Highlight, system.HighlightText],
+				`${contrast}: the menu has an edge and the item under the mouse is lit`,
+			);
+			await loka.proof(`04-forced-colors-menu-${contrast}`);
+			await loka.page.keyboard.press("Escape");
+		}
+		// More contrast asked for (not forced): the quiet text (Clear, a closed folder's count) is plain ink.
+		await loka.page.emulateMedia({ forcedColors: "none", colorScheme: "light", contrast: "more" });
+		await loka.page.waitForTimeout(300);
+		const more = await sidebarLook(loka, { clear: ".clear", label: ".scroll.shown .row .label" });
+		assert.equal(more.clear?.color, more.label?.color, "with more contrast the quiet text is as dark as a row's");
+		await loka.proof("05-more-contrast");
+		await loka.page.emulateMedia({ contrast: "no-preference" });
 	},
 
 	async contrast(loka) {
@@ -1584,6 +1798,48 @@ async function resetDemo(loka) {
 /** What the sidebar asked the fake browser to do, by message, as argument lists. @param {Loka} loka @param {string} message */
 async function demoCalls(loka, message) {
 	return loka.page.evaluate((m) => window.lokaDemo.calls.filter((c) => c.message === m).map((c) => c.args), message);
+}
+
+/**
+ * The system colors as this page computes them now (they follow forced colors and the scheme), to compare the
+ * sidebar's computed colors with. @param {Loka} loka @returns {Promise<Record<string, string>>}
+ */
+async function systemColors(loka) {
+	return loka.page.evaluate(() => {
+		const probe = document.createElement("span");
+		document.body.append(probe);
+		/** @type {Record<string, string>} */
+		const colors = {};
+		for (const name of ["Canvas", "CanvasText", "Highlight", "HighlightText", "ButtonText", "GrayText"]) {
+			probe.style.color = name;
+			colors[name] = getComputedStyle(probe).color;
+		}
+		probe.remove();
+		return colors;
+	});
+}
+
+/**
+ * Computed colors of the first element matching each selector in the sidebar's shadow root (null when none).
+ * @param {Loka} loka @param {Record<string, string>} selectors
+ * @returns {Promise<Record<string, { background: string, color: string, outlineStyle: string, outlineColor: string } | null>>}
+ */
+async function sidebarLook(loka, selectors) {
+	return loka.sidebar.evaluate((el, wanted) => {
+		/** @type {Record<string, { background: string, color: string, outlineStyle: string, outlineColor: string } | null>} */
+		const look = {};
+		for (const [name, selector] of Object.entries(wanted)) {
+			const found = el.shadowRoot?.querySelector(selector);
+			const css = found ? getComputedStyle(found) : null;
+			look[name] = css && {
+				background: css.backgroundColor,
+				color: css.color,
+				outlineStyle: css.outlineStyle,
+				outlineColor: css.outlineColor,
+			};
+		}
+		return look;
+	}, selectors);
 }
 
 /** Waits until the tour's step has finished fading in, so its screenshot isn't blank on a busy machine. @param {Loka} loka */

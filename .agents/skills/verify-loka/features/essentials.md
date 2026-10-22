@@ -1,9 +1,10 @@
 # Essentials
 
-Essentials is the icon grid at the top of the sidebar, up to four per row (fewer fill the row, so one is one big
-tile), and at most 12. Every space shares it. A user drags tabs in, reorders them, and removes them back to the open
-tabs. With none, it takes no room and says nothing: while a tab is dragged, three empty tiles grow into place to drop
-on.
+Essentials is the icon grid at the top of the sidebar, four columns, like Arc's Favorites: a tile is a quarter of
+the row however many there are, and a short row sits at the left (one Essential is one tile, not a tile the width
+of the sidebar). It holds at most 12. Every space shares it. A user drags tabs in, reorders them, and removes them
+back to the open tabs. With none, it takes no room and says nothing: while a tab is dragged, three empty tiles grow
+into place to drop on.
 
 ## Sub-features
 
@@ -37,6 +38,10 @@ Preconditions: seed data.
 - **Shared.** `Control+2`. School's `essentials` also includes `Hacker News`.
 - **Remove.** Back in Build (`Control+1`), right-click `loka.essential("Inbox")`, then
   `Remove from Essentials`. `open[0]` is `Inbox`.
+- **Tile size.** Remove all but one: the last tile's box is the same size as with four, at the grid's left
+  (`03-one-essential`). Press a tab and move it: `.essential.slot` is the next cell (one tile plus the 8 px gap to
+  the right); dropping there adds it. Remove all: a drag shows three `.tray .essential.ghost`; a drop on one makes
+  the first Essential, a quarter-row tile too (`04-first-essential`).
 - **Limit.** After `Reset demo data`, pick Build's three open tabs and add them, then its three pinned tabs (10). In
   School open `Game project`, pick `Canvas: CSC 281`, `Game design doc` and `Minecraft farm designs`, add them: the
   `status` says 1 didn't fit, `essentials` has 12 ending `Canvas: CSC 281`, `Game design doc`, and Minecraft is still

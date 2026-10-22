@@ -252,6 +252,33 @@ export class LokaMenu extends LitElement {
 			border: 0;
 			background: var(--loka-line);
 		}
+		/* Windows High Contrast drops the glass and its edge: the menu gets a plain edge, the lit item Highlight. */
+		@media (forced-colors: active) {
+			.menu {
+				background: Canvas;
+				outline: 1px solid CanvasText;
+				outline-offset: -1px;
+			}
+			/* Not adjusted, or the text would sit on its Canvas backplate inside the Highlight. */
+			button:hover,
+			button:focus-visible,
+			button.open,
+			button.danger:hover,
+			button.danger:focus-visible {
+				forced-color-adjust: none;
+				background: Highlight;
+				color: HighlightText;
+			}
+			button:hover kbd,
+			button:focus-visible kbd,
+			button:hover .more,
+			button:focus-visible .more {
+				color: HighlightText;
+			}
+			hr {
+				background: GrayText;
+			}
+		}
 	`;
 }
 

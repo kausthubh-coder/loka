@@ -71,9 +71,10 @@ export type ResultGroup = "" | "Tabs" | "History" | "Bookmarks" | "Spaces" | "Co
 /**
  * One row of the bar. `go` opens an address; its `search` is the words when it's a search Loka made up itself (the
  * real browser runs those with the user's own engine). `browser-tab` is an open tab the browser suggested that the
- * sidebar doesn't hold.
+ * sidebar doesn't hold. `shortcut` is the key that does the same thing outside the bar, written the Windows way
+ * ("Ctrl+H"); only rows with a key that works in the browser have one.
  */
-export type CommandResult = { label: string; detail: string; group: ResultGroup } & (
+export type CommandResult = { label: string; detail: string; group: ResultGroup; shortcut?: string } & (
 	| { kind: "go"; url: string; icon: "search" | "globe" | "history" | "bookmark"; search?: string }
 	| { kind: "tab"; tabId: TabId; spaceId: string }
 	| { kind: "browser-tab"; tabId: number; url: string }
@@ -81,7 +82,12 @@ export type CommandResult = { label: string; detail: string; group: ResultGroup 
 	| { kind: "action"; action: ActionId }
 );
 
-const ACTIONS: { action: ActionId; label: string; detail: string; words: string }[] = [
+/**
+ * The commands, and the shortcut of each that has one in the browser: Ctrl+H is the browser's History, which is the
+ * Library's History section; Ctrl+Shift+F is the sidebar's own, while it has focus (webui/src/main.ts). Ctrl+S hides
+ * the sidebar only in the prototype (in the browser it saves the page), so it isn't listed.
+ */
+const ACTIONS: { action: ActionId; label: string; detail: string; words: string; shortcut?: string }[] = [
 	{ action: "new-space", label: "New space", detail: "Name it, pick a color and a planet", words: "create add world" },
 	{
 		action: "edit-space",
@@ -97,7 +103,13 @@ const ACTIONS: { action: ActionId; label: string; detail: string; words: string 
 		words: "toggle collapse show pin unpin",
 	},
 	{ action: "settings", label: "Settings", detail: "Loka's settings", words: "preferences options" },
-	{ action: "history", label: "History", detail: "Ctrl+H", words: "visited past pages recent" },
+	{
+		action: "history",
+		label: "History",
+		detail: "Pages you visited",
+		words: "visited past pages recent",
+		shortcut: "Ctrl+H",
+	},
 	{
 		action: "library",
 		label: "Library",
@@ -106,7 +118,13 @@ const ACTIONS: { action: ActionId; label: string; detail: string; words: string 
 	},
 	{ action: "downloads", label: "Downloads", detail: "Recent files", words: "files" },
 	{ action: "extensions", label: "Extensions", detail: "Run, pin or manage them", words: "addons plugins" },
-	{ action: "search-sidebar", label: "Search the sidebar", detail: "Ctrl+Shift+F", words: "find tabs everywhere" },
+	{
+		action: "search-sidebar",
+		label: "Search the sidebar",
+		detail: "Find a tab in any space",
+		words: "find tabs everywhere",
+		shortcut: "Ctrl+Shift+F",
+	},
 	{ action: "archive", label: "Archived tabs", detail: "Bring back an archived tab", words: "old closed restore" },
 	{ action: "onboarding", label: "Show the welcome tour", detail: "Onboarding", words: "intro welcome tour" },
 	{
@@ -506,7 +524,9 @@ export function commandResults(state: BrowserState, query: string, context: Resu
 	if (q) {
 		for (const [i, space] of state.spaces.entries()) {
 			if (space.id === state.activeSpaceId || !space.name.toLowerCase().includes(q)) continue;
-			results.push({ kind: "space", spaceId: space.id, label: space.name, detail: `Ctrl+${i + 1}`, group: "Spaces" });
+			const shortcut = spaceShortcut(i, state.spaces.length);
+			const detail = "Switch to this space";
+			results.push({ kind: "space", spaceId: space.id, label: space.name, detail, group: "Spaces", shortcut });
 		}
 	}
 
@@ -516,10 +536,21 @@ export function commandResults(state: BrowserState, query: string, context: Resu
 		const label = unpinned ? "Keep the sidebar open" : muted ? "Unmute sounds" : a.label;
 		const detail = unpinned ? "Pin it back in place" : a.detail;
 		if (!q || `${label} ${a.label} ${a.words}`.toLowerCase().includes(q)) {
-			results.push({ kind: "action", action: a.action, label, detail, group: "Commands" });
+			results.push({ kind: "action", action: a.action, label, detail, group: "Commands", shortcut: a.shortcut });
 		}
 	}
 	return results;
+}
+
+/**
+ * The key that shows the space at `index` of `count`, written the Windows way. Ctrl+1..8 are the first eight. Ctrl+9
+ * is the last space when the page has focus (the browser's "last tab" key) but the ninth when the sidebar has it, so
+ * it's named only when those are the same space. Spaces past that have no key.
+ */
+export function spaceShortcut(index: number, count: number): string | undefined {
+	if (index < 8) return `Ctrl+${index + 1}`;
+	if (index === 8 && count === 9) return "Ctrl+9";
+	return undefined;
 }
 
 /** Whether a string the browser relayed is one of the bar's commands. */

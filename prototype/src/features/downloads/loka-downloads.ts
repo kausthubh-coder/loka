@@ -329,6 +329,27 @@ export class LokaDownloads extends LitElement {
 			outline: 2px solid var(--loka-accent);
 			outline-offset: -2px;
 		}
+		/* Windows High Contrast drops the bar's track and fill: the track gets an edge, the fill Highlight. */
+		@media (forced-colors: active) {
+			.bar {
+				height: 4px;
+				outline: 1px solid CanvasText;
+			}
+			.bar span {
+				background: Highlight;
+			}
+			.bar.paused span {
+				background: GrayText;
+			}
+			li:hover,
+			.act:hover {
+				outline: 1px solid Highlight;
+				outline-offset: -1px;
+			}
+			:focus-visible {
+				outline-color: CanvasText;
+			}
+		}
 		@media (prefers-reduced-motion: no-preference) {
 			li,
 			.act,

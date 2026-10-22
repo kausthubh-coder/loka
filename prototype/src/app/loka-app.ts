@@ -232,11 +232,14 @@ export class LokaApp extends LitElement {
 		return { media, tab, muted: this.tabs.find((t) => t.id === media.tabId)?.muted ?? false };
 	}
 
-	/** Runs the opt-in archive now and every minute after, using the setting in Settings > Tabs. */
+	/** Runs the archive now and every minute after, using the setting in Settings > Tabs. */
 	private archiveNow = () => {
 		const hours = this.ui.archiveAfterHours;
 		if (!hours) return;
-		const next = archiveStale(this.state, Date.now(), hours * 60 * 60 * 1000);
+		const audible = new Set(
+			Object.keys(DEMO_LINKS).filter((id) => this.tabs.find((t) => t.id === DEMO_LINKS[id])?.audible),
+		);
+		const next = archiveStale(this.state, Date.now(), hours * 60 * 60 * 1000, audible);
 		if (next !== this.state) this.apply(() => next);
 	};
 

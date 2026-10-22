@@ -66,7 +66,8 @@ disagree, or a recipe or flow it names doesn't exist.
 - [Extensions](./extensions.md): pinned ones in the address field, running them, pinning, the empty state.
 - [History](./history.md): Loka's History page, Ctrl+H.
 - [Onboarding](./onboarding.md): the prototype's first-run tour and the browser's setup.
-- [Archive](./archive.md): opt-in archiving of old open tabs, and bringing them back.
+- [Archive](./archive.md): archiving old open tabs (after 12 hours by default) and bringing them back; unloading
+  the tabs of spaces out of sight.
 - [Sidebar search and keyboard](./search-and-keys.md): Ctrl+Shift+F, next/previous tab, arrow keys in the tree.
 - [Import](./import.md): Chrome and Edge bookmarks, Arc spaces and Favorites.
 - [Media controls](./media.md): the now-playing card.

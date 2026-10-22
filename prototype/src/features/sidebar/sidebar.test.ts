@@ -286,7 +286,7 @@ describe("export and import", () => {
 
 	test("archived tabs survive an export and import", () => {
 		const now = Date.now();
-		const state = archiveStale(seedState(now), now, 24 * HOUR);
+		const state = archiveStale(seedState(now), now, 4 * HOUR);
 		expect(importState(exportState(state))?.archive).toEqual(state.archive);
 	});
 });
@@ -327,8 +327,8 @@ describe("folders made by dropping a tab on a tab", () => {
 describe("the archive", () => {
 	test("open tabs not shown for longer than the limit are archived; others stay", () => {
 		const now = Date.now();
-		// Seed: Arc tab last shown 3 days ago, Zen 26 hours ago, Hacker News 2 hours ago.
-		const state = archiveStale(seedState(now), now, 24 * HOUR);
+		// Seed: Arc tab last shown 9 hours ago, Zen 5 hours ago, Hacker News 2 hours ago.
+		const state = archiveStale(seedState(now), now, 4 * HOUR);
 		expect(space(state, "s-build").open).toEqual(["t-hn"]);
 		expect(state.archive.map((a) => a.tab.title)).toEqual(["Arc: what we learned", "Zen Browser"]);
 		expect(state.tabs["t-arc"]).toBeUndefined();
@@ -350,9 +350,16 @@ describe("the archive", () => {
 		expect(state.essentials).toEqual(seedState().essentials);
 	});
 
+	test("a tab playing sound is never archived, however long ago it was shown", () => {
+		const now = Date.now();
+		const state = archiveStale(seedState(now), now, 4 * HOUR, new Set(["t-arc"]));
+		expect(space(state, "s-build").open).toEqual(["t-hn", "t-arc"]);
+		expect(state.archive.map((a) => a.tab.title)).toEqual(["Zen Browser"]);
+	});
+
 	test("a restored tab comes back to the top of its own space and is shown", () => {
 		const now = Date.now();
-		const archived = switchSpace(archiveStale(seedState(now), now, 24 * HOUR), "s-home");
+		const archived = switchSpace(archiveStale(seedState(now), now, 4 * HOUR), "s-home");
 		const state = restoreArchived(archived, "t-zen", now);
 		expect([state.activeSpaceId, space(state, "s-build").open[0], activeTab(state)?.title]).toEqual([
 			"s-build",

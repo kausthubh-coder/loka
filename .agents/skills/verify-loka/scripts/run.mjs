@@ -408,14 +408,17 @@ const recipes = {
 	},
 
 	async archive(loka) {
-		assert.ok((await loka.outline()).open.includes("Arc: what we learned"), "archiving is off by default");
+		// Seed: Arc was last shown 9 hours ago, Zen 5 hours ago, Hacker News 2 hours ago: all inside the 12-hour default.
+		assert.ok((await loka.outline()).open.includes("Arc: what we learned"), "recent open tabs stay");
 		await loka.sidebar.getByRole("button", { name: "More" }).click();
 		await loka.menuItem("Settings").click();
-		await loka.page
-			.locator("loka-settings")
-			.getByRole("combobox", { name: "Archive open tabs" })
-			.selectOption({ label: "After a day" });
-		// Seed: Arc was last shown 3 days ago and Zen 26 hours ago; Hacker News 2 hours ago.
+		const setting = loka.page.locator("loka-settings").getByRole("combobox", { name: "Archive open tabs" });
+		assert.equal(await setting.inputValue(), "12", "archiving is on after 12 hours by default");
+		// Eight hours later Arc (17 h) and Zen (13 h) are past it; Hacker News (10 h) isn't. The archive runs every minute.
+		await loka.page.clock.install();
+		await loka.page.reload({ waitUntil: "networkidle" });
+		await loka.sidebar.getByRole("tree").first().waitFor();
+		await loka.page.clock.fastForward("08:00:00");
 		const o = await loka.outline();
 		assert.ok(!o.open.includes("Arc: what we learned") && !o.open.includes("Zen Browser"), "old open tabs archived");
 		assert.ok(o.open.includes("Hacker News"), "a recent one stays");

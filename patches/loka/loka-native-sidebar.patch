@@ -653,7 +653,7 @@
    map.AddWebUIConfig(std::make_unique<SigninErrorUIConfig>());
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/BUILD.gn
-@@ -0,0 +1,65 @@
+@@ -0,0 +1,71 @@
 +# Copyright 2026 The Loka Authors
 +# You can use, redistribute, and/or modify this source code under
 +# the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -669,6 +669,8 @@
 +    "loka_sidebar_handler_features.cc",
 +    "loka_sidebar_ui.cc",
 +    "loka_sidebar_ui.h",
++    "loka_tab_sleeper.cc",
++    "loka_tab_sleeper.h",
 +    "//chrome/browser/ui/views/loka/loka_command_bar.cc",
 +    "//chrome/browser/ui/views/loka/loka_command_bar.h",
 +  ]
@@ -691,7 +693,11 @@
 +    "//content/public/browser",
 +    "//extensions/browser",
 +    "//extensions/common",
++    "//chrome/browser/performance_manager",
 +    "//chrome/browser/profiles:profile",
++    "//chrome/browser/resource_coordinator",
++    "//chrome/browser/ui/browser_window",
++    "//components/performance_manager",
 +    "//chrome/browser/search_engines",
 +    "//chrome/browser/ui/tabs:tab_enums",
 +    "//chrome/browser/ui/tabs:tab_group",
@@ -1210,7 +1216,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_MEDIA_WATCHER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.cc
-@@ -0,0 +1,831 @@
+@@ -0,0 +1,834 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1581,6 +1587,9 @@
 +  data.Set("loading", contents->IsLoading());
 +  data.Set("audible", contents->IsCurrentlyAudible());
 +  data.Set("muted", contents->IsAudioMuted());
++  // Unloaded to save memory (LokaTabSleeper, Memory Saver): it loads again
++  // when shown.
++  data.Set("discarded", contents->WasDiscarded());
 +  const std::optional<tab_groups::TabGroupId> group = tab->GetGroup();
 +  data.Set("groupId", group ? GroupNumber(*group) : -1);
 +  if (tabs::TabInterface* opener = tab_strip->GetOpenerOfTabAt(index)) {
@@ -3209,7 +3218,7 @@
 +}
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.cc
-@@ -0,0 +1,197 @@
+@@ -0,0 +1,199 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -3225,6 +3234,7 @@
 +#include "chrome/browser/ui/webui/extensions/extension_icon_source.h"
 +#include "chrome/browser/ui/webui/favicon_source.h"
 +#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_tab_sleeper.h"
 +#include "chrome/browser/ui/webui/theme_source.h"
 +#include "chrome/common/webui_url_constants.h"
 +#include "components/favicon_base/favicon_url_parser.h"
@@ -3277,6 +3287,7 @@
 +      profile, std::make_unique<extensions::ExtensionIconSource>(profile));
 +
 +  web_ui->AddMessageHandler(std::make_unique<LokaSidebarHandler>());
++  LokaTabSleeper::EnsureForProfile(profile);
 +}
 +
 +LokaSidebarUI::~LokaSidebarUI() = default;
@@ -3530,6 +3541,224 @@
 +};
 +
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_SIDEBAR_UI_H_
+--- /dev/null
++++ b/chrome/browser/ui/webui/loka_sidebar/loka_tab_sleeper.cc
+@@ -0,0 +1,154 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#include "chrome/browser/ui/webui/loka_sidebar/loka_tab_sleeper.h"
++
++#include <cmath>
++#include <memory>
++#include <optional>
++#include <string>
++
++#include "base/functional/bind.h"
++#include "base/json/json_reader.h"
++#include "base/memory/weak_ptr.h"
++#include "base/values.h"
++#include "chrome/browser/performance_manager/policies/discard_eligibility_policy.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/resource_coordinator/lifecycle_unit_state.mojom.h"
++#include "chrome/browser/resource_coordinator/tab_lifecycle_unit_external.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
++#include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "chrome/browser/ui/webui/loka_sidebar/loka_sidebar_ui.h"
++#include "components/performance_manager/public/graph/page_node.h"
++#include "components/performance_manager/public/performance_manager.h"
++#include "components/prefs/pref_service.h"
++#include "components/tabs/public/tab_interface.h"
++#include "content/public/browser/web_contents.h"
++
++namespace {
++
++const char kSleeperKey[] = "loka.tab_sleeper";
++// Settings' choices are 15 minutes and up, so a minute late is close enough,
++// and the browser wakes for this once a minute at most.
++constexpr base::TimeDelta kSweepEvery = base::Minutes(1);
++constexpr int kDefaultMinutes = 30;
++
++}  // namespace
++
++// static
++void LokaTabSleeper::EnsureForProfile(Profile* profile) {
++  if (profile->GetUserData(kSleeperKey)) {
++    return;
++  }
++  profile->SetUserData(kSleeperKey, std::make_unique<LokaTabSleeper>(profile));
++}
++
++// static
++std::optional<base::TimeDelta> LokaTabSleeper::SleepAfter(
++    std::string_view ui_json) {
++  std::optional<base::Value> ui =
++      base::JSONReader::Read(ui_json, base::JSON_PARSE_RFC);
++  const base::Value* minutes =
++      ui && ui->is_dict() ? ui->GetDict().Find("sleepAfterMinutes") : nullptr;
++  // The same reading as the page's parseUiPrefs: a missing or negative
++  // value is the default, 0 is never.
++  std::optional<double> value = minutes ? minutes->GetIfDouble() : std::nullopt;
++  if (!value || !std::isfinite(*value) || *value < 0) {
++    return base::Minutes(kDefaultMinutes);
++  }
++  if (*value == 0) {
++    return std::nullopt;
++  }
++  return base::Minutes(*value);
++}
++
++LokaTabSleeper::LokaTabSleeper(Profile* profile) : profile_(profile) {
++  timer_.Start(FROM_HERE, kSweepEvery,
++               base::BindRepeating(&LokaTabSleeper::Sweep,
++                                   base::Unretained(this)));
++  store_.Init(profile_->GetPrefs());
++  store_.Add(kLokaSidebarStorePref,
++             base::BindRepeating(&LokaTabSleeper::OnStoreChanged,
++                                 base::Unretained(this)));
++  OnStoreChanged();
++  profile_->AddObserver(this);
++}
++
++LokaTabSleeper::~LokaTabSleeper() {
++  if (profile_) {
++    profile_->RemoveObserver(this);
++  }
++}
++
++void LokaTabSleeper::OnProfileWillBeDestroyed(Profile* profile) {
++  timer_.Stop();
++  store_.RemoveAll();
++  profile_->RemoveObserver(this);
++  profile_ = nullptr;
++}
++
++void LokaTabSleeper::OnStoreChanged() {
++  // The store also holds the spaces, which change on every title; only the
++  // settings matter here.
++  const std::string* ui =
++      profile_->GetPrefs()->GetDict(kLokaSidebarStorePref).FindString("ui.v1");
++  if (ui && *ui == ui_json_) {
++    return;
++  }
++  ui_json_ = ui ? *ui : std::string();
++  Sweep();
++}
++
++void LokaTabSleeper::Sweep() {
++  std::optional<base::TimeDelta> after = SleepAfter(ui_json_);
++  if (!after || !profile_) {
++    return;
++  }
++  using performance_manager::policies::CanDiscardResult;
++  using performance_manager::policies::DiscardEligibilityPolicy;
++  auto* policy = DiscardEligibilityPolicy::GetFromGraph(
++      performance_manager::PerformanceManager::GetGraph());
++  if (!policy) {
++    return;
++  }
++  for (BrowserWindowInterface* window : GetAllBrowserWindowInterfaces()) {
++    if (window->GetProfile() != profile_ ||
++        window->GetType() != BrowserWindowInterface::TYPE_NORMAL) {
++      continue;
++    }
++    TabStripModel* tab_strip = window->GetTabStripModel();
++    for (int i = 0; i < tab_strip->count(); ++i) {
++      if (i == tab_strip->active_index()) {
++        continue;
++      }
++      std::optional<tab_groups::TabGroupId> group =
++          tab_strip->GetTabGroupForTab(i);
++      // Only other spaces' tabs: the space on screen keeps its group open,
++      // and Essentials are in no group. Memory Saver still covers those.
++      if (!group || !tab_strip->IsGroupCollapsed(*group)) {
++        continue;
++      }
++      content::WebContents* contents = tab_strip->GetWebContentsAt(i);
++      base::WeakPtr<performance_manager::PageNode> page =
++          performance_manager::PerformanceManager::
++              GetPrimaryPageNodeForWebContents(contents);
++      // The window is how long the tab has been out of sight; the policy
++      // also refuses tabs with sound, capture, picture-in-picture, form
++      // input, or that are already unloaded.
++      if (!page || policy->CanDiscardWithCustomRecentVisibilityWindow(
++                       page.get(),
++                       ::mojom::LifecycleUnitDiscardReason::PROACTIVE,
++                       *after) != CanDiscardResult::kEligible) {
++        continue;
++      }
++      auto* lifecycle =
++          resource_coordinator::TabLifecycleUnitExternal::FromWebContents(
++              contents);
++      if (lifecycle) {
++        lifecycle->DiscardTab(::mojom::LifecycleUnitDiscardReason::PROACTIVE);
++      }
++    }
++  }
++}
+--- /dev/null
++++ b/chrome/browser/ui/webui/loka_sidebar/loka_tab_sleeper.h
+@@ -0,0 +1,58 @@
++// Copyright 2026 The Loka Authors
++// You can use, redistribute, and/or modify this source code under
++// the terms of the GPL-3.0 license that can be found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_TAB_SLEEPER_H_
++#define CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_TAB_SLEEPER_H_
++
++#include <optional>
++#include <string>
++#include <string_view>
++
++#include "base/memory/raw_ptr.h"
++#include "components/prefs/pref_change_registrar.h"
++#include "base/supports_user_data.h"
++#include "base/time/time.h"
++#include "base/timer/timer.h"
++#include "chrome/browser/profiles/profile_observer.h"
++
++class Profile;
++
++// Unloads the tabs of spaces no window is showing. Each window keeps every
++// other space's tabs in a folded tab group; a loaded tab in a folded group that
++// nobody has seen for the time set in Settings (30 minutes unless changed) is
++// discarded the way Memory Saver does it. It keeps its Back history, title and
++// icon and loads again when opened. Chromium's own rules still apply, so tabs
++// playing sound, sharing the camera, mic or screen, or holding typed form input
++// stay loaded. One per profile, made by the first sidebar.
++class LokaTabSleeper : public base::SupportsUserData::Data,
++                       public ProfileObserver {
++ public:
++  static void EnsureForProfile(Profile* profile);
++
++  // How long a tab must have been out of sight, from the sidebar's settings
++  // (the "ui.v1" JSON in the loka.store pref): its sleepAfterMinutes, where 0
++  // is never. Nullopt for never.
++  static std::optional<base::TimeDelta> SleepAfter(std::string_view ui_json);
++
++  explicit LokaTabSleeper(Profile* profile);
++  LokaTabSleeper(const LokaTabSleeper&) = delete;
++  LokaTabSleeper& operator=(const LokaTabSleeper&) = delete;
++  ~LokaTabSleeper() override;
++
++  // ProfileObserver: the profile's prefs go before its user data (this), so
++  // stop watching them then.
++  void OnProfileWillBeDestroyed(Profile* profile) override;
++
++ private:
++  void Sweep();
++  // Sweeps at once when the setting changes, not only on the next tick.
++  void OnStoreChanged();
++
++  raw_ptr<Profile> profile_;
++  base::RepeatingTimer timer_;
++  PrefChangeRegistrar store_;
++  std::string ui_json_;
++};
++
++#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_TAB_SLEEPER_H_
 --- a/chrome/chrome_paks.gni
 +++ b/chrome/chrome_paks.gni
 @@ -492,12 +492,14 @@

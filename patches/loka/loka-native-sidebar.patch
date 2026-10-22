@@ -1229,7 +1229,7 @@
 +#endif  // CHROME_BROWSER_UI_WEBUI_LOKA_SIDEBAR_LOKA_MEDIA_WATCHER_H_
 --- /dev/null
 +++ b/chrome/browser/ui/webui/loka_sidebar/loka_sidebar_handler.cc
-@@ -0,0 +1,821 @@
+@@ -0,0 +1,824 @@
 +// Copyright 2026 The Loka Authors
 +// You can use, redistribute, and/or modify this source code under
 +// the terms of the GPL-3.0 license that can be found in the LICENSE file.
@@ -1995,6 +1995,9 @@
 +  }
 +  NavigateParams params(browser, url, ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
 +  params.disposition = WindowOpenDisposition::SINGLETON_TAB;
++  // A tab already on that page goes to the address asked for: the Library at
++  // chrome://history opens on the section its #hash names.
++  params.path_behavior = NavigateParams::IGNORE_AND_NAVIGATE;
 +  Navigate(&params);
 +}
 +

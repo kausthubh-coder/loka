@@ -35,6 +35,7 @@ import {
 	groupIntoFolder,
 	importState,
 	moveItem,
+	moveItems,
 	moveSpace,
 	navigateTab,
 	openTab,
@@ -162,6 +163,53 @@ export function modelCases(): { states: Record<string, BrowserState>; cases: Cas
 	});
 	move("an unknown id moves nothing", "seed", "t-nowhere", { area: "essentials", index: 0 });
 	move("a pinned tab goes back to open tabs", "seed", "t-canvas", { area: "open", spaceId: "s-school", index: 0 });
+
+	// ---- the Essentials limit (ESSENTIALS_LIMIT, 12) ----
+	const grow = (count: number) =>
+		["t-hn", "t-arc", "t-zen", "t-helium", "t-chromium", "t-lit", "t-canvas", "t-music"]
+			.slice(0, count - seed.essentials.length)
+			.reduce((s, id) => moveItem(s, id, { area: "essentials", index: Infinity }), seed);
+	states.essentialsEleven = grow(11);
+	states.essentialsFull = grow(12);
+	move("a 13th Essential is refused", "essentialsFull", "t-gdd", { area: "essentials", index: 0 });
+	move("full Essentials still reorder", "essentialsFull", "t-music", { area: "essentials", index: 0 });
+	move("a full Essential can leave", "essentialsFull", "t-mail", { area: "open", spaceId: "s-build", index: 0 });
+
+	// ---- moving several at once ----
+	const moveMany = (name: string, state: string, ids: string[], to: Place) =>
+		on(name, state, "moveItems", { itemIds: ids, to }, (s) => moveItems(s, ids, to));
+	moveMany("several open tabs pin at the end in the order given", "seed", ["t-zen", "t-hn"], {
+		area: "pinned",
+		spaceId: "s-build",
+		parentId: null,
+		index: Infinity,
+	});
+	moveMany("several land together at the top of another space's open tabs", "seed", ["t-helium", "t-lit", "t-arc"], {
+		area: "open",
+		spaceId: "s-home",
+		index: 0,
+	});
+	moveMany("within one list the first counts before the move, the rest follow it", "seed", ["t-zen", "t-hn"], {
+		area: "open",
+		spaceId: "s-build",
+		index: 2,
+	});
+	moveMany("several into a folder two levels down, first to last", "seed", ["t-hn", "t-arc"], {
+		area: "pinned",
+		spaceId: "s-build",
+		parentId: "f-docs",
+		index: 0,
+	});
+	moveMany("several to nearly full Essentials: as many as fit, in order", "essentialsEleven", ["t-gdd", "t-ref"], {
+		area: "essentials",
+		index: Infinity,
+	});
+	moveMany("a folder or an unknown id is skipped, the rest move", "seed", ["f-docs", "t-x", "t-hn"], {
+		area: "essentials",
+		index: 0,
+	});
+	moveMany("nothing allowed changes nothing", "essentialsFull", ["t-gdd", "f-docs"], { area: "essentials", index: 0 });
+	moveMany("no ids changes nothing", "seed", [], { area: "open", spaceId: "s-home", index: 0 });
 
 	// ---- tabs ----
 	on(

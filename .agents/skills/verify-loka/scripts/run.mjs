@@ -156,6 +156,93 @@ const recipes = {
 		await loka.sidebar.getByRole("button", { name: "Clear", exact: true }).click();
 		assert.deepEqual((await loka.outline()).open, [], "Clear closes every open tab");
 		await loka.proof("03-cleared");
+
+		// ---- several rows at once: Ctrl+click, Shift+click, and the selection's menu ----
+		await resetDemo(loka);
+		const pick = { modifiers: /** @type {["ControlOrMeta"]} */ (["ControlOrMeta"]) };
+		await loka.row("Hacker News").click(pick);
+		await loka.row("Zen Browser").click(pick);
+		assert.deepEqual(await picked(loka), ["Hacker News", "Zen Browser"], "Ctrl+click picks rows");
+		assert.equal((await loka.outline()).activeTab, "imputnet/helium-windows", "and doesn't switch tabs");
+		await loka.proof("04-ctrl-picked");
+		await loka.page.keyboard.press("Escape");
+		assert.deepEqual(await picked(loka), [], "Escape lets go of them");
+		await loka.row("Hacker News").click(pick);
+		await loka.row("Zen Browser").click({ modifiers: ["Shift"] });
+		assert.deepEqual(
+			await picked(loka),
+			["Hacker News", "Arc: what we learned", "Zen Browser"],
+			"Shift+click picks the run",
+		);
+		await loka.row("Arc: what we learned").click({ button: "right" });
+		await loka.sidebar.getByRole("menu", { name: "3 tabs selected" }).waitFor();
+		// It fades in; the picture waits for that.
+		await loka.page.waitForTimeout(300);
+		await loka.proof("05-selection-menu");
+		await loka.menuItem("Move to space").click();
+		await loka.menuItem("School").click();
+		let s = await loka.state();
+		assert.deepEqual(spaceOpen(s, "s-school"), ["Hacker News", "Arc: what we learned", "Zen Browser"]);
+		assert.deepEqual(spaceOpen(s, "s-build"), [], "Move to space took all three, in order");
+
+		await loka.page.keyboard.press("Control+2");
+		await loka.row("Hacker News").click(pick);
+		await loka.row("Zen Browser").click({ modifiers: ["Shift"] });
+		await loka.row("Hacker News").click({ button: "right" });
+		await loka.menuItem("Pin to space").click();
+		o = await loka.outline();
+		assert.deepEqual(
+			o.pinned.slice(-3),
+			["0:Hacker News", "0:Arc: what we learned", "0:Zen Browser"],
+			"pinned in order",
+		);
+		assert.deepEqual(o.open, []);
+		assert.deepEqual(await picked(loka), [], "a menu action lets go of the selection");
+
+		await loka.row("Arc: what we learned").click(pick);
+		await loka.row("Zen Browser").click(pick);
+		await loka.row("Zen Browser").click({ button: "right" });
+		await loka.menuItem("Unpin").click();
+		assert.deepEqual((await loka.outline()).open, ["Arc: what we learned", "Zen Browser"], "Unpin keeps their order");
+
+		await loka.row("Hacker News").click(pick);
+		await loka.row("Canvas: CSC 281").click(pick);
+		await loka.row("Canvas: CSC 281").click({ button: "right" });
+		await loka.menuItem("Close 2 tabs").click();
+		o = await loka.outline();
+		assert.ok(
+			o.pinned.includes("0:Hacker News") && o.pinned.includes("0:Canvas: CSC 281"),
+			"closing pinned tabs unloads them",
+		);
+		assert.deepEqual((await loka.state()).archive, [], "and archives nothing");
+
+		await loka.row("Arc: what we learned").click(pick);
+		await loka.row("Zen Browser").click(pick);
+		await loka.row("Arc: what we learned").click({ button: "right" });
+		await loka.menuItem("Close 2 tabs").click();
+		s = await loka.state();
+		assert.deepEqual(spaceOpen(s, "s-school"), [], "closing open tabs deletes them");
+		assert.deepEqual(
+			s.archive.map((/** @type {any} */ a) => a.tab.title),
+			["Zen Browser", "Arc: what we learned"],
+			"into the archive, last closed on top",
+		);
+
+		await loka.row("Hacker News").click(pick);
+		await loka.row("Canvas: CSC 281").click(pick);
+		await loka.row("Hacker News").click({ button: "right" });
+		await loka.menuItem("New folder with these tabs").click();
+		await loka.page.keyboard.type("Picked");
+		await loka.page.keyboard.press("Enter");
+		o = await loka.outline();
+		assert.deepEqual(
+			o.pinned.slice(-3),
+			["0:Picked", "1:Canvas: CSC 281", "1:Hacker News"],
+			"a folder of both, in sidebar order",
+		);
+		await loka.proof("06-folder-of-picked");
+		await loka.page.reload({ waitUntil: "networkidle" });
+		assert.deepEqual((await loka.outline()).pinned, o.pinned, "and it survives a reload");
 	},
 
 	async essentials(loka) {
@@ -175,6 +262,85 @@ const recipes = {
 		assert.ok(!o.essentials.includes("Inbox"));
 		assert.equal(o.open[0], "Inbox", "removed essential lands at the top of open tabs");
 		await loka.proof("02-removed");
+
+		// ---- the limit of 12, and adding several at once ----
+		await resetDemo(loka);
+		const pick = { modifiers: /** @type {["ControlOrMeta"]} */ (["ControlOrMeta"]) };
+		const notice = loka.sidebar.getByRole("status").filter({ hasText: "Essentials" });
+		// Build's three open tabs, then its three pinned tabs (the run passes over the Docs folder): 4 + 6 = 10.
+		await loka.row("Hacker News").click(pick);
+		await loka.row("Zen Browser").click({ modifiers: ["Shift"] });
+		await loka.row("Arc: what we learned").click({ button: "right" });
+		await loka.menuItem("Add to Essentials").click();
+		await loka.row("imputnet/helium-windows").click(pick);
+		await loka.row("Lit docs").click({ modifiers: ["Shift"] });
+		assert.deepEqual(await picked(loka), ["imputnet/helium-windows", "Chromium: Windows build guide", "Lit docs"]);
+		await loka.row("Lit docs").click({ button: "right" });
+		await loka.menuItem("Add to Essentials").click();
+		o = await loka.outline();
+		assert.equal(o.essentials.length, 10);
+		assert.deepEqual(o.essentials.slice(4), [
+			"Hacker News",
+			"Arc: what we learned",
+			"Zen Browser",
+			"imputnet/helium-windows",
+			"Chromium: Windows build guide",
+			"Lit docs",
+		]);
+		assert.equal(await notice.count(), 0, "everything fit, so nothing is said");
+
+		// School: Canvas and the two tabs in Game project. Only two fit.
+		await loka.page.keyboard.press("Control+2");
+		await loka.row("Game project").click();
+		await loka.row("Canvas: CSC 281").click(pick);
+		await loka.row("Game design doc").click(pick);
+		await loka.row("Minecraft farm designs").click(pick);
+		await loka.row("Minecraft farm designs").click({ button: "right" });
+		await loka.menuItem("Add to Essentials").click();
+		await notice.waitFor();
+		assert.equal(
+			(await notice.textContent())?.trim(),
+			"Added 2. Essentials have room for 12, so 1 tab didn't fit.",
+			"the sidebar says what didn't fit",
+		);
+		o = await loka.outline();
+		assert.equal(o.essentials.length, 12, "Essentials stop at 12");
+		assert.deepEqual(o.essentials.slice(-2), ["Canvas: CSC 281", "Game design doc"], "the first two, in order");
+		assert.ok(o.pinned.includes("2:Minecraft farm designs"), "the one that didn't fit stays where it was");
+		// The tiles fly in from their rows; the picture waits for them to land.
+		await loka.page.waitForTimeout(400);
+		await loka.proof("03-twelve-and-a-notice");
+
+		// One more from its own menu: refused, and said.
+		await loka.row("Minecraft farm designs").click({ button: "right" });
+		await loka.menuItem("Add to Essentials").click();
+		await loka.page.waitForTimeout(100);
+		assert.equal((await notice.textContent())?.trim(), "Essentials have room for 12. Remove one first.");
+		assert.equal((await loka.outline()).essentials.length, 12);
+
+		// Dragging onto a full grid: no free cell, no drop line on a tile's edge, and letting go changes nothing.
+		const from = await loka.row("Minecraft farm designs").boundingBox();
+		const tile = await loka.essential("YouTube").boundingBox();
+		if (!from || !tile) throw new Error("drag ends not visible");
+		await loka.page.mouse.move(from.x + 60, from.y + from.height / 2);
+		await loka.page.mouse.down();
+		await loka.page.mouse.move(from.x + 70, from.y + from.height / 2, { steps: 3 });
+		await loka.page.mouse.move(tile.x + tile.width - 3, tile.y + tile.height / 2, { steps: 8 });
+		const marks = await loka.sidebar.evaluate(
+			(el) =>
+				el.shadowRoot?.querySelectorAll(".essentials .slot, .essentials .drop-before, .essentials .drop-after").length,
+		);
+		assert.equal(marks, 0, "a full grid shows no drop slot or line");
+		await loka.proof("04-drag-onto-full-grid");
+		await loka.page.mouse.up();
+		await loka.page.waitForTimeout(150);
+		o = await loka.outline();
+		assert.equal(o.essentials.length, 12);
+		assert.ok(o.pinned.includes("2:Minecraft farm designs"), "the drop changed nothing");
+
+		// Full Essentials still reorder.
+		await loka.drag(loka.essential("Game design doc"), loka.essential("Inbox"), "before");
+		assert.equal((await loka.outline()).essentials[0], "Game design doc", "a tile moved to the front");
 	},
 
 	async "export-import"(loka) {
@@ -500,6 +666,53 @@ const recipes = {
 		await loka.page.keyboard.press("ArrowDown");
 		await loka.page.keyboard.press("Enter");
 		assert.equal((await loka.outline()).activeTab, "imputnet/helium-windows", "Down then Enter opened the next row");
+
+		// Left goes up to the folder holding the row; Right on an open folder goes into it.
+		/** The focused row's name. */
+		const focused = () =>
+			loka.sidebar.evaluate((el) => el.shadowRoot?.activeElement?.querySelector(".label")?.textContent ?? null);
+		await loka.page.keyboard.press("ArrowLeft");
+		assert.equal(await focused(), "Loka", "Left on a tab goes to its folder");
+		await loka.page.keyboard.press("ArrowRight");
+		assert.equal(await focused(), "imputnet/helium-windows", "Right on an open folder goes to its first row");
+		await loka.page.keyboard.press("ArrowDown");
+		await loka.page.keyboard.press("ArrowRight");
+		assert.equal(await focused(), "Chromium: Windows build guide", "and into the folder two levels down");
+
+		// Shift+Down picks rows and stays in its own list; Escape lets go.
+		await loka.page.keyboard.press("Shift+ArrowDown");
+		assert.deepEqual(await picked(loka), ["Chromium: Windows build guide", "Lit docs"], "Shift+Down picks the run");
+		await loka.page.keyboard.press("Shift+ArrowDown");
+		assert.equal(await focused(), "Lit docs", "Shift+Down stops at the end of the pinned tree");
+		await loka.proof("02-shift-down");
+		await loka.page.keyboard.press("Escape");
+		assert.deepEqual(await picked(loka), []);
+
+		// Down crosses into the open tabs; Shift+Down picks two; Delete closes them and focus takes their place.
+		await loka.page.keyboard.press("ArrowDown");
+		assert.equal(await focused(), "Hacker News");
+		await loka.page.keyboard.press("Shift+ArrowDown");
+		await loka.page.keyboard.press("Delete");
+		assert.deepEqual((await loka.outline()).open, ["Zen Browser"], "Delete closed the picked tabs");
+		assert.equal(await focused(), "Zen Browser", "focus moved to the row that took their place");
+		// With nothing picked, Delete closes the focused tab; a pinned one only unloads.
+		await loka.page.keyboard.press("Delete");
+		assert.deepEqual((await loka.outline()).open, []);
+		assert.deepEqual(
+			(await loka.state()).archive.map((/** @type {any} */ a) => a.tab.title),
+			["Zen Browser", "Arc: what we learned", "Hacker News"],
+			"all three are in the archive",
+		);
+		await loka.row("Lit docs").focus();
+		await loka.page.keyboard.press("Delete");
+		assert.ok((await loka.outline()).pinned.includes("2:Lit docs"), "Delete on a pinned tab keeps it");
+		await loka.proof("03-deleted");
+
+		// The window's shortcuts still work on a focused row: Ctrl+Alt+Down steps tabs, Ctrl+2 switches space.
+		await loka.page.keyboard.press("Control+Alt+ArrowDown");
+		assert.equal(await focused(), "Lit docs", "Ctrl+Alt+Down doesn't move the row focus");
+		await loka.page.keyboard.press("Control+2");
+		assert.equal((await loka.outline()).space, "School");
 	},
 
 	async import(loka) {
@@ -1109,6 +1322,24 @@ const recipes = {
 		await loka.proof("02-back-to-default");
 	},
 };
+
+/** The rows picked with Ctrl+ or Shift+click or Shift+arrow (aria-checked), by name, in sidebar order. @param {Loka} loka */
+async function picked(loka) {
+	return loka.sidebar.getByRole("treeitem", { checked: true }).locator(".label").allTextContents();
+}
+
+/** A space's open tabs by title, from the saved state. @param {any} state @param {string} spaceId */
+function spaceOpen(state, spaceId) {
+	const space = state.spaces.find((/** @type {{ id: string }} */ x) => x.id === spaceId);
+	return space.open.map((/** @type {string} */ id) => state.tabs[id].title);
+}
+
+/** Back to the seed data, from `...` > Reset demo data. @param {Loka} loka */
+async function resetDemo(loka) {
+	await loka.sidebar.getByRole("button", { name: "More" }).click();
+	await loka.menuItem("Reset demo data").click();
+	await loka.page.waitForTimeout(300);
+}
 
 /** What the sidebar asked the fake browser to do, by message, as argument lists. @param {Loka} loka @param {string} message */
 async function demoCalls(loka, message) {

@@ -28,6 +28,10 @@
 //   9 restart      quit and start again: spaces, pinned, folders, Essentials, extension pins and settings stay
 //  10 new tab      no new tab page: New tab opens the bar and makes no tab, Escape leaves the tabs, a pick makes one;
 //                  a new space, its last tab closed and a new window show an empty tab (Loka's page), never a row
+//  11 sleep        a tab out of sight longer than the setting unloads, keeps its row, and loads again when opened
+//  12 windows      two windows show two spaces, and switching one leaves the other where it was
+//  13 shortcuts    the browser's own Ctrl+PgDn, Ctrl+PgUp, Ctrl+T, Ctrl+L, Ctrl+3 and Ctrl+W pressed on a page go
+//                  to the sidebar, not Chrome's tab strip
 // Evidence (a sidebar picture per step, window pictures, checks.json, chrome.log) goes to
 // .agents/verify-runs/<time>-flows. The run stops only the process tree it started and deletes its profile.
 
@@ -745,8 +749,7 @@ async function checkoutCommandBar() {
  */
 async function openBar(opener, query = "") {
 	if (opener) await ctx.sidebar.click(opener);
-	// The browser's Ctrl+T and Ctrl+L call this same handler (DispatchCommand). CDP's synthetic keys skip the
-	// browser's own shortcuts, so a run can't press those two.
+	// The browser's Ctrl+T and Ctrl+L call this same handler (DispatchCommand); the shortcuts flow presses them.
 	else await ctx.sidebar.tell("openCommandBar", "new-tab");
 	bar ??= await commandBar();
 	const b = bar;
@@ -2525,7 +2528,7 @@ async function newTabs() {
 	await sb2.tell("windowAction", "close");
 	await until(async () => !(await ctx.browser.targets()).some((t) => t.id === sidebarId), 8000);
 	sb2.s.close();
-	note("not checked here", "Ctrl+W (CDP's keys skip the browser's shortcuts) and a start with nothing to restore");
+	note("not checked here", "a start with nothing to restore (Ctrl+W is in the shortcuts flow)");
 }
 
 // ---- main ---------------------------------------------------------------------------------------------------------
@@ -2617,6 +2620,122 @@ async function windowSpaces() {
 	await inResearch();
 }
 
+/**
+ * Presses a browser shortcut on the page the window shows, so it goes where a person's key goes: CDP key events that
+ * carry a native key code reach the browser's accelerators (BrowserView::PreHandleKeyboardEvent for the reserved ones
+ * like Ctrl+T, and its unhandled-key path for the ones a page may take first like Ctrl+L), which run
+ * BrowserCommandController. Without one, as `key` sends them, they never leave the page. Only the key down carries
+ * it: on Windows the browser hands an unhandled key with a native code back to Windows, and a CDP key has no native
+ * event to hand back.
+ * @param {string} key @param {{ ctrl?: boolean, shift?: boolean }} mods
+ */
+async function pressOnPage(key, mods) {
+	const shown = (await ctx.sidebar.tabs()).find((t) => t.active);
+	const page = shown ? await pageOf(shown.url) : null;
+	if (!page) throw new Error(`no page target for the shown tab ${show(shown?.url)}`);
+	const modifiers = (mods.ctrl ? 2 : 0) | (mods.shift ? 8 : 0);
+	const NAMED = /** @type {Record<string, number>} */ ({ PageDown: 34, PageUp: 33 });
+	const named = NAMED[key];
+	const code = named ? key : /^\d$/.test(key) ? `Digit${key}` : `Key${key.toUpperCase()}`;
+	const vk = named ?? key.toUpperCase().charCodeAt(0);
+	const event = { key, code, modifiers, windowsVirtualKeyCode: vk };
+	await page.call("Input.dispatchKeyEvent", { ...event, type: "rawKeyDown", nativeVirtualKeyCode: vk });
+	// Ctrl+W closes the page this session is on.
+	await page.call("Input.dispatchKeyEvent", { ...event, type: "keyUp" }).catch(() => {});
+	page.close();
+}
+
+/**
+ * The browser's own shortcuts pressed on a page go to the sidebar (BrowserCommandController hands them to
+ * LokaSidebarHandler::HandleBrowserCommand), not to Chrome's tab strip: Ctrl+PgDn and Ctrl+PgUp step through the
+ * space's rows, Ctrl+T opens the command bar and makes no tab, Ctrl+L opens it on the shown address, Ctrl+3 shows the
+ * third space, and Ctrl+W closes the shown tab the way its x does and the window stays.
+ */
+async function shortcuts() {
+	const sb = ctx.sidebar;
+	await inResearch();
+	await openSite("oscar");
+	await openSite("papa");
+	/** @param {string} title */
+	const showing = (title) =>
+		until(async () => {
+			const active = (await sb.tabs()).find((t) => t.active);
+			const selected = (await sb.rows()).find((r) => r.selected)?.label;
+			return active?.title === title && selected === title ? active : null;
+		}, 5000);
+	const shownNow = async () =>
+		`browser shows ${(await sb.tabs()).find((t) => t.active)?.title}; selected row ${(await sb.rows()).find((r) => r.selected)?.label}`;
+
+	await pressOnPage("PageDown", { ctrl: true });
+	const next = await showing("QA Oscar");
+	check("Ctrl+PgDn on a page steps to the space's next row", next, await shownNow());
+	await pressOnPage("PageUp", { ctrl: true });
+	const previous = await showing("QA Papa");
+	check("Ctrl+PgUp steps back", previous, await shownNow());
+	note(
+		"not checked here",
+		"Ctrl+Tab and Ctrl+Shift+Tab: on Windows they are IDC_CYCLE_TO_NEXT_TAB and IDC_CYCLE_TO_PREV_TAB, which the sidebar doesn't take, so Chrome steps through its tab strip",
+	);
+
+	const before = await sb.tabs();
+	await pressOnPage("t", { ctrl: true });
+	bar ??= await commandBar();
+	const b = bar;
+	const barQuery = () =>
+		until(
+			() =>
+				b.run(
+					`document.visibilityState === "visible" && (() => { const i = window.__qa.deepActive(); return i && i.tagName === "INPUT" ? i.value : null; })()`,
+				),
+			6000,
+		);
+	const opened = await barQuery();
+	await sleep(500);
+	const whileOpen = await sb.tabs();
+	check(
+		"Ctrl+T on a page opens the command bar and makes no tab",
+		opened === "" && sameTabs(before, whileOpen),
+		`bar ${opened === null ? "not showing" : `showing ${show(opened)}`}; tabs ${show(whileOpen.map((t) => [t.title, t.active]))}`,
+	);
+	await step("ctrl-t", true);
+	await b.key("Escape");
+	await until(() => b.run(`document.visibilityState === "hidden"`), 4000);
+
+	await pressOnPage("l", { ctrl: true });
+	const address = await barQuery();
+	check(
+		"Ctrl+L on a page opens the command bar on its address",
+		address === `http://${ctx.host}/site/papa`,
+		`bar ${address === null ? "not showing" : `showing ${show(address)}`}`,
+	);
+	await b.key("Escape");
+	await until(() => b.run(`document.visibilityState === "hidden"`), 4000);
+
+	await pressOnPage("3", { ctrl: true });
+	const third = await until(async () => {
+		const f = await browserFollows(sb);
+		return shownSpace(await sb.state())?.name === "Code Lab" && f.ok ? f : null;
+	}, 6000);
+	check("Ctrl+3 on a page shows the third space", third, third?.detail ?? (await browserFollows(sb)).detail);
+	await inResearch();
+	await showing("QA Papa");
+
+	const papa = (await sb.tabs()).find((t) => t.active);
+	await pressOnPage("w", { ctrl: true });
+	const closed = await until(async () => {
+		const [st, tabsNow] = await Promise.all([sb.state(), sb.tabs()]);
+		return !tabsNow.some((t) => t.id === papa?.id) && st.archive[0]?.tab.title === "QA Papa" ? st : null;
+	}, 6000);
+	const afterClose = await sb.tabs();
+	const stays = (await ctx.browser.targets()).some((t) => t.url === SIDEBAR_URL);
+	check(
+		"Ctrl+W on a page closes it the way its x does: into the archive, and the window stays",
+		closed && stays && !openTitles(closed, "Research").includes("QA Papa") && afterClose.some((t) => t.active),
+		`tabs ${show(afterClose.map((t) => [t.title, t.active]))}; archive top ${show((await sb.state()).archive[0]?.tab.title)}; window ${stays ? "open" : "gone"}`,
+	);
+	await step("ctrl-w", true);
+}
+
 const NEEDS = {
 	"4-states": ["3-tabs"],
 	"5-pinning": ["3-tabs"],
@@ -2640,6 +2759,7 @@ async function main() {
 		["10-new-tab", newTabs],
 		["11-sleep", sleeping],
 		["12-windows", windowSpaces],
+		["13-shortcuts", shortcuts],
 	];
 	// --only <flow>[,<flow>] runs those flows after the ones they build on (first run always; restart needs them all).
 	const onlyAt = process.argv.indexOf("--only");

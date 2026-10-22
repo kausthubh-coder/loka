@@ -29,10 +29,10 @@ const root = resolve(import.meta.dirname, "..");
 export const UX = {
 	folders: { prototype: ["folders", "make-folders"], flows: ["pinning"] },
 	spaces: { prototype: ["spaces"], flows: ["spaces", "windows"] },
-	tabs: { prototype: ["tabs"], browser: true, flows: ["tabs"] },
+	tabs: { prototype: ["tabs"], browser: true, flows: ["tabs", "shortcuts"] },
 	essentials: { prototype: ["essentials"], flows: ["pinning"] },
 	"export-import": { prototype: ["export-import"], browser: true },
-	"command-bar": { prototype: ["command-bar"], browser: true, flows: ["tabs", "spaces", "new-tab"] },
+	"command-bar": { prototype: ["command-bar"], browser: true, flows: ["tabs", "spaces", "new-tab", "shortcuts"] },
 	"space-editor": { prototype: ["space-editor"], flows: ["spaces"] },
 	theme: { prototype: ["theme"], browser: true, flows: ["spaces"] },
 	layout: { prototype: ["layout"], browser: true, flows: ["states", "settings"] },
@@ -41,7 +41,7 @@ export const UX = {
 	library: { prototype: ["library"], flows: ["settings"] },
 	onboarding: { prototype: ["onboarding"], browser: true, flows: ["first-run"] },
 	archive: { prototype: ["archive"], flows: ["panels", "settings", "sleep"] },
-	"search-and-keys": { prototype: ["search-and-keys"], flows: ["panels", "tabs"] },
+	"search-and-keys": { prototype: ["search-and-keys"], flows: ["panels", "tabs", "shortcuts"] },
 	import: {
 		prototype: ["import"],
 		gap: "Chrome, Edge and Arc import have no browser check; only the alpha's JSON import does (export-import)",

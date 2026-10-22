@@ -53,8 +53,10 @@ disagree, or a recipe or flow it names doesn't exist.
 - [Folders](./folders.md): nested pinned folders. Create, rename, open and close, drag in and out, ungroup.
 - [Spaces](./spaces.md): the horizon switcher; switch by click, Ctrl+1-9, swipe or drag-hover; each space's tint and
   remembered tab; tab groups in the browser.
-- [Tabs](./tabs.md): open from the command bar, activate, close, reorder, pin and unpin, unload pinned tabs, Clear.
-- [Essentials](./essentials.md): the shared icon grid. Drag in, reorder, remove; the tray and the one-time hint.
+- [Tabs](./tabs.md): open from the command bar, activate, close, reorder, pin and unpin, unload pinned tabs, Clear;
+  pick several with Ctrl+ or Shift+click and act on them from one menu.
+- [Essentials](./essentials.md): the shared icon grid, at most 12. Drag in, reorder, remove, add several; the tray
+  and the one-time hint.
 - [Export and import](./export-import.md): JSON export, import (the alpha's too), reset, rejecting bad files.
 - [Command bar](./command-bar.md): Ctrl+T, Ctrl+K, Ctrl+L and the address field: addresses, searches with the
   browser's suggestions, going to an open tab or known site with the address completed, tabs, spaces and commands;
@@ -70,7 +72,8 @@ disagree, or a recipe or flow it names doesn't exist.
 - [Onboarding](./onboarding.md): the prototype's first-run tour and the browser's setup.
 - [Archive](./archive.md): archiving old open tabs (after 12 hours by default) and bringing them back; unloading
   the tabs of spaces out of sight.
-- [Sidebar search and keyboard](./search-and-keys.md): Ctrl+Shift+F, next/previous tab, arrow keys in the tree.
+- [Sidebar search and keyboard](./search-and-keys.md): Ctrl+Shift+F, next/previous tab, arrow keys in the tree,
+  Shift+arrows to pick rows, Delete to close them.
 - [Import](./import.md): Chrome and Edge bookmarks, Arc spaces and Favorites.
 - [Media controls](./media.md): the now-playing card.
 - [Sound](./sound.md): interface cues for sidebar actions, the throttle, and Settings > Sound.

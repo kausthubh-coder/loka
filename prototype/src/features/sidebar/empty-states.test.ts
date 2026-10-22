@@ -10,3 +10,9 @@ test("Essentials with tiles offer one free cell in an unfinished row while dragg
 		1, 0, 0,
 	]);
 });
+
+test("full Essentials offer no slot, even with an unfinished row (an import can bring more than 12)", () => {
+	expect([essentialsDropSlots(11, true), essentialsDropSlots(12, true), essentialsDropSlots(13, true)]).toEqual([
+		1, 0, 0,
+	]);
+});

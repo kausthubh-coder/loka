@@ -28,6 +28,10 @@
 //   9 restart      quit and start again: spaces, pinned, folders, Essentials, extension pins and settings stay
 //  10 new tab      no new tab page: New tab opens the bar and makes no tab, Escape leaves the tabs, a pick makes one;
 //                  a new space, its last tab closed and a new window show an empty tab (Loka's page), never a row
+//  11 sleep        a tab out of sight longer than the setting unloads, keeps its row, and loads again when opened
+//  12 windows      two windows show two spaces, and switching one leaves the other where it was
+//  13 shortcuts    the browser's own Ctrl+PgDn, Ctrl+PgUp, Ctrl+T, Ctrl+L, Ctrl+3 and Ctrl+W pressed on a page go
+//                  to the sidebar, not Chrome's tab strip
 // Evidence (a sidebar picture per step, window pictures, checks.json, chrome.log) goes to
 // .agents/verify-runs/<time>-flows. The run stops only the process tree it started and deletes its profile.
 
@@ -43,6 +47,7 @@ import {
 	connect,
 	evaluate,
 	freePort,
+	launchBrowser,
 	processes,
 	RECORD_EVENTS,
 	refuseWhileBuilding,
@@ -246,11 +251,22 @@ async function launch() {
 	if (!version) throw new Error("the browser never opened its debugging port");
 	const browserSession = await connect(version.webSocketDebuggerUrl);
 	console.log(`Started ${chrome} (pid ${pid}), CDP on ${port}, profile ${profile}`);
+	// The QA extension's worker stops 30 s after it last did anything, and its target goes with it. A session attached
+	// to it keeps it running, so the flows that call its chrome.* APIs find it however long the flows before took.
+	const worker = await until(
+		async () =>
+			/** @type {Target[]} */ (await fetch(`${http}/json/list`).then((r) => r.json())).find(
+				(t) => t.type === "service_worker" && t.url.endsWith("/worker.js"),
+			),
+		10000,
+	);
+	const qaWorker = worker ? await connect(worker.webSocketDebuggerUrl) : null;
 	return {
 		pid,
 		root,
 		http,
 		browserSession,
+		qaWorker,
 		/** @returns {Promise<Target[]>} */
 		targets: () => fetch(`${http}/json/list`).then((r) => r.json()),
 	};
@@ -269,6 +285,7 @@ async function quit(b) {
 	const asked = Date.now();
 	await b.browserSession.call("Browser.close", {}, 5000).catch(() => {});
 	b.browserSession.close();
+	b.qaWorker?.close();
 	let left = tree;
 	const ended = await until(async () => {
 		left = stillRunning(left);
@@ -344,12 +361,16 @@ function driver(s) {
 		}
 		return last;
 	};
-	/** @param {string} type @param {number} x @param {number} y @param {"none" | "left" | "middle" | "right"} [button] */
-	const mouse = (type, x, y, button = "none") =>
+	/**
+	 * @param {string} type @param {number} x @param {number} y @param {"none" | "left" | "middle" | "right"} [button]
+	 * @param {number} [modifiers] CDP's bit mask: 2 is Ctrl, 8 is Shift.
+	 */
+	const mouse = (type, x, y, button = "none", modifiers = 0) =>
 		s.call("Input.dispatchMouseEvent", {
 			type,
 			x,
 			y,
+			modifiers,
 			button,
 			buttons: button === "left" ? 1 : button === "right" ? 2 : button === "middle" ? 4 : 0,
 			clickCount: type === "mouseMoved" ? 0 : 1,
@@ -382,15 +403,16 @@ function driver(s) {
 		focused: () => run("window.__qa.focused()"),
 		/** @returns {Promise<string>} */
 		text: () => run("window.__qa.text()"),
-		/** Waits for something with this name, then clicks its middle. @param {Label} label @param {{ role?: string, button?: "left" | "middle" | "right", at?: number }} [opts] */
+		/** Waits for something with this name, then clicks its middle. @param {Label} label @param {{ role?: string, button?: "left" | "middle" | "right", at?: number, ctrl?: boolean }} [opts] */
 		async click(label, opts = {}) {
 			const at = await steady(label, opts.role);
 			if (!at) throw new Error(`nothing named ${show(label)} to click`);
 			const button = opts.button ?? "left";
 			const y = opts.at === undefined ? at.y : at.top + at.height * opts.at;
+			const modifiers = opts.ctrl ? 2 : 0;
 			await mouse("mouseMoved", at.x, y);
-			await mouse("mousePressed", at.x, y, button);
-			await mouse("mouseReleased", at.x, y, button);
+			await mouse("mousePressed", at.x, y, button, modifiers);
+			await mouse("mouseReleased", at.x, y, button, modifiers);
 			return at;
 		},
 		/** @param {Label} label @param {string} [role] */
@@ -535,14 +557,21 @@ async function attachSidebar(b, pick = () => true) {
 	const isMenu = (role = "") => role.includes("role=menu");
 	return {
 		...d,
-		/** @param {Label} label @param {{ role?: string, button?: "left" | "middle" | "right", at?: number }} [opts] */
+		/** @param {Label} label @param {{ role?: string, button?: "left" | "middle" | "right", at?: number, ctrl?: boolean }} [opts] */
 		async click(label, opts = {}) {
 			if (!isMenu(opts.role)) return d.click(label, opts);
 			const menu = await until(async () => {
 				const page = await shownMenu();
 				return page && (await page.has(label, opts.role)) ? page : null;
 			}, 6000);
-			if (!menu) throw new Error(`no menu window shows ${show(label)}`);
+			if (!menu) {
+				const seen = [];
+				for (const page of menuPages.values()) {
+					const visible = await page.run(`document.visibilityState`).catch(() => "gone");
+					seen.push(`${visible}: ${show(await page.names("[role=menuitem]").catch(() => []))}`);
+				}
+				throw new Error(`no menu window shows ${show(label)}; menu windows: ${seen.join(" | ") || "none"}`);
+			}
 			return menu.click(label, opts);
 		},
 		/** @param {string} role @returns {Promise<string[]>} */
@@ -745,8 +774,7 @@ async function checkoutCommandBar() {
  */
 async function openBar(opener, query = "") {
 	if (opener) await ctx.sidebar.click(opener);
-	// The browser's Ctrl+T and Ctrl+L call this same handler (DispatchCommand). CDP's synthetic keys skip the
-	// browser's own shortcuts, so a run can't press those two.
+	// The browser's Ctrl+T and Ctrl+L call this same handler (DispatchCommand); the shortcuts flow presses them.
 	else await ctx.sidebar.tell("openCommandBar", "new-tab");
 	bar ??= await commandBar();
 	const b = bar;
@@ -1119,13 +1147,10 @@ async function tabs() {
 	// Reopen closed tab (Ctrl+Shift+T, here through the QA extension's chrome.sessions.restore, the same restore):
 	// the tab brings its row back out of the archive, the same Loka tab, not a new one.
 	const charlieId = (await sb.state()).archive.find((a) => a.tab.title === "QA Charlie")?.tab.id;
-	const worker = (await ctx.browser.targets()).find((t) => t.type === "service_worker" && t.url.endsWith("/worker.js"));
-	let reopened = "no QA extension worker";
-	if (worker) {
-		const w = await connect(worker.webSocketDebuggerUrl);
-		reopened = await evaluate(w, `chrome.sessions.restore().then((s) => s?.tab?.url ?? "nothing restored")`);
-		w.close();
-	}
+	const worker = ctx.browser.qaWorker;
+	const reopened = worker
+		? await evaluate(worker, `chrome.sessions.restore().then((s) => s?.tab?.url ?? "nothing restored")`)
+		: "no QA extension worker";
 	const unarchived = await until(async () => {
 		const st = await sb.state();
 		const research = spaceNamed(st, "Research");
@@ -1532,6 +1557,22 @@ async function pinning() {
 	check(
 		"and opening it again goes to the address it was pinned with",
 		reset,
+		show((await sb.tabs()).find((t) => t.active)),
+	);
+	// Its Back history came with it: Back goes to where it was when it closed.
+	const reopenedPage = (await ctx.browser.targets()).find((t) => t.type === "page" && t.url === foxtrotUrl);
+	if (reopenedPage) {
+		const s = await connect(reopenedPage.webSocketDebuggerUrl);
+		await evaluate(s, "(history.back(), true)");
+		s.close();
+	}
+	const wentBack = await until(
+		async () => (await sb.tabs()).find((t) => t.active && t.title === "QA Elsewhere" && !t.loading),
+		6000,
+	);
+	check(
+		"and Back goes to the page it was on before it closed",
+		wentBack && (await sb.rows()).some((r) => r.label === "QA Foxtrot"),
 		show((await sb.tabs()).find((t) => t.active)),
 	);
 
@@ -2494,14 +2535,22 @@ async function newTabs() {
 		bar2Target ? "showing" : `not showing; the new window has ${bars.length} command bar pages (0: never opened)`,
 	);
 	if (bar2Target) {
+		// A new window's bar is shown before its page has loaded; Escape means something once the field has focus.
+		const ready = await until(
+			() =>
+				bar2Target.run(
+					`document.querySelector("loka-command-page")?.shadowRoot?.querySelector("loka-command-bar")?.shadowRoot?.activeElement?.tagName === "INPUT"`,
+				),
+			6000,
+		);
 		await bar2Target.key("Escape");
 		const closed = await until(() => bar2Target.run(`document.visibilityState === "hidden"`), 4000);
 		await sleep(500);
 		const left = await sb2.tabs();
 		check(
 			"Escape closes the bar and the window stays on its empty tab",
-			closed && left.length === 1 && isEmptyTab(left[0]?.url ?? ""),
-			`bar ${closed ? "hidden" : "still showing"}; tabs ${show(left.map((t) => t.url))}`,
+			ready && closed && left.length === 1 && isEmptyTab(left[0]?.url ?? ""),
+			`${ready ? "" : "the bar's field never took focus; "}bar ${closed ? "hidden" : "still showing"}; tabs ${show(left.map((t) => t.url))}`,
 		);
 		bar2Target.s.close();
 	}
@@ -2509,7 +2558,7 @@ async function newTabs() {
 	await sb2.tell("windowAction", "close");
 	await until(async () => !(await ctx.browser.targets()).some((t) => t.id === sidebarId), 8000);
 	sb2.s.close();
-	note("not checked here", "Ctrl+W (CDP's keys skip the browser's shortcuts) and a start with nothing to restore");
+	note("not checked here", "a start with nothing to restore (Ctrl+W is in the shortcuts flow)");
 }
 
 // ---- main ---------------------------------------------------------------------------------------------------------
@@ -2601,6 +2650,291 @@ async function windowSpaces() {
 	await inResearch();
 }
 
+/**
+ * v1 polish the browser has to accept as intents: a space moved with its planet's menu (moveSpace), and two rows
+ * picked with Ctrl+click added to Essentials in one change (moveItems).
+ */
+async function polish() {
+	const sb = ctx.sidebar;
+	await inResearch();
+	const order = async () => (await sb.state()).spaces.map((s) => s.name);
+	const before = await order();
+	await sb.click("Spaces: Research");
+	await sb.click("Move right", { role: "[role=menuitem]" });
+	const moved = await until(async () => {
+		const now = await order();
+		return now.indexOf("Research") === before.indexOf("Research") + 1 ? now : null;
+	}, 5000);
+	check("Move right in the space's menu moves Research one place on", moved, show(await order()));
+	await sb.key("1", { ctrl: true });
+	const first = await until(async () => shownSpace(await sb.state())?.name === (await order())[0], 5000);
+	check("and Ctrl+1 shows the space now first", first, `showing ${shownSpace(await sb.state())?.name}`);
+	await sb.key(String((await order()).indexOf("Research") + 1), { ctrl: true });
+	await until(async () => shownSpace(await sb.state())?.name === "Research", 5000);
+	await sb.click("Spaces: Research");
+	await sb.click("Move left", { role: "[role=menuitem]" });
+	const back = await until(async () => show(await order()) === show(before), 5000);
+	check("Move left puts it back", back, show(await order()));
+
+	await openSite("quebec");
+	await openSite("sierra");
+	const [a, b] = ["QA Quebec", "QA Sierra"];
+	await sb.click(a, { role: "[role=treeitem]", ctrl: true });
+	await sb.click(b, { role: "[role=treeitem]", ctrl: true });
+	await sb.click(a, { role: "[role=treeitem]", button: "right" });
+	await sb.click("Add to Essentials", { role: "[role=menuitem]" });
+	const added = await until(async () => {
+		const st = await sb.state();
+		const essentials = st.essentials.map((id) => st.tabs[id]?.title);
+		return essentials.includes(a) && essentials.includes(b) && !openTitles(st, "Research").includes(a) ? st : null;
+	}, 5000);
+	const now = await sb.state();
+	check(
+		"two rows picked with Ctrl+click go to Essentials together",
+		added,
+		`Essentials ${show(now.essentials.map((id) => now.tabs[id]?.title))}; Research open ${show(openTitles(now, "Research"))}`,
+	);
+	await step("polish", true);
+}
+
+/**
+ * Presses a browser shortcut on the page the window shows, so it goes where a person's key goes: CDP key events that
+ * carry a native key code reach the browser's accelerators (BrowserView::PreHandleKeyboardEvent for the reserved ones
+ * like Ctrl+T, and its unhandled-key path for the ones a page may take first like Ctrl+L), which run
+ * BrowserCommandController. Without one, as `key` sends them, they never leave the page. Only the key down carries
+ * it: on Windows the browser hands an unhandled key with a native code back to Windows, and a CDP key has no native
+ * event to hand back.
+ * @param {string} key @param {{ ctrl?: boolean, shift?: boolean }} mods
+ */
+async function pressOnPage(key, mods) {
+	const shown = (await ctx.sidebar.tabs()).find((t) => t.active);
+	const page = shown ? await pageOf(shown.url) : null;
+	if (!page) throw new Error(`no page target for the shown tab ${show(shown?.url)}`);
+	const modifiers = (mods.ctrl ? 2 : 0) | (mods.shift ? 8 : 0);
+	const NAMED = /** @type {Record<string, number>} */ ({ PageDown: 34, PageUp: 33, Tab: 9 });
+	const named = NAMED[key];
+	const code = named ? key : /^\d$/.test(key) ? `Digit${key}` : `Key${key.toUpperCase()}`;
+	const vk = named ?? key.toUpperCase().charCodeAt(0);
+	const event = { key, code, modifiers, windowsVirtualKeyCode: vk };
+	await page.call("Input.dispatchKeyEvent", { ...event, type: "rawKeyDown", nativeVirtualKeyCode: vk });
+	// Ctrl+W closes the page this session is on.
+	await page.call("Input.dispatchKeyEvent", { ...event, type: "keyUp" }).catch(() => {});
+	page.close();
+}
+
+/**
+ * The browser's own shortcuts pressed on a page go to the sidebar (BrowserCommandController hands them to
+ * LokaSidebarHandler::HandleBrowserCommand), not to Chrome's tab strip: Ctrl+PgDn/PgUp and Ctrl+(Shift+)Tab step
+ * through the space's rows, Ctrl+T opens the command bar and makes no tab, Ctrl+L opens it on the shown address, Ctrl+3 shows the
+ * third space, and Ctrl+W closes the shown tab the way its x does and the window stays.
+ */
+async function shortcuts() {
+	const sb = ctx.sidebar;
+	await inResearch();
+	await openSite("oscar");
+	await openSite("papa");
+	/** @param {string} title */
+	const showing = (title) =>
+		until(async () => {
+			const active = (await sb.tabs()).find((t) => t.active);
+			const selected = (await sb.rows()).find((r) => r.selected)?.label;
+			return active?.title === title && selected === title ? active : null;
+		}, 5000);
+	const shownNow = async () =>
+		`browser shows ${(await sb.tabs()).find((t) => t.active)?.title}; selected row ${(await sb.rows()).find((r) => r.selected)?.label}`;
+
+	await pressOnPage("PageDown", { ctrl: true });
+	const next = await showing("QA Oscar");
+	check("Ctrl+PgDn on a page steps to the space's next row", next, await shownNow());
+	await pressOnPage("PageUp", { ctrl: true });
+	const previous = await showing("QA Papa");
+	check("Ctrl+PgUp steps back", previous, await shownNow());
+	// Ctrl+Tab is a separate command on Windows (IDC_CYCLE_TO_NEXT_TAB); it follows the sidebar too, not Chrome's
+	// hidden tab strip.
+	await pressOnPage("Tab", { ctrl: true });
+	const cycled = await showing("QA Oscar");
+	check("Ctrl+Tab on a page steps to the space's next row", cycled, await shownNow());
+	await pressOnPage("Tab", { ctrl: true, shift: true });
+	const cycledBack = await showing("QA Papa");
+	check("Ctrl+Shift+Tab steps back", cycledBack, await shownNow());
+
+	const before = await sb.tabs();
+	await pressOnPage("t", { ctrl: true });
+	bar ??= await commandBar();
+	const b = bar;
+	const barQuery = () =>
+		until(
+			() =>
+				b.run(
+					`document.visibilityState === "visible" && (() => { const i = window.__qa.deepActive(); return i && i.tagName === "INPUT" ? i.value : null; })()`,
+				),
+			6000,
+		);
+	const opened = await barQuery();
+	await sleep(500);
+	const whileOpen = await sb.tabs();
+	check(
+		"Ctrl+T on a page opens the command bar and makes no tab",
+		opened === "" && sameTabs(before, whileOpen),
+		`bar ${opened === null ? "not showing" : `showing ${show(opened)}`}; tabs ${show(whileOpen.map((t) => [t.title, t.active]))}`,
+	);
+	await step("ctrl-t", true);
+	await b.key("Escape");
+	await until(() => b.run(`document.visibilityState === "hidden"`), 4000);
+
+	await pressOnPage("l", { ctrl: true });
+	const address = await barQuery();
+	check(
+		"Ctrl+L on a page opens the command bar on its address",
+		address === `http://${ctx.host}/site/papa`,
+		`bar ${address === null ? "not showing" : `showing ${show(address)}`}`,
+	);
+	await b.key("Escape");
+	await until(() => b.run(`document.visibilityState === "hidden"`), 4000);
+
+	await pressOnPage("3", { ctrl: true });
+	const third = await until(async () => {
+		const f = await browserFollows(sb);
+		return shownSpace(await sb.state())?.name === "Code Lab" && f.ok ? f : null;
+	}, 6000);
+	check("Ctrl+3 on a page shows the third space", third, third?.detail ?? (await browserFollows(sb)).detail);
+	await inResearch();
+	await showing("QA Papa");
+
+	const papa = (await sb.tabs()).find((t) => t.active);
+	await pressOnPage("w", { ctrl: true });
+	const closed = await until(async () => {
+		const [st, tabsNow] = await Promise.all([sb.state(), sb.tabs()]);
+		return !tabsNow.some((t) => t.id === papa?.id) && st.archive[0]?.tab.title === "QA Papa" ? st : null;
+	}, 6000);
+	const afterClose = await sb.tabs();
+	const stays = (await ctx.browser.targets()).some((t) => t.url === SIDEBAR_URL);
+	check(
+		"Ctrl+W on a page closes it the way its x does: into the archive, and the window stays",
+		closed && stays && !openTitles(closed, "Research").includes("QA Papa") && afterClose.some((t) => t.active),
+		`tabs ${show(afterClose.map((t) => [t.title, t.active]))}; archive top ${show((await sb.state()).archive[0]?.tab.title)}; window ${stays ? "open" : "gone"}`,
+	);
+	await step("ctrl-w", true);
+}
+
+/**
+ * The browser's own commands from the sidebar's ... menu (Loka has no toolbar menu): New window, About Loka, and a
+ * private window, which shows one dark Private space and never puts its tabs in the saved spaces.
+ */
+async function browserMenu() {
+	const sb = ctx.sidebar;
+	await inResearch();
+	/** Opens a window from the ... menu and attaches to its sidebar. @param {string} item */
+	const windowFromMenu = async (item) => {
+		const known = new Set((await ctx.browser.targets()).map((t) => t.id));
+		await sb.click("More");
+		await sb.click(item, { role: "[role=menuitem]" });
+		const opened = await attachSidebar(ctx.browser, (t) => !known.has(t.id)).catch(() => null);
+		return { opened, known };
+	};
+	/** @param {Sidebar} other @param {Set<string>} known */
+	const closeWindow = async (other, known) => {
+		const id = (await ctx.browser.targets()).find((t) => t.url === SIDEBAR_URL && !known.has(t.id))?.id;
+		await other.tell("windowAction", "close");
+		await until(async () => !(await ctx.browser.targets()).some((t) => t.id === id), 8000);
+		other.s.close();
+	};
+
+	const fresh = await windowFromMenu("New window");
+	check(
+		"... > New window opens a window with its own sidebar",
+		fresh.opened,
+		fresh.opened ? "sidebar attached" : "none",
+	);
+	if (fresh.opened) await closeWindow(fresh.opened, fresh.known);
+
+	await sb.click("More");
+	await sb.click("About Loka", { role: "[role=menuitem]" });
+	const about = await until(
+		async () => (await sb.tabs()).find((t) => t.url.startsWith("chrome://settings/help")),
+		6000,
+	);
+	check("... > About Loka opens the About page", about, show((await sb.tabs()).map((t) => t.url)));
+
+	const secretUrl = `http://${ctx.host}/site/secret`;
+	const priv = await windowFromMenu("New private window");
+	const privateSidebar = priv.opened;
+	const pst = privateSidebar ? await until(() => privateSidebar.state(), 8000) : null;
+	check(
+		"... > New private window opens one dark space named Private",
+		pst && show(pst.spaces.map((s) => [s.name, s.scheme])) === show([["Private", "dark"]]),
+		show(pst?.spaces.map((s) => [s.name, s.scheme])),
+	);
+	if (priv.opened) {
+		const p = priv.opened;
+		await p.ask("createTab", secretUrl, true);
+		const inPrivate = await until(async () => openTitles(await p.state(), "Private").includes("QA Secret"), 8000);
+		check("a page opened there is a row in Private", inPrivate, show(openTitles(await p.state(), "Private")));
+		// The normal profile saves within 2 s of a change; give it longer, then read what's on disk.
+		await sleep(4000);
+		const saved = readFileSync(join(profile, "Default", "Loka Spaces.json"), "utf8");
+		const normal = await sb.state();
+		check(
+			"the private tab never reaches the saved spaces or the normal window",
+			!saved.includes("/site/secret") && !Object.values(normal.tabs).some((t) => t.url === secretUrl),
+			`saved file ${saved.includes("/site/secret") ? "has" : "hasn't"} it; normal window ${show(normal.spaces.map((s) => s.name))}`,
+		);
+		await step("private-window", true);
+		await closeWindow(p, priv.known);
+	}
+}
+
+/**
+ * Bookmarks in the browser's own store, where setup's import page puts them, come into Loka once: a browser of its
+ * own starts on a profile whose Bookmarks file is already there (the sample in verify-loka/fixtures), as after an
+ * import, and a second window doesn't bring them in again.
+ */
+async function browserBookmarks() {
+	const sample = readFileSync(join(repo, ".agents", "skills", "verify-loka", "fixtures", "Bookmarks"), "utf8");
+	const b = await launchBrowser({ name: "bookmarks", chrome, files: { "Default/Bookmarks": sample } });
+	try {
+		const sidebar = await b.sidebar();
+		/** @returns {Promise<{ state: BrowserState }>} */
+		const spaces = () => evaluate(sidebar, askExpression("getSpaces", []));
+		/** The first space's pinned folders named Imported bookmarks, each as its tree of names. @param {BrowserState} st */
+		const imported = (st) => {
+			/** @param {PinnedNode} n @returns {string} */
+			const tree = (n) =>
+				n.kind === "folder" ? `[${n.name}: ${n.children.map(tree).join(", ")}]` : (st.tabs[n.id]?.title ?? "?");
+			return (st.spaces[0]?.pinned ?? [])
+				.filter((n) => n.kind === "folder" && n.name === "Imported bookmarks")
+				.map(tree);
+		};
+		const first = await until(async () => {
+			const found = imported((await spaces()).state);
+			return found.length ? found : null;
+		}, 15000);
+		check(
+			"bookmarks already in the browser become one pinned folder in the first space",
+			first?.length === 1 &&
+				["Lit", "[School: Canvas, [Labs: Lab 3]]", "Hacker News"].every((part) => first[0]?.includes(part)),
+			show(first ?? imported((await spaces()).state)),
+		);
+		// A second window's sidebar starts and asks too: the browser hands them out once.
+		const known = new Set((await b.targets()).map((t) => t.id));
+		await evaluate(sidebar, `chrome.send("browserCommand", ["new-window"]), true`);
+		const second = await until(
+			async () => (await b.targets()).find((t) => !known.has(t.id) && t.url === SIDEBAR_URL),
+			10000,
+		);
+		await sleep(3000);
+		const after = imported((await spaces()).state);
+		check(
+			"a second window doesn't bring them in again",
+			Boolean(second) && after.length === 1,
+			`${second ? "second sidebar started" : "no second sidebar"}; ${after.length} Imported bookmarks folders`,
+		);
+		sidebar.close();
+	} finally {
+		await b.close();
+	}
+}
+
 const NEEDS = {
 	"4-states": ["3-tabs"],
 	"5-pinning": ["3-tabs"],
@@ -2624,6 +2958,10 @@ async function main() {
 		["10-new-tab", newTabs],
 		["11-sleep", sleeping],
 		["12-windows", windowSpaces],
+		["13-shortcuts", shortcuts],
+		["14-browser-menu", browserMenu],
+		["15-browser-bookmarks", browserBookmarks],
+		["16-polish", polish],
 	];
 	// --only <flow>[,<flow>] runs those flows after the ones they build on (first run always; restart needs them all).
 	const onlyAt = process.argv.indexOf("--only");

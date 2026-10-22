@@ -5,27 +5,39 @@ import { timeAgo } from "../archive/archive.logic";
 import { LokaHistory } from "../history/loka-history";
 import { faviconBackground, faviconInner, hostOf } from "../sidebar/favicon";
 import { planet } from "../sidebar/planet";
-import type { BrowserState, Space, Tab } from "../sidebar/sidebar.logic";
+import { type BrowserState, moveSpace, type Space, type Tab } from "../sidebar/sidebar.logic";
 import { playCue } from "../sound/sound";
-import { countsLabel, spaceCounts, type TreeRow, treeRows } from "./library.logic";
+import { countsLabel, spaceCounts, spaceDropIndex, type TreeRow, treeRows } from "./library.logic";
 
 /**
  * The Library's Spaces: every space with its planet, its pinned tree (all of it, folders inside folders) and its open
  * tabs, and the Essentials every space shares. Click a tab to go to it; "Switch to" goes to the space. Folders open
  * and close here only, never in the sidebar. Each space is laid out only once it scrolls near, so a big set of spaces
- * stays cheap. `state` is null until the browser has answered.
+ * stays cheap. The rail's space rows reorder the spaces: drag one, or focus it and press Alt+Up or Alt+Down. `state`
+ * is null until the browser has answered.
  */
 export class LokaLibrarySpaces extends LitElement {
 	static override properties = {
 		state: { attribute: false },
 		act: { attribute: false },
 		closed: { state: true },
+		dragging: { state: true },
+		said: { state: true },
 	};
 
 	declare state: BrowserState | null;
 	declare act: Act;
 	/** Folders closed here, by id. Every folder starts open, so the whole tree shows. */
 	closed: Set<string> = new Set();
+	/** The rail row being dragged and the index it would land at; the rail shows the spaces in that order meanwhile. */
+	dragging: { id: string; to: number } | null = null;
+	/** What a screen reader hears after a move by keys. */
+	said = "";
+
+	override disconnectedCallback() {
+		this.endDrag();
+		super.disconnectedCallback();
+	}
 
 	private reveal(tab: Tab) {
 		playCue("tab-open");
@@ -50,6 +62,106 @@ export class LokaLibrarySpaces extends LitElement {
 		this.renderRoot
 			.querySelector(`[data-space="${CSS.escape(space.id)}"]`)
 			?.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" });
+	}
+
+	// ---- reordering the spaces from the rail ----------------------------------------------------------------------
+	//
+	// Pointer events, as in the sidebar (an HTML5 drag inside the browser's window is an OS drag). A press that moves
+	// 5 px starts the drag; the rail then shows the spaces in the order the drop would make, with the dragged row lifted
+	// in its new place. Letting go sends moveSpace; Escape puts it back.
+
+	/** The press that may become a drag: the row, where it started, and the rows' middles along the rail then. */
+	private press: {
+		id: string;
+		from: number;
+		x: number;
+		y: number;
+		pointerId: number;
+		axis: "x" | "y";
+		centers: number[];
+	} | null = null;
+
+	private pressRow(e: PointerEvent, space: Space) {
+		if (e.button !== 0 || e.pointerType === "touch" || this.press || !this.state) return;
+		const rows = [...this.renderRoot.querySelectorAll<HTMLElement>(".jump")];
+		const filters = this.renderRoot.querySelector<HTMLElement>(".filters");
+		// The rail is a column beside the list, or a row of pills over it in a narrow window.
+		const axis = filters && getComputedStyle(filters).flexDirection.startsWith("row") ? "x" : "y";
+		const centers = rows.map((row) => {
+			const r = row.getBoundingClientRect();
+			return axis === "x" ? r.left + r.width / 2 : r.top + r.height / 2;
+		});
+		const from = this.state.spaces.findIndex((s) => s.id === space.id);
+		this.press = { id: space.id, from, x: e.clientX, y: e.clientY, pointerId: e.pointerId, axis, centers };
+		window.addEventListener("pointermove", this.onDragMove, true);
+		window.addEventListener("pointerup", this.onDragUp, true);
+		window.addEventListener("pointercancel", this.endDrag, true);
+		window.addEventListener("keydown", this.onDragKey, true);
+	}
+
+	private onDragMove = (e: PointerEvent) => {
+		const press = this.press;
+		if (!press || e.pointerId !== press.pointerId) return;
+		if (!this.dragging && Math.hypot(e.clientX - press.x, e.clientY - press.y) < 5) return;
+		e.preventDefault();
+		const to = spaceDropIndex(press.centers, press.from, press.axis === "x" ? e.clientX : e.clientY);
+		if (this.dragging?.to !== to) this.dragging = { id: press.id, to };
+	};
+
+	private onDragUp = (e: PointerEvent) => {
+		const press = this.press;
+		if (!press || e.pointerId !== press.pointerId) return;
+		const dragging = this.dragging;
+		this.endDrag();
+		if (!dragging) return;
+		// The click that ends a drag isn't a click on the row: it doesn't scroll the list to that space.
+		window.addEventListener("click", this.swallowClick, { capture: true, once: true });
+		setTimeout(() => window.removeEventListener("click", this.swallowClick, true), 0);
+		if (dragging.to !== press.from) this.act({ op: "moveSpace", spaceId: dragging.id, toIndex: dragging.to });
+	};
+
+	private swallowClick = (e: Event) => {
+		e.stopPropagation();
+		e.preventDefault();
+	};
+
+	private onDragKey = (e: KeyboardEvent) => {
+		if (e.key !== "Escape" || !this.press) return;
+		e.preventDefault();
+		e.stopPropagation();
+		this.endDrag();
+	};
+
+	/** Ends the press or drag without dropping: Escape, a cancelled pointer, or after a drop. */
+	private endDrag = () => {
+		window.removeEventListener("pointermove", this.onDragMove, true);
+		window.removeEventListener("pointerup", this.onDragUp, true);
+		window.removeEventListener("pointercancel", this.endDrag, true);
+		window.removeEventListener("keydown", this.onDragKey, true);
+		this.press = null;
+		this.dragging = null;
+	};
+
+	/** The rail row to focus again once the moved spaces arrive: moving a row in the page takes the focus off it. */
+	private refocus: string | null = null;
+
+	/** Alt+Up and Alt+Down on a focused rail row move its space one place; the row keeps the focus. */
+	private rowKey(e: KeyboardEvent, space: Space) {
+		if (!this.state || !e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+		e.preventDefault();
+		const spaces = this.state.spaces;
+		const from = spaces.findIndex((s) => s.id === space.id);
+		const to = from + (e.key === "ArrowUp" ? -1 : 1);
+		if (from === -1 || to < 0 || to >= spaces.length) return;
+		this.refocus = space.id;
+		this.said = `${space.name} moved to ${to + 1} of ${spaces.length}`;
+		this.act({ op: "moveSpace", spaceId: space.id, toIndex: to });
+	}
+
+	override updated(changed: Map<PropertyKey, unknown>) {
+		if (!this.refocus || !changed.has("state")) return;
+		this.renderRoot.querySelector<HTMLElement>(`.jump[data-space-id="${CSS.escape(this.refocus)}"]`)?.focus();
+		this.refocus = null;
 	}
 
 	private favicon(url: string): TemplateResult {
@@ -168,20 +280,34 @@ export class LokaLibrarySpaces extends LitElement {
 	override render() {
 		const state = this.state;
 		const now = Date.now();
+		const dragging = this.dragging;
+		// While a row is dragged the rail shows the order the drop would make.
+		const railSpaces = state ? (dragging ? moveSpace(state, dragging.id, dragging.to) : state).spaces : [];
 		return html`<div class="scroller">
 			<div class="layout">
 				<aside class="rail card">
 					<slot name="nav"></slot>
 					<h1>Spaces</h1>
 					<div class="filters" role="group" aria-label="Go to a space">
-						${(state?.spaces ?? []).map(
-							(space) => html`<button class="filter jump" @click=${() => this.jumpTo(space)}>
+						${repeat(
+							railSpaces,
+							(space) => space.id,
+							(space) => html`<button
+								class="filter jump ${space.id === dragging?.id ? "dragging" : ""}"
+								data-space-id=${space.id}
+								aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+								title="Drag, or Alt+Up and Alt+Down, to reorder"
+								@click=${() => this.jumpTo(space)}
+								@pointerdown=${(e: PointerEvent) => this.pressRow(e, space)}
+								@keydown=${(e: KeyboardEvent) => this.rowKey(e, space)}
+							>
 								<span class="mini" aria-hidden="true">${planet(space.planet, space.hue, 18)}</span>
 								<span class="jump-name">${space.name}</span>
 								${space.id === state?.activeSpaceId ? html`<span class="dot" title="Current space"></span>` : nothing}
 							</button>`,
 						)}
 					</div>
+					<p class="sr" role="status">${this.said}</p>
 				</aside>
 				<main class="list card">
 					${
@@ -229,6 +355,22 @@ export class LokaLibrarySpaces extends LitElement {
 			.mini {
 				display: grid;
 				flex: none;
+			}
+			/* The row being dragged, lifted in the place the drop would put it. */
+			.jump.dragging {
+				background: var(--loka-selected);
+				box-shadow: var(--loka-selected-edge);
+				color: var(--loka-ink);
+				cursor: grabbing;
+			}
+			.sr {
+				position: absolute;
+				width: 1px;
+				height: 1px;
+				margin: 0;
+				overflow: hidden;
+				clip-path: inset(50%);
+				white-space: nowrap;
 			}
 			.dot {
 				flex: none;

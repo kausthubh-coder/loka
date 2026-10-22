@@ -10,6 +10,7 @@ import {
 	createFolder,
 	createSpace,
 	deleteSpace,
+	ESSENTIALS_LIMIT,
 	exportState,
 	findFolder,
 	focusOrOpen,
@@ -17,6 +18,8 @@ import {
 	groupIntoFolder,
 	importState,
 	moveItem,
+	moveItems,
+	moveSpace,
 	navigateTab,
 	openTab,
 	pinnedRows,
@@ -115,6 +118,13 @@ describe("reordering", () => {
 		expect(space(state, "s-build").open).toEqual(["t-arc", "t-hn", "t-zen"]);
 	});
 
+	test("a move to a space that's gone leaves the tab where it was", () => {
+		// Another window's menu still offered a space this one deleted.
+		const seed = seedState();
+		expect(moveItem(seed, "t-hn", { area: "open", spaceId: "s-gone", index: 0 })).toBe(seed);
+		expect(moveItems(seed, ["t-hn", "t-zen"], { area: "open", spaceId: "s-gone", index: 0 })).toBe(seed);
+	});
+
 	test("pinning an essential moves it out of essentials", () => {
 		const state = moveItem(seedState(), "t-yt", { area: "pinned", spaceId: "s-home", parentId: null, index: 0 });
 		expect(state.essentials).toEqual(["t-mail", "t-cal", "t-gh"]);
@@ -188,6 +198,39 @@ describe("tabs and spaces", () => {
 		const one = deleteSpace(deleteSpace(seedState(), "s-school"), "s-home");
 		expect(one.spaces.map((s) => s.id)).toEqual(["s-build"]);
 		expect(deleteSpace(one, "s-build")).toBe(one);
+	});
+
+	test("moving a space puts it at the index it is given, counted after the move, and keeps the space showing", () => {
+		const ids = (state: ReturnType<typeof seedState>) => state.spaces.map((s) => s.id);
+		const seed = seedState();
+		const down = moveSpace(seed, "s-build", 2);
+		expect(ids(down)).toEqual(["s-school", "s-home", "s-build"]);
+		expect(down.activeSpaceId).toBe("s-build");
+		// The spaces themselves are untouched, the same objects, so nothing inside them redraws.
+		for (const id of ["s-build", "s-school", "s-home"]) expect(space(down, id)).toBe(space(seed, id));
+		expect(ids(moveSpace(seedState(), "s-home", 0))).toEqual(["s-home", "s-build", "s-school"]);
+		expect(ids(moveSpace(seedState(), "s-school", 2))).toEqual(["s-build", "s-home", "s-school"]);
+		expect(ids(moveSpace(seedState(), "s-home", 1))).toEqual(["s-build", "s-home", "s-school"]);
+		expect(importState(exportState(down))).toEqual(down);
+	});
+
+	test("a move past either end goes to that end", () => {
+		const ids = (state: ReturnType<typeof seedState>) => state.spaces.map((s) => s.id);
+		expect(ids(moveSpace(seedState(), "s-build", 99))).toEqual(["s-school", "s-home", "s-build"]);
+		expect(ids(moveSpace(seedState(), "s-home", -3))).toEqual(["s-home", "s-build", "s-school"]);
+		expect(ids(moveSpace(seedState(), "s-school", Number.POSITIVE_INFINITY))).toEqual([
+			"s-build",
+			"s-home",
+			"s-school",
+		]);
+	});
+
+	test("moving an unknown space, or a space to where it is, changes nothing", () => {
+		const seed = seedState();
+		expect(moveSpace(seed, "s-nowhere", 0)).toBe(seed);
+		expect(moveSpace(seed, "s-school", 1)).toBe(seed);
+		expect(moveSpace(seed, "s-build", -1)).toBe(seed);
+		expect(moveSpace(seed, "s-home", 7)).toBe(seed);
 	});
 
 	test("a new space follows the system's light or dark unless it picks one", () => {
@@ -449,5 +492,79 @@ describe("spaces saved by the 0.1.0 alpha (an extension)", () => {
 			{ kind: "folder", id: "f1", name: "Loka", open: true, children: [{ kind: "tab", id: "keep" }] },
 		]);
 		expect(["p1", "e1"].filter((id) => state?.tabs[id])).toEqual([]);
+	});
+});
+
+/** The seed with Essentials grown to `count` from Build's, School's and Home's tabs, in this order. */
+const withEssentials = (count: number) => {
+	const extra = ["t-hn", "t-arc", "t-zen", "t-helium", "t-chromium", "t-lit", "t-canvas", "t-music"];
+	return extra
+		.slice(0, count - 4)
+		.reduce((s, id) => moveItem(s, id, { area: "essentials", index: Number.POSITIVE_INFINITY }), seedState());
+};
+
+describe("the Essentials limit", () => {
+	test("Essentials grow to twelve and no further", () => {
+		const full = withEssentials(12);
+		expect(full.essentials).toHaveLength(ESSENTIALS_LIMIT);
+		expect(moveItem(full, "t-gdd", { area: "essentials", index: 0 })).toBe(full);
+	});
+
+	test("full Essentials still reorder, and one leaving makes room", () => {
+		const full = withEssentials(12);
+		expect(moveItem(full, "t-music", { area: "essentials", index: 0 }).essentials.slice(0, 2)).toEqual([
+			"t-music",
+			"t-mail",
+		]);
+		const room = moveItem(full, "t-mail", { area: "open", spaceId: "s-build", index: 0 });
+		expect(moveItem(room, "t-gdd", { area: "essentials", index: 99 }).essentials.at(-1)).toBe("t-gdd");
+	});
+});
+
+describe("moving several at once", () => {
+	test("several open tabs pin at the end in the order given", () => {
+		const state = moveItems(seedState(), ["t-zen", "t-hn"], {
+			area: "pinned",
+			spaceId: "s-build",
+			parentId: null,
+			index: Number.POSITIVE_INFINITY,
+		});
+		expect(outline(state, "s-build").slice(-2)).toEqual(["0:Zen Browser", "0:Hacker News"]);
+		expect(space(state, "s-build").open).toEqual(["t-arc"]);
+	});
+
+	test("several land together at the top of another space's open tabs, keeping their order", () => {
+		const state = moveItems(seedState(), ["t-helium", "t-lit", "t-arc"], { area: "open", spaceId: "s-home", index: 0 });
+		expect(space(state, "s-home").open).toEqual(["t-helium", "t-lit", "t-arc", "t-music"]);
+		expect(space(state, "s-build").activeTabId).toBeNull();
+	});
+
+	test("within one list the first index counts before the move, and each next one lands after the last", () => {
+		// Zen and Hacker News to the place after Arc: Arc first, then the two in the order given.
+		const state = moveItems(seedState(), ["t-zen", "t-hn"], { area: "open", spaceId: "s-build", index: 2 });
+		expect(space(state, "s-build").open).toEqual(["t-arc", "t-zen", "t-hn"]);
+	});
+
+	test("adding several to nearly full Essentials adds as many as fit, in order", () => {
+		const eleven = withEssentials(11);
+		const state = moveItems(eleven, ["t-gdd", "t-ref"], { area: "essentials", index: Number.POSITIVE_INFINITY });
+		expect(state.essentials.slice(-2)).toEqual(["t-canvas", "t-gdd"]);
+		expect(state.essentials).toHaveLength(ESSENTIALS_LIMIT);
+		// The one that didn't fit stays where it was, in the closed Game project folder.
+		expect(findFolder(space(state, "s-school").pinned, "f-game")?.children).toEqual([{ kind: "tab", id: "t-ref" }]);
+	});
+
+	test("refused items are skipped: a folder can't join Essentials, an unknown id moves nothing", () => {
+		const state = moveItems(seedState(), ["f-docs", "t-x", "t-hn"], { area: "essentials", index: 0 });
+		expect(state.essentials).toEqual(["t-hn", "t-mail", "t-cal", "t-gh", "t-yt"]);
+		const none = seedState();
+		expect(moveItems(none, ["f-docs"], { area: "essentials", index: 0 })).toBe(none);
+	});
+
+	test("several tabs go into a new folder, first to last", () => {
+		const [made, folderId] = createFolder(seedState(), "s-build", null, "Reading", "f-reading");
+		const to = { area: "pinned", spaceId: "s-build", parentId: folderId, index: 0 } as const;
+		const state = moveItems(made, ["t-hn", "t-lit"], to);
+		expect(outline(state, "s-build").slice(-3)).toEqual(["0:Reading", "1:Hacker News", "1:Lit docs"]);
 	});
 });

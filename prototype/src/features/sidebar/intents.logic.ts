@@ -16,6 +16,8 @@ import {
 	groupIntoFolder,
 	importState,
 	moveItem,
+	moveItems,
+	moveSpace,
 	navigateTab,
 	openTab,
 	type Place,
@@ -33,6 +35,8 @@ import {
 
 export type Intent =
 	| { op: "moveItem"; id: string; to: Place }
+	/** Several rows as one change: a selection's Pin, Unpin, Move to space, Add to Essentials, New folder with these. */
+	| { op: "moveItems"; itemIds: string[]; to: Place }
 	| { op: "openTab"; url: string; title: string; now: number; id: TabId }
 	| { op: "navigateTab"; tabId: TabId; url: string; title: string }
 	| { op: "activateTab"; tabId: TabId; now: number }
@@ -44,6 +48,8 @@ export type Intent =
 	| { op: "createSpace"; look: SpaceLook; id: string }
 	| { op: "updateSpace"; spaceId: string; look: SpaceLook }
 	| { op: "deleteSpace"; spaceId: string }
+	/** `toIndex` is where the space ends up, counted after the move. */
+	| { op: "moveSpace"; spaceId: string; toIndex: number }
 	| { op: "focusOrOpen"; url: string; title: string; now: number; id: TabId }
 	| { op: "createFolder"; spaceId: string; parentId: string | null; name: string; id: string }
 	| { op: "renameFolder"; folderId: string; name: string }
@@ -66,6 +72,8 @@ export function applyIntent(state: BrowserState, intent: Intent): BrowserState {
 	switch (intent.op) {
 		case "moveItem":
 			return moveItem(state, intent.id, intent.to);
+		case "moveItems":
+			return moveItems(state, intent.itemIds, intent.to);
 		case "openTab":
 			return openTab(state, intent.url, intent.title, intent.now, intent.id);
 		case "navigateTab":
@@ -84,6 +92,8 @@ export function applyIntent(state: BrowserState, intent: Intent): BrowserState {
 			return updateSpace(state, intent.spaceId, intent.look);
 		case "deleteSpace":
 			return deleteSpace(state, intent.spaceId);
+		case "moveSpace":
+			return moveSpace(state, intent.spaceId, intent.toIndex);
 		case "focusOrOpen":
 			return focusOrOpen(state, intent.url, intent.title, intent.now, intent.id);
 		case "createFolder":

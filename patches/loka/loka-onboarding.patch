@@ -151,7 +151,7 @@
 +  Copy bookmarks, history and extensions from other browsers on this computer. Nothing is removed from them.
 +</message>
 +<message name="IDS_LOKA_ONBOARDING_PASSWORD_SUBTITLE" desc="Subtitle of the onboarding screen for choosing a password manager.">
-+  Loka doesn't have a built-in password manager. Want to install one from the Web Store?
++  Loka doesn't have a built-in password manager. Install one below, then export your passwords from your old browser as a CSV file and follow the manager's Import guide.
 +</message>
 +<message name="IDS_LOKA_ONBOARDING_PASSWORD_ERROR" desc="Shown under a password manager when installing its extension from the Chrome Web Store failed.">
 +  Couldn't install it from the Web Store. Check your connection, then try again.

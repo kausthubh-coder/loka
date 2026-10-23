@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Nine directions for Loka’s mark</title>
+<style>
+:root { color-scheme: light dark; --bg: #f5f6f7; --text: #1a1c20; --muted: #555a63; --line: #dcdfe3; --accent: #0b6b8f; }
+@media (prefers-color-scheme: dark) { :root { --bg: #121417; --text: #e7e8ea; --muted: #a2a7b0; --line: #2c3036; --accent: #6cc4e6; } }
+html { background: var(--bg); color: var(--text); }
+body { margin: 0; font: 1rem/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 64rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+h1 { font-size: 1.875rem; line-height: 1.2; margin: 0 0 0.5rem; text-wrap: balance; }
+h2 { font-size: 1.25rem; margin: 2.75rem 0 1rem; }
+p { max-width: 62ch; }
+.lede { color: var(--muted); margin: 0 0 1.25rem; }
+ol.asks { padding-left: 1.25rem; } ol.asks li { margin: 0.3rem 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(17.5rem, 1fr)); gap: 2.5rem 2rem; }
+.v h3 { font-size: 1rem; margin: 0.75rem 0 0.15rem; }
+.v p { font-size: 0.9375rem; color: var(--muted); margin: 0; }
+.sizes { display: flex; align-items: flex-end; gap: 14px; }
+.sizes svg { display: block; flex: none; }
+.mono { color: var(--text); }
+.wm { display: flex; align-items: center; gap: 2rem; flex-wrap: wrap; }
+.word { display: inline-flex; align-items: center; font-weight: 650; letter-spacing: -0.02em; line-height: 1; }
+.word svg { display: block; }
+.hues { display: flex; gap: 12px; flex-wrap: wrap; }
+code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.875em; }
+details { border-top: 1px solid var(--line); margin-top: 2.5rem; }
+summary { padding-block: 0.7rem; cursor: pointer; font-weight: 600; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media print { :root { color-scheme: light; } .v { break-inside: avoid; } }
+</style>
+</head>
+<body>
+<!-- Every mark is drawn once on a 64-unit grid, like resources/loka/branding/product_logo.svg, and reused at each size. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<defs>
+  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#16344a"/><stop offset="1" stop-color="#091018"/></linearGradient>
+  <linearGradient id="dawn" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fdf0e2"/><stop offset="1" stop-color="#f3cfa6"/></linearGradient>
+  <clipPath id="tile"><rect width="64" height="64" rx="15"/></clipPath>
+  <clipPath id="b0"><circle cx="30" cy="34" r="22"/></clipPath>
+  <clipPath id="bsmall"><circle cx="38" cy="23" r="11"/></clipPath>
+  <clipPath id="bring"><circle cx="32" cy="34" r="14"/></clipPath>
+  <clipPath id="borbit"><circle cx="27" cy="37" r="14"/></clipPath>
+  <clipPath id="bword"><circle cx="16" cy="16" r="14"/></clipPath>
+  <radialGradient id="litBlue" cx="0.35" cy="0.25" r="0.85"><stop offset="0" stop-color="#c4ecff"/><stop offset="0.4" stop-color="#4fa3cf"/><stop offset="1" stop-color="#123246"/></radialGradient>
+  <radialGradient id="litAmber" cx="0.35" cy="0.28" r="0.85"><stop offset="0" stop-color="#ffe0b8"/><stop offset="0.4" stop-color="#d08a45"/><stop offset="1" stop-color="#46260e"/></radialGradient>
+  <radialGradient id="litGreen" cx="0.35" cy="0.28" r="0.85"><stop offset="0" stop-color="#c2f5dc"/><stop offset="0.4" stop-color="#4cb886"/><stop offset="1" stop-color="#0f3a27"/></radialGradient>
+  <clipPath id="ringFront"><rect x="-20" y="34" width="104" height="40"/></clipPath>
+</defs>
+
+<!-- 1. Today's mark: lit planet and moon on a night tile. -->
+<symbol id="m-now" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="15" fill="url(#sky)"/>
+  <circle cx="30" cy="34" r="22" fill="#224859"/>
+  <circle cx="20" cy="25" r="27" fill="#78cdf5" clip-path="url(#b0)"/>
+  <circle cx="51" cy="12.5" r="4.5" fill="#78cdf5"/>
+</symbol>
+
+<!-- 2. Horizon: the sidebar's own scene, a world rising at the bottom with the next one in the sky. -->
+<symbol id="m-horizon" viewBox="0 0 64 64">
+  <g clip-path="url(#tile)">
+    <rect width="64" height="64" fill="url(#sky)"/>
+    <circle cx="12" cy="12" r="0.9" fill="#fff" opacity="0.7"/><circle cx="54" cy="40" r="0.8" fill="#fff" opacity="0.6"/><circle cx="22" cy="34" r="0.6" fill="#fff" opacity="0.5"/>
+    <circle cx="32" cy="98" r="52" fill="url(#litBlue)"/>
+    <circle cx="32" cy="98" r="51.4" fill="none" stroke="#bfe9ff" stroke-opacity="0.65" stroke-width="1.2"/>
+  </g>
+  <circle cx="38" cy="23" r="11" fill="#224859"/>
+  <circle cx="32" cy="17" r="13.5" fill="#78cdf5" clip-path="url(#bsmall)"/>
+  <circle cx="54" cy="10" r="2.6" fill="#78cdf5"/>
+</symbol>
+
+<!-- 3. Ringed: the ringed space planet, ring tilted like planet.ts draws it. -->
+<symbol id="m-ringed" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="15" fill="url(#sky)"/>
+  <g transform="rotate(-16 32 34)"><ellipse cx="32" cy="34" rx="25" ry="6.5" fill="none" stroke="#9fdcf7" stroke-opacity="0.55" stroke-width="2.6"/></g>
+  <circle cx="32" cy="34" r="14" fill="#224859"/>
+  <circle cx="26" cy="28" r="17" fill="#78cdf5" clip-path="url(#bring)"/>
+  <g transform="rotate(-16 32 34)" clip-path="url(#ringFront)"><ellipse cx="32" cy="34" rx="25" ry="6.5" fill="none" stroke="#bfe9ff" stroke-width="2.6"/></g>
+</symbol>
+
+<!-- 4. Orbit: today's planet and moon, with the moon's path drawn. -->
+<symbol id="m-orbit" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="15" fill="url(#sky)"/>
+  <g transform="rotate(-20 27 37)"><ellipse cx="27" cy="37" rx="24" ry="9" fill="none" stroke="#78cdf5" stroke-opacity="0.45" stroke-width="1.3"/></g>
+  <circle cx="27" cy="37" r="14" fill="#224859"/>
+  <circle cx="21" cy="31" r="17" fill="#78cdf5" clip-path="url(#borbit)"/>
+  <circle cx="42.3" cy="24.3" r="3.6" fill="#78cdf5"/>
+</symbol>
+
+<!-- 5. Spaces: three worlds in three space colors, the product in one picture. -->
+<symbol id="m-spaces" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="15" fill="url(#sky)"/>
+  <circle cx="25" cy="38" r="14" fill="url(#litBlue)"/>
+  <circle cx="45" cy="22" r="8" fill="url(#litAmber)"/>
+  <circle cx="49" cy="44" r="5" fill="url(#litGreen)"/>
+</symbol>
+
+<!-- 6. Glyph: one color, no tile, for the taskbar's 16 px and monochrome places. -->
+<symbol id="m-glyph" viewBox="0 0 64 64">
+  <circle cx="30" cy="34" r="20.5" fill="none" stroke="currentColor" stroke-width="3"/>
+  <circle cx="17" cy="22" r="25" fill="currentColor" clip-path="url(#b0)"/>
+  <circle cx="51" cy="12.5" r="4.5" fill="currentColor"/>
+</symbol>
+
+<!-- 7. Dawn: the light-theme tile, in the School space's amber. -->
+<symbol id="m-dawn" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="15" fill="url(#dawn)"/>
+  <circle cx="30" cy="34" r="22" fill="#c27a3e"/>
+  <circle cx="20" cy="25" r="27" fill="#fff3e2" clip-path="url(#b0)"/>
+  <circle cx="51" cy="12.5" r="4.5" fill="#c27a3e"/>
+</symbol>
+
+<!-- The planet-as-o for the wordmark (32-unit box). -->
+<symbol id="m-o" viewBox="0 0 32 32">
+  <circle cx="16" cy="16" r="14" fill="#224859"/>
+  <circle cx="10" cy="10" r="17" fill="#78cdf5" clip-path="url(#bword)"/>
+</symbol>
+</svg>
+
+<main>
+<h1>Nine directions for Loka’s mark</h1>
+<p class="lede">All of them keep today’s lit planet and night sky. Each is shown at 128, 32 and 16&nbsp;px, because the taskbar and tab strip use the small ones.</p>
+
+<h2>What I need from you</h2>
+<ol class="asks">
+<li>Pick one or two to take further. My pick is <b>2, Horizon</b>: it’s the sidebar’s own scene, so the icon and the product look like one thing.</li>
+<li>Keep 6 (glyph) as the 16&nbsp;px and monochrome version whichever you pick?</li>
+<li>Want a mark per space color (row 9), for spaces or profiles?</li>
+</ol>
+
+<h2>The marks</h2>
+<div class="grid">
+
+<section class="v">
+  <div class="sizes"><svg width="128" height="128" role="img" aria-label="Today’s mark"><use href="#m-now"/></svg><svg width="32" height="32" aria-hidden="true"><use href="#m-now"/></svg><svg width="16" height="16" aria-hidden="true"><use href="#m-now"/></svg></div>
+  <h3>1. Today</h3>
+  <p>The shipped mark (<code>product_logo.svg</code>), for comparison.</p>
+</section>
+
+<section class="v">
+  <div class="sizes"><svg width="128" height="128" role="img" aria-label="Horizon mark"><use href="#m-horizon"/></svg><svg width="32" height="32" aria-hidden="true"><use href="#m-horizon"/></svg><svg width="16" height="16" aria-hidden="true"><use href="#m-horizon"/></svg></div>
+  <h3>2. Horizon</h3>
+  <p>The current space rising at the bottom, the next one lit above it with its moon, like the sidebar.</p>
+</section>
+
+<section class="v">
+  <div class="sizes"><svg width="128" height="128" role="img" aria-label="Ringed mark"><use href="#m-ringed"/></svg><svg width="32" height="32" aria-hidden="true"><use href="#m-ringed"/></svg><svg width="16" height="16" aria-hidden="true"><use href="#m-ringed"/></svg></div>
+  <h3>3. Ringed</h3>
+  <p>The ringed space planet. Reads as “space” fastest; less ownable.</p>
+</section>
+
+<section class="v">
+  <div class="sizes"><svg width="128" height="128" role="img" aria-label="Orbit mark"><use href="#m-orbit"/></svg><svg width="32" height="32" aria-hidden="true"><use href="#m-orbit"/></svg><svg width="16" height="16" aria-hidden="true"><use href="#m-orbit"/></svg></div>
+  <h3>4. Orbit</h3>
+  <p>Today’s mark with the moon’s path. Motion without animation; the line vanishes at 16&nbsp;px.</p>
+</section>
+
+<section class="v">
+  <div class="sizes"><svg width="128" height="128" role="img" aria-label="Three spaces mark"><use href="#m-spaces"/></svg><svg width="32" height="32" aria-hidden="true"><use href="#m-spaces"/></svg><svg width="16" height="16" aria-hidden="true"><use href="#m-spaces"/></svg></div>
+  <h3>5. Spaces</h3>
+  <p>Three worlds in three space colors. Says what Loka does; busiest at small sizes.</p>
+</section>
+
+<section class="v">
+  <div class="sizes mono"><svg width="128" height="128" role="img" aria-label="One-color glyph"><use href="#m-glyph"/></svg><svg width="32" height="32" aria-hidden="true"><use href="#m-glyph"/></svg><svg width="16" height="16" aria-hidden="true"><use href="#m-glyph"/></svg></div>
+  <h3>6. Glyph</h3>
+  <p>One color, no tile. Takes the text color, so it works on any background.</p>
+</section>
+
+<section class="v">
+  <div class="sizes"><svg width="128" height="128" role="img" aria-label="Dawn mark"><use href="#m-dawn"/></svg><svg width="32" height="32" aria-hidden="true"><use href="#m-dawn"/></svg><svg width="16" height="16" aria-hidden="true"><use href="#m-dawn"/></svg></div>
+  <h3>7. Dawn</h3>
+  <p>The light-theme tile, from School’s cream sky and amber planet.</p>
+</section>
+
+<section class="v">
+  <div class="wm" style="height:128px">
+    <span class="word" style="font-size:56px">l<svg width="40" height="40" style="margin:6px 1px 0" aria-hidden="true"><use href="#m-o"/></svg>ka</span>
+  </div>
+  <div class="wm" style="margin-top:0.25rem"><span class="word" style="font-size:22px">l<svg width="16" height="16" style="margin:3px 1px 0" aria-hidden="true"><use href="#m-o"/></svg>ka</span></div>
+  <h3>8. Wordmark</h3>
+  <p>The o is the lit planet. For the site, the installer and About.</p>
+</section>
+
+<section class="v">
+  <div class="hues" style="min-height:128px;align-items:flex-end">
+    <svg width="56" height="56" role="img" aria-label="Build blue"><use href="#m-now"/></svg>
+    <svg width="56" height="56" role="img" aria-label="School amber" style="filter:hue-rotate(190deg) saturate(1.2)"><use href="#m-now"/></svg>
+    <svg width="56" height="56" role="img" aria-label="Home green" style="filter:hue-rotate(-50deg)"><use href="#m-now"/></svg>
+    <svg width="56" height="56" role="img" aria-label="Pink" style="filter:hue-rotate(130deg)"><use href="#m-now"/></svg>
+  </div>
+  <h3>9. Space colors</h3>
+  <p>Today’s mark in Build, School, Home and pink. A mark per space or profile.</p>
+</section>
+
+</div>
+
+<details>
+<summary>How these were drawn, and what’s not done</summary>
+<p>Each mark is SVG on the same 64-unit grid as <code>resources/loka/branding/product_logo.svg</code>, using its sky gradient (<code>#16344a</code> to <code>#091018</code>), shade <code>#224859</code> and lit <code>#78cdf5</code>. Planet gradients follow <code>planet.ts</code>.</p>
+<p>Not done: Windows icon sizes (<code>scripts/loka_brand.py assets</code> draws those from the chosen mark), a check at 125% and 150% display scaling, and space colors drawn per hue instead of with <code>hue-rotate</code>.</p>
+</details>
+</main>
+</body>
+</html>

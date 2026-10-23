@@ -53,34 +53,30 @@ details ul, details ol { padding-left: 1.3rem; }
 </head>
 <body>
 <main>
-<h1>Four answers and a build runner from release</h1>
-<p class="lede">Everything that didn’t wait on you is in PRs with green CI. The rest needs four decisions, a runner, then eight steps of mine.</p>
+<h1>A build runner away from release</h1>
+<p class="lede">Every PR is merged, <code>main</code> passes all 189 flow and 50 browser checks, and the four decisions are made. What’s left is a build runner, then my steps.</p>
 
 <section class="asks">
 <h2>Needs you</h2>
 <ol>
-<li><b>Merge, in this order:</b> #28 → #33 → #37 → #40; #29 → #38; #30; #32 → #35 → #39; #34 → #41; #36. Leave #31 as a draft.</li>
-<li><b>Crash reports (a):</b> off by default for v1, my pick. Helium’s server isn’t ours; our own can come later without a patch.</li>
-<li><b>Signing (b):</b> Azure Artifact Signing if you have a US or Canadian ID ($9.99 a month, unattended). Otherwise SignPath: free, but you approve every release by hand.</li>
-<li><b>Helium’s services (c):</b> email imput LLC asking if Loka may use them. Their policy excludes forks today.</li>
-<li><b>Version (d):</b> one four-part Loka number from 1.0.0.0 for the exe, About, update feed and tag; About adds “based on Helium”.</li>
 <li><b>A build runner</b> (Depot or similar, 64 GB). The release build can’t run on this 16 GB machine.</li>
 </ol>
+<p><b>Decided Oct 22</b> (in <code>docs/decisions.md</code>): no code signing; crash reports and Helium’s services stay Helium’s; one version number, Helium’s three parts plus Loka’s own release counter as the fourth.</p>
 </section>
 
-<h2>Eight release blockers, one done</h2>
+<h2>Eight release blockers, three settled</h2>
 <div class="scroll">
 <table>
 <thead><tr><th scope="col">Blocker</th><th scope="col">State</th><th scope="col">Waits on</th></tr></thead>
 <tbody>
-<tr><th scope="row">Licenses in the download</th><td><span class="ok">Done</span>, #36</td><td>Merge</td></tr>
+<tr><th scope="row">Licenses in the download</th><td><span class="ok">Done</span>, #36</td><td>Nothing</td></tr>
+<tr><th scope="row">Signed binaries</th><td><span class="ok">Not needed</span>: unsigned, your call</td><td>Nothing</td></tr>
+<tr><th scope="row">Crash reports</th><td><span class="ok">Stay Helium’s</span>, your call</td><td>Nothing</td></tr>
+<tr><th scope="row">Privacy policy, terms</th><td>Drafted; now points to Helium’s services</td><td>Me, next</td></tr>
 <tr><th scope="row">Installer, own install identity</th><td>Designed; about 100 files rebuild</td><td>Runner, a test VM</td></tr>
-<tr><th scope="row">Updates</th><td>Planned in #31; the alpha’s feed URL returns 404</td><td>(d), a signing key in GitHub secrets</td></tr>
-<tr><th scope="row">Signed binaries</th><td>Not started</td><td>(b)</td></tr>
+<tr><th scope="row">Updates</th><td>Planned in #31; the alpha’s feed URL returns 404</td><td>Runner, a signing key in GitHub secrets</td></tr>
 <tr><th scope="row">Release build</th><td>Only the dev build exists</td><td>Runner</td></tr>
 <tr><th scope="row">Helium 0.20.1.1</th><td>On 0.19.2.1</td><td>Runner (full rebuild)</td></tr>
-<tr><th scope="row">Privacy policy, terms</th><td>Drafted</td><td>(a), (c)</td></tr>
-<tr><th scope="row">Crash reports</th><td>Go to Helium in release builds</td><td>(a)</td></tr>
 </tbody>
 </table>
 </div>
@@ -119,12 +115,11 @@ details ul, details ol { padding-left: 1.3rem; }
 </details>
 
 <details>
-<summary>Why each recommendation</summary>
+<summary>What the decisions cost</summary>
 <ul>
-<li><b>Crash reports.</b> Helium uploads to <code>crash.helium.computer</code> only in official builds, after asking. Its policy covers Helium, not forks. Off by default keeps Loka’s privacy line simple: nothing leaves the machine. Helium honors <code>--custom-crash-server-url</code>, so a Loka server later needs no patch.</li>
-<li><b>Signing.</b> Unsigned builds trip SmartScreen on every download. Azure is cheapest in time; SignPath is cheapest in money but adds a human step to every release, including fixes.</li>
-<li><b>Services.</b> Six features use Helium’s servers after setup consent: extension downloads, Web Store snippets, bangs, uBlock lists, spelling dictionaries and component updates. Running our own means hosting a proxy for each.</li>
-<li><b>Version.</b> WinSparkle compares the exe’s version with the feed’s. Two numbers (Loka’s tag and Helium’s file version) would make every update check wrong.</li>
+<li><b>Unsigned.</b> Windows SmartScreen warns on every download until enough people run a given build; the release notes say so.</li>
+<li><b>Helium’s crash server and services.</b> Helium’s privacy policy covers Helium, not forks; Loka’s policy names the services and points to theirs. Helium honors <code>--custom-crash-server-url</code>, so moving crash reports later needs no patch.</li>
+<li><b>Version.</b> WinSparkle compares the exe’s version with the feed’s, so the exe, feed, zip and tag must share one number. Loka bumps <code>revision.txt</code> per release; a rebuild then rewrites <code>chrome/VERSION</code>.</li>
 </ul>
 </details>
 

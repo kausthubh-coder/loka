@@ -34,7 +34,7 @@ TypeScript). The browser build is Helium's Python build plus Loka's patches.
 | `.agents/skills/` | `worktree-loka`, `verify-loka` (with the feature map), `ship-loka`. `.claude/skills` links here |
 | `.agents/plans/` | plans as HTML; `2026-10-15-optimize.html` has the restructure checklist |
 | `docs/` | `browser-build.md`, `cross-platform.md` (Windows-only parts, the macOS port), `decisions.md`, `upstream.md` |
-| `build.py`, `patches/` (except `loka/`), `helium-chromium/`, `.github/` (except `check.yml` and `loka-build.yml`) | Helium's, kept where Helium has them so merges stay clean |
+| `build.py`, `patches/` (except `loka/`), `helium-chromium/`, `.github/` (except `check.yml`, `loka-build.yml` and `actions/loka-stage/`) | Helium's, kept where Helium has them so merges stay clean |
 
 Pure logic goes in `*.logic.ts`, tested directly. No barrel files. The sidebar model is the spec for the future C++
 model, so keep it pure and keep its rules tested.

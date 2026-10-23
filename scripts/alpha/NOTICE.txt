@@ -1,5 +1,5 @@
 Loka
-https://github.com/kausthubh-coder/loka
+https://github.com/loka-browser/loka
 
 Loka is free software under the GNU General Public License, version 3
 (GPL-3.0). Its full text is in LICENSE, beside this file. The source code for

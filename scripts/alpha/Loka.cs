@@ -12,7 +12,7 @@ static class Loka
 {
 	// Helium's updater would read Helium's feed and offer to replace Loka with Helium. This points it at Loka's own
 	// feed instead, which doesn't exist yet, so the alpha doesn't update itself; new builds come from GitHub releases.
-	const string UpdateFeed = "https://raw.githubusercontent.com/kausthubh-coder/loka/main/updates/";
+	const string UpdateFeed = "https://raw.githubusercontent.com/loka-browser/loka/main/updates/";
 
 	[STAThread]
 	static int Main(string[] args)

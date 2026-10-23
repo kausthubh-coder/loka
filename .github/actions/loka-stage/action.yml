@@ -37,13 +37,16 @@ runs:
         7z x C:\src\loka\build\artifacts.zip -oC:\src\loka\build -y
         if ($LASTEXITCODE) { exit $LASTEXITCODE }
         Remove-Item C:\src\loka\build\artifacts.zip
-    - name: Install
+    # Only the first stage builds Loka's pages; loka_build.py removes node_modules after, since it would sit above
+    # build\src while Chromium compiles. Packaging needs only node.
+    - name: Install packages for Loka's pages
+      if: inputs.resume != 'true'
       shell: pwsh
       working-directory: C:\src\loka
-      run: |
-        bun install --frozen-lockfile
-        if ($LASTEXITCODE) { exit $LASTEXITCODE }
-        python -m pip install httplib2==0.22.0 Pillow clang-format
+      run: bun install --frozen-lockfile
+    - name: Install Python packages
+      shell: pwsh
+      run: python -m pip install httplib2==0.22.0 Pillow clang-format
     - name: Build
       id: build
       shell: pwsh

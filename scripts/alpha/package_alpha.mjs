@@ -99,7 +99,7 @@ function runtimeFiles() {
 
 function readme() {
 	return `Loka ${VERSION} for Windows (x64), portable alpha
-https://github.com/kausthubh-coder/loka
+https://github.com/loka-browser/loka
 
 Run Loka.exe. Nothing is installed; to remove Loka, delete this folder and
 %LOCALAPPDATA%\\Loka.

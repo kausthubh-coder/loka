@@ -57,9 +57,9 @@ deletes the branch.
 From a cloud session `gh pr` doesn't work; use the REST calls:
 
 ```
-gh api repos/kausthubh-coder/loka/pulls -f head=<branch> -f base=<base> -f title=<title> -f body=<body>   # note .number
-gh api repos/kausthubh-coder/loka/commits/<head sha>/check-runs -q '.check_runs[] | [.name, .status, .conclusion] | @tsv'
-gh api -X PUT repos/kausthubh-coder/loka/pulls/<pr>/merge -f merge_method=merge
+gh api repos/loka-browser/loka/pulls -f head=<branch> -f base=<base> -f title=<title> -f body=<body>   # note .number
+gh api repos/loka-browser/loka/commits/<head sha>/check-runs -q '.check_runs[] | [.name, .status, .conclusion] | @tsv'
+gh api -X PUT repos/loka-browser/loka/pulls/<pr>/merge -f merge_method=merge
 ```
 
 ## 3. Release the alpha (on my go; Windows only)
@@ -85,7 +85,7 @@ The next version is one past the last `v*-alpha.*` tag (`git ls-remote --tags or
 ## 4. Check production
 
 `release:alpha --publish` ends with a read-back (`PASS <url>: pre-release true, <zip> <size>, <sha256>`). Then
-download what a user gets, `curl -fLO https://github.com/kausthubh-coder/loka/releases/download/v<v>/Loka-<v>-windows-x64.zip`
+download what a user gets, `curl -fLO https://github.com/loka-browser/loka/releases/download/v<v>/Loka-<v>-windows-x64.zip`
 into a temp folder (`gh release` is denied), compare its sha256 with the release's `.sha256`, unzip it and run
 `LOKA_CHROME=<temp>\Loka-<v>-windows-x64\app\chrome.exe bun run verify:browser`. For source-only ships, read the
 merge commit on `origin/<base>` (`git log -1 origin/<base>`).

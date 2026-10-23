@@ -1,0 +1,78 @@
+name: Loka build
+
+# Loka's own build on one large Depot Windows runner: the same build and zip as a local alpha
+# (scripts/loka_build.py first, then browser:package), uploaded as a run artifact. Nothing is released.
+# Helium's main.yml can't make it: it doesn't build Loka's pages or apply its brand, and its packaging requires the
+# Azure signing secrets. Started by hand; every run is billed by Depot per minute.
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: Depot runner (64 CPUs is about $15 an hour, 32 about $8)
+        type: choice
+        default: depot-windows-2025-64
+        options:
+          - depot-windows-2025-64
+          - depot-windows-2025-32
+      version:
+        description: LOKA_VERSION for the zip (empty is 0.1.0-ci.<run number>)
+        required: false
+        default: ''
+      ssh:
+        description: If the build fails, keep the runner up to an hour for SSH (tmate, only you can join)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 600
+    env:
+      LOKA_VERSION: ${{ inputs.version || format('0.1.0-ci.{0}', github.run_number) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      # Python 3.12, the Windows SDK Chromium needs, and node, as Helium's CI sets them up.
+      - uses: ./.github/actions/prepare-environment
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      # The build checkout's default path (scripts/browser.mjs), short enough for Chromium's deep paths.
+      - name: Copy to the build checkout
+        shell: pwsh
+        run: Copy-Item -Path . -Destination C:\src\loka -Recurse
+      - name: Install
+        shell: pwsh
+        working-directory: C:\src\loka
+        run: |
+          bun install --frozen-lockfile
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -m pip install httplib2==0.22.0 Pillow
+      - name: Build
+        shell: pwsh
+        working-directory: C:\src\loka
+        run: python scripts/loka_build.py first -j $env:NUMBER_OF_PROCESSORS
+      - name: Package
+        shell: pwsh
+        working-directory: C:\src\loka
+        run: bun run browser:package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Loka-${{ env.LOKA_VERSION }}-windows-x64
+          path: |
+            C:\src\loka\dist\Loka-${{ env.LOKA_VERSION }}-windows-x64.zip
+            C:\src\loka\dist\Loka-${{ env.LOKA_VERSION }}-windows-x64.zip.sha256
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+      - name: SSH into the runner
+        if: failure() && inputs.ssh
+        uses: mxschmitt/action-tmate@v3
+        timeout-minutes: 60
+        with:
+          limit-access-to-actor: true

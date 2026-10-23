@@ -107,4 +107,11 @@ bun run browser:package    # C:\src\loka\dist\Loka-<version>-windows-x64.zip and
 
 `.github/workflows/main.yml` (inherited from Helium, started by hand) builds on GitHub's free `windows-2025`
 runners, splitting the compile into chained jobs of up to 5.5 hours each. Expect 15 to 44 hours of wall time
-per build. Signing secrets are optional; without them the build is unsigned.
+per build. It doesn't make Loka: it skips `webui:build` and `loka_brand.py`, and `signing.py` stops without the
+six `AZURE_*` secrets, which Loka doesn't have.
+
+`.github/workflows/loka-build.yml` is Loka's: one job on a Depot Windows runner (`depot-windows-2025-64`, 64 CPUs
+and 256 GB; the repo is in the `loka-browser` organization because Depot's runners need one). It runs
+`loka_build.py first` and `browser:package` in `C:\src\loka`, as on this machine, and uploads the zip as the run's
+artifact; it releases nothing. Depot bills it per minute. With `ssh` on, a failed run stays up to an hour for
+`tmate`, which only the person who started it can join.

@@ -17,6 +17,7 @@ that prompt by applying the same series a release build applies: Helium core, th
 import argparse
 import builtins
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -69,7 +70,15 @@ def ci(started_at, jobs):
     # One stage of .github/workflows/loka-build.yml: first's build under build.py's CI budget (5.5 hours from
     # started_at). It exits 42 when time runs out; the next stage restores the saved tree, and build.py then skips
     # the setup and patching it already finished. A fresh runner holds no other build, so there is no lock.
-    builtins.input = apply_all_patches
+    def apply_all_patches_then_drop_node_modules(prompt=''):
+        apply_all_patches(prompt)
+        # The job installs Loka's node_modules here for webui:build. Left in place it sits above build\src, and
+        # Chromium's TypeScript build, looking up through parent folders for types, picks it up and fails
+        # (ui/webui/resources/tools/eslint: undeclared undici-types). The local build checkout has no node_modules.
+        shutil.rmtree(ROOT / 'node_modules')
+        return ''
+
+    builtins.input = apply_all_patches_then_drop_node_modules
     sys.argv = ['build.py', '--dev', '--ci', str(started_at), '-j', str(jobs)]
     build.main()
 

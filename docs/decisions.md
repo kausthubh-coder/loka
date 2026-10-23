@@ -53,7 +53,16 @@ too, not a cleanup.
   from the commit it tags.
 - **Raw `gh release` and `gh workflow run` are denied to agents; `release:alpha --publish` asks me.** Publishing is
   my call, made in the conversation, and the ask rule makes Claude Code confirm it.
-- **Builds are unsigned for now.** SignPath isn't set up; SmartScreen warns, and the release notes say so.
+- **Builds are unsigned, v1 included.** My call (Oct 22). SmartScreen warns on download; the release notes say so.
+- **Crash reports and Helium's services stay Helium's.** My call (Oct 22): Loka uses Helium's crash server (asked
+  after a crash, as Helium does) and its services (extension downloads, uBlock lists, bangs, dictionaries, component
+  updates), so Loka runs no servers. The privacy policy names them and points to Helium's.
+- **One version number: Helium's three parts and Loka's own fourth.** Helium's `build.py` writes
+  `HELIUM_MAJOR.MINOR.PATCH` from `helium-chromium` and `HELIUM_PLATFORM` from this repo's `revision.txt` into
+  `chrome/VERSION`. Loka owns `revision.txt` and bumps it for each release, so the exe, About, the update feed, the zip
+  and the tag share one number that only goes up, Helium updates included (0.19.2.4, then 0.20.1.5), with no edit
+  to Helium's files. When a Helium merge touches `revision.txt`, Loka's number wins. The alphas' `0.1.0-alpha.N`
+  ends with the first release that reads the number from the build (the update work, #31).
 
 ## Git
 

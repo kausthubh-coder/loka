@@ -1,0 +1,89 @@
+name: Loka build stage
+description: >-
+  One job of loka-build.yml: build for up to 5.5 hours, then either package the zip (the build finished) or save the
+  tree for the next stage. Expects the repo checked out and LOKA_VERSION set.
+inputs:
+  resume:
+    description: Restore the tree the previous stage saved
+    required: true
+  ssh:
+    description: If this stage fails, keep the runner up to an hour for tmate
+    default: 'false'
+outputs:
+  finished:
+    description: The build finished and the zip is uploaded
+    value: ${{ steps.build.outputs.finished }}
+runs:
+  using: composite
+  steps:
+    # Python 3.12, the Windows SDK Chromium needs, and the job's start time, as Helium's stages set them up.
+    - uses: ./.github/actions/prepare-environment
+    - uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: 1.3.14
+    # The build checkout's default path (scripts/browser.mjs), short enough for Chromium's deep paths.
+    - name: Copy to the build checkout
+      shell: pwsh
+      run: Copy-Item -Path . -Destination C:\src\loka -Recurse
+    - uses: actions/download-artifact@v4
+      if: inputs.resume == 'true'
+      with:
+        name: loka-build-tree
+        path: C:\src\loka\build
+    - name: Unpack the previous stage's tree
+      if: inputs.resume == 'true'
+      shell: pwsh
+      run: |
+        7z x C:\src\loka\build\artifacts.zip -oC:\src\loka\build -y
+        if ($LASTEXITCODE) { exit $LASTEXITCODE }
+        Remove-Item C:\src\loka\build\artifacts.zip
+    - name: Install
+      shell: pwsh
+      working-directory: C:\src\loka
+      run: |
+        bun install --frozen-lockfile
+        if ($LASTEXITCODE) { exit $LASTEXITCODE }
+        python -m pip install httplib2==0.22.0 Pillow clang-format
+    - name: Build
+      id: build
+      shell: pwsh
+      working-directory: C:\src\loka
+      run: |
+        python scripts/loka_build.py ci $env:HELIUM_JOB_STARTED_AT -j $env:NUMBER_OF_PROCESSORS
+        if ($LASTEXITCODE -eq 42) { "finished=false" >> $env:GITHUB_OUTPUT; exit 0 }
+        if ($LASTEXITCODE) { exit $LASTEXITCODE }
+        "finished=true" >> $env:GITHUB_OUTPUT
+    - name: Save the tree for the next stage
+      if: steps.build.outputs.finished == 'false'
+      shell: pwsh
+      run: |
+        7z a -tzip C:\src\loka\artifacts.zip C:\src\loka\build\src -mx=3 -mtc=on
+        if ($LASTEXITCODE) { exit $LASTEXITCODE }
+    - uses: actions/upload-artifact@v4
+      if: steps.build.outputs.finished == 'false'
+      with:
+        name: loka-build-tree
+        path: C:\src\loka\artifacts.zip
+        retention-days: 1
+        compression-level: 0
+        overwrite: true
+    - name: Package
+      if: steps.build.outputs.finished == 'true'
+      shell: pwsh
+      working-directory: C:\src\loka
+      run: bun run browser:package
+    - uses: actions/upload-artifact@v4
+      if: steps.build.outputs.finished == 'true'
+      with:
+        name: Loka-${{ env.LOKA_VERSION }}-windows-x64
+        path: |
+          C:\src\loka\dist\Loka-${{ env.LOKA_VERSION }}-windows-x64.zip
+          C:\src\loka\dist\Loka-${{ env.LOKA_VERSION }}-windows-x64.zip.sha256
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+    - name: SSH into the runner
+      if: failure() && inputs.ssh == 'true'
+      uses: mxschmitt/action-tmate@v3
+      with:
+        limit-access-to-actor: true

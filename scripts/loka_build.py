@@ -4,6 +4,7 @@ Loka's local (developer) build, on top of Helium's build.py.
 
   python scripts/loka_build.py first [-j N]        unpack Chromium, apply every patch, build chrome
   python scripts/loka_build.py incremental [-j N]  rebuild chrome after editing build/src
+  python scripts/loka_build.py ci <started> [-j N] one stage of the CI build (loka-build.yml)
 
 An incremental build keeps build-status.json and appends to build-times.log in the build checkout
 (see build_log.py; `bun run build:status` prints them).
@@ -64,6 +65,15 @@ def first(jobs):
         lock.unlink(missing_ok=True)
 
 
+def ci(started_at, jobs):
+    # One stage of .github/workflows/loka-build.yml: first's build under build.py's CI budget (5.5 hours from
+    # started_at). It exits 42 when time runs out; the next stage restores the saved tree, and build.py then skips
+    # the setup and patching it already finished. A fresh runner holds no other build, so there is no lock.
+    builtins.input = apply_all_patches
+    sys.argv = ['build.py', '--dev', '--ci', str(started_at), '-j', str(jobs)]
+    build.main()
+
+
 def incremental(jobs):
     if not (SOURCE_TREE / 'out' / 'Default' / 'build.ninja').exists():
         sys.exit('No previous build found. Run "first" before "incremental".')
@@ -85,11 +95,17 @@ def incremental(jobs):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('mode', choices=['first', 'incremental'])
+    parser.add_argument('mode', choices=['first', 'incremental', 'ci'])
+    # ci: when the stage's job started (Unix seconds); the build stops 5.5 hours after it.
+    parser.add_argument('started_at', type=int, nargs='?')
     # About 2.5 GB of RAM per compile job; 6 fits a 16 GB laptop with room for the linker.
     parser.add_argument('-j', type=int, default=int(os.environ.get('LOKA_JOBS', '6')), dest='jobs')
     args = parser.parse_args()
-    if args.mode == 'first':
+    if args.mode == 'ci':
+        if args.started_at is None:
+            parser.error('ci needs the job start time: loka_build.py ci <unix seconds>')
+        ci(args.started_at, args.jobs)
+    elif args.mode == 'first':
         first(args.jobs)
     else:
         incremental(args.jobs)

@@ -110,8 +110,10 @@ runners, splitting the compile into chained jobs of up to 5.5 hours each. Expect
 per build. It doesn't make Loka: it skips `webui:build` and `loka_brand.py`, and `signing.py` stops without the
 six `AZURE_*` secrets, which Loka doesn't have.
 
-`.github/workflows/loka-build.yml` is Loka's: one job on a Depot Windows runner (`depot-windows-2025-64`, 64 CPUs
-and 256 GB; the repo is in the `loka-browser` organization because Depot's runners need one). It runs
-`loka_build.py first` and `browser:package` in `C:\src\loka`, as on this machine, and uploads the zip as the run's
-artifact; it releases nothing. Depot bills it per minute. With `ssh` on, a failed run stays up to an hour for
-`tmate`, which only the person who started it can join.
+`.github/workflows/loka-build.yml` is Loka's. It runs the build this machine runs (`loka_build.py ci`, the
+`first` build under build.py's 5.5-hour budget) and `browser:package` in `C:\src\loka`, and uploads the zip as the
+run's artifact; it releases nothing. On GitHub's free `windows-2025` runner (4 CPUs, free because the repo is
+public) it takes several chained stages, each saving the tree for the next (`.github/actions/loka-stage`). The
+`runner` input takes any label: Helium builds on Depot's `depot-windows-2025-64` in about 80 minutes, about $20 a
+run, which finishes in one stage. With `ssh` on, a failed stage stays up for `tmate`, which only the person who
+started the run can join.

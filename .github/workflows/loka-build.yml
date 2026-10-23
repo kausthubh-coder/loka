@@ -1,78 +1,166 @@
 name: Loka build
 
-# Loka's own build on one large Depot Windows runner: the same build and zip as a local alpha
-# (scripts/loka_build.py first, then browser:package), uploaded as a run artifact. Nothing is released.
-# Helium's main.yml can't make it: it doesn't build Loka's pages or apply its brand, and its packaging requires the
-# Azure signing secrets. Started by hand; every run is billed by Depot per minute.
+# Loka's own build: the same build and zip as a local alpha (scripts/loka_build.py, then browser:package), uploaded as
+# a run artifact. Nothing is released. Started by hand.
+# GitHub's free Windows runners (4 CPUs, free for this public repo) stop a job at 6 hours, so the build runs in
+# chained stages, as Helium's main.yml does: each builds for 5.5 hours, then saves the tree for the next
+# (.github/actions/loka-stage). A larger runner label finishes in fewer stages.
+# Helium's main.yml can't make Loka: it doesn't build Loka's pages or apply its brand, and its packaging requires the
+# Azure signing secrets.
 
 on:
   workflow_dispatch:
     inputs:
       runner:
-        description: Depot runner (64 CPUs is about $15 an hour, 32 about $8)
-        type: choice
-        default: depot-windows-2025-64
-        options:
-          - depot-windows-2025-64
-          - depot-windows-2025-32
+        description: Runner label (windows-2025 is GitHub's free runner)
+        required: false
+        default: windows-2025
       version:
         description: LOKA_VERSION for the zip (empty is 0.1.0-ci.<run number>)
         required: false
         default: ''
       ssh:
-        description: If the build fails, keep the runner up to an hour for SSH (tmate, only you can join)
+        description: If a stage fails, keep its runner up for SSH (tmate, only you can join)
         type: boolean
         default: false
 
 permissions:
   contents: read
 
+env:
+  LOKA_VERSION: ${{ inputs.version || format('0.1.0-ci.{0}', github.run_number) }}
+
 jobs:
-  build:
+  stage-1:
     runs-on: ${{ inputs.runner }}
-    timeout-minutes: 600
-    env:
-      LOKA_VERSION: ${{ inputs.version || format('0.1.0-ci.{0}', github.run_number) }}
+    timeout-minutes: 360
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      # Python 3.12, the Windows SDK Chromium needs, and node, as Helium's CI sets them up.
-      - uses: ./.github/actions/prepare-environment
-      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/loka-stage
+        id: stage
         with:
-          bun-version: 1.3.14
-      # The build checkout's default path (scripts/browser.mjs), short enough for Chromium's deep paths.
-      - name: Copy to the build checkout
-        shell: pwsh
-        run: Copy-Item -Path . -Destination C:\src\loka -Recurse
-      - name: Install
-        shell: pwsh
-        working-directory: C:\src\loka
-        run: |
-          bun install --frozen-lockfile
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          python -m pip install httplib2==0.22.0 Pillow
-      - name: Build
-        shell: pwsh
-        working-directory: C:\src\loka
-        run: python scripts/loka_build.py first -j $env:NUMBER_OF_PROCESSORS
-      - name: Package
-        shell: pwsh
-        working-directory: C:\src\loka
-        run: bun run browser:package
-      - uses: actions/upload-artifact@v4
+          resume: false
+          ssh: ${{ inputs.ssh }}
+
+  stage-2:
+    needs: stage-1
+    if: needs.stage-1.outputs.finished == 'false'
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 360
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@v4
         with:
-          name: Loka-${{ env.LOKA_VERSION }}-windows-x64
-          path: |
-            C:\src\loka\dist\Loka-${{ env.LOKA_VERSION }}-windows-x64.zip
-            C:\src\loka\dist\Loka-${{ env.LOKA_VERSION }}-windows-x64.zip.sha256
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 0
-      - name: SSH into the runner
-        if: failure() && inputs.ssh
-        uses: mxschmitt/action-tmate@v3
-        timeout-minutes: 60
+          submodules: recursive
+      - uses: ./.github/actions/loka-stage
+        id: stage
         with:
-          limit-access-to-actor: true
+          resume: true
+          ssh: ${{ inputs.ssh }}
+
+  stage-3:
+    needs: stage-2
+    if: needs.stage-2.outputs.finished == 'false'
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 360
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/loka-stage
+        id: stage
+        with:
+          resume: true
+          ssh: ${{ inputs.ssh }}
+
+  stage-4:
+    needs: stage-3
+    if: needs.stage-3.outputs.finished == 'false'
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 360
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/loka-stage
+        id: stage
+        with:
+          resume: true
+          ssh: ${{ inputs.ssh }}
+
+  stage-5:
+    needs: stage-4
+    if: needs.stage-4.outputs.finished == 'false'
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 360
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/loka-stage
+        id: stage
+        with:
+          resume: true
+          ssh: ${{ inputs.ssh }}
+
+  stage-6:
+    needs: stage-5
+    if: needs.stage-5.outputs.finished == 'false'
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 360
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/loka-stage
+        id: stage
+        with:
+          resume: true
+          ssh: ${{ inputs.ssh }}
+
+  stage-7:
+    needs: stage-6
+    if: needs.stage-6.outputs.finished == 'false'
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 360
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/loka-stage
+        id: stage
+        with:
+          resume: true
+          ssh: ${{ inputs.ssh }}
+
+  stage-8:
+    needs: stage-7
+    if: needs.stage-7.outputs.finished == 'false'
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 360
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/loka-stage
+        id: stage
+        with:
+          resume: true
+          ssh: ${{ inputs.ssh }}

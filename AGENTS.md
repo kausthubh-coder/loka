@@ -127,7 +127,7 @@ makes sure Playwright has a browser; outside the cloud it exits at once. Its las
 | A real mouse reaches the sidebar (the column is page, not title bar) | verify:browser's hit-test and real-click checks |
 | Every feature in the verify map says how it is proven, and the commands exist | `scripts/verify.test.ts` |
 | Build checkout outside OneDrive | `scripts/browser.mjs` refuses, the doctor checks |
-| Agents never run `gh release` or workflows, push to `main`, or read real profiles and keys; publishing an alpha asks me first | deny and ask rules in `.claude/settings.json` |
+| Agents never run `gh release` or Helium's release workflow (`main.yml`), push to `main`, or read real profiles and keys; publishing an alpha asks me first. Agents start, fix and rerun `loka-build.yml` on their own | deny and ask rules in `.claude/settings.json` |
 | Every file in `patches/` is listed in a series | Helium's `lint.yml` in CI |
 
 When I correct you for the same thing twice, add the rule here and make something enforce it (`/correct`).

@@ -80,7 +80,7 @@ bun run release:alpha -- --version <x.y.z-alpha.n> --publish    # Claude Code as
 
 The next version is one past the last `v*-alpha.*` tag (`git ls-remote --tags origin`) and past the zips in
 `C:\src\loka\dist`. `release:alpha` tags the commit it runs from and checks the build was made from it. Raw
-`gh release` and `gh workflow run` are denied in `.claude/settings.json`; `release:alpha` is the way.
+`gh release` and `gh workflow run main.yml` are denied in `.claude/settings.json`; `release:alpha` is the way.
 
 ## 4. Check production
 

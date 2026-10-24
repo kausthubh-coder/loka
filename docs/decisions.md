@@ -51,8 +51,9 @@ too, not a cleanup.
 - **Alphas are built here and published with `release:alpha`.** Helium's CI build (`main.yml`) takes 15 to 44
   hours on free runners; a local incremental build takes minutes. `release:alpha` checks that the zip was built
   from the commit it tags.
-- **Raw `gh release` and `gh workflow run` are denied to agents; `release:alpha --publish` asks me.** Publishing is
-  my call, made in the conversation, and the ask rule makes Claude Code confirm it.
+- **Raw `gh release` and Helium's `main.yml` are denied to agents; `release:alpha --publish` asks me.** Publishing is
+  my call, made in the conversation, and the ask rule makes Claude Code confirm it. `loka-build.yml` publishes
+  nothing, so agents start it, fix what fails and rerun it without asking (my call, Oct 23).
 - **Builds are unsigned, v1 included.** My call (Oct 22). SmartScreen warns on download; the release notes say so.
 - **Crash reports and Helium's services stay Helium's.** My call (Oct 22): Loka uses Helium's crash server (asked
   after a crash, as Helium does) and its services (extension downloads, uBlock lists, bangs, dictionaries, component

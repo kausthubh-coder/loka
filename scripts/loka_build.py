@@ -29,6 +29,26 @@ import build  # noqa: E402  Helium's build.py, imported so its helpers and toolc
 import build_log  # noqa: E402
 
 SOURCE_TREE = ROOT / 'build' / 'src'
+ARGS_GN = SOURCE_TREE / 'out' / 'Default' / 'args.gn'
+
+# Loka's additions to Helium's --dev build args. Later assignments in args.gn win.
+DEV_GN_ARGS = {
+    # Helium's CI only makes official builds, which turn precompiled headers off. A dev build turns them on, and
+    # with Clang modules the PCH compile fails: "missing 'export module' declaration in module interface unit".
+    'enable_precompiled_headers': 'false',
+    # No debug symbols: linking takes far less RAM and time on a 16 GB laptop, and the CI tree is smaller.
+    'symbol_level': '0',
+}
+
+_run_build_process = build._run_build_process
+
+
+def run_build_process_with_dev_args(*args, **kwargs):
+    # build.py writes args.gn, then runs gn gen through this: add DEV_GN_ARGS in between.
+    if args and str(args[0]).endswith('gn.exe') and 'gen' in args:
+        with ARGS_GN.open('a', encoding='utf-8') as f:
+            f.write('# Loka dev build\n' + ''.join(f'{key}={value}\n' for key, value in DEV_GN_ARGS.items()))
+    return _run_build_process(*args, **kwargs)
 
 
 def apply_all_patches(_prompt=''):
@@ -55,6 +75,7 @@ def first(jobs):
     if (SOURCE_TREE / 'BUILD.gn').exists():
         sys.exit(f'{SOURCE_TREE} already exists. Use "incremental", or delete build\\src (keep build\\download_cache) to start over.')
     builtins.input = apply_all_patches
+    build._run_build_process = run_build_process_with_dev_args
     sys.argv = ['build.py', '--dev', '-j', str(jobs)]
     lock = ROOT / 'build.lock'
     refused = build_log.take_lock(lock, 'first')
@@ -79,6 +100,7 @@ def ci(started_at, jobs):
         return ''
 
     builtins.input = apply_all_patches_then_drop_node_modules
+    build._run_build_process = run_build_process_with_dev_args
     sys.argv = ['build.py', '--dev', '--ci', str(started_at), '-j', str(jobs)]
     build.main()
 
